@@ -1,0 +1,262 @@
+/* bridge.c: see bridge.h. */
+#include "bridge.h"
+
+#include <dlfcn.h>
+#include <math.h>
+#include <pthread.h>
+#include <sched.h>
+#include <stdarg.h>
+#include <stdatomic.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "third_party/schwung/host/plugin_api_v1.h"
+
+/* Move's SPI mailbox layout, as modules expect it (CLAUDE.md, SPI Protocol):
+ * audio out at 256, audio in at 2304, 128 stereo int16 frames each. */
+#define MB_SIZE 4096
+#define MB_AUDIO_OUT 256
+#define MB_AUDIO_IN 2304
+
+#define MIDI_RING 1024 /* bytes, power of two */
+#define IN_FIFO 8192   /* stereo frames, power of two */
+
+typedef struct {
+    void *inst;
+    /* rendered audio not yet handed out */
+    int16_t carry[SB_BLOCK * 2];
+    int carry_pos, carry_len;
+    /* input waiting to be rendered against */
+    int16_t in_fifo[IN_FIFO * 2];
+    unsigned in_w, in_r;
+    int has_input;              /* the caller hands in audio: inject it */
+    int16_t inject[SB_BLOCK * 2];
+    /* MIDI the module sent: written by the slot's owner, read by Go */
+    uint8_t midi[MIDI_RING];
+    _Atomic unsigned midi_w, midi_r;
+} slot_t;
+
+static char g_err[512];
+static void *g_lib;
+/* chain_set_inject_audio: audio mixed in front of the chain's effects. With
+ * no synth loaded the chain is then an audio effect on that input. */
+static void (*g_inject)(void *, int16_t *, int);
+static plugin_api_v2_t *g_api;
+static char g_chain_dir[1024];
+static slot_t g_slots[SB_MAX_SLOTS];
+/* One mailbox, filled with the CURRENT slot's input before each block. */
+static uint8_t g_mailbox[MB_SIZE];
+static host_api_v1_t g_host; /* static: zeroed, so the reserved tail is NULL */
+static __thread int t_slot = -1;
+
+static _Atomic float g_bpm = 120.0f;
+static _Atomic int g_clock = MOVE_CLOCK_STATUS_UNAVAILABLE;
+static _Atomic double g_beat = -1.0;
+
+static void set_err(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(g_err, sizeof g_err, fmt, ap);
+    va_end(ap);
+}
+const char *sb_error(void) { return g_err; }
+
+static void h_log(const char *msg) { fprintf(stderr, "dsp: %s\n", msg); }
+
+static int push_midi(int route, const uint8_t *msg, int len) {
+    if (t_slot < 0 || len <= 0) return 0;
+    slot_t *s = &g_slots[t_slot];
+    /* modules hand us 4-byte USB-MIDI packets; keep them as packets */
+    int n = len & ~3;
+    unsigned w = atomic_load_explicit(&s->midi_w, memory_order_relaxed);
+    unsigned r = atomic_load_explicit(&s->midi_r, memory_order_acquire);
+    if ((unsigned)(MIDI_RING - (w - r)) < (unsigned)n) return 0; /* full: drop, report it */
+    for (int i = 0; i < n; i++) {
+        uint8_t b = msg[i];
+        if ((i & 3) == 0) b = (uint8_t)((route << 4) | (b & 0x0F));
+        s->midi[(w + i) & (MIDI_RING - 1)] = b;
+    }
+    atomic_store_explicit(&s->midi_w, w + n, memory_order_release);
+    return len;
+}
+static int h_send_internal(const uint8_t *m, int l) { return push_midi(0, m, l); }
+static int h_send_external(const uint8_t *m, int l) { return push_midi(2, m, l); }
+static int h_inject(const uint8_t *m, int l) { return push_midi(3, m, l); }
+static int h_clock_status(void) { return atomic_load(&g_clock); }
+static float h_bpm(void) { return atomic_load(&g_bpm); }
+static double h_beat(void) { return atomic_load(&g_beat); }
+
+int sb_init(const char *chain_dir) {
+    char path[1200];
+    snprintf(g_chain_dir, sizeof g_chain_dir, "%s", chain_dir);
+    snprintf(path, sizeof path, "%s/dsp.so", chain_dir);
+    g_lib = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (!g_lib) { set_err("dlopen %s: %s", path, dlerror()); return -1; }
+    move_plugin_init_v2_fn init = (move_plugin_init_v2_fn)dlsym(g_lib, MOVE_PLUGIN_INIT_V2_SYMBOL);
+    if (!init) { set_err("%s missing in %s", MOVE_PLUGIN_INIT_V2_SYMBOL, path); return -1; }
+
+    g_host.api_version = MOVE_PLUGIN_API_VERSION;
+    g_host.sample_rate = MOVE_SAMPLE_RATE;
+    g_host.frames_per_block = MOVE_FRAMES_PER_BLOCK;
+    g_host.mapped_memory = g_mailbox;
+    g_host.audio_out_offset = MB_AUDIO_OUT;
+    g_host.audio_in_offset = MB_AUDIO_IN;
+    g_host.log = h_log;
+    g_host.midi_send_internal = h_send_internal;
+    g_host.midi_send_external = h_send_external;
+    g_host.get_clock_status = h_clock_status;
+    g_host.get_bpm = h_bpm;
+    g_host.get_beat_position = h_beat;
+    /* "inject to Move" is a MIDI effect's output in pre mode: on Push it
+     * becomes a Schwung MIDI-effect device's MIDI out. slot_recv_channel
+     * stays NULL; modules guard every host call. */
+    g_host.midi_inject_to_move = h_inject;
+    g_api = init(&g_host);
+    if (!g_api) { set_err("move_plugin_init_v2 returned NULL"); return -1; }
+    g_inject = (void (*)(void *, int16_t *, int))dlsym(g_lib, "chain_set_inject_audio");
+    return 0;
+}
+
+static int valid(int slot) { return g_api && slot >= 0 && slot < SB_MAX_SLOTS; }
+int sb_slot_alive(int slot) { return valid(slot) && g_slots[slot].inst != NULL; }
+
+int sb_slot_create(int slot) {
+    if (!valid(slot)) { set_err("bad slot %d", slot); return -1; }
+    if (g_slots[slot].inst) return 0;
+    memset(&g_slots[slot], 0, sizeof g_slots[slot]);
+    t_slot = slot;
+    g_slots[slot].inst = g_api->create_instance(g_chain_dir, NULL);
+    t_slot = -1;
+    if (!g_slots[slot].inst) { set_err("create_instance failed for slot %d", slot); return -1; }
+    return 0;
+}
+
+void sb_slot_destroy(int slot) {
+    if (!sb_slot_alive(slot)) return;
+    t_slot = slot;
+    g_api->destroy_instance(g_slots[slot].inst);
+    t_slot = -1;
+    g_slots[slot].inst = NULL;
+}
+
+void sb_set_param(int slot, const char *key, const char *val) {
+    if (!sb_slot_alive(slot)) return;
+    t_slot = slot;
+    g_api->set_param(g_slots[slot].inst, key, val);
+    t_slot = -1;
+}
+
+int sb_get_param(int slot, const char *key, char *buf, int buf_len) {
+    if (!sb_slot_alive(slot) || buf_len <= 0) return -1;
+    buf[0] = 0;
+    t_slot = slot;
+    int n = g_api->get_param(g_slots[slot].inst, key, buf, buf_len);
+    t_slot = -1;
+    if (n >= buf_len) n = buf_len - 1;
+    if (n >= 0) buf[n] = 0;
+    return n;
+}
+
+void sb_midi(int slot, const uint8_t *msg, int len, int source) {
+    if (!sb_slot_alive(slot)) return;
+    t_slot = slot;
+    g_api->on_midi(g_slots[slot].inst, msg, len, source);
+    t_slot = -1;
+}
+
+static inline int16_t to_i16(float v) {
+    v *= 32767.0f;
+    if (v > 32767.0f) v = 32767.0f;
+    if (v < -32768.0f) v = -32768.0f;
+    return (int16_t)lrintf(v);
+}
+
+float sb_render(int slot, float *out, const float *in, int frames) {
+    float peak = 0;
+    if (!sb_slot_alive(slot)) {
+        memset(out, 0, sizeof(float) * 2 * frames);
+        return 0;
+    }
+    slot_t *s = &g_slots[slot];
+    s->has_input = in != NULL;
+    if (in) {
+        for (int i = 0; i < frames; i++) {
+            unsigned w = s->in_w & (IN_FIFO - 1);
+            s->in_fifo[w * 2] = to_i16(in[i * 2]);
+            s->in_fifo[w * 2 + 1] = to_i16(in[i * 2 + 1]);
+            s->in_w++;
+            if (s->in_w - s->in_r > IN_FIFO) s->in_r = s->in_w - IN_FIFO;
+        }
+    }
+    int done = 0;
+    while (done < frames) {
+        if (s->carry_pos >= s->carry_len) {
+            int16_t *mb_in = (int16_t *)(g_mailbox + MB_AUDIO_IN);
+            for (int i = 0; i < SB_BLOCK; i++) {
+                if (s->in_w != s->in_r) {
+                    unsigned r = s->in_r & (IN_FIFO - 1);
+                    mb_in[i * 2] = s->in_fifo[r * 2];
+                    mb_in[i * 2 + 1] = s->in_fifo[r * 2 + 1];
+                    s->in_r++;
+                } else {
+                    mb_in[i * 2] = mb_in[i * 2 + 1] = 0;
+                }
+            }
+            if (s->has_input && g_inject) {
+                memcpy(s->inject, mb_in, sizeof s->inject);
+                g_inject(s->inst, s->inject, SB_BLOCK);
+            }
+            t_slot = slot;
+            g_api->render_block(s->inst, s->carry, SB_BLOCK);
+            t_slot = -1;
+            s->carry_pos = 0;
+            s->carry_len = SB_BLOCK;
+        }
+        while (done < frames && s->carry_pos < s->carry_len) {
+            float l = s->carry[s->carry_pos * 2] / 32768.0f;
+            float r = s->carry[s->carry_pos * 2 + 1] / 32768.0f;
+            out[done * 2] = l;
+            out[done * 2 + 1] = r;
+            float a = fabsf(l) > fabsf(r) ? fabsf(l) : fabsf(r);
+            if (a > peak) peak = a;
+            s->carry_pos++;
+            done++;
+        }
+    }
+    return peak;
+}
+
+void sb_warm(int slot, int blocks) {
+    if (!sb_slot_alive(slot)) return;
+    int16_t scratch[SB_BLOCK * 2];
+    /* the mailbox input stays silent for warm-up blocks */
+    memset(g_mailbox + MB_AUDIO_IN, 0, SB_BLOCK * 4);
+    for (int i = 0; i < blocks; i++) {
+        t_slot = slot;
+        g_api->render_block(g_slots[slot].inst, scratch, SB_BLOCK);
+        t_slot = -1;
+    }
+}
+
+void sb_set_tempo(float bpm) { if (bpm > 20 && bpm < 999) atomic_store(&g_bpm, bpm); }
+void sb_set_clock(int status, double beat) {
+    atomic_store(&g_clock, status);
+    atomic_store(&g_beat, beat);
+}
+
+int sb_take_midi_out(int slot, uint8_t *buf, int max) {
+    if (!valid(slot)) return 0;
+    slot_t *s = &g_slots[slot];
+    unsigned r = atomic_load_explicit(&s->midi_r, memory_order_relaxed);
+    unsigned w = atomic_load_explicit(&s->midi_w, memory_order_acquire);
+    int n = (int)(w - r);
+    if (n > max) n = max & ~3;
+    for (int i = 0; i < n; i++) buf[i] = s->midi[(r + i) & (MIDI_RING - 1)];
+    atomic_store_explicit(&s->midi_r, r + n, memory_order_release);
+    return n;
+}
+
+int sb_set_realtime(int priority) {
+    struct sched_param sp = {.sched_priority = priority};
+    return pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+}

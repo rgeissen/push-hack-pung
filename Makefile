@@ -1,0 +1,47 @@
+# Schwung for Push 3. Everything builds in one Ubuntu 22.04 amd64 container
+# (docker/Dockerfile): glibc 2.35 is what AbletonOS runs, so the binary and
+# every module built here load on the device.
+
+IMAGE   := push-hack-schwung-builder
+HOST    ?= push.local
+SCHWUNG ?= $(abspath $(CURDIR)/../schwung)
+MODSRC  ?= $(CURDIR)/build/modsrc
+VERSION := $(shell cat VERSION 2>/dev/null || echo dev)
+SSH     := ssh -o BatchMode=yes -o HostKeyAlias=push.local
+DOCKER  := docker run --rm --platform linux/amd64 \
+	-v $(CURDIR):/w -v push-hack-schwung-gomod:/root/go/pkg/mod -w /w
+
+# AbletonOS keeps its dynamic linker at /lib, not /lib64.
+LDFLAGS := -s -w -X main.buildVersion=$(VERSION) -linkmode external \
+	-extldflags -Wl,--dynamic-linker=/lib/ld-linux-x86-64.so.2
+
+.PHONY: all image build modules catalog-modules test vet deploy clean
+
+all: build
+
+image:
+	docker build -q --platform linux/amd64 -t $(IMAGE) docker/
+
+build:
+	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go build -trimpath -ldflags '$(LDFLAGS)' -o ../schwung ."
+
+test:
+	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go test ./..."
+
+vet:
+	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go vet ./..."
+
+# Schwung's chain host and its built-in modules, from the Schwung checkout
+modules:
+	$(DOCKER) -v $(SCHWUNG):/schwung:ro -v $(CURDIR)/build/modules:/out $(IMAGE) bash /w/scripts/build-modules.sh
+
+# catalog modules, compiled from their source (see scripts/build-catalog.sh)
+catalog-modules:
+	$(DOCKER) -v $(MODSRC):/modsrc:ro -v $(CURDIR)/build/modules:/out $(IMAGE) bash /w/scripts/build-catalog.sh
+
+# files plus an init.d service, the way push-catalog installs a hack
+deploy: build
+	scripts/deploy.sh $(HOST)
+
+clean:
+	rm -f schwung

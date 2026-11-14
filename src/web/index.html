@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schwung</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">Schwung <span class="sub">on Push</span></div>
+  <nav class="slots" id="slots" aria-label="Schwung tracks"></nav>
+  <div class="health" id="health" aria-live="polite"></div>
+</header>
+
+<main>
+  <section class="chain" aria-label="Signal chain">
+    <div class="chain-row" id="chain"></div>
+  </section>
+
+  <section class="picker" id="picker" hidden>
+    <div class="picker-head">
+      <h2 id="picker-title">Add a module</h2>
+      <div class="kinds" role="tablist">
+        <button type="button" data-kind="midi_fx">MIDI FX</button>
+        <button type="button" data-kind="sound_generator">Synths</button>
+        <button type="button" data-kind="audio_fx">Audio FX</button>
+      </div>
+      <button type="button" class="ghost" id="picker-close">Cancel</button>
+    </div>
+    <div class="cards" id="picker-cards"></div>
+  </section>
+
+  <section class="panel" id="panel" aria-live="polite">
+    <div class="panel-head">
+      <h2 id="panel-title"></h2>
+      <div class="panel-tools" id="panel-tools"></div>
+    </div>
+    <div id="panel-body"></div>
+  </section>
+
+  <section class="howto" id="howto">
+    <h2>Play a Schwung track from Live</h2>
+    <ol>
+      <li>In Live's settings on the Push, MIDI: turn on <b>Track</b> (and <b>Sync</b>, for arpeggiators) for the output port <b>Schwung</b>.</li>
+      <li>Turn on Link and Link Audio in Live.</li>
+      <li>Make a MIDI track and send its MIDI to <b>Schwung</b>, on the channel of the Schwung track (channel 1 is track 1). Or press <b>Make Live MIDI track</b> above.</li>
+      <li>Make an audio track with the input <b>PushHack</b>, channel <b>Schwung N</b>, Monitor <b>In</b>.</li>
+    </ol>
+    <p>On the Push itself: Shift + Help opens Home, then <b>Schwung</b>.</p>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,403 @@
+/* Schwung on Push: the web page.
+ *
+ * It is also the PARENT of a module's own web_ui.html: the iframe includes
+ * /static/schwung-remote-api.js (schwung-manager's, unmodified) and talks
+ * postMessage to this page. The protocol below answers it exactly as
+ * schwung-manager's remote-ui.js does. */
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const SLOT_COLORS = ["#ff8a1f", "#5ab0ff", "#ff5fa2", "#7bd88f", "#ffd23f", "#a48cff", "#3cc8e6", "#ff5a4e"];
+  const KIND = { midi: "MIDI FX", synth: "Synth", fx: "Audio FX" };
+  const KCOL = { midi: "var(--midi)", synth: "var(--inst)", fx: "var(--afx)" };
+
+  let state = { slot: 1, comp: "synth", slots: [], info: null, values: {}, modules: [] };
+  let frame = null, frameComp = null, frameSubscribed = false;
+  let pickerMode = "add", pickerKind = "audio_fx";
+
+  const api = (path, opts) => fetch(path, opts).then((r) => r.json());
+  const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+  function setSlotColor() {
+    document.documentElement.style.setProperty("--slot", SLOT_COLORS[(state.slot - 1) % SLOT_COLORS.length]);
+  }
+
+  // ---- status, slots, chain ------------------------------------------------
+  async function refreshStatus() {
+    let st;
+    try { st = await api("/api/status"); } catch (e) { $("health").innerHTML = '<span class="bad">Schwung is not answering</span>'; return; }
+    state.slots = st.slots || [];
+    const e = st.engine, t = st.transport;
+    const bus = state.slots.some((s) => s.bus);
+    $("health").innerHTML = `${bus ? "audio bus on" : '<span class="bad">no audio bus</span>'} · ` +
+      `DSP ${Math.round((e.avg_us / Math.max(1, e.budget_us)) * 100)}% · ` +
+      (t.clock ? `${t.running ? "playing" : "stopped"} ${t.bpm ? t.bpm.toFixed(1) + " BPM" : ""}` : "no clock");
+    renderSlots();
+    const cur = state.slots.find((s) => s.slot === state.slot);
+    if (cur) renderChain(cur);
+  }
+
+  function renderSlots() {
+    const nav = $("slots");
+    nav.innerHTML = "";
+    state.slots.forEach((s) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.style.color = s.slot === state.slot ? "#000" : SLOT_COLORS[(s.slot - 1) % 8];
+      b.setAttribute("aria-current", s.slot === state.slot ? "true" : "false");
+      const lvl = Math.max(0, Math.min(1, (s.peak_db + 48) / 48));
+      b.innerHTML = `${s.slot}<span class="meter"><i style="width:${(lvl * 100).toFixed(0)}%"></i></span>`;
+      b.title = `Track ${s.slot}: ${s.chain.synth || "no synth"}`;
+      b.onclick = () => selectSlot(s.slot);
+      nav.appendChild(b);
+    });
+  }
+
+  function positionsOf(slot) {
+    const c = slot.chain, out = [];
+    c.midi_fx.forEach((m, i) => m && out.push({ kind: "midi", comp: "midi_fx" + (i + 1), n: i + 1, module: m }));
+    out.push({ kind: "synth", comp: "synth", n: 1, module: c.synth });
+    c.fx.forEach((m, i) => m && out.push({ kind: "fx", comp: "fx" + (i + 1), n: i + 1, module: m }));
+    return out;
+  }
+
+  function moduleName(id) {
+    const m = state.modules.find((x) => x.id === id);
+    return m ? m.name : id;
+  }
+
+  let chainSig = "";
+  function renderChain(slot) {
+    const ps = positionsOf(slot);
+    const sig = JSON.stringify([state.slot, state.comp, ps]);
+    if (sig === chainSig) return;
+    chainSig = sig;
+    const row = $("chain");
+    row.innerHTML = "";
+    ps.forEach((p, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pos";
+      b.style.setProperty("--k", KCOL[p.kind]);
+      b.setAttribute("aria-pressed", p.comp === state.comp ? "true" : "false");
+      b.innerHTML = `<span class="kind">${KIND[p.kind]}</span><span class="name">${p.module ? esc(moduleName(p.module)) : "No synth"}</span>`;
+      b.onclick = () => (p.module ? selectComp(p.comp) : openPicker("swap", "sound_generator"));
+      row.appendChild(b);
+      const a = document.createElement("span");
+      a.className = "arrow";
+      a.textContent = "›";
+      row.appendChild(a);
+    });
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "pos add";
+    add.textContent = "+ Add";
+    add.onclick = () => openPicker("add", "audio_fx");
+    row.appendChild(add);
+  }
+
+  function selectSlot(n) {
+    state.slot = n;
+    setSlotColor();
+    state.comp = "synth";
+    chainSig = "";
+    refreshStatus().then(() => loadPanel());
+  }
+
+  function selectComp(comp) {
+    state.comp = comp;
+    chainSig = "";
+    refreshStatus();
+    loadPanel();
+  }
+
+  // ---- the component panel ------------------------------------------------
+  async function loadPanel() {
+    const r = await api(`/api/slots/${state.slot}/component/${state.comp}`);
+    const info = (state.info = r.info || {});
+    state.values = info.values || {};
+    $("panel-title").textContent = info.module ? `${info.name || info.module}` : "Empty";
+    const tools = $("panel-tools");
+    tools.innerHTML = "";
+    const body = $("panel-body");
+    body.innerHTML = "";
+    frame = null; frameComp = null; frameSubscribed = false;
+    if (!info.module) {
+      body.innerHTML = `<div class="empty">Nothing here yet. Choose a module with Swap.</div>`;
+      tools.appendChild(toolButton("Choose", () => openPicker("swap", "sound_generator")));
+      return;
+    }
+    tools.appendChild(toolButton("Make Live MIDI track", makeTracks));
+    tools.appendChild(toolButton(info.bypassed ? "Turn on" : "Bypass", toggleBypass));
+    tools.appendChild(toolButton("Swap", () => openPicker("swap", info.type || "audio_fx")));
+    tools.appendChild(toolButton("Remove", removeComp, true));
+    if (info.web_ui) {
+      // the module's own page, unmodified, in a sandbox
+      frame = document.createElement("iframe");
+      frame.className = "frame";
+      frame.setAttribute("sandbox", "allow-scripts allow-forms");
+      frame.title = `${info.name} panel`;
+      frame.src = `/modules/${encodeURIComponent(info.module)}/web_ui.html?component=${encodeURIComponent(state.comp)}`;
+      frameComp = state.comp;
+      body.appendChild(frame);
+    } else {
+      body.appendChild(buildControls(info));
+    }
+  }
+
+  function toolButton(text, fn, danger) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "tool" + (danger ? " danger" : "");
+    b.textContent = text;
+    b.onclick = fn;
+    return b;
+  }
+
+  // banks from ui_hierarchy, else the chain_params order
+  function banksOf(info) {
+    const cp = info.chain_params || [];
+    const byKey = Object.fromEntries(cp.map((p) => [p.key, p]));
+    const levels = info.hierarchy && info.hierarchy.levels;
+    const banks = [];
+    const keysOf = (l) => (l.knobs || l.params || []).map((x) => (typeof x === "string" ? x : x && x.key)).filter(Boolean);
+    if (levels && levels.root) {
+      const root = levels.root;
+      if (root.knobs) banks.push({ name: "Main", keys: keysOf({ knobs: root.knobs }) });
+      (root.params || []).forEach((x) => {
+        if (x && x.level && levels[x.level]) banks.push({ name: x.label || x.level, keys: keysOf(levels[x.level]) });
+      });
+    }
+    const seen = new Set(banks.flatMap((b) => b.keys));
+    const rest = cp.map((p) => p.key).filter((k) => !seen.has(k));
+    if (rest.length) banks.push({ name: banks.length ? "More" : "Parameters", keys: rest });
+    return { banks, byKey };
+  }
+
+  function buildControls(info) {
+    const wrap = document.createElement("div");
+    const { banks, byKey } = banksOf(info);
+    if (!banks.length) {
+      wrap.innerHTML = `<div class="empty">This module publishes no parameters.</div>`;
+      return wrap;
+    }
+    banks.forEach((b) => {
+      const sec = document.createElement("div");
+      sec.className = "bank";
+      sec.innerHTML = `<h3>${esc(b.name)}</h3>`;
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      b.keys.forEach((k) => byKey[k] && grid.appendChild(control(byKey[k])));
+      sec.appendChild(grid);
+      wrap.appendChild(sec);
+    });
+    return wrap;
+  }
+
+  function fmt(p, v) {
+    if (v === undefined || v === null) return "--";
+    if (p.type === "enum") {
+      const i = parseInt(v, 10);
+      return !isNaN(i) && p.options && p.options[i] !== undefined && String(i) === String(v).trim() ? p.options[i] : v;
+    }
+    let f = parseFloat(v);
+    if (isNaN(f)) return v;
+    if (p.unit === "%" && p.max <= 1.0001) f *= 100;
+    const s = p.type === "int" ? String(Math.round(f)) : Math.abs(f) >= 100 || p.unit === "%" ? f.toFixed(0) : f.toFixed(2);
+    return s + (p.unit ? " " + p.unit : "");
+  }
+
+  function control(p) {
+    const key = `${state.comp}:${p.key}`;
+    const d = document.createElement("div");
+    d.className = "ctl";
+    const id = "c_" + key.replace(/[^a-z0-9]/gi, "_");
+    const v = state.values[key];
+    if (p.type === "enum" && p.options) {
+      d.innerHTML = `<label for="${id}">${esc(p.name || p.key)}</label>`;
+      const s = document.createElement("select");
+      s.id = id;
+      p.options.forEach((o, i) => s.add(new Option(o, String(i))));
+      const asIndex = /^\s*\d+\s*$/.test(v || "");
+      const idx = asIndex ? parseInt(v, 10) : p.options.indexOf(v);
+      if (idx >= 0) s.value = String(idx);
+      s.onchange = () => setParam(key, asIndex || v === undefined ? s.value : p.options[parseInt(s.value, 10)]);
+      d.appendChild(s);
+    } else {
+      d.innerHTML = `<label for="${id}">${esc(p.name || p.key)} <output id="${id}_o">${esc(fmt(p, v))}</output></label>`;
+      const r = document.createElement("input");
+      r.type = "range";
+      r.id = id;
+      r.min = p.min ?? 0; r.max = p.max ?? 1;
+      r.step = p.step || (p.type === "int" ? 1 : ((p.max ?? 1) - (p.min ?? 0)) / 200);
+      if (v !== undefined) r.value = v;
+      r.oninput = () => { $(id + "_o").textContent = fmt(p, r.value); setParam(key, r.value); };
+      d.appendChild(r);
+    }
+    d.dataset.key = key;
+    return d;
+  }
+
+  let pending = {}, sendTimer = null;
+  function setParam(key, value) {
+    state.values[key] = String(value);
+    pending[key] = String(value);
+    if (!sendTimer) sendTimer = setTimeout(flush, 40); // a dragged slider sends ~25 writes a second
+  }
+  function flush() {
+    sendTimer = null;
+    const batch = pending;
+    pending = {};
+    Object.entries(batch).forEach(([key, value]) => post(`/api/slots/${state.slot}/param`, { key, value }));
+  }
+
+  async function makeTracks() {
+    $("health").textContent = "asking Live...";
+    const r = await post(`/api/slots/${state.slot}/tracks`, {});
+    $("health").textContent = r.ok ? `MIDI track "Schwung ${state.slot}" is ready. Now make an audio track by hand: input PushHack, channel Schwung ${state.slot}, Monitor In.` : r.error;
+  }
+
+  async function toggleBypass() {
+    await post(`/api/slots/${state.slot}/param`, { key: `${state.comp}:bypassed`, value: state.info.bypassed ? "0" : "1" });
+    chainSig = "";
+    await refreshStatus();
+    loadPanel();
+  }
+
+  async function removeComp() {
+    const c = state.comp;
+    if (c === "synth") await post(`/api/slots/${state.slot}/param`, { key: "synth:module", value: "" });
+    else if (c.startsWith("midi_fx")) await post(`/api/slots/${state.slot}/param`, { key: "midi_fx:remove", value: c.slice(7) });
+    else await post(`/api/slots/${state.slot}/param`, { key: "fx:remove", value: c.slice(2) });
+    state.comp = "synth";
+    chainSig = "";
+    await refreshStatus();
+    loadPanel();
+  }
+
+  // live values: changes from the Push encoders reach the page and the iframe
+  async function refreshValues() {
+    if (!state.info || !state.info.module || document.hidden) return;
+    let r;
+    try { r = await api(`/api/slots/${state.slot}/component/${state.comp}/values`); } catch (e) { return; }
+    const changed = {};
+    Object.entries(r.values || {}).forEach(([k, v]) => {
+      if (state.values[k] !== v && !(k in pending)) { state.values[k] = v; changed[k] = v; }
+    });
+    if (!Object.keys(changed).length) return;
+    if (frame && frameSubscribed) toFrame({ type: "paramUpdate", params: changed });
+    Object.entries(changed).forEach(([k, v]) => {
+      const el = document.querySelector(`.ctl[data-key="${CSS.escape(k)}"]`);
+      if (!el || el.contains(document.activeElement)) return;
+      const p = (state.info.chain_params || []).find((x) => `${state.comp}:${x.key}` === k);
+      const input = el.querySelector("input,select");
+      if (input && input.tagName === "INPUT") { input.value = v; const o = el.querySelector("output"); if (o && p) o.textContent = fmt(p, v); }
+      else if (input && p) { const asIndex = /^\s*\d+\s*$/.test(v); input.value = String(asIndex ? parseInt(v, 10) : (p.options || []).indexOf(v)); }
+    });
+  }
+
+  // ---- the module page bridge (schwung-manager's protocol) ----------------
+  function toFrame(msg) { if (frame && frame.contentWindow) frame.contentWindow.postMessage(msg, "*"); }
+
+  window.addEventListener("message", (e) => {
+    if (!frame || e.source !== frame.contentWindow) return;
+    const m = e.data;
+    if (!m || !m.type) return;
+    const info = state.info || {};
+    switch (m.type) {
+      case "height": {
+        const h = Number(m.height);
+        if (isFinite(h) && h > 0) frame.style.height = Math.min(Math.max(Math.round(h), 200), 4000) + "px";
+        break;
+      }
+      case "getParam":
+        if (!m.id || !m.key) return;
+        if (m.key in state.values) toFrame({ type: "paramResult", id: m.id, value: state.values[m.key] });
+        else api(`/api/slots/${state.slot}/param?key=${encodeURIComponent(m.key)}`).then((r) => {
+          if (r.value !== null && r.value !== undefined) state.values[m.key] = r.value;
+          toFrame({ type: "paramResult", id: m.id, value: r.value ?? "" });
+        });
+        break;
+      case "setParam":
+        if (m.key) setParam(m.key, m.value);
+        break;
+      case "subscribe":
+        frameSubscribed = true;
+        toFrame({ type: "paramUpdate", params: Object.assign({}, state.values) });
+        break;
+      case "getHierarchy":
+        toFrame({ type: "hierarchy", id: m.id || null, component: frameComp, data: info.hierarchy || null });
+        break;
+      case "getChainParams":
+        toFrame({ type: "chainParams", id: m.id || null, component: frameComp, data: info.chain_params || null });
+        break;
+      case "resubscribe":
+        api(`/api/slots/${state.slot}/component/${state.comp}/values`).then((r) => {
+          Object.assign(state.values, r.values || {});
+          toFrame({ type: "paramUpdate", params: r.values || {} });
+        });
+        break;
+    }
+  });
+
+  // ---- module picker ------------------------------------------------------
+  function openPicker(mode, kind) {
+    pickerMode = mode;
+    $("picker").hidden = false;
+    $("picker-title").textContent = mode === "swap" ? "Replace this module" : "Add a module";
+    setPickerKind(kind);
+    $("picker").scrollIntoView({ block: "nearest" });
+  }
+
+  function setPickerKind(kind) {
+    pickerKind = kind;
+    document.querySelectorAll(".kinds button").forEach((b) => b.setAttribute("aria-selected", b.dataset.kind === kind ? "true" : "false"));
+    const cards = $("picker-cards");
+    cards.innerHTML = "";
+    const list = state.modules.filter((m) => m.type === kind && m.loadable);
+    if (!list.length) cards.innerHTML = `<div class="empty">No modules of this kind are installed.</div>`;
+    list.forEach((m) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "card";
+      b.innerHTML = `<b>${esc(m.name)}</b><span>${esc(m.author || "")}</span><span>${esc(m.version || "")}</span>`;
+      b.onclick = () => choose(m);
+      cards.appendChild(b);
+    });
+  }
+
+  async function choose(m) {
+    const slot = state.slots.find((s) => s.slot === state.slot);
+    const c = slot.chain;
+    const used = (list) => list.filter(Boolean).length;
+    let key, at, comp;
+    if (m.type === "sound_generator") { key = "synth:module"; comp = "synth"; }
+    else if (pickerMode === "swap" && kindOfComp(state.comp) === m.type) { key = `${state.comp}:module`; comp = state.comp; }
+    else if (m.type === "audio_fx") { at = used(c.fx) + 1; key = `fx${at}:module`; comp = `fx${at}`; }
+    else { at = used(c.midi_fx) + 1; key = `midi_fx${at}:module`; comp = `midi_fx${at}`; }
+    if (at > 8) { alertBox("The chain is full."); return; }
+    await post(`/api/slots/${state.slot}/param`, { key, value: m.id });
+    $("picker").hidden = true;
+    state.comp = comp;
+    chainSig = "";
+    await refreshStatus();
+    loadPanel();
+  }
+
+  function kindOfComp(c) { return c === "synth" ? "sound_generator" : c.startsWith("midi_fx") ? "midi_fx" : "audio_fx"; }
+  function alertBox(t) { $("health").textContent = t; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  document.querySelectorAll(".kinds button").forEach((b) => (b.onclick = () => setPickerKind(b.dataset.kind)));
+  $("picker-close").onclick = () => ($("picker").hidden = true);
+
+  async function boot() {
+    setSlotColor();
+    try { state.modules = (await api("/api/modules")).modules || []; } catch (e) { /* the status line says why */ }
+    await refreshStatus();
+    loadPanel();
+    setInterval(refreshStatus, 1000);
+    setInterval(refreshValues, 350);
+  }
+  boot();
+})();

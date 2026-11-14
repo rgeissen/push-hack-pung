@@ -1,0 +1,18 @@
+{
+  "id": "schwung",
+  "name": "Schwung",
+  "version": "0.1.0",
+  "description": "Runs Schwung modules (the module ecosystem of Ableton Move) on Push 3. Each Schwung track is one signal chain (up to 8 MIDI FX, one instrument, up to 8 audio FX) on its own Live track: the Live track sends MIDI to port Schwung on the channel of the Schwung track, and hears it back on the Link Audio channel Schwung N. Needs push-audio-loopback for audio, and push-manager and push-display for the Push screen.",
+  "author": "rgeissen",
+  "binary": "schwung",
+  "port": 7720,
+  "enabled": true,
+  "web_ui": {
+    "label": "Schwung",
+    "path": "/"
+  },
+  "surface": {
+    "label": "SCHWUNG",
+    "color": "orange"
+  }
+}

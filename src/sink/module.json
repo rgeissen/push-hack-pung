@@ -1,0 +1,8 @@
+{
+  "id": "midi-sink",
+  "name": "MIDI Sink",
+  "version": "1.0.0",
+  "description": "push-hack-schwung internal: catches a MIDI-effect device's output",
+  "component_type": "system",
+  "capabilities": { "chainable": true }
+}

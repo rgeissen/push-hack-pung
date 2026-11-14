@@ -1,0 +1,6 @@
+/build/
+/schwung
+/src/schwung
+/vst3-classes.json
+.DS_Store
+__pycache__/
