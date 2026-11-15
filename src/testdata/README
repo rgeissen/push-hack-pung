@@ -1,0 +1,2 @@
+contracts.json: the ui_hierarchy and chain_params of ten modules, as Schwung captured them
+(schwung/tests/fixtures/module-contracts.json). sounds_source_test.go reads their preset lists from it.

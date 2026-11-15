@@ -63,6 +63,9 @@ func TestShippedOverlaysDraw(t *testing.T) {
 	}
 	initFaces()
 	for _, e := range ents {
+		if !e.IsDir() {
+			continue // presets.json and the like: not a module's overrides
+		}
 		root := t.TempDir()
 		dir := filepath.Join(root, "sound_generators", e.Name())
 		os.MkdirAll(dir, 0o755)

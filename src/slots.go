@@ -66,6 +66,7 @@ type Host struct {
 	ui       *surface        // the Pung view on the Push (surface.go); nil without one
 	settings *settingsStore  // Pung's own settings (settings.go)
 	mods     *modMgr         // modules from the catalog (modmgr.go)
+	sounds   *soundLib       // every module's sounds (sounds_device.go)
 
 	selMu      sync.Mutex
 	selKey     string // Live's selection that selDev was worked out for

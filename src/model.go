@@ -47,6 +47,11 @@ type compMeta struct {
 	Order   []string
 	Banks   []bank
 	Presets struct{ List, Count, Name string } // ui_hierarchy root's preset browser
+	// the module's ui_hierarchy as it gave it (sounds_source.go reads its
+	// preset lists, banks and modes from it)
+	Levels    map[string]map[string]any
+	Modes     []string
+	ModeParam string
 	// Initial: each parameter's value in a freshly created instance, read
 	// from the probe. A Live device starts from these: most modules declare
 	// no "default", and a guessed 0 is volume 0 (Braids, 2026-11-14).
@@ -133,10 +138,12 @@ func buildMeta(module string, get func(string) (string, bool)) *compMeta {
 	}
 	if raw, ok := get("ui_hierarchy"); ok && raw != "" {
 		var hier struct {
-			Levels map[string]map[string]any `json:"levels"`
-			Modes  []string                  `json:"modes"`
+			Levels    map[string]map[string]any `json:"levels"`
+			Modes     []string                  `json:"modes"`
+			ModeParam string                    `json:"mode_param"`
 		}
 		if json.Unmarshal([]byte(raw), &hier) == nil && hier.Levels != nil {
+			cm.Levels, cm.Modes, cm.ModeParam = hier.Levels, hier.Modes, hier.ModeParam
 			cm.planFromHierarchy(hier.Levels, hier.Modes)
 		}
 	}

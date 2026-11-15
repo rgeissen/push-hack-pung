@@ -494,6 +494,8 @@ type device struct {
 	c *sclass
 	s *Slot
 
+	snd devSounds // which sound it is, and the browser's audition (sounds_device.go)
+
 	// the last MIDI messages Live delivered (Stats: "midi_recent"); written on
 	// the realtime thread, a fixed ring, read anywhere (a torn read shows a
 	// mixed message, never a crash)
@@ -732,22 +734,36 @@ func (d *device) State() (string, error) {
 	if d.loading.Load() && d.lastChain != nil {
 		// a state still loading is the device's state: the chain, half
 		// loaded, is not (saved, it would lose the patch)
-		doc, err := json.Marshal(map[string]any{"pung_device": 1, "midi_fx": d.midiFX, "out_ch": d.outCh, "chain": d.lastChain})
+		doc, err := json.Marshal(d.stateDoc(d.lastChain))
 		return string(doc), err
 	}
 	p, err := d.s.patch(d.c.Name)
 	if err != nil {
 		return "", err
 	}
-	doc, err := json.Marshal(map[string]any{"pung_device": 1, "midi_fx": d.midiFX, "out_ch": d.outCh, "chain": p})
+	doc, err := json.Marshal(d.stateDoc(p))
 	return string(doc), err
+}
+
+// stateDoc: what Live saves for the device: the chain, and which sound it is
+// (docs/PRESETS.md, "The current sound").
+func (d *device) stateDoc(chain any) map[string]any {
+	doc := map[string]any{"pung_device": 1, "midi_fx": d.midiFX, "out_ch": d.outCh, "chain": chain}
+	d.snd.mu.Lock()
+	if d.snd.current != nil {
+		doc["sound"], doc["sound_hash"] = *d.snd.current, d.snd.hash
+	}
+	d.snd.mu.Unlock()
+	return doc
 }
 
 func (d *device) SetState(state string) error {
 	var st struct {
-		MidiFX int             `json:"midi_fx"`
-		OutCh  int             `json:"out_ch"`
-		Chain  json.RawMessage `json:"chain"`
+		MidiFX    int             `json:"midi_fx"`
+		OutCh     int             `json:"out_ch"`
+		Chain     json.RawMessage `json:"chain"`
+		Sound     *soundRef       `json:"sound"`
+		SoundHash string          `json:"sound_hash"`
 	}
 	if json.Unmarshal([]byte(state), &st) != nil || len(st.Chain) == 0 {
 		return errors.New("not a Pung device state")
@@ -766,6 +782,9 @@ func (d *device) SetState(state string) error {
 	// again, every 6 s, for as long as Live ran (2026-11-15).
 	d.lastChain = st.Chain
 	d.midiFX, d.outCh = st.MidiFX, st.OutCh
+	d.snd.mu.Lock()
+	d.snd.current, d.snd.hash = st.Sound, st.SoundHash
+	d.snd.mu.Unlock()
 	seq := d.stateSeq.Add(1)
 	d.loading.Store(true)
 	go d.loadState(seq, st.Chain)

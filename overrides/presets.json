@@ -1,0 +1,6 @@
+{
+ "_about": "Factory sound lists whose contract is unusual (docs/PRESETS.md). A module not listed here is read from its own ui_hierarchy. none: its list picks something that is not a sound, so it stays a knob.",
+ "clap": {"none": true, "why": "its list picks the Airwindows effect, not a preset"},
+ "ambiotica": {"none": true, "why": "its list picks the algorithm"},
+ "midi-player": {"none": true, "why": "its list picks the MIDI file"}
+}
