@@ -1,7 +1,7 @@
 /* ================================================================
    schwung-remote-api.js
    Include this in your module's web_ui.html to communicate with
-   the Pung Remote UI host page.
+   the Schwung Remote UI host page.
 
    Two transports, selected automatically:
      - Iframe mode (default): embedded in the manager's Remote UI page,

@@ -37,7 +37,7 @@ test:
 vet:
 	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go vet ./..."
 
-# Schwung's chain host and its built-in modules, from the Pung checkout
+# Schwung's chain host and its built-in modules, from the Schwung checkout
 modules:
 	$(DOCKER) -v $(SCHWUNG):/schwung:ro -v $(CURDIR)/build/modules:/out $(IMAGE) bash /w/scripts/build-modules.sh
 

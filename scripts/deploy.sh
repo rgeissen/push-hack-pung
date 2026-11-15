@@ -11,6 +11,8 @@ cd "$(dirname "$0")/.."
 
 $SSH "root@$HOST" "mkdir -p $DIR /data/push-hack/logs /data/push-hack/data/pung"
 rsync -a -e "$SSH" build/modules build/patches overrides "root@$HOST:$DIR/"
+# the licences travel with every copy (THIRD_PARTY_LICENSES.md)
+rsync -a -e "$SSH" LICENSE THIRD_PARTY_LICENSES.md licenses "root@$HOST:$DIR/"
 # the binary is swapped by rename, so a running copy keeps its file
 rsync -a -e "$SSH" pung "root@$HOST:$DIR/pung.new"
 
