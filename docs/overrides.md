@@ -2,7 +2,7 @@
 
 A Schwung module gets a native Push page with no Push code: Pung builds it from the module's
 `chain_params` and `ui_hierarchy`. A module can also draw its own widgets on that page. This file is for
-module authors.
+module authors. What good looks like, on the Push and the web page together: `UX-GUIDELINES.md`.
 
 ## Where the file goes
 
@@ -43,6 +43,7 @@ The frame starts at the widget's top left. Nothing you draw can leave it.
 | `g.dot(x, y, r, color)` | a filled circle |
 | `g.poly(points, width, color)` | a curve through `[[x, y], ...]` (or `[x0, y0, x1, y1, ...]`) in one call |
 | `g.area(points, baseY, color)` | the area between such a curve and the line `y = baseY`, filled |
+| `g.envelope(x, y, w, h, {attack, decay, hold, sustain, slope, release, labels})` | Pung's envelope, the one the default view and the web page draw. Each stage is a key (its value and touch are read for you) or a number 0..1; a stage left out is not drawn; `slope` is a Virus-style sustain slope; `labels: true` adds the stage letters |
 | `g.text(x, y, s, color, align)` | small capitals (the label face); `y` is the baseline; align -1 left, 0 center, 1 right |
 | `g.value(x, y, s, color, align)` | the larger value face |
 

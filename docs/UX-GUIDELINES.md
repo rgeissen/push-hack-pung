@@ -1,0 +1,201 @@
+# Pung UX guidelines: the Push and the web, hand in hand
+
+For anyone who draws a Pung interface: Pung itself (the default view), module authors writing a
+`push_ui.js`, and module authors whose `web_ui.html` sits beside it. The design principles these rules
+serve are in `DESIGN-v2.md` ("Design principles"); how to write the code is in `overrides.md`. This file
+says what good looks like, and what a review checks.
+
+## 1. One instrument, two surfaces
+
+A module has one structure: its **compartments** (one compartment = one Push screen = one web section).
+The Push and the web page are two views of that one structure, and each one does what the other cannot:
+
+| | Push | Web page |
+|---|---|---|
+| Shows | one compartment at a time, under the hands | every compartment at once |
+| Changes values with | 8 encoders, with touch | sliders, menus, dragging the pictures |
+| Strength | playing: eyes on the music, hands on the knobs | overview, precise entry, editing away from the device |
+
+**The rules that keep them together:**
+
+1. **Same names, same order.** A compartment, page or parameter has one name, used on both surfaces. The
+   Push writes it in capitals; that is the only difference. Never rename on one surface only.
+2. **Same pictures.** A structure Pung recognizes (§4) is drawn from one rule set, in Go for the Push
+   (`src/visuals.go`) and in JavaScript for the web (`src/web/visuals.js`). The two files carry the same
+   constants. A change to one is a change to both, in the same commit.
+3. **Same state.** A value turned on the Push moves on the page within half a second, and the other way
+   round. The compartment the Push shows is marked on the page, and clicking a section's title turns the
+   Push to it.
+4. **Same touch.** The stage of an envelope under a finger on the Push is drawn hot; on the page, the
+   stage under the pointer or keyboard focus is drawn hot the same way.
+5. **A module's own web page follows the compartments too.** Its panels should be its compartments, in
+   the same order and under the same names as its `push_ui.js` declares. It is sent
+   `{type: "compartment", id}` when the Push turns, and may send `{type: "showCompartment", id}`.
+
+## 2. Three levels on the Push
+
+1. **Push native**: Push's own device view of the Live device. Always there; the fallback.
+2. **Pung default**: built from the module's parameters, for every module, with no code from the
+   author. It includes Pung's own pictures for structures it recognizes (§4) and any widgets the module
+   adds (`push.widget`).
+3. **Custom screen**: a module draws a whole compartment itself (`push.compartment({screen})`), only where
+   it is substantially better than level 2 (§5).
+
+Most modules should never need level 3. **The default must be world class on its own**, because it is
+what nearly every module will show.
+
+## 3. The Push screen
+
+### Geometry (960 x 160)
+
+| Band | y | Holds |
+|---|---|---|
+| Header | 0 to 22 | the device's name box (left), the track and `COMPARTMENT / PAGE` (right), the level meter |
+| Picture band | 26 to 112 | knob cells, widgets, Pung's pictures, a custom screen (952 x 86 at x 4) |
+| Name and value row | about 112 to 128 | under a picture: each encoder's name and value |
+| Bottom row | 138 to 160 | the chain or Live's tracks |
+
+Eight columns of 120 pixels, one per encoder. **A picture covering columns 3 to 6 is about encoders 3 to
+6**: place things over the knob that changes them. A custom screen may break the columns, but the name and
+value row below it never does.
+
+### Colour
+
+The panel has 16-bit colour and no alpha. Gradients show steps; a translucent fill does not exist. To
+fade a colour, mix it toward black (`mixColor` in Go; `color-mix(in srgb, var(--slot) 28%, #000)` on the
+web).
+
+| Token | Go | Web | Means |
+|---|---|---|---|
+| slot | `slotColor(i)` | `--slot` | this device's identity; **the thing being touched or edited** |
+| fg | `cFg` | `--fg` | values, lines, the shape itself |
+| dim | `cDim` | `--muted` | names, labels, secondary text |
+| line | `cLine` | `--line` | baselines, separators |
+| faint | `cFaint` | `--raise` | column rules, empty areas |
+| mod | `cMod` | (cyan) | a second trace beside the first (filter 2 next to filter 1), modulation |
+| warn | `cWarn` | `--warn` | errors only (`MODULE UI OFF`) |
+
+Slot colour is precious: it means "this is yours, now". Use it for the touched element and the
+selection, and for fills at 28% toward black. Never use it for decoration.
+
+### Type, lines, shapes
+
+- Labels: Tamzen capitals, 7 px a character (`g.text`). Values: the value face (`g.value`), 16 px.
+- Lines: 2 to 2.2 px at rest, 3.5 px when touched. Handles: 3 px dots at rest, 4.5 px when touched.
+- Fills: flat, under their line, the slot colour mixed toward black.
+- Guides (a level, a centre line): 1 px, dashed or dim.
+- Text is ASCII. Room is short: **truncate a name, never a value**.
+
+## 4. Pung default
+
+### What every module gets
+
+The knob cells (a gauge, the value, its unit), enum boxes with their option dots, the header, the device
+and bank rows, the detail card when an encoder is touched, and **Pung's pictures**.
+
+### Recognized structures: Pung's pictures
+
+Where a page's keys describe a structure Pung knows, Pung draws it over those knobs, for any module:
+
+| Structure | Recognized when | Drawn as |
+|---|---|---|
+| **Envelope** | adjacent keys ending in `attack`, `decay`, `hold`, `sustain`, `release` with one shared prefix (`amp_`, `f_`, `filter_`, `macro_`...), in any order; `sustain_time` beside a sustain is a sustain slope | the envelope, filled; handles where stages meet; the sustain level as a guide; stage letters under the segments |
+
+The rules for a recognized structure:
+
+- **Recognize by name and adjacency, never by guess.** The parts must sit side by side on the page,
+  with nothing else between them.
+- **Draw only what is true.** An attack and a release alone are a compressor's or a gate's timing, not
+  an envelope, so no envelope is drawn for them. A picture that lies is worse than knobs.
+- **Draw in the knob's terms.** Times are drawn in proportion to their knob, not to scale in
+  milliseconds: the shape is what the hand turns, and a 10-second release would squeeze everything else
+  to a line. Without a sustain, stages are drawn against their longest, so short means short.
+- **A module's own widget wins** over Pung's picture for the same columns.
+- Structures to add next, under the same rules: a filter response (cutoff, resonance, type), an LFO
+  shape (wave, rate), a mix of sources (levels side by side).
+
+### States
+
+| State | Look |
+|---|---|
+| At rest | the shape in fg, the fill in slot colour mixed toward black |
+| Touched | the touched stage thick and in slot colour, its handle large, its letter in slot colour; the name under the encoder in fg with a slot underline |
+| Value unknown | a neutral shape in dim. **A read that did not answer never becomes a picture** |
+| Overlay failed | the default view, and `MODULE UI OFF` in warn at the top centre |
+
+Over a picture, touching an encoder does **not** open the detail card: the picture already shows the
+touch, and a card would hide what is being turned. The value stays readable in the row under it.
+
+## 5. Custom screens
+
+### The bar
+
+A custom screen ships only if it is **substantially better than the default** and **true to the
+instrument**. It earns its place by showing what knobs side by side cannot:
+
+- **Relationships**: a signal path (the Virus's filter routing: serial, parallel, split), two curves on
+  one axis (both filters' responses), a modulation and its target.
+- **The whole at once**: both envelopes, all of a compartment's pages, while the encoders edit one page.
+- **The instrument's own vocabulary**: its section names, its display (a JV-880's LCD and tones), its way
+  of describing itself ("sustain falls while held", not "sustain time 25").
+
+If it only restyles the default page, it does not ship.
+
+### Rules
+
+1. **Reuse Pung's pictures** for the structures Pung knows: `g.envelope`, not a hand-drawn envelope. The
+   user has learned the picture on every other module, and it is the picture the web page draws.
+2. **Respect the bands.** Draw in your band (952 x 86). The header and the name and value row belong to
+   Pung.
+3. **Show the touch.** Whatever is under a finger (`v.$touched`) is drawn in slot colour, as in §4.
+4. **Show unknown honestly.** Check `v[key].known`; draw a neutral shape until values arrive.
+5. **Fit the budget**: 8 ms a frame (§7). One `g.poly` per curve; cache what does not change.
+6. **The web side.** A custom screen's compartment is a section of the module's web page, with the same
+   name. If the screen shows a relationship, the page should show it too.
+7. **Shift + Swap** returns to the default view, always.
+
+### Showcase
+
+| Module | Compartment | Level | Why |
+|---|---|---|---|
+| Osirus | Filters | custom | the routing as a signal path, both responses on one axis |
+| Osirus | Envelopes | custom | both envelopes at once with Pung's envelope, the sustain slope in words |
+| OB-Xd | (pages) | default + widgets | filter curve, oscillators, envelopes over their knobs |
+| Braids | (pages) | default + widgets | its own envelope widgets win over Pung's |
+| JE-8086, Mini-JV, Hera | (pages) | default | Pung's envelope on every envelope page, no module code |
+
+## 6. The web page
+
+- **Pung's page draws the default.** Each compartment is a section; a recognized structure is a card with
+  the picture over its controls, the controls in a row in the order of the encoders.
+- **Pictures are direct.** On the web, a picture's handles can be dragged: attack's peak sideways, the
+  decay point sideways and up or down (the sustain level), release's end sideways. The slider below moves
+  with it, and the Push follows.
+- **The keyboard path is the controls.** Every value has a slider or a menu, reachable with Tab; a
+  picture is never the only way to a value. A picture has an `aria-label` naming its values.
+- **Phone widths.** Cards stack, a picture keeps its proportion, a row of controls folds to two columns.
+- **A module's own `web_ui.html`** runs in a sandbox under a strip of its compartments. It decides its
+  own look, but follows §1.
+
+## 7. Motion and performance
+
+- Things move only when the instrument moves: an LFO's phase, a meter. A static value is drawn still.
+- The Push redraws many times a second. A widget or a screen gets **8 ms**; three slow frames in a row, or
+  one over 40 ms, switch it off for the session. Pung's own pictures are drawn in Go, outside the module's budget.
+- The web page polls values every 500 ms and redraws only what changed.
+
+## 8. Review checklist
+
+Before a screen, widget or web section ships:
+
+- [ ] Names and order match on the Push and the web page (§1).
+- [ ] It is a compartment, or lives inside one; its title on the web turns the Push to it.
+- [ ] Pung's pictures are used for the structures Pung knows (§4, §5.1).
+- [ ] The touched element is in slot colour; slot colour is used for nothing else.
+- [ ] Unknown values draw a neutral shape, never a guess.
+- [ ] Every value is readable as text somewhere on the screen (the row under a picture counts).
+- [ ] Nothing is drawn outside its band; the header and the name and value row are untouched.
+- [ ] It stays under 8 ms a frame on the device (`TestShippedOverlaysDraw` renders it; screenshots with
+      `PUNG_SHOTS=dir go test`).
+- [ ] For a custom screen: one sentence saying what it shows that the default cannot. If there is no such
+      sentence, it does not ship.

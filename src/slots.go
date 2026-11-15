@@ -42,11 +42,11 @@ type Slot struct {
 	peakBits  atomic.Uint32
 	busySkips atomic.Int64
 
-	metaMu sync.Mutex
-	meta   map[string]metaEntry // "<comp>:chain_params" etc, valid while the module is the same
-	dirty     atomic.Bool
-	notesIn   atomic.Int64
-	midiOut   atomic.Int64
+	metaMu  sync.Mutex
+	meta    map[string]metaEntry // "<comp>:chain_params" etc, valid while the module is the same
+	dirty   atomic.Bool
+	notesIn atomic.Int64
+	midiOut atomic.Int64
 }
 
 // Host owns the slots and the transport.
@@ -59,15 +59,15 @@ type Host struct {
 	slots  [maxSlots]*Slot
 	active atomic.Pointer[[]*Slot] // snapshot for the engine, never mutated in place
 
-	seq       *alsaseq.Client // the one MIDI port, "Pung"
-	prov      *provider       // Pung's devices in Live (devices.go)
-	live      *live           // the PushHack Remote Script session (live.go)
-	screened  map[string]bool // module id -> passed the crash screen (screen.go); set once at start
-	ui        *surface        // the Pung view on the Push (surface.go); nil without one
+	seq      *alsaseq.Client // the one MIDI port, "Pung"
+	prov     *provider       // Pung's devices in Live (devices.go)
+	live     *live           // the PushHack Remote Script session (live.go)
+	screened map[string]bool // module id -> passed the crash screen (screen.go); set once at start
+	ui       *surface        // the Pung view on the Push (surface.go); nil without one
 
-	selMu  sync.Mutex
-	selKey string // Live's selection that selDev was worked out for
-	selDev int    // the chain slot of the device selected in Live, -1 none
+	selMu      sync.Mutex
+	selKey     string // Live's selection that selDev was worked out for
+	selDev     int    // the chain slot of the device selected in Live, -1 none
 	probeMu    sync.Mutex
 	probeCache map[string]*compMeta // module id -> metadata, from a hidden chain instance
 
@@ -459,8 +459,8 @@ func (h *Host) clockSeen() bool {
 	return h.transport.seen
 }
 
-func floatBits(f float64) uint64      { return math.Float64bits(f) }
-func floatFromBits(b uint64) float64  { return math.Float64frombits(b) }
+func floatBits(f float64) uint64     { return math.Float64bits(f) }
+func floatFromBits(b uint64) float64 { return math.Float64frombits(b) }
 
 func (t *transport) snapshot() (running bool, bpm float64, clock bool) {
 	t.mu.Lock()

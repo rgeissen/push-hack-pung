@@ -8,7 +8,6 @@ package main
 // browser entries; this file says what a Pung device is.
 
 import (
-	"time"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +18,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/federico-pepe/ableton-push-hack/core/livedevice"
 )

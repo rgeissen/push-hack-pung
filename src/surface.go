@@ -71,15 +71,15 @@ type surface struct {
 	// (pmclient.FocusInfo.DeviceView); its leaving buttons are push-manager's
 	standIn atomic.Bool
 
-	mu        sync.Mutex
-	slot      int
-	pos       int
-	chainOff  int // first chain position shown on the bottom row
-	bank      int
-	bankOff   int
+	mu       sync.Mutex
+	slot     int
+	pos      int
+	chainOff int // first chain position shown on the bottom row
+	bank     int
+	bankOff  int
 	// bankList: the upper row lists the banks instead of the track's devices
 	// (pressing the selected device's button, as on Push)
-	bankList bool
+	bankList  bool
 	view      string
 	shift     bool
 	del, mute bool
@@ -102,7 +102,7 @@ type surface struct {
 	ov        *overrides
 	// what the last Live refresh read from Pung's own device (state: "fallback")
 	fallbackDev, fallbackRead int
-	lvIdx     map[string]int // live mode: module key -> Live parameter index
+	lvIdx                     map[string]int // live mode: module key -> Live parameter index
 }
 
 func newSurface(h *Host) *surface {

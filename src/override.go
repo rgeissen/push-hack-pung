@@ -54,8 +54,8 @@ import (
 )
 
 const (
-	ovTop    = 26
-	ovHeight = 86
+	ovTop        = 26
+	ovHeight     = 86
 	ovBudget     = 8 * time.Millisecond  // a frame's draw, held over time (ovOverruns)
 	ovHardBudget = 40 * time.Millisecond // a draw is stopped here, once is enough
 	ovOverruns   = 3
@@ -89,9 +89,9 @@ type overrideSet struct {
 	vm           *goja.Runtime
 	widgets      []*ovWidget
 	compartments []*ovCompartment // in the order declared
-	failed  string // why it is off; "" while it works
-	overruns int   // frames in a row over ovBudget
-	off     bool   // the user chose the native UI
+	failed       string           // why it is off; "" while it works
+	overruns     int              // frames in a row over ovBudget
+	off          bool             // the user chose the native UI
 }
 
 type overrides struct {
@@ -264,7 +264,9 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	col := func(v goja.Value) color.NRGBA { return ovColor(v.String(), sc) }
 	g.Set("fill", func(x, y, ww, hh float64, c goja.Value) { rect(img, int(x), int(y), int(ww), int(hh), col(c)) })
 	g.Set("line", func(x1, y1, x2, y2, width float64, c goja.Value) { aaLine(img, x1, y1, x2, y2, width, col(c)) })
-	g.Set("arc", func(cx, cy, r, from, sweep, width float64, c goja.Value) { arc(img, cx, cy, r, from, sweep, width, col(c)) })
+	g.Set("arc", func(cx, cy, r, from, sweep, width float64, c goja.Value) {
+		arc(img, cx, cy, r, from, sweep, width, col(c))
+	})
 	g.Set("dot", func(x, y, r float64, c goja.Value) { disc(img, x, y, r, col(c)) })
 	// a curve in one call: pts is [[x,y], ...] or [x0,y0,x1,y1,...]; hundreds
 	// of g.line calls from JS cost more than the 8 ms a draw has
@@ -288,6 +290,47 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				rect(img, x, top, 1, bot-top, c)
 			}
 		}
+		return goja.Undefined()
+	})
+	// Pung's envelope (visuals.go), the one the default view and the web
+	// page draw: g.envelope(x, y, w, h, {attack, decay, hold, sustain,
+	// slope, release, labels}). A stage is a KEY (its value and its touch
+	// are read for you) or a number 0..1; a stage left out is not drawn.
+	g.Set("envelope", func(call goja.FunctionCall) goja.Value {
+		x, y := call.Argument(0).ToFloat(), call.Argument(1).ToFloat()
+		ww, hh := call.Argument(2).ToFloat(), call.Argument(3).ToFloat()
+		e := envShape{Known: true}
+		if o, ok := call.Argument(4).Export().(map[string]any); ok {
+			stage := func(role string) (float64, bool) {
+				switch v := o[role].(type) {
+				case string:
+					ov, ok := vals[v]
+					if !ok || !ov.Known {
+						e.Known = false
+					}
+					if v == touched {
+						e.Touched = role
+					}
+					return ov.Frac, true
+				case int64:
+					return float64(v), true
+				case float64:
+					return v, true
+				}
+				return 0, false
+			}
+			e.A, _ = stage("attack")
+			e.D, e.HasD = stage("decay")
+			e.H, e.HasH = stage("hold")
+			e.S, e.HasS = stage("sustain")
+			e.Slope, e.HasSlope = stage("slope")
+			e.R, e.HasR = stage("release")
+			e.Labels, _ = o["labels"].(bool)
+			if t, ok := o["touched"].(string); ok && t != "" {
+				e.Touched = t
+			}
+		}
+		drawEnvelope(img, image.Rect(int(x), int(y), int(x+ww), int(y+hh)), e, sc)
 		return goja.Undefined()
 	})
 	g.Set("text", func(call goja.FunctionCall) goja.Value {

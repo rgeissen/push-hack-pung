@@ -85,15 +85,15 @@ type liveState struct {
 	// the selected device: the Pung view's upper row, as on Push
 	trackDevs []liveDevSummary
 	selTop    int
-	dev      liveDevice
-	path     []int // the selected device; nil = none found
-	cont     []int // path of the rack holding it; nil = the track itself
-	chain    int   // the chain of that rack
-	devs     []liveDevSummary
-	devsKey  string
-	scale    liveScale
-	onChange func()
-	active   atomic.Bool // the Pung view is on the screen
+	dev       liveDevice
+	path      []int // the selected device; nil = none found
+	cont      []int // path of the rack holding it; nil = the track itself
+	chain     int   // the chain of that rack
+	devs      []liveDevSummary
+	devsKey   string
+	scale     liveScale
+	onChange  func()
+	active    atomic.Bool // the Pung view is on the screen
 
 	wmu     sync.Mutex
 	pending map[string]paramWrite

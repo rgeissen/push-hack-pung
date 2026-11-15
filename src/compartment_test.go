@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,8 +73,9 @@ func TestShippedOverlaysDraw(t *testing.T) {
 		}
 		vals := func(keys []string) map[string]ovValue {
 			m := map[string]ovValue{}
-			for _, k := range keys {
-				m[k] = ovValue{Value: "0.5", Display: "50", Name: k, Frac: 0.5, Known: true}
+			for i, k := range keys { // varied, so a picture has a shape to show
+				f := 0.15 + 0.17*float64(i%5)
+				m[k] = ovValue{Value: fmt.Sprint(f), Display: fmt.Sprintf("%.0f", f*100), Name: k, Frac: f, Known: true}
 			}
 			return m
 		}
@@ -83,8 +86,15 @@ func TestShippedOverlaysDraw(t *testing.T) {
 			}
 			for _, touched := range []string{"", c.keys[0]} {
 				pl := placement{w: &ovWidget{keys: c.keys, draw: c.screen}, col: 0, span: 8}
-				if !set.render(img, pl, vals(c.keys), touched, cFg) {
+				img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+				if !set.render(img, pl, vals(c.keys), touched, slotColor(0)) {
 					t.Errorf("%s/%s: %s", e.Name(), c.id, set.failed)
+				}
+				// PUNG_SHOTS=dir: the screens, for a look
+				if dir := os.Getenv("PUNG_SHOTS"); dir != "" {
+					f, _ := os.Create(filepath.Join(dir, fmt.Sprintf("%s-%s-%t.png", e.Name(), c.id, touched != "")))
+					png.Encode(f, img)
+					f.Close()
 				}
 			}
 		}

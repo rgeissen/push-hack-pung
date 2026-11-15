@@ -88,3 +88,25 @@ main { padding: 16px max(16px, env(safe-area-inset-left)) 48px; max-width: 1180p
   border-color: var(--slot, #f80); box-shadow: inset 0 0 0 1px var(--slot, #f80);
 }
 .bank.shown { outline: 1px solid var(--slot, #f80); outline-offset: 6px; border-radius: 4px; }
+
+/* envelopes: the picture the Push draws over the same knobs (visuals.js) */
+.envcard { grid-column: 1 / -1; background: var(--raise); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px 12px 10px; display: flex; flex-direction: column; gap: 8px; }
+.envrow { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 8px; }
+.envrow .ctl { background: var(--ink); }
+@media (max-width: 640px) { .envrow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.env { width: 100%; height: auto; max-height: 220px; display: block; touch-action: none; user-select: none; }
+.env .fill { fill: color-mix(in srgb, var(--slot) 28%, #000); }
+.env .base { stroke: var(--line); stroke-width: 1; }
+.env .guide { stroke: color-mix(in srgb, var(--fg) 45%, #000); stroke-width: 1; stroke-dasharray: 3 3; }
+.env .seg { stroke: var(--fg); stroke-width: 2.2; stroke-linecap: round; }
+.env .seg.hot { stroke: var(--slot); stroke-width: 3.6; }
+.env .handle { fill: var(--fg); pointer-events: none; }
+.env .handle.hot { fill: var(--slot); }
+.env .grab { fill: transparent; cursor: grab; }
+.env .grab:active { cursor: grabbing; }
+.env .letter { fill: var(--muted); font: 600 10px var(--mono); text-anchor: middle; }
+.env .letter.hot { fill: var(--slot); }
+.env.unknown .fill { fill: #262624; }
+.env.unknown .seg, .env.unknown .handle { stroke: var(--muted); fill: var(--muted); }
+.env.unknown .seg { fill: none; }

@@ -33,16 +33,16 @@ func pc(name string) color.NRGBA {
 }
 
 var (
-	cBlack = color.NRGBA{0, 0, 0, 255}
-	cFg    = color.NRGBA{238, 236, 230, 255}
-	cDim   = color.NRGBA{140, 138, 132, 255}
-	cFaint = color.NRGBA{38, 38, 36, 255}
-	cLine  = color.NRGBA{64, 63, 60, 255}
-	cMod   = color.NRGBA{60, 200, 230, 255}
-	cWarn  = color.NRGBA{255, 90, 78, 255}
-	colMidi  = color.NRGBA{164, 140, 255, 255}
-	colInst  = color.NRGBA{255, 138, 31, 255}
-	colAfx   = color.NRGBA{63, 201, 162, 255}
+	cBlack  = color.NRGBA{0, 0, 0, 255}
+	cFg     = color.NRGBA{238, 236, 230, 255}
+	cDim    = color.NRGBA{140, 138, 132, 255}
+	cFaint  = color.NRGBA{38, 38, 36, 255}
+	cLine   = color.NRGBA{64, 63, 60, 255}
+	cMod    = color.NRGBA{60, 200, 230, 255}
+	cWarn   = color.NRGBA{255, 90, 78, 255}
+	colMidi = color.NRGBA{164, 140, 255, 255}
+	colInst = color.NRGBA{255, 138, 31, 255}
+	colAfx  = color.NRGBA{63, 201, 162, 255}
 )
 
 // slotColors: one identity color per slot, from the Push palette.

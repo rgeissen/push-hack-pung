@@ -39,11 +39,11 @@ type live struct {
 	once sync.Once
 	ls   *liveState
 
-	mu       sync.Mutex
-	lastSel  int
-	selSlot  int // slot of Live's selected track, -1 none
-	lastErr  string
-	script   string
+	mu      sync.Mutex
+	lastSel int
+	selSlot int // slot of Live's selected track, -1 none
+	lastErr string
+	script  string
 }
 
 func newLive(h *Host) *live { return &live{h: h, lastSel: -2, selSlot: -1} }

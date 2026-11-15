@@ -18,9 +18,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"hash/fnv"
 	"io/fs"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"

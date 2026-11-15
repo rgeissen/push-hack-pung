@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -129,8 +130,26 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 				}
 			}
 		}
+		// Pung's own pictures, for structures it recognizes, over columns no
+		// module widget took (visuals.go)
+		starts := make([]bool, 9)
+		for _, g := range envelopeGroups(b.Keys) {
+			if slices.Contains(covered[g.start:g.end], true) {
+				continue
+			}
+			keys := make([]string, 0, len(g.keys))
+			for _, k := range g.keys {
+				keys = append(keys, k)
+			}
+			r := image.Rect(g.start*colW+4, ovTop, g.end*colW-4, ovTop+ovHeight)
+			drawEnvelope(img, r, envShapeOf(g, u.ovValues(p, cm, keys), touchedKey), sc)
+			for c := g.start; c < g.end; c++ {
+				covered[c] = true
+			}
+			starts[g.start], starts[g.end] = true, true
+		}
 		for i := 1; i < 8; i++ {
-			if !(covered[i] && covered[i-1]) || u.ovBoundary(set, b.Keys, i) {
+			if !(covered[i] && covered[i-1]) || starts[i] || u.ovBoundary(set, b.Keys, i) {
 				rect(img, i*colW, 30, 1, 102, cFaint)
 			}
 		}
@@ -147,7 +166,9 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		if set != nil && set.failed != "" && nb <= 6 {
 			label(img, scrW/2, 17, "MODULE UI OFF", cWarn, 0) // the top bar's middle: the header is on the right
 		}
-		if u.peekEnc >= 0 && u.peekEnc < len(b.Keys) && time.Now().Before(u.peekUntil) && b.Keys[u.peekEnc] != "" {
+		// the detail card, except over a picture: the picture shows the
+		// touch itself, and a card would hide what is being turned
+		if u.peekEnc >= 0 && u.peekEnc < len(b.Keys) && !covered[u.peekEnc] && time.Now().Before(u.peekUntil) && b.Keys[u.peekEnc] != "" {
 			u.drawPeek(img, u.peekEnc, p, cm.Params[b.Keys[u.peekEnc]], b.Keys[u.peekEnc], sc)
 		}
 	}
@@ -347,7 +368,13 @@ func (u *surface) drawUnderWidget(img *image.NRGBA, col int, p position, m *para
 	if unit != "" {
 		val += " " + unit
 	}
-	label(img, cx, 122, fitLabel(strings.ToUpper(m.Name)+" "+val, colW-8), nameCol, 0)
+	// the value is what the hand is after: the name gives way, never it
+	val = fitLabel(strings.ToUpper(val), colW-8)
+	vw := len(val) * 7 // Tamzen: 7 px a character
+	if room := colW - 8 - vw - 7; room >= 3*7 {
+		val = fitLabel(strings.ToUpper(m.Name), room) + " " + val
+	}
+	label(img, cx, 122, val, nameCol, 0)
 	if u.touched == col {
 		rect(img, cx-16, 126, 32, 2, sc)
 	}

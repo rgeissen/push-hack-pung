@@ -209,7 +209,9 @@ sections of its own web page, its pages that page's cards, and two compartments 
 because there a picture shows what knobs cannot: the Virus's filter routing as a signal path (filter 1, the
 saturation stage, filter 2, which filter the panel edits, both responses), and its envelopes with their
 sustain slope. OB-Xd's `push_ui.js` widgets are the default layer's showcase, not a custom screen. How to
-declare compartments, and their web side: `docs/overrides.md`, "Compartments".
+declare compartments, and their web side: `docs/overrides.md`, "Compartments". The visual language, the
+structures the default view recognizes and draws (envelopes), and the review checklist:
+`docs/UX-GUIDELINES.md`.
 
 ### 7. What stays outside
 

@@ -161,8 +161,14 @@
   }
 
   // ---- the component panel ------------------------------------------------
+  // loadPanel: only the newest call draws. Two in flight (a device change and
+  // the status poll) each cleared the panel, waited, then appended: the page
+  // showed the module twice.
+  let panelGen = 0;
   async function loadPanel() {
+    const gen = ++panelGen;
     const r = await api(`${state.base}/component/${state.comp}`);
+    if (gen !== panelGen) return;
     const info = (state.info = r.info || {});
     state.values = info.values || {};
     $("panel-title").textContent = info.module ? `${info.name || info.module}` : "Empty";
@@ -191,8 +197,11 @@
     if (state.mode === "devices") {
       try {
         const c = await api(`${state.base}/compartments`);
+        if (gen !== panelGen) return;
         state.comps = c.compartments || []; state.shown = c.shown || "";
       } catch (e) { state.comps = null; }
+      if (gen !== panelGen) return;
+      body.innerHTML = ""; // a call that started earlier may have drawn meanwhile
     }
     if (info.web_ui) {
       // the compartments as a strip over the module's own page: the screen
@@ -317,12 +326,61 @@
       }
       const grid = document.createElement("div");
       grid.className = "grid";
-      b.keys.forEach((k) => byKey[k] && grid.appendChild(control(byKey[k])));
+      // an envelope among the keys is drawn over its own controls, as on
+      // the Push (visuals.js); the rest are plain controls, in order
+      const groups = window.PungVisuals ? PungVisuals.envelopeGroups(b.keys) : [];
+      for (let i = 0; i < b.keys.length; i++) {
+        const g = groups.find((x) => x.start === i);
+        if (!g) {
+          if (byKey[b.keys[i]]) grid.appendChild(control(byKey[b.keys[i]]));
+          continue;
+        }
+        grid.appendChild(envelopeCard(g, b.keys.slice(g.start, g.end), byKey));
+        i = g.end - 1;
+      }
       sec.appendChild(grid);
       wrap.appendChild(sec);
     });
     setTimeout(markShown, 0);
     return wrap;
+  }
+
+  // an envelope and its controls, one card spanning the row
+  function envelopeCard(g, keys, byKey) {
+    const card = document.createElement("div");
+    card.className = "envcard";
+    const full = (k) => `${state.comp}:${k}`;
+    const fig = PungVisuals.figure(g, {
+      meta: (k) => byKey[k],
+      value: (k) => state.values[full(k)],
+      set: (k, v) => { setParam(full(k), v); syncControl(full(k), v, true); },
+      label: (k) => `${(byKey[k] && (byKey[k].name || k)) || k} ${byKey[k] ? fmt(byKey[k], state.values[full(k)]) : ""}`,
+    });
+    card.appendChild(fig.el);
+    const row = document.createElement("div");
+    row.className = "envrow";
+    row.style.setProperty("--n", keys.length);
+    keys.forEach((k) => {
+      if (!byKey[k]) return;
+      const c = control(byKey[k]);
+      // the stage under the hand is the stage drawn hot, as an encoder's touch on the Push
+      ["pointerenter", "focusin"].forEach((t) => c.addEventListener(t, () => fig.touch(k)));
+      ["pointerleave", "focusout"].forEach((t) => c.addEventListener(t, () => fig.touch("")));
+      row.appendChild(c);
+    });
+    card.appendChild(row);
+    return card;
+  }
+
+  // syncControl: a control shows a value that changed elsewhere (the Push,
+  // a dragged handle). A control being edited keeps its own, unless forced.
+  function syncControl(k, v, force) {
+    const el = document.querySelector(`.ctl[data-key="${CSS.escape(k)}"]`);
+    if (!el || (!force && el.contains(document.activeElement))) return;
+    const p = (state.info.chain_params || []).find((x) => `${state.comp}:${x.key}` === k);
+    const input = el.querySelector("input,select");
+    if (input && input.tagName === "INPUT") { input.value = v; const o = el.querySelector("output"); if (o && p) o.textContent = fmt(p, v); }
+    else if (input && p) { const asIndex = /^\s*\d+\s*$/.test(v); input.value = String(asIndex ? parseInt(v, 10) : (p.options || []).indexOf(v)); }
   }
 
   function fmt(p, v) {
@@ -373,6 +431,7 @@
   function setParam(key, value) {
     state.values[key] = String(value);
     pending[key] = String(value);
+    if (window.PungVisuals) PungVisuals.redrawAll();
     if (!sendTimer) sendTimer = setTimeout(flush, 40); // a dragged slider sends ~25 writes a second
   }
   function flush() {
@@ -417,14 +476,8 @@
     });
     if (!Object.keys(changed).length) return;
     if (frame && frameSubscribed) toFrame({ type: "paramUpdate", params: changed });
-    Object.entries(changed).forEach(([k, v]) => {
-      const el = document.querySelector(`.ctl[data-key="${CSS.escape(k)}"]`);
-      if (!el || el.contains(document.activeElement)) return;
-      const p = (state.info.chain_params || []).find((x) => `${state.comp}:${x.key}` === k);
-      const input = el.querySelector("input,select");
-      if (input && input.tagName === "INPUT") { input.value = v; const o = el.querySelector("output"); if (o && p) o.textContent = fmt(p, v); }
-      else if (input && p) { const asIndex = /^\s*\d+\s*$/.test(v); input.value = String(asIndex ? parseInt(v, 10) : (p.options || []).indexOf(v)); }
-    });
+    Object.entries(changed).forEach(([k, v]) => syncControl(k, v, false));
+    if (window.PungVisuals) PungVisuals.redrawAll();
   }
 
   // ---- the module page bridge (schwung-manager's protocol) ----------------

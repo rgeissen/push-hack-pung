@@ -186,26 +186,19 @@ push.compartment({
 });
 
 // ---- envelopes: attack, decay, sustain level, sustain SLOPE, release ---------------
-function virusEnv(g, x0, x1, top, base, v, p, name, t) {
-  var keys = [p + "_attack", p + "_decay", p + "_sustain", p + "_sustain_time", p + "_release"];
-  var span = x1 - x0;
-  var wa = 6 + frac(v, keys[0]) * span * 0.22, wd = 6 + frac(v, keys[1]) * span * 0.22, wr = 6 + frac(v, keys[4]) * span * 0.22;
-  var ws = Math.max(30, span - wa - wd - wr);
-  var ys = base - frac(v, keys[2]) * (base - top);
-  // the slope: below the middle the sustain falls while held, above it rises
-  var slope = (frac(v, keys[3], 0.5) - 0.5) * 2, ye = Math.max(top, Math.min(base, ys - slope * (base - top) * 0.8));
-  var a = x0, b = a + wa, c = b + wd, d = c + ws, e = d + wr;
-  var pts = [[a, base], [b, top], [c, ys], [d, ye], [e, base]];
-  g.area(pts, base, "faint");
-  g.line(a, base, e, base, 1, "line");
-  var segKeys = [keys[0], keys[1], keys[3], keys[4]];
-  for (var i = 0; i < 4; i++) {
-    var on = t === segKeys[i] || (i === 2 && t === keys[2]);
-    g.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], on ? 3 : 2, on ? "slot" : "fg");
-  }
-  g.dot(c, ys, 3, t === keys[2] ? "slot" : "fg");
-  if (Math.abs(slope) > 0.05) g.text((c + d) / 2, Math.min(ys, ye) - 5, slope < 0 ? "FALL" : "RISE", "dim", 0);
-  g.text(x0, 13, name, "dim", -1);
+// Pung's own envelope (g.envelope), the one its default view and the web page
+// draw, so the three agree. What this screen adds is the Virus's: both
+// envelopes at once, and the sustain slope said in words.
+function virusEnv(g, x0, x1, v, p, name, t) {
+  var mine = t.indexOf(p + "_") === 0;
+  g.envelope(x0, 18, x1 - x0, 68, {
+    attack: p + "_attack", decay: p + "_decay", sustain: p + "_sustain",
+    slope: p + "_sustain_time", release: p + "_release", labels: true
+  });
+  var slope = frac(v, p + "_sustain_time", 0.5) - 0.5;
+  var word = slope < -0.03 ? "FALLS WHILE HELD" : slope > 0.03 ? "RISES WHILE HELD" : "HOLDS";
+  g.text(x0 + 6, 13, name, mine ? "fg" : "dim", -1);
+  g.text(x1 - 6, 13, "SUSTAIN " + word, "dim", 1);
 }
 
 push.compartment({
@@ -218,10 +211,9 @@ push.compartment({
   ],
   screen: function (g, v) {
     var t = v.$touched || "", half = g.w / 2;
-    virusEnv(g, 8, half - 16, 20, 78, v, "amp", "AMPLIFIER", t);
+    virusEnv(g, 0, half - 8, v, "amp", "AMPLIFIER", t);
     g.line(half, 6, half, 82, 1, "line");
-    virusEnv(g, half + 16, g.w - 8, 20, 78, v, "flt", "FILTER", t);
-    title(g, "ENVELOPES");
+    virusEnv(g, half + 8, g.w, v, "flt", "FILTER", t);
   }
 });
 

@@ -122,11 +122,11 @@ func TestDisplayAndStep(t *testing.T) {
 
 func TestSlotOfRouting(t *testing.T) {
 	cases := map[string]int{
-		`{"output":{"type":"Pung","channel":"Ch. 3"}}`:       2,
-		`{"output":{"type":"Pung","channel":"Ch. 1"}}`:       0,
-		`{"output":{"type":"Main","channel":""}}`:               -1,
+		`{"output":{"type":"Pung","channel":"Ch. 3"}}`:        2,
+		`{"output":{"type":"Pung","channel":"Ch. 1"}}`:        0,
+		`{"output":{"type":"Main","channel":""}}`:             -1,
 		`{"output":{"type":"Pung","channel":"All Channels"}}`: -1,
-		`{"output":{"type":"Stacks In","channel":"Ch. 2"}}`:     -1,
+		`{"output":{"type":"Stacks In","channel":"Ch. 2"}}`:   -1,
 	}
 	for in, want := range cases {
 		if got := slotOfRouting(json.RawMessage(in)); got != want {
