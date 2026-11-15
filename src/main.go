@@ -65,9 +65,19 @@ func main() {
 
 	if *probeModule == "" {
 		ensureMovePungLink(base)
+		// what an earlier Pung's modules forked must not hold on (procs.go)
+		leadProcessGroup()
+		if real, err := filepath.EvalSymlinks(exe); err == nil {
+			killOrphans(real)
+		}
 	}
 	if err := engineInit(filepath.Join(*modules, "chain")); err != nil {
 		log.Fatalf("chain host: %v", err)
+	}
+	// /data/UserData/schwung is this directory: the lock files modules take
+	// there stay with the module that took them (bridge.c)
+	if real, err := filepath.EvalSymlinks(base); err == nil {
+		cLockDir(real + "/")
 	}
 	h := newHost(*modules, *data, audiobus.SocketPath(audiobus.DefaultDir))
 	if *probeModule != "" {
@@ -202,4 +212,5 @@ func main() {
 		}
 	}
 	srv.Close()
+	killGroup() // what a module forked and did not end
 }

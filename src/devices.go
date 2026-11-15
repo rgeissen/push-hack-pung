@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -358,6 +359,7 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 	p.devs[slot] = d
 	p.mu.Unlock()
 	p.gen.Add(1)
+	go p.reviveSiblings(sc.module) // a module that refused to start beside another
 	return d, nil
 }
 
@@ -416,7 +418,13 @@ type device struct {
 	resync  *time.Timer // under repMu
 	closed  bool        // under repMu: its chain slot may belong to another device now
 
-	lastChain json.RawMessage // the last state loaded (SetState), to load again (revive)
+	lastChain json.RawMessage // the last state given (SetState), to load again (revive)
+
+	// a state loads in the background (SetState): loadMu is held while one
+	// loads, loading says one is on its way, stateSeq makes the newest win
+	loadMu   sync.Mutex
+	loading  atomic.Bool
+	stateSeq atomic.Uint64
 }
 
 // Process runs one block on the device's realtime thread.
@@ -622,6 +630,12 @@ func (d *device) matches(liveParams []liveParam) float64 {
 // State is the device's Pung patch, the format Move saves, plus what the
 // device keeps outside the chain.
 func (d *device) State() (string, error) {
+	if d.loading.Load() && d.lastChain != nil {
+		// a state still loading is the device's state: the chain, half
+		// loaded, is not (saved, it would lose the patch)
+		doc, err := json.Marshal(map[string]any{"pung_device": 1, "midi_fx": d.midiFX, "out_ch": d.outCh, "chain": d.lastChain})
+		return string(doc), err
+	}
 	p, err := d.s.patch(d.c.Name)
 	if err != nil {
 		return "", err
@@ -647,21 +661,44 @@ func (d *device) SetState(state string) error {
 		log.Printf("%s: refused a state for module %q (this device is %s)", d.c.Name, m, d.c.module)
 		return fmt.Errorf("a state for %q, not %s", m, d.c.module)
 	}
-	if err := d.p.h.loadPatch(d.s, st.Chain); err != nil {
-		return err
-	}
+	// The answer goes back now and the state loads behind it: Live's plugin
+	// gives set_state 3 s, and a module that boots a ROM takes longer
+	// (JE-8086: 3.2 s). Past 3 s the plugin dropped the device and made it
+	// again, every 6 s, for as long as Live ran (2026-11-15).
 	d.lastChain = st.Chain
+	d.midiFX, d.outCh = st.MidiFX, st.OutCh
+	seq := d.stateSeq.Add(1)
+	d.loading.Store(true)
+	go d.loadState(seq, st.Chain)
+	return nil
+}
+
+// loadState loads a state SetState was given, unless a newer one came or
+// the device closed.
+func (d *device) loadState(seq uint64, chain json.RawMessage) {
+	d.loadMu.Lock()
+	defer d.loadMu.Unlock()
+	d.repMu.Lock()
+	closed := d.closed
+	d.repMu.Unlock()
+	if closed || seq != d.stateSeq.Load() {
+		return // the device is gone, or a newer state will load
+	}
+	if err := d.p.h.loadPatch(d.s, chain); err != nil {
+		log.Printf("%s: loading its state: %v", d.c.Name, err)
+	}
+	if d.c.Kind == livedevice.MIDI {
+		sinkMIDI(d.s) // also repairs a state saved with pre mode
+	}
+	if seq == d.stateSeq.Load() {
+		d.loading.Store(false)
+	}
 	// Live hears the loaded values: Push reads Live's, and showed the old
 	// ones beside a module that had another state (Edit Part Lower beside
 	// Upper, 2026-11-15). Later, and again, for a module that boots a ROM.
 	for _, after := range []time.Duration{500 * time.Millisecond, 3 * time.Second} {
 		time.AfterFunc(after, d.resyncLive)
 	}
-	if d.c.Kind == livedevice.MIDI {
-		sinkMIDI(d.s) // also repairs a state saved with pre mode
-	}
-	d.midiFX, d.outCh = st.MidiFX, st.OutCh
-	return nil
 }
 
 func (d *device) Close() {
@@ -671,6 +708,10 @@ func (d *device) Close() {
 		d.resync.Stop()
 	}
 	d.repMu.Unlock()
+	// a state loading into this chain finishes first: once released, the
+	// chain slot can be another device's
+	d.loadMu.Lock()
+	defer d.loadMu.Unlock()
 	d.s.own.Lock()
 	cSlotDestroy(d.s.Index)
 	d.s.own.Unlock()
@@ -681,43 +722,53 @@ func (d *device) Close() {
 // reviveSiblings: devices of a module that allows one instance per device
 // (JE-8086: "already running in another slot") refuse to start while
 // another holds it. Live re-creates a device before closing the old one
-// when Pung restarts, so the new one came up dead and stayed dead
-// (2026-11-15). When a device closes, a sibling that answers no values is
-// loaded again, with its last state.
-//
-// What the closed instance held can outlive it by seconds (JE-8086's lock
-// goes when the last of its forked DSP stages exits), so this tries again,
-// a few times, further apart.
+// when Pung restarts, and the old Pung's forked DSP processes can hold the
+// lock for seconds after it is gone, so a new device came up refused and
+// stayed so (2026-11-15). A device that was refused is loaded again, with
+// its last state, on a schedule long enough for the holder to let go. Run
+// when a device is made and when one closes.
 func (p *provider) reviveSiblings(module string) {
-	for _, wait := range []time.Duration{400 * time.Millisecond, 1500 * time.Millisecond, 3 * time.Second, 6 * time.Second} {
+	for _, wait := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 15 * time.Second} {
 		time.Sleep(wait)
-		dead := 0
 		for _, o := range p.list() {
-			if o.c.module != module || o.alive() {
+			if o.c.module != module || !o.refused() {
 				continue
 			}
-			dead++
-			log.Printf("%s (chain %d): its module answers nothing; loading it again", o.c.Name, o.s.Index)
+			log.Printf("%s (chain %d): its module refused to start; loading it again", o.c.Name, o.s.Index)
 			o.reload()
-		}
-		if dead == 0 {
-			return
 		}
 	}
 }
 
-// alive: the module answers for its parameters.
-func (d *device) alive() bool {
+// refused: the module finished loading (is_loading answers "0", which a
+// load error also answers: the Schwung contract) and answers for none of
+// its parameters. A module still loading, or one that cannot say, is left
+// alone: reloading it would start its boot over.
+func (d *device) refused() bool {
+	if d.loading.Load() {
+		return false
+	}
 	comp := d.c.component()
+	if v, ok := d.s.Get(comp + ":is_loading"); !ok || strings.TrimSpace(v) != "0" {
+		return false
+	}
 	var cp []map[string]any
 	if raw, ok := d.s.Meta(comp, "chain_params"); ok && raw != "" {
 		json.Unmarshal([]byte(raw), &cp) //nolint:errcheck
 	}
-	return len(cp) == 0 || len(d.p.h.componentValues(d.s, comp, cp)) > 0
+	return len(cp) > 0 && len(d.p.h.componentValues(d.s, comp, cp)) == 0
 }
 
 // reload: the module again, and the device's last state.
 func (d *device) reload() {
+	d.loadMu.Lock()
+	defer d.loadMu.Unlock()
+	d.repMu.Lock()
+	closed := d.closed
+	d.repMu.Unlock()
+	if closed {
+		return
+	}
 	comp := d.c.component()
 	d.s.Set(comp+":module", "")
 	d.s.Set(comp+":module", d.c.module)

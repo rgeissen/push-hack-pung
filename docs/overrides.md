@@ -73,6 +73,19 @@ push.compartment({
 - **With `screen`** the compartment draws the whole band itself (`g.w` 952, `g.h` 86), on every page of the
   compartment, with the values of all its keys in `v`. The encoders' names and values stay under it, and
   the native layer still owns every encoder.
+- **A page's own `screen`** (`pages: [{label, keys, screen}]`) draws the band for that page only; the other
+  pages keep the default view. Use it where one page needs a picture (an envelope's eight stage knobs) and
+  the rest are fine as knobs.
+- **`takeover: true`** (with `screen`): the screen draws **all of the panel** (`g.w` 960, `g.h` 160), and Pung
+  draws none of its own elements, only its notices on top. The screen must then show what those elements
+  showed: the encoders' names and values (`v.$knobs`, the eight keys the encoders turn now, `""` for an
+  empty one), the touched one, and which page it is (`v.$page`, the index into `v.$pages`, the page
+  labels). `v.$name` is the device's name and `v.$track` Live's track. The bank list, Shift + Swap and any
+  failure bring Pung's default view back. A takeover's budget is 14 ms (it draws what Pung's own elements
+  would have).
+- **`extra_keys`**: values a screen shows that no encoder edits (a patch name, a mode); they are read with
+  the compartment's keys and given in `v`, even without metadata.
+- Band screens and page screens also get `v.$page`, `v.$pages` and `v.$knobs`.
 - The header says `COMPARTMENT / PAGE`. Page < > step through the pages; the bank list lists them.
 - Parameters no compartment names stay reachable after the compartments, on the generic banks.
 - A module that declares none: each of its banks is a compartment.
@@ -82,7 +95,9 @@ structure, its vocabulary). Otherwise leave it out.
 
 **On the web page.** `GET /api/devices/<n>/compartments` lists them, with the one the Push shows now
 (`shown`); `POST /api/devices/<n>/compartment {"id": ...}` turns the Push to one. Pung's own page shows them as
-its sections, and a strip over a module's own `web_ui.html`. A module's own page is sent
+its sections, and a strip over a module's own `web_ui.html`. On Pung's own page a compartment with a
+`screen` shows that screen at the top of its section, drawn by the same code from the device's values:
+`GET /api/devices/<n>/compartments/<id>/screen.png` (a web render never counts against the Push's budget). A module's own page is sent
 `{type: "compartment", id, label, keys}` when the Push turns to another compartment, and may send
 `{type: "showCompartment", id}` to turn the Push.
 

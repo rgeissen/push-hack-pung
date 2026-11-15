@@ -104,6 +104,14 @@ func cSlotDestroy(i int) {
 // cCloseInChildren: fd is closed in any process a module forks (bridge.c).
 func cCloseInChildren(fd int) { C.sb_close_in_children(C.int(fd)) }
 
+// cLockDir: a process a module forks closes its copies of *.lock files under
+// dir, so a module's lock is never held by another module's helper (bridge.c).
+func cLockDir(dir string) {
+	cs := C.CString(dir)
+	defer C.free(unsafe.Pointer(cs))
+	C.sb_lock_dir(cs)
+}
+
 func cWarm(i, blocks int) { C.sb_warm(C.int(i), C.int(blocks)) }
 
 func cSetRealtime(prio int) int { return int(C.sb_set_realtime(C.int(prio))) }

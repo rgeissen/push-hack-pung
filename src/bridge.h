@@ -23,6 +23,7 @@
 int sb_init(const char *chain_dir);
 /* fd: closed in any child process a module forks (Pung's listeners) */
 void sb_close_in_children(int fd);
+void sb_lock_dir(const char *dir); /* a forked child closes *.lock files under dir */
 const char *sb_error(void);
 
 int sb_slot_create(int slot);  /* 0 on success */

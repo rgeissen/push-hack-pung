@@ -208,7 +208,15 @@ The first custom screens are Osirus's (`overrides/osirus/push_ui.js`): its seven
 sections of its own web page, its pages that page's cards, and two compartments draw their own screen,
 because there a picture shows what knobs cannot: the Virus's filter routing as a signal path (filter 1, the
 saturation stage, filter 2, which filter the panel edits, both responses), and its envelopes with their
-sustain slope. OB-Xd's `push_ui.js` widgets are the default layer's showcase, not a custom screen. How to
+sustain slope. OB-Xd's `push_ui.js` widgets are the default layer's showcase, not a custom screen.
+
+Since then (2026-11-15) three modules have **takeover** screens that draw the whole panel, each the
+instrument's own way in: JE-8086's Patch (the JP-8000's LCD and the patch at a glance), Mini-JV's Macros
+(the JV-880's LCD and its four tones), Dexed's Algorithm (the DX7's algorithm chart, from the engine's own
+table). Where a module has its own web panel (JE-8086, Mini-JV), its compartments are that panel's tabs
+and panels, in its order and names; where it has none (Dexed), the design is new and Pung's web page shows
+the same screen. Envelopes made of stage knobs (JV-880, DX7) are page screens with each stage over its own
+knobs. The rules: `docs/UX-GUIDELINES.md`. How to
 declare compartments, and their web side: `docs/overrides.md`, "Compartments". The visual language, the
 structures the default view recognizes and draws (envelopes), and the review checklist:
 `docs/UX-GUIDELINES.md`.

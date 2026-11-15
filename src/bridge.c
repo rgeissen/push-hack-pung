@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/syscall.h>
+#include <fcntl.h>
 
 #include "third_party/schwung/host/plugin_api_v1.h"
 
@@ -95,9 +97,59 @@ static double h_beat(void) { return atomic_load(&g_beat); }
 #define SB_MAX_CLOSE 8
 static int g_close_fds[SB_MAX_CLOSE];
 static atomic_int g_nclose;
+/*
+ * A forked child also lets go of Pung's lock files (*.lock under the
+ * directory set with sb_lock_dir). A fork inherits every open file, and a
+ * flock lives as long as any copy: Osirus's virus-boot helper, forked while
+ * JE-8086's one-per-device lock was open in Pung, kept that lock for as long
+ * as Osirus ran, so no JE-8086 could start again (2026-11-15). The instance
+ * that took a lock keeps its own copy in Pung's process, so the lock still
+ * means what its module meant. Raw syscalls only: this runs in the child of
+ * a threaded process, where malloc may be locked.
+ */
+static char g_lock_dir[512];
+struct sb_dirent64 { unsigned long long d_ino; long long d_off; unsigned short d_reclen; unsigned char d_type; char d_name[]; };
+static void sb_close_inherited_locks(void) {
+    size_t plen = strlen(g_lock_dir);
+    if (!plen) return;
+    int dfd = (int)syscall(SYS_open, "/proc/self/fd", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dfd < 0) return;
+    char buf[2048], link[600], path[64];
+    for (;;) {
+        long n = syscall(SYS_getdents64, dfd, buf, sizeof buf);
+        if (n <= 0) break;
+        for (long off = 0; off < n;) {
+            struct sb_dirent64 *e = (struct sb_dirent64 *)(buf + off);
+            off += e->d_reclen;
+            int fd = 0, ok = e->d_name[0] != 0;
+            for (const char *c = e->d_name; *c; c++) {
+                if (*c < '0' || *c > '9') { ok = 0; break; }
+                fd = fd * 10 + (*c - '0');
+            }
+            if (!ok || fd == dfd || fd <= 2) continue;
+            int pl = 0;
+            const char *pre = "/proc/self/fd/";
+            while (pre[pl]) { path[pl] = pre[pl]; pl++; }
+            for (const char *c = e->d_name; *c && pl < 60; c++) path[pl++] = *c;
+            path[pl] = 0;
+            long ll = syscall(SYS_readlink, path, link, sizeof link - 1);
+            if (ll <= 5) continue;
+            link[ll] = 0;
+            if ((size_t)ll <= plen || memcmp(link, g_lock_dir, plen) != 0 || memcmp(link + ll - 5, ".lock", 5) != 0)
+                continue;
+            int nested = 0; /* only the directory itself: a module's own folder is its business */
+            for (long k = (long)plen; k < ll; k++) if (link[k] == '/') { nested = 1; break; }
+            if (!nested) close(fd);
+        }
+    }
+    close(dfd);
+}
+void sb_lock_dir(const char *dir) { snprintf(g_lock_dir, sizeof g_lock_dir, "%s", dir); }
+
 static void sb_atfork_child(void) {
     int n = atomic_load(&g_nclose);
     for (int i = 0; i < n && i < SB_MAX_CLOSE; i++) close(g_close_fds[i]);
+    sb_close_inherited_locks();
 }
 void sb_close_in_children(int fd) {
     int i = atomic_fetch_add(&g_nclose, 1);
