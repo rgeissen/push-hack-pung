@@ -83,6 +83,9 @@ type ovCompartment struct {
 	// extraKeys: values the screen shows that no encoder edits (a patch
 	// name, a mode); read with the compartment's keys
 	extraKeys []string
+	// liveKeys: values the module drives itself (a voice's level, an LFO's
+	// phase), read every frame while the screen is shown (livefx.go)
+	liveKeys []string
 }
 
 // pageScreen: the band screen for a compartment's page: the page's own,
@@ -92,14 +95,14 @@ func (c *ovCompartment) pageScreen(page int) (goja.Callable, []string) {
 		return nil, nil
 	}
 	if page >= 0 && page < len(c.pages) && c.pages[page].screen != nil {
-		return c.pages[page].screen, append(append([]string{}, c.pages[page].keys...), c.extraKeys...)
+		return c.pages[page].screen, append(append(append([]string{}, c.pages[page].keys...), c.extraKeys...), c.liveKeys...)
 	}
 	return c.screen, c.screenKeys()
 }
 
 // screenKeys: every key a compartment's screen is given.
 func (c *ovCompartment) screenKeys() []string {
-	return append(append([]string{}, c.keys...), c.extraKeys...)
+	return append(append(append([]string{}, c.keys...), c.extraKeys...), c.liveKeys...)
 }
 
 // ovPage: one encoder page of a compartment (a card of its web section).
@@ -219,6 +222,9 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		}
 		if kv := spec.Get("extra_keys"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
 			vm.ExportTo(kv, &c.extraKeys) //nolint:errcheck
+		}
+		if kv := spec.Get("live_keys"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
+			vm.ExportTo(kv, &c.liveKeys) //nolint:errcheck
 		}
 		if v := spec.Get("takeover"); v != nil && !goja.IsUndefined(v) {
 			c.takeover = v.ToBoolean()

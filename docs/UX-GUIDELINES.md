@@ -291,6 +291,49 @@ If it only restyles the default page, it does not ship.
 
 ## 7. Motion and performance
 
+### Live pictures: the sound as it plays
+
+Pung's pictures are not only the patch: while a device sounds, they show what its sound is doing
+(`src/livestate.go`, `src/livefx.go`). **Nothing moves unless the sound moves, and nothing moves that
+Pung cannot stand behind.** A movement is measured from the sound, exact from the notes, Live's
+transport or a unit the module states, or read from the module itself; where none of those knows, the
+picture stays still. No movement is decoration, and none is a guess.
+
+What Pung knows of every device, on the audio thread, lock-free: each note as it is delivered (with its
+time), the loudest sample of each block, the last 4096 samples of the output, and Live's transport.
+
+| Picture | What moves | From |
+|---|---|---|
+| **Envelope** (the amplitude's: no prefix, `amp`, `vca`, `tva`, `aeg`...) | a playhead on the shape, the stage lit as far as it has gone, a short trail | measured: the notes say which stage (a note began: attack; all let go: release), the output's level says how far through it (attack: level over the loudest of the last seconds; decay: the fall toward the sustain the knob sets; release: the fall from where it was let go) |
+| **Envelope** whose stage times state a unit (`250 ms`, `1.2 s`) | one mark per voice, sized by velocity | exact: each note's own time since it went down or was let go |
+| **Envelope** (any other: a filter's, a pitch envelope) | the notes' gate along the base: held, every stage up to the release; let go and still sounding, the release | the notes only; where in a filter envelope a note is cannot be heard in the output |
+| every envelope | its start flashes as a note begins it again | the notes |
+| **Filter** | the sound's spectrum behind the response (1/6-octave smoothing, tilted 3 dB an octave about 1 kHz, falling at most 36 dB a second) | measured: the output itself. It is the whole device's sound, after every filter and effect, so a static cutoff with a bright spectrum says the envelope or key follow is opening it |
+| **LFO** synced to the beat with a rate in note values (`1/8.`, `1/4T`) | a playhead running through the drawn cycles, a trail | exact: Live's beat, while Live plays |
+| **LFO** restarted by notes with a rate in Hz | the same | exact: the time since the last note |
+| **LFO** restarted by notes (`trig`, `retrig`, `keytrig`, `synchro`...), any rate | its start flashes as a note restarts it | the notes |
+| **LFO** free running, or a rate with no unit | still | its phase cannot be known |
+| a module's screen | whatever it draws from `v.$live` and its `live_keys` (overrides.md) | the module |
+
+**The look**: live marks are in the modulation colour (`mod`), so they never read as a touch (slot
+colour) or as the patch (fg). A playhead is a mod dot ringed in black with a dashed hairline to the base;
+its trail is the last nine positions, fading toward black; nothing eases or bounces. The spectrum is a
+neutral grey laid under the curve that shapes it, lighter where it is louder, never over the curve.
+
+**When**: the view redraws at 30 frames a second while a note is down, the device sounds (above
+-72 dBFS), for 1.5 s after the last note or sound, and while Live plays if a picture follows the beat.
+Otherwise it draws only on change, as before.
+
+**What the fleet can give**: of the envelope and LFO times in the 100 captured modules, 13 state a unit
+(milliseconds) and one LFO rate is in Hz. Most motion therefore comes from measurement and the notes,
+and where the instrument's own state is wanted, the module must publish it: Mini-JV reads its 28 PCM
+voices straight from the emulated chip (`live_voices`: each voice's amplitude, both TVA stages as the
+firmware's envelope and LFO drive them, and its TVF coefficient) and shows them on its Macros screen.
+
+**Cost**, measured on the device (`frame_draw_us`, `frame_push_us` in `GET /api/surface/state`): a page
+of plain knobs draws in about 7.4 ms and hands over in about 1.8 ms; the spectrum adds about 1 ms, a
+playhead nothing measurable; Mini-JV's Macros with its voices about 10.4 ms. A 30 fps frame is 33 ms.
+
 - Things move only when the instrument moves: an LFO's phase, a meter. A static value is drawn still.
 - The Push redraws many times a second. A widget or a screen gets **8 ms**, a takeover **14 ms**; three
   slow frames in a row, or one over 40 ms, switch it off for the session. Measured on the device:

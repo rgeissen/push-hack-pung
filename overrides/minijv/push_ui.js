@@ -6,7 +6,10 @@
 // Two pictures, each showing what knobs cannot:
 // - Macros (takeover): the JV-880's LCD, and its four TONES at a glance:
 //   which sound, which wave, how loud, where panned, their amp envelopes.
-//   A JV patch IS four tones; a row of knobs never shows that.
+//   A JV patch IS four tones; a row of knobs never shows that. Live, from
+//   the emulated chip itself: every voice's amplitude in the LCD, and every
+//   voice's filter cutoff on one axis, moving as the JV's envelopes and LFOs
+//   move them.
 // - The JV's 4-stage envelopes (pitch, filter, amp: T1-T4 and L1-L4), each
 //   stage drawn over its own two knobs (time, level), key-off between 3 and
 //   4. Eight knobs of numbers become one envelope.
@@ -75,6 +78,13 @@ function jvEnvelope(g, v, t, sec, x0, x1, top, base, small) {
     g.dot(b[0], b[1], hot ? 5 : 3, hot ? ACCENT : col);
     g.text(stageX(i) + 8, top - 10, String(i + 1), hot ? ACCENT : "dim", -1);
   }
+  // the notes, live (v.$live): held, the stages up to key off light along
+  // the base; let go and still sounding, the fourth
+  var lv = v.$live;
+  if (lv && lv.known) {
+    if (lv.held > 0) g.fill(x0, base - 1, stageX(3) - x0, 3, "mod");
+    else if (lv.db > -72 && lv.since_off >= 0) g.fill(stageX(3), base - 1, x1 - stageX(3), 3, "#2a7f92");
+  }
   // key off: the last stage starts when the key is let go
   var ko = stageX(3);
   for (var yy = top - 18; yy < base; yy += 6) g.line(ko, yy, ko, yy + 3, 1, "dim");
@@ -87,22 +97,73 @@ function envScreen(t, sec) {
 
 // ---- Macros: the takeover ------------------------------------------------------------
 
+// ---- the chip's voices, live -------------------------------------------------------
+// The module reads them from the emulated PCM chip (live_voices): each
+// voice's amplitude (both TVA stages, as the firmware's envelope and LFO
+// drive them) and its TVF coefficient. Pung reads it every frame while this
+// screen shows (live_keys); nothing here is estimated.
+
+function voices(v) {
+  if (!known(v, "live_voices")) return null;
+  var s = String(v.live_voices.value);
+  if (s.indexOf("v1 ") !== 0) return null;
+  var out = [];
+  for (var i = 3; i + 11 <= s.length; i += 11) {
+    out.push({ amp: parseInt(s.substr(i, 4), 16) / 65535, cut: parseInt(s.substr(i + 4, 4), 16), pan: parseInt(s.substr(i + 8, 2), 16) / 255, keyed: s.charAt(i + 10) === "1" });
+  }
+  return out;
+}
+
+// amplitude in the LCD: one bar per voice, dB scaled; a keyed voice in ink,
+// one ringing out after its key in the dim ink
+function voiceMeter(g, vs, x, y, w, h) {
+  var n = vs.length, cw = w / n;
+  for (var i = 0; i < n; i++) {
+    var a = vs[i].amp, bx = x + i * cw + 2, bw = Math.max(2, cw - 4);
+    g.fill(bx, y + h - 1, bw, 1, LCD_EDGE);
+    if (a <= 0) continue;
+    var db = 20 * Math.log(a) / Math.LN10, f = Math.max(0, Math.min(1, (db + 48) / 48));
+    if (f <= 0) continue;
+    g.fill(bx, y + h - f * h, bw, f * h, vs[i].keyed ? LCD_INK : LCD_DIM);
+  }
+}
+
+// the filters: each sounding voice's cutoff as a mark on one axis (the
+// chip's coefficient, on a log scale): a filter envelope or an LFO is seen
+// moving them
+function tvfStrip(g, vs, x, y, w) {
+  g.text(x, y + 11, "TVF", "dim", -1);
+  var ax = x + 30, aw = w - 30, mid = y + 7;
+  g.fill(ax, mid, aw, 1, "line");
+  for (var i = 0; i < vs.length; i++) {
+    var vo = vs[i];
+    if (vo.amp <= 0.0005) continue;
+    var u = Math.max(0, Math.min(1, (Math.log(Math.max(1, vo.cut)) / Math.LN2 - 6) / 9)); // 2^6 .. 2^15
+    g.fill(ax + u * aw - 1, mid - 5, 3, 11, vo.keyed ? "mod" : "#2a5a66");
+  }
+}
+
 function lcd(g, v) {
   var x = 8, y = 6, w = 444, h = 70;
   g.fill(x - 1, y - 1, w + 2, h + 2, LCD_EDGE);
   g.fill(x, y, w, h, LCD_BG);
   var num = known(v, "preset") ? ("00" + (parseInt(v.preset.value, 10) + 1)).slice(-3) : "---";
-  g.value(x + 14, y + 30, "#" + num, LCD_INK, -1);
+  g.value(x + 14, y + 24, "#" + num, LCD_INK, -1);
   var name = disp(v, "preset_name");
-  g.value(x + 92, y + 30, name === "--" ? "" : name.toUpperCase(), LCD_INK, -1);
+  g.value(x + 92, y + 24, name === "--" ? "" : name.toUpperCase(), LCD_INK, -1);
+  var vs = voices(v);
+  if (vs) voiceMeter(g, vs, x + 10, y + 31, w - 20, 22);
   var t = v.$touched;
   if (t && v[t]) {
-    g.text(x + 14, y + 58, String(v[t].name).toUpperCase(), LCD_INK, -1);
-    g.text(x + w - 14, y + 58, disp(v, t) + (v[t].unit ? " " + v[t].unit : ""), LCD_INK, 1);
+    g.text(x + 14, y + 65, String(v[t].name).toUpperCase(), LCD_INK, -1);
+    g.text(x + w - 14, y + 65, disp(v, t) + (v[t].unit ? " " + v[t].unit : ""), LCD_INK, 1);
   } else {
     var on = [];
     for (var i = 0; i < 4; i++) if (fr(v, tk(i, "toneswitch"), 1) > 0.5) on.push(i + 1);
-    g.text(x + 14, y + 58, ("TONES " + (on.length ? on.join(" ") : "OFF")) + (fr(v, "link_tones", 0) > 0.5 ? "   LINKED" : ""), LCD_DIM, -1);
+    var sounding = 0;
+    if (vs) for (var j = 0; j < vs.length; j++) if (vs[j].amp > 0.0005) sounding++;
+    g.text(x + 14, y + 65, ("TONES " + (on.length ? on.join(" ") : "OFF")) + (fr(v, "link_tones", 0) > 0.5 ? "   LINKED" : ""), LCD_DIM, -1);
+    if (vs) g.text(x + w - 14, y + 65, sounding + " OF " + vs.length + " VOICES", sounding ? LCD_INK : LCD_DIM, 1);
   }
 }
 
@@ -156,12 +217,16 @@ push.compartment({
     { label: "Patch", keys: ["mode", "part", "octave_transpose", "link_tones"] }
   ],
   extra_keys: ["preset", "preset_name"].concat(toneExtras),
+  live_keys: ["live_voices"],
   screen: function (g, v) {
     lcd(g, v);
     var m = modeIndex(v);
     var x = chip(g, 8, 84, "PATCH", m === 0);
     x = chip(g, x, 84, "PERFORM", m === 1);
-    chip(g, x + 10, 84, "LINK TONES", fr(v, "link_tones", 0) > 0.5);
+    x = chip(g, x + 10, 84, "LINK TONES", fr(v, "link_tones", 0) > 0.5);
+    var vs = voices(v), ps = v.$pages || [];
+    var pageW = ps.length > 1 ? g.measure(String(ps[v.$page]).toUpperCase() + "  " + (v.$page + 1) + "/" + ps.length) + 14 : 0;
+    if (vs) tvfStrip(g, vs, x + 8, 84, 452 - x - 8 - pageW);
     for (var i = 0; i < 4; i++) toneCard(g, v, i);
     knobRow(g, v);
   }

@@ -112,6 +112,19 @@ the native page shows them), `name`, and `known` (false until a value has been r
 means nothing, so draw a neutral shape). `v.$touched` is the key under a finger, or `""`. `t` is a time in
 seconds, for motion.
 
+**The sound, live (`v.$live`)**: a widget or a screen is told what the device's sound is doing (see
+UX-GUIDELINES.md, "Live pictures"). `known` (false: no device sound to tell of); `level` (the output,
+0..1 of the loudest of the last seconds) and `db` (dBFS); `held` (notes down) and `notes` (note-ons
+ever: a change says a note began); `since_on` and `since_off` (seconds, -1 never); `voices` (each held
+note and each let go in the last 6 s: `{note, vel, held, age, released}`, seconds); `playing`, `beat`,
+`bpm` (Live's transport). While the sound moves, Pung draws 30 frames a second; draw motion only from
+these or from your module's own state, never as decoration.
+
+**Values your module drives (`live_keys`)**: `push.compartment({..., live_keys: ["live_voices"]})`
+names keys of the module's own state (a voice's level, an LFO's phase) that Pung reads **every frame**
+while that compartment shows, and gives in `v` like any other. Keep the module's `get_param` for them
+cheap and lock-free: it is asked 30 times a second.
+
 ## Rules
 
 - **Earn the pixels.** A picture must be substantially better than the native page and reflect the nature

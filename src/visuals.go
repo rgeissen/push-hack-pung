@@ -10,6 +10,7 @@ package main
 import (
 	"image"
 	"image/color"
+	"math"
 	"regexp"
 	"strings"
 )
@@ -81,8 +82,9 @@ type envShape struct {
 	A, D, H, S, Slope, R       float64
 	HasD, HasH, HasS, HasSlope bool
 	HasR, Known                bool
-	Touched                    string // the role under a finger, or ""
-	Labels                     bool   // the stage letters under it
+	Touched                    string   // the role under a finger, or ""
+	Labels                     bool     // the stage letters under it
+	Live                       *envLive // what the sound is doing in it (livefx.go); nil: a still picture
 }
 
 // mixColor: c faded toward black, for fills (the panel has no alpha).
@@ -223,12 +225,105 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 		}
 		disc(img, p.x, p.y, rad, c)
 	}
+	// the sound in it, as it plays (livefx.go): the notes' gate along the
+	// base; the stage the amplitude is in, lit as far as it has gone, with a
+	// playhead and a short trail; or a mark per voice where the stage times
+	// are known
+	lv := e.Live
+	if lv != nil && !e.Known {
+		lv = nil
+	}
+	lit := func(role string) bool { return false }
+	if lv != nil {
+		seg := func(stage string) int {
+			if stage == "sustain" && e.HasSlope {
+				stage = "slope"
+			}
+			for i := 1; i < len(pts); i++ {
+				if pts[i].role == stage {
+					return i
+				}
+			}
+			return -1
+		}
+		at := func(p envPoint) (float64, float64, bool) {
+			i := seg(p.Stage)
+			if i < 0 {
+				return 0, 0, false
+			}
+			a, b := pts[i-1], pts[i]
+			t := math.Max(0, math.Min(1, p.Progress))
+			return a.x + (b.x-a.x)*t, a.y + (b.y-a.y)*t, true
+		}
+		rel := seg("release")
+		switch {
+		case lv.Held:
+			to := pts[len(pts)-1].x
+			if rel > 0 {
+				to = pts[rel-1].x
+			}
+			rect(img, int(x0), int(base)-1, int(to-x0), 3, cMod)
+		case lv.Ringing && rel > 0:
+			rect(img, int(pts[rel-1].x), int(base)-1, int(pts[rel].x-pts[rel-1].x), 3, mixColor(cMod, 0.55))
+		}
+		if lv.Retrig > 0 { // a note began: the envelope starts again
+			aaLine(img, x0, top, x0, base, 2.4, mixColor(cMod, lv.Retrig))
+		}
+		switch lv.Mode {
+		case "measured":
+			for i := 0; i+1 < len(lv.Trail); i++ {
+				if x, y, ok := at(lv.Trail[i]); ok {
+					k := float64(i+1) / float64(len(lv.Trail))
+					disc(img, x, y, 1.4+1.6*k, mixColor(cMod, 0.12+0.45*k))
+				}
+			}
+			if lv.Stage != "" {
+				if i := seg(lv.Stage); i > 0 {
+					x, y, _ := at(envPoint{Stage: lv.Stage, Progress: lv.Progress})
+					aaLine(img, pts[i-1].x, pts[i-1].y, x, y, 3.4, cMod) // the stage so far
+					for gy := y + 7; gy < base-2; gy += 5 {
+						aaLine(img, x, gy, x, math.Min(gy+2, base-2), 1, mixColor(cMod, 0.6))
+					}
+					disc(img, x, y, 6, cBlack)
+					disc(img, x, y, 4.3, cMod)
+				}
+				lit = func(role string) bool {
+					return role == lv.Stage || (role == "slope" && lv.Stage == "sustain")
+				}
+			}
+		case "timed":
+			for _, v := range lv.Voices {
+				if x, y, ok := at(v); ok {
+					disc(img, x, y, 6, cBlack)
+					disc(img, x, y, 2.6+1.8*v.Vel, cMod)
+				}
+			}
+			lit = func(role string) bool {
+				for _, v := range lv.Voices {
+					if role == v.Stage || (role == "slope" && v.Stage == "sustain") {
+						return true
+					}
+				}
+				return false
+			}
+		default: // the notes only: held is everything up to the release
+			lit = func(role string) bool {
+				if role == "release" {
+					return lv.Ringing
+				}
+				return lv.Held
+			}
+		}
+	}
 	// the stage letters, under their segments
 	if e.Labels {
 		letter := map[string]string{"attack": "A", "hold": "H", "decay": "D", "sustain": "S", "slope": "S", "release": "R"}
 		for i := 1; i < len(pts); i++ {
 			a, b := pts[i-1], pts[i]
 			c := cDim
+			if lit(b.role) {
+				c = cMod
+			}
 			if hot(b.role) {
 				c = accent
 			}

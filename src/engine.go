@@ -215,6 +215,7 @@ func runEngine(h *Host, stop <-chan struct{}) {
 				s.drainMidi()
 				input := s.readInput(in)
 				peak = cRender(s.Index, out, input)
+				s.live.feedAudio(out)
 				// MIDI a module sent goes out on the slot's port
 				for {
 					n := cTakeMidiOut(s.Index, midiBuf)

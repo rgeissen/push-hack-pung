@@ -531,6 +531,7 @@ type device struct {
 // Process runs one block on the device's realtime thread.
 func (d *device) Process(b *livedevice.Block) {
 	if b.TransportValid {
+		noteTransport(b.BPM, b.Beat, b.Playing)
 		setTempo(b.BPM)
 		if b.Playing {
 			setClock(2, b.Beat)
@@ -543,7 +544,9 @@ func (d *device) Process(b *livedevice.Block) {
 	}
 	defer d.s.own.Unlock()
 	b.Params(d.applyParam)
+	d.s.drainMidi() // notes played by a test or the web page (POST /api/devices/{n}/note)
 	b.Events(func(_ int, msg []byte) {
+		d.s.live.trackMidi(msg)
 		n := d.recentN.Add(1) - 1
 		var e [4]byte
 		e[3] = byte(copy(e[:3], msg))
@@ -568,6 +571,7 @@ func (d *device) Process(b *livedevice.Block) {
 	if n > 0 {
 		o := d.out[:n*2]
 		d.s.setPeak(cRender(d.s.Index, o, input)) // the meter (surface.level)
+		d.s.live.feedAudio(o)
 		for i := 0; i < n; i++ {
 			b.Out[0][i], b.Out[1][i] = o[i*2], o[i*2+1]
 		}

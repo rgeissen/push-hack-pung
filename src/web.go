@@ -289,6 +289,24 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 		shown := h.ui != nil && h.ui.showCompartment(d.c.module, body.ID)
 		writeJSON(w, 200, map[string]any{"ok": true, "shown": shown})
 	})
+	// a note played into a device as if Live sent it: for testing what the
+	// sound does (the live pictures) without a hand on the pads
+	mux.HandleFunc("POST /api/devices/{n}/note", func(w http.ResponseWriter, r *http.Request) {
+		d, ok := h.deviceFromPath(w, r)
+		if !ok {
+			return
+		}
+		var b struct {
+			Note     int `json:"note"`
+			Velocity int `json:"velocity"`
+		}
+		if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&b) != nil || b.Note < 0 || b.Note > 127 {
+			fail(w, 400, `body must be {"note":60,"velocity":100} (velocity 0 lets go)`)
+			return
+		}
+		d.s.Note(b.Note, max(0, min(127, b.Velocity)))
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
 	mux.HandleFunc("GET /api/devices/{n}/param", func(w http.ResponseWriter, r *http.Request) {
 		d, ok := h.deviceFromPath(w, r)
 		if !ok {

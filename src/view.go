@@ -33,6 +33,10 @@ func kindColor(kind string) color.NRGBA {
 func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	sc := slotColor(u.slot)
 	p, cm, b := u.currentBank()
+	// the sound as it is now, for the live pictures (livefx.go)
+	u.fx.look(u.liveSlot())
+	liveKeys := u.readLiveKeys(p, b)
+	defer func() { u.fxUsed, u.fxSynced = u.fx.used || liveKeys, u.fx.synced }()
 	if u.drawTakeover(img, p, cm, b, sc) {
 		return
 	}
@@ -122,6 +126,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			}
 		} else {
 			for _, pl := range set.place(b.Keys) {
+				pl.info = map[string]any{"$live": u.liveInfo()}
 				touched := ""
 				if u.touched >= pl.col && u.touched < pl.col+pl.span {
 					touched = b.Keys[u.touched]
@@ -143,7 +148,8 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 				continue
 			}
 			r := image.Rect(g.start*colW+4, ovTop, g.end*colW-4, ovTop+ovHeight)
-			drawPicture(img, r, g, u.ovValues(p, cm, g.keyList()), touchedKey, sc)
+			key := fmt.Sprintf("%s/%s/%s/%d", p.Module, b.Name, g.kind, g.start)
+			drawPictureLive(img, r, g, u.ovValues(p, cm, g.keyList()), touchedKey, sc, &u.fx, key)
 			for c := g.start; c < g.end; c++ {
 				covered[c] = true
 			}
@@ -752,5 +758,5 @@ func (u *surface) takeoverInfo(p position, cm *compMeta, b *bank, comp *ovCompar
 	if u.liveActive() {
 		track, _ = u.live.state().trackHeader()
 	}
-	return map[string]any{"$page": page, "$pages": pages, "$knobs": knobs, "$name": p.Name, "$track": track}
+	return map[string]any{"$page": page, "$pages": pages, "$knobs": knobs, "$name": p.Name, "$track": track, "$live": u.liveInfo()}
 }

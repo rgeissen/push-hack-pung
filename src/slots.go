@@ -47,6 +47,8 @@ type Slot struct {
 	dirty   atomic.Bool
 	notesIn atomic.Int64
 	midiOut atomic.Int64
+
+	live soundTrack // what the sound is doing, for the live pictures (livestate.go)
 }
 
 // Host owns the slots and the transport.
@@ -267,6 +269,7 @@ func (s *Slot) drainMidi() {
 	for {
 		select {
 		case m := <-s.midi:
+			s.live.trackMidi(m.b[:m.n])
 			cMidi(s.Index, m.b[:m.n], 0)
 		default:
 			return

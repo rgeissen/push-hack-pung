@@ -58,6 +58,11 @@ type browser struct {
 }
 
 type surface struct {
+	fx         liveFX // the shown device's sound, for the live pictures (livefx.go); under mu
+	fxUsed     bool   // the last frame drew something live
+	fxSynced   bool   // ... and a picture whose motion follows Live's transport
+	frameStats frameStats
+
 	h    *Host
 	pm   *pmclient.Client
 	live *live
@@ -353,7 +358,8 @@ func (u *surface) routes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "focused": u.focused.Load(), "view": u.view, "slot": u.slot + 1,
 			"device_row": row, "device_row_selected": rowSel, "bank_list": u.bankList,
-			"fallback":          map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
+			"fallback":      map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
+			"frame_draw_us": u.frameStats.drawUS.Load(), "frame_push_us": u.frameStats.pushUS.Load(), "frames": u.frameStats.n.Load(),
 			"module_ui_draw_us": u.overlayDrawUS(p.Module),
 			"position":          p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
 			"octave": u.octave, "toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,
@@ -1659,19 +1665,24 @@ func (u *surface) frames(done <-chan struct{}) {
 		}
 		peak := u.level()
 		animating := math.Abs(peak-lastPeak) > 0.5 || time.Now().Before(u.peekUntil.Add(50*time.Millisecond)) ||
-			(u.toast != "" && time.Since(u.toastAt) < 2600*time.Millisecond)
+			(u.toast != "" && time.Since(u.toastAt) < 2600*time.Millisecond) || u.liveWanted()
 		if !u.dirty.Swap(false) && !animating {
 			u.mu.Unlock()
 			continue
 		}
 		lastPeak = peak
+		t0 := time.Now()
 		img := u.render(peak)
+		u.frameStats.draw(time.Since(t0))
 		u.paintLEDs()
 		first := !u.focusAt.IsZero()
 		since := time.Since(u.focusAt)
 		u.focusAt = time.Time{}
 		u.mu.Unlock()
-		if err := u.pm.PushFrame(img); err != nil {
+		t1 := time.Now()
+		err := u.pm.PushFrame(img)
+		u.frameStats.push(time.Since(t1))
+		if err != nil {
 			// not on the screen (push-manager not yet handing it over, or
 			// already taking it back): again next tick, never left stale
 			u.dirty.Store(true)
@@ -1892,7 +1903,7 @@ func (u *surface) refreshLive() {
 			need = append(need, b.Keys...)
 			if c := u.ov.get(u.h.modulesDir, sel.Module).compartment(b.Compartment); c != nil {
 				need = append(need, c.screenKeys()...)
-				for _, k := range c.extraKeys {
+				for _, k := range append(append([]string{}, c.extraKeys...), c.liveKeys...) {
 					free[k] = true
 				}
 			}

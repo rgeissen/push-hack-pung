@@ -175,7 +175,50 @@ type filterShape struct {
 	Poles       int    // 1..4 (6 dB an octave each)
 	TypeName    string // the type as the module names it
 	Known       bool
-	Touched     string // "cutoff", "resonance", "type" or ""
+	Touched     string    // "cutoff", "resonance", "type" or ""
+	Spectrum    []float64 // the sound's spectrum, dB per column of the axis (livefx.go); nil: none
+}
+
+// the spectrum's scale in the filter picture (dB, after the analyzer's tilt)
+const (
+	specTopDB = -6.0
+	specBotDB = -84.0
+)
+
+var (
+	cSpecFill = color.NRGBA{36, 38, 41, 255}
+	cSpecLine = color.NRGBA{104, 108, 112, 255}
+)
+
+// lighten: each channel the brighter of the two (the panel has no alpha;
+// this lays the spectrum over the response's fill and keeps both readable)
+func lighten(img *image.NRGBA, x, y int, c color.NRGBA) {
+	if !(image.Point{x, y}.In(img.Rect)) {
+		return
+	}
+	o := img.NRGBAAt(x, y)
+	img.SetNRGBA(x, y, color.NRGBA{max(o.R, c.R), max(o.G, c.G), max(o.B, c.B), 255})
+}
+
+// drawSpectrum lays the sound's spectrum over a filter's frequency axis.
+func drawSpectrum(img *image.NRGBA, cols []float64, x0, x1, top, base float64) {
+	n := len(cols)
+	if n < 2 {
+		return
+	}
+	var prev [2]float64
+	for i, db := range cols {
+		x := x0 + (x1-x0)*float64(i)/float64(n-1)
+		t := math.Max(0, math.Min(1, (db-specBotDB)/(specTopDB-specBotDB)))
+		y := base - t*(base-top)
+		for py := int(y); py < int(base); py++ {
+			lighten(img, int(x), py, cSpecFill)
+		}
+		if i > 0 {
+			aaLine(img, prev[0], prev[1], x, y, 1.2, cSpecLine)
+		}
+		prev = [2]float64{x, y}
+	}
 }
 
 var (
@@ -335,6 +378,9 @@ func drawFilter(img *image.NRGBA, r image.Rectangle, f filterShape, sc color.NRG
 	aaLine(img, x0, base, x1, base, 1, cLine)
 	xc := x0 + (x1-x0)*f.Cutoff
 	if f.Kind == "?" || f.Kind == "off" {
+		if known {
+			drawSpectrum(img, f.Spectrum, x0, x1, top, base)
+		}
 		// a type Pung cannot read draws no curve (never a guess); off passes all
 		if f.Kind == "off" {
 			aaLine(img, x0, zero, x1, zero, 2.2, mixColor(fg, 0.6))
@@ -361,6 +407,9 @@ func drawFilter(img *image.NRGBA, r image.Rectangle, f filterShape, sc color.NRG
 			rect(img, px, int(y), 1, int(base-y)+1, fill)
 		}
 	}
+	if known {
+		drawSpectrum(img, f.Spectrum, x0, x1, top, base) // the sound itself, behind the curve that shapes it
+	}
 	w, c := 2.2, fg
 	if f.Touched == "resonance" || f.Touched == "type" {
 		w, c = 3.4, accent
@@ -382,6 +431,12 @@ func drawFilter(img *image.NRGBA, r image.Rectangle, f filterShape, sc color.NRG
 // ---- LFOs -------------------------------------------------------------------------
 
 var (
+	// what says how an LFO runs, for its live phase (livefx.go): synced to
+	// the beat, restarted by notes, a rate in note values
+	lfoSyncRole = regexp.MustCompile(`^(.*lfo.*?)_?(sync|rate_mode|sync_mode|tempo_sync)$`)
+	lfoTrigRole = regexp.MustCompile(`^(.*lfo.*?)_?(trig|trigger|retrig|retrigger|keytrig|keytrigger|key_sync|keysync|synchro|trigmode|mode)$`)
+	lfoDivRole  = regexp.MustCompile(`^(.*lfo.*?)_?(rate_div|div|division|sync_rate)$`)
+
 	lfoShapeRole = regexp.MustCompile(`^(.*lfo.*?)_?(shape|wave|waveform|wav|form)$`)
 	lfoRateRole  = regexp.MustCompile(`^(.*lfo.*?)_?(rate|speed|freq|frequency)$`)
 )
@@ -390,9 +445,22 @@ var (
 // LFO (lfo1_shape and lfo1_rate; lfo_wave and lfo_rate).
 func lfoGroups(keys []string) []picGroup {
 	shape, rate := map[string]int{}, map[string]int{}
+	extra := map[string]map[string]string{} // prefix -> role -> key
 	var order []string
 	for col, k := range keys {
+		orig := k
 		k := strings.ToLower(k)
+		for role, re := range map[string]*regexp.Regexp{"sync": lfoSyncRole, "trig": lfoTrigRole, "div": lfoDivRole} {
+			if m := re.FindStringSubmatch(k); m != nil {
+				p := strings.TrimSuffix(m[1], "_")
+				if extra[p] == nil {
+					extra[p] = map[string]string{}
+				}
+				if _, ok := extra[p][role]; !ok {
+					extra[p][role] = orig
+				}
+			}
+		}
 		if m := lfoShapeRole.FindStringSubmatch(k); m != nil {
 			p := strings.TrimSuffix(m[1], "_")
 			if _, ok := shape[p]; !ok {
@@ -413,7 +481,11 @@ func lfoGroups(keys []string) []picGroup {
 		if !ok1 || !ok2 || (s-r != 1 && r-s != 1) {
 			continue
 		}
-		out = append(out, picGroup{kind: "lfo", keys: map[string]string{"shape": keys[s], "rate": keys[r]}, start: min(s, r), end: max(s, r) + 1})
+		g := picGroup{kind: "lfo", keys: map[string]string{"shape": keys[s], "rate": keys[r]}, start: min(s, r), end: max(s, r) + 1}
+		for role, k := range extra[p] { // wherever they sit on the page: they draw nothing, they tell how it runs
+			g.keys[role] = k
+		}
+		out = append(out, g)
 	}
 	return out
 }
@@ -424,7 +496,8 @@ type lfoShape struct {
 	WaveName string
 	Rate     float64
 	Known    bool
-	Touched  string // "shape", "rate" or ""
+	Touched  string   // "shape", "rate" or ""
+	Live     *lfoLive // its phase as it runs (livefx.go); nil: a still picture
 }
 
 // lfoWave: a wave as the module names it, as one Pung draws. A name Pung
@@ -457,6 +530,9 @@ func lfoWave(name string) string {
 func lfoShapeOf(g picGroup, vals map[string]ovValue, touchedKey string) lfoShape {
 	l := lfoShape{Known: true}
 	for role, k := range g.keys {
+		if role == "sync" || role == "trig" || role == "div" {
+			continue // how it runs, not what it draws (livefx.go)
+		}
 		v := vals[k]
 		if !v.Known {
 			l.Known = false
@@ -464,9 +540,10 @@ func lfoShapeOf(g picGroup, vals map[string]ovValue, touchedKey string) lfoShape
 		if k == touchedKey {
 			l.Touched = role
 		}
-		if role == "rate" {
+		switch role {
+		case "rate":
 			l.Rate = v.Frac
-		} else {
+		default:
 			l.WaveName = v.Display
 			if l.WaveName == "" {
 				l.WaveName = v.Value
@@ -565,6 +642,37 @@ func drawLFO(img *image.NRGBA, r image.Rectangle, l lfoShape, sc color.NRGBA) {
 	for i := 1; i < len(pts); i++ {
 		aaLine(img, pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1], w, c)
 	}
+	// where it is now, where it is known (livefx.go): a playhead running
+	// through the drawn cycles at the LFO's real rate, with a short trail; a
+	// note restarting it lights its start
+	lv := l.Live
+	if lv == nil || !known {
+		return
+	}
+	if lv.Restart > 0 {
+		aaLine(img, x0, top, x0, base, 2.4, mixColor(cMod, lv.Restart))
+	}
+	if lv.Phase < 0 {
+		return
+	}
+	pos := func(ph float64) (float64, float64) {
+		u := math.Mod(ph, n) / n
+		if u < 0 {
+			u++
+		}
+		return x0 + (x1-x0)*u, mid - lfoValue(l.Wave, n*math.Min(u, 0.9999))*amp
+	}
+	for i := 0; i+1 < len(lv.Trail); i++ {
+		x, y := pos(lv.Trail[i])
+		k := float64(i+1) / float64(len(lv.Trail))
+		disc(img, x, y, 1.4+1.6*k, mixColor(cMod, 0.12+0.45*k))
+	}
+	x, y := pos(lv.Phase)
+	for gy := top; gy < base; gy += 5 {
+		aaLine(img, x, gy, x, math.Min(gy+2, base), 1, mixColor(cMod, 0.5))
+	}
+	disc(img, x, y, 6, cBlack)
+	disc(img, x, y, 4.3, cMod)
 }
 
 // ---- mixes of sources -------------------------------------------------------------
@@ -714,15 +822,34 @@ func drawMix(img *image.NRGBA, r image.Rectangle, m mixShape, sc color.NRGBA) {
 	}
 }
 
-// drawPicture draws one recognized structure from its values.
+// drawPicture draws one recognized structure from its values; with fx, as
+// the sound is moving it (key names the picture across frames).
 func drawPicture(img *image.NRGBA, r image.Rectangle, g picGroup, vals map[string]ovValue, touchedKey string, sc color.NRGBA) {
+	drawPictureLive(img, r, g, vals, touchedKey, sc, nil, "")
+}
+
+func drawPictureLive(img *image.NRGBA, r image.Rectangle, g picGroup, vals map[string]ovValue, touchedKey string, sc color.NRGBA, fx *liveFX, key string) {
 	switch g.kind {
 	case "env":
-		drawEnvelope(img, r, envShapeOf(envGroup{keys: g.keys, start: g.start, end: g.end}, vals, touchedKey), sc)
+		e := envShapeOf(envGroup{keys: g.keys, start: g.start, end: g.end}, vals, touchedKey)
+		if fx != nil {
+			e.Live = fx.envelope(key, g, e, vals)
+		}
+		drawEnvelope(img, r, e, sc)
 	case "filter":
-		drawFilter(img, r, filterShapeOf(g, vals, touchedKey), sc)
+		f := filterShapeOf(g, vals, touchedKey)
+		if fx != nil && fx.slot != nil {
+			fx.used = true
+			fx.spec.update(fx.slot, fx.frame)
+			f.Spectrum = fx.spec.columns(r.Dx() - 12)
+		}
+		drawFilter(img, r, f, sc)
 	case "lfo":
-		drawLFO(img, r, lfoShapeOf(g, vals, touchedKey), sc)
+		l := lfoShapeOf(g, vals, touchedKey)
+		if fx != nil {
+			l.Live = fx.lfo(key, g, vals)
+		}
+		drawLFO(img, r, l, sc)
 	case "mix":
 		drawMix(img, r, mixShapeOf(g, vals, touchedKey), sc)
 	}
