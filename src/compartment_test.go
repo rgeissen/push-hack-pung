@@ -223,6 +223,17 @@ func TestDexedRealValues(t *testing.T) {
 	var init map[string]string
 	raw, _ := os.ReadFile("testdata/dexed_initial.json")
 	json.Unmarshal(raw, &init)
+	// PUNG_DEXED_VALUES=file.json: values over the init patch (a sound to show)
+	if p := os.Getenv("PUNG_DEXED_VALUES"); p != "" {
+		var over map[string]string
+		raw, _ := os.ReadFile(p)
+		if err := json.Unmarshal(raw, &over); err != nil {
+			t.Fatal(err)
+		}
+		for k, v := range over {
+			init[k] = v
+		}
+	}
 	ovDir, _ := filepath.Abs("../overrides")
 	root := t.TempDir()
 	dir := filepath.Join(root, "sound_generators", "dexed")
