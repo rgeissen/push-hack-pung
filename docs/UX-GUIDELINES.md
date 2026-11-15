@@ -270,7 +270,8 @@ If it only restyles the default page, it does not ship.
 | Dexed | Operator 1-6 EG and Key Scale, Pitch EG | page screens | 4-rate/4-level envelopes over their knobs; keyboard level scaling over a keyboard |
 | Osirus | Filters, Envelopes | band screens | the filter routing as a signal path with both responses; both envelopes with the sustain slope in words |
 | OB-Xd, Braids | (pages) | default + widgets | their own widgets over their knobs |
-| Hera and every other module | (pages) | default | Pung's envelope, filter, LFO and mix wherever one is recognized; pages from the module's sections or names |
+| Hera | DCO, VCF (and Main) | default + widgets | the wave the Juno's DCO puts out (saw, pulse at its width, the sub an octave down, noise as a band) summed at their levels, the pulse width and how far PWM moves it; the filter and where the envelope takes the cutoff |
+| Every other module | (pages) | default | Pung's envelope, filter, LFO and mix wherever one is recognized; pages from the module's sections or names |
 
 ## 6. The web page
 

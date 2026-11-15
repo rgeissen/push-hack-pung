@@ -83,7 +83,6 @@ func TestShippedOverlaysDraw(t *testing.T) {
 			}
 			return m
 		}
-		img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
 		for _, c := range set.compartments {
 			if c.screen == nil {
 				continue
@@ -124,10 +123,18 @@ func TestShippedOverlaysDraw(t *testing.T) {
 				}
 			}
 		}
-		for _, w := range set.widgets {
-			pl := placement{w: w, col: 0, span: len(w.keys)}
-			if !set.render(img, pl, vals(w.keys), w.keys[0], cFg) {
-				t.Errorf("%s widget %v: %s", e.Name(), w.keys, set.failed)
+		for wi, w := range set.widgets {
+			for _, touched := range []string{"", w.keys[0], w.keys[len(w.keys)-1]} {
+				img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+				pl := placement{w: w, col: 0, span: len(w.keys)}
+				if !set.render(img, pl, vals(w.keys), touched, slotColor(0)) {
+					t.Errorf("%s widget %v: %s", e.Name(), w.keys, set.failed)
+				}
+				if dir := os.Getenv("PUNG_SHOTS"); dir != "" {
+					f, _ := os.Create(filepath.Join(dir, fmt.Sprintf("%s-widget%d-%s.png", e.Name(), wi, touched)))
+					png.Encode(f, img)
+					f.Close()
+				}
 			}
 		}
 	}
