@@ -30,7 +30,13 @@ The Push and the web page are two views of that one structure, and each one does
    stage under the pointer or keyboard focus is drawn hot the same way.
 5. **A module's own web page follows the compartments too.** Its panels should be its compartments, in
    the same order and under the same names as its `push_ui.js` declares. It is sent
-   `{type: "compartment", id}` when the Push turns, and may send `{type: "showCompartment", id}`.
+   `{type: "compartment", id}` when the Push turns (go there), `{type: "compartments", enabled: [ids]}`
+   when the pills change (show only those), and may send `{type: "showCompartment", id}`.
+6. **The compartments are pills over the panel**, each switching its section on or off (remembered per
+   module in the browser); a double click (or Alt+click) shows only that one, *All* brings every one
+   back. With one on, the Push turns to it when it shows this device. A dot marks the pill the Push
+   shows. A pill never moves the Push by itself being switched on alongside others: the page is the
+   page, the Push is the Push.
 
 ## 2. Three levels on the Push
 

@@ -205,10 +205,9 @@
       if (gen !== panelGen) return;
       body.innerHTML = ""; // a call that started earlier may have drawn meanwhile
     }
+    // the compartments as pills over the panel, the module's own or Pung's
+    if (state.comps && state.comps.length) body.appendChild(compartmentStrip());
     if (info.web_ui) {
-      // the compartments as a strip over the module's own page: the screen
-      // the Push shows is marked, and a click turns the Push to another
-      if (state.comps && state.comps.length) body.appendChild(compartmentStrip());
       // the module's own page, unmodified, in a sandbox
       frame = document.createElement("iframe");
       frame.className = "frame";
@@ -217,9 +216,12 @@
       frame.src = `/modules/${encodeURIComponent(info.module)}/web_ui.html?component=${encodeURIComponent(state.comp)}`;
       frameComp = state.comp;
       body.appendChild(frame);
+      frame.addEventListener("load", applyEnabled); // the page is told which are on
     } else {
       body.appendChild(buildControls(info));
     }
+    applyEnabled();
+    markShown();
   }
 
   function toolButton(text, fn, danger) {
@@ -252,26 +254,80 @@
   }
 
   // ---- compartments: one screen on the Push = one section here ---------------
+  // Every compartment is a pill that switches its section on or off here
+  // (remembered per module, in this browser); a double click (or Alt+click)
+  // shows that one only, "All" brings every one back. With one on, the Push
+  // turns to it when it shows this device. A dot marks the pill the Push
+  // shows. The module's own page is told which are on ({type:"compartments"}).
+  const compKey = () => `pung.comps.${(state.info && state.info.module) || ""}`;
+  function loadEnabled() {
+    let ids = null;
+    try { ids = JSON.parse(localStorage.getItem(compKey()) || "null"); } catch (e) { /* none kept */ }
+    const all = (state.comps || []).map((c) => c.id);
+    state.enabled = new Set(Array.isArray(ids) ? ids.filter((i) => all.includes(i)) : all);
+    if (!state.enabled.size) state.enabled = new Set(all);
+  }
+  function saveEnabled() {
+    try { localStorage.setItem(compKey(), JSON.stringify([...state.enabled])); } catch (e) { /* kept for this visit only */ }
+  }
   function compartmentStrip() {
+    loadEnabled();
     const nav = document.createElement("nav");
     nav.className = "compartments";
-    nav.setAttribute("aria-label", "Compartments");
+    nav.setAttribute("aria-label", "Compartments: click to show or hide, double click to show only one");
+    const all = document.createElement("button");
+    all.type = "button";
+    all.className = "all";
+    all.textContent = "All";
+    all.onclick = () => setEnabled(state.comps.map((c) => c.id));
+    nav.appendChild(all);
     state.comps.forEach((c) => {
       const b = document.createElement("button");
       b.type = "button";
       b.dataset.compartment = c.id;
-      b.textContent = c.label + (c.custom ? " ◆" : "");
-      b.title = c.custom ? "Has its own screen on the Push" : "";
-      b.onclick = () => showOnPush(c.id);
+      b.innerHTML = `<span class="dot" aria-hidden="true"></span>${esc(c.label)}${c.custom ? " ◆" : ""}`;
+      b.onclick = (e) => {
+        if (e.altKey) { setEnabled([c.id]); return; }
+        const on = new Set(state.enabled);
+        if (on.has(c.id)) on.delete(c.id); else on.add(c.id);
+        if (!on.size) on.add(c.id); // never none
+        setEnabled([...on]);
+      };
+      b.ondblclick = () => setEnabled([c.id]);
       nav.appendChild(b);
     });
-    markShown();
     return nav;
   }
-  // showOnPush: a compartment chosen here. The page goes there whatever the
-  // Push shows (the module's own page is told, Pung's sections scroll), and
-  // the Push follows when it shows this device. It used to do only the
-  // second: with another device on the Push the tabs did nothing at all.
+  function setEnabled(ids) {
+    state.enabled = new Set(ids);
+    saveEnabled();
+    applyEnabled();
+    if (state.enabled.size === 1) {
+      // one on: the Push turns to it (when it shows this device)
+      const id = [...state.enabled][0];
+      state.shown = id;
+      markShown();
+      post(`${state.base}/compartment`, { id }).catch(() => {});
+      showHere(id);
+    }
+  }
+  function applyEnabled() {
+    if (!state.comps || !state.enabled) return;
+    const allOn = state.enabled.size === state.comps.length;
+    document.querySelectorAll(".compartments button[data-compartment]").forEach((b) =>
+      b.setAttribute("aria-pressed", state.enabled.has(b.dataset.compartment) ? "true" : "false"));
+    const allBtn = document.querySelector(".compartments .all");
+    if (allBtn) allBtn.setAttribute("aria-pressed", allOn ? "true" : "false");
+    // Pung's own sections; "More" (no compartment) only with every one on
+    document.querySelectorAll(".bank").forEach((sec) => {
+      const id = sec.dataset.compartment;
+      sec.hidden = id ? !state.enabled.has(id) : !allOn;
+    });
+    if (frame) toFrame({ type: "compartments", enabled: [...state.enabled] });
+    if (window.PungVisuals) PungVisuals.redrawAll();
+  }
+  // showOnPush: a section's title or its screen clicked: the Push turns to
+  // it (when it shows this device), and the page goes there
   async function showOnPush(id) {
     state.shown = id;
     markShown();
@@ -280,10 +336,9 @@
   }
   function showHere(id) {
     const sec = document.querySelector(`.bank[data-compartment="${CSS.escape(id)}"]`);
-    if (sec) sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (sec && !sec.hidden) sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
     const comp = (state.comps || []).find((x) => x.id === id);
     if (frame && comp) {
-      // the module's page scrolls within itself; here the panel comes to just below the pills
       frame.scrollIntoView({ block: "start", behavior: "smooth" });
       toFrame({ type: "compartment", id: comp.id, label: comp.label, keys: comp.keys });
     }
@@ -292,7 +347,7 @@
     document.querySelectorAll("[data-compartment]").forEach((el) => {
       const on = el.dataset.compartment === state.shown;
       el.classList.toggle("shown", on);
-      if (el.tagName === "BUTTON") el.setAttribute("aria-current", on ? "true" : "false");
+      if (el.tagName === "BUTTON") el.title = on ? "On the Push" : "";
     });
   }
   // the Push turned to another compartment: follow it here, and tell the
@@ -551,6 +606,7 @@
       case "subscribe":
         frameSubscribed = true;
         toFrame({ type: "paramUpdate", params: Object.assign({}, state.values) });
+        if (state.enabled) toFrame({ type: "compartments", enabled: [...state.enabled] });
         break;
       case "getHierarchy":
         toFrame({ type: "hierarchy", id: m.id || null, component: frameComp, data: info.hierarchy || null });
