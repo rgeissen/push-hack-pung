@@ -34,8 +34,10 @@ type paramMeta struct {
 }
 
 type bank struct {
-	Name string
-	Keys []string // up to 8; "" is an empty column
+	Name        string
+	Keys        []string // up to 8; "" is an empty column
+	Compartment string   // the module's compartment this page belongs to ("": a generic bank)
+	CompLabel   string   // that compartment's label
 }
 
 type compMeta struct {

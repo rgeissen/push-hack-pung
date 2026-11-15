@@ -1,0 +1,118 @@
+package main
+
+import (
+	"encoding/json"
+	"image"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/federico-pepe/ableton-push-hack/core/livedevice"
+)
+
+// A module declares compartments in push_ui.js: pages become Push pages in
+// order, a compartment with a screen is marked custom, and parameters no
+// compartment names stay reachable after them.
+func TestCompartmentsFromPushUI(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "sound_generators", "syn")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"syn","name":"Syn","component_type":"sound_generator"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "push_ui.js"), []byte(`
+push.compartment({ id: "flt", label: "Filters",
+  pages: [ { label: "Filter 1", keys: ["cut", "res"] }, { label: "Routing", keys: ["route"] } ],
+  screen: function (g, v) {} });
+push.compartment({ id: "env", label: "Envelope", keys: ["a","d","s","r","a2","d2","s2","r2","x"] });
+`), 0o644)
+	set := newOverrides().get(root, "syn")
+	if set == nil || set.failed != "" || len(set.compartments) != 2 {
+		t.Fatalf("set %+v", set)
+	}
+	if c := set.compartment("flt"); c == nil || c.screen == nil || len(c.pages) != 2 || strings.Join(c.keys, ",") != "cut,res,route" {
+		t.Fatalf("flt %+v", c)
+	}
+	cm := &compMeta{Params: map[string]*paramMeta{}}
+	for _, k := range []string{"cut", "res", "route", "a", "d", "s", "r", "a2", "d2", "s2", "r2", "x", "spare"} {
+		cm.Params[k] = &paramMeta{Key: k}
+	}
+	cm.Banks = []bank{{Name: "Main", Keys: []string{"cut", "spare"}}}
+	got := withCompartments(cm, set.compartments)
+	var names []string
+	for _, b := range got.Banks {
+		names = append(names, b.Name+"="+strings.Join(b.Keys, ",")+"@"+b.Compartment)
+	}
+	want := "Filter 1=cut,res@flt|Routing=route@flt|Envelope=a,d,s,r,a2,d2,s2,r2@env|Envelope 2=x@env|Main=spare@"
+	if strings.Join(names, "|") != want {
+		t.Fatalf("pages\n got %s\nwant %s", strings.Join(names, "|"), want)
+	}
+}
+
+// Every overlay shipped with Pung (overrides/<id>/push_ui.js) loads and draws
+// each of its screens and widgets with mid values, and with a key touched,
+// without an error. (The 8 ms budget is checked on the device; this machine's
+// timing says nothing about the Push's.)
+func TestShippedOverlaysDraw(t *testing.T) {
+	ovDir, _ := filepath.Abs("../overrides")
+	ents, err := os.ReadDir(ovDir)
+	if err != nil {
+		t.Skip("no overrides folder")
+	}
+	initFaces()
+	for _, e := range ents {
+		root := t.TempDir()
+		dir := filepath.Join(root, "sound_generators", e.Name())
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"`+e.Name()+`","component_type":"sound_generator"}`), 0o644)
+		set := newOverrides(ovDir).get(root, e.Name())
+		if set == nil || set.failed != "" {
+			t.Errorf("%s: %+v", e.Name(), set)
+			continue
+		}
+		vals := func(keys []string) map[string]ovValue {
+			m := map[string]ovValue{}
+			for _, k := range keys {
+				m[k] = ovValue{Value: "0.5", Display: "50", Name: k, Frac: 0.5, Known: true}
+			}
+			return m
+		}
+		img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+		for _, c := range set.compartments {
+			if c.screen == nil {
+				continue
+			}
+			for _, touched := range []string{"", c.keys[0]} {
+				pl := placement{w: &ovWidget{keys: c.keys, draw: c.screen}, col: 0, span: 8}
+				if !set.render(img, pl, vals(c.keys), touched, cFg) {
+					t.Errorf("%s/%s: %s", e.Name(), c.id, set.failed)
+				}
+			}
+		}
+		for _, w := range set.widgets {
+			pl := placement{w: w, col: 0, span: len(w.keys)}
+			if !set.render(img, pl, vals(w.keys), w.keys[0], cFg) {
+				t.Errorf("%s widget %v: %s", e.Name(), w.keys, set.failed)
+			}
+		}
+	}
+}
+
+// A device restores only a state of its own module: patchModule names the
+// module a saved chain is built around, by device kind.
+func TestPatchModule(t *testing.T) {
+	syn := json.RawMessage(`{"synth":{"module":"osirus","config":{}},"audio_fx":[]}`)
+	fx := json.RawMessage(`{"audio_fx":[{"type":"freeverb"}]}`)
+	mid := json.RawMessage(`{"midi_fx":[{"type":"chord"}],"synth":{"module":"midi-sink"}}`)
+	for _, c := range []struct {
+		chain json.RawMessage
+		kind  string
+		want  string
+	}{
+		{syn, livedevice.Instrument, "osirus"}, {fx, livedevice.Effect, "freeverb"},
+		{mid, livedevice.MIDI, "chord"}, {json.RawMessage(`nope`), livedevice.Instrument, ""},
+	} {
+		if got := patchModule(c.chain, c.kind); got != c.want {
+			t.Errorf("%s %s: %q, want %q", c.chain, c.kind, got, c.want)
+		}
+	}
+}

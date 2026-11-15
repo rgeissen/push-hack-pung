@@ -187,7 +187,17 @@
       tools.appendChild(toolButton("Swap", () => openPicker("swap", info.type || "audio_fx")));
       tools.appendChild(toolButton("Remove", removeComp, true));
     }
+    state.comps = null; state.shown = "";
+    if (state.mode === "devices") {
+      try {
+        const c = await api(`${state.base}/compartments`);
+        state.comps = c.compartments || []; state.shown = c.shown || "";
+      } catch (e) { state.comps = null; }
+    }
     if (info.web_ui) {
+      // the compartments as a strip over the module's own page: the screen
+      // the Push shows is marked, and a click turns the Push to another
+      if (state.comps && state.comps.length) body.appendChild(compartmentStrip());
       // the module's own page, unmodified, in a sandbox
       frame = document.createElement("iframe");
       frame.className = "frame";
@@ -230,9 +240,59 @@
     return { banks, byKey };
   }
 
+  // ---- compartments: one screen on the Push = one section here ---------------
+  function compartmentStrip() {
+    const nav = document.createElement("nav");
+    nav.className = "compartments";
+    nav.setAttribute("aria-label", "Compartments");
+    state.comps.forEach((c) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.compartment = c.id;
+      b.textContent = c.label + (c.custom ? " ◆" : "");
+      b.title = c.custom ? "Has its own screen on the Push" : "";
+      b.onclick = () => showOnPush(c.id);
+      nav.appendChild(b);
+    });
+    markShown();
+    return nav;
+  }
+  async function showOnPush(id) {
+    const r = await post(`${state.base}/compartment`, { id });
+    if (r && r.shown) { state.shown = id; markShown(); }
+  }
+  function markShown() {
+    document.querySelectorAll("[data-compartment]").forEach((el) => {
+      const on = el.dataset.compartment === state.shown;
+      el.classList.toggle("shown", on);
+      if (el.tagName === "BUTTON") el.setAttribute("aria-current", on ? "true" : "false");
+    });
+  }
+  // the Push turned to another compartment: follow it here, and tell the
+  // module's own page (it may show the same section: {type:"compartment"})
+  async function refreshCompartment() {
+    if (state.mode !== "devices" || !state.comps || document.hidden) return;
+    let c;
+    try { c = await api(`${state.base}/compartments`); } catch (e) { return; }
+    if ((c.shown || "") === state.shown) return;
+    state.shown = c.shown || "";
+    markShown();
+    const sec = document.querySelector(`.bank[data-compartment="${CSS.escape(state.shown)}"]`);
+    if (sec) sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const comp = state.comps.find((x) => x.id === state.shown);
+    if (frame && comp) toFrame({ type: "compartment", id: comp.id, label: comp.label, keys: comp.keys });
+  }
+
   function buildControls(info) {
     const wrap = document.createElement("div");
-    const { banks, byKey } = banksOf(info);
+    let { banks, byKey } = banksOf(info);
+    if (state.comps && state.comps.length) {
+      // the module's compartments, as the Push shows them
+      banks = state.comps.map((c) => ({ name: c.label, keys: c.keys, id: c.id, custom: c.custom }));
+      const seen = new Set(banks.flatMap((b) => b.keys));
+      const rest = (info.chain_params || []).map((p) => p.key).filter((k) => !seen.has(k));
+      if (rest.length) banks.push({ name: "More", keys: rest });
+    }
     if (!banks.length) {
       wrap.innerHTML = `<div class="empty">This module publishes no parameters.</div>`;
       return wrap;
@@ -240,13 +300,28 @@
     banks.forEach((b) => {
       const sec = document.createElement("div");
       sec.className = "bank";
-      sec.innerHTML = `<h3>${esc(b.name)}</h3>`;
+      if (b.id) {
+        // a compartment: its title turns the Push to it
+        sec.dataset.compartment = b.id;
+        const h = document.createElement("h3");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "comp-title";
+        btn.textContent = b.name + (b.custom ? " ◆" : "");
+        btn.title = "Show on the Push";
+        btn.onclick = () => showOnPush(b.id);
+        h.appendChild(btn);
+        sec.appendChild(h);
+      } else {
+        sec.innerHTML = `<h3>${esc(b.name)}</h3>`;
+      }
       const grid = document.createElement("div");
       grid.className = "grid";
       b.keys.forEach((k) => byKey[k] && grid.appendChild(control(byKey[k])));
       sec.appendChild(grid);
       wrap.appendChild(sec);
     });
+    setTimeout(markShown, 0);
     return wrap;
   }
 
@@ -387,6 +462,9 @@
       case "getChainParams":
         toFrame({ type: "chainParams", id: m.id || null, component: frameComp, data: info.chain_params || null });
         break;
+      case "showCompartment":
+        if (m.id) showOnPush(String(m.id));
+        break;
       case "resubscribe":
         api(`${state.base}/component/${state.comp}/values`).then((r) => {
           Object.assign(state.values, r.values || {});
@@ -454,6 +532,7 @@
     loadPanel();
     setInterval(refreshStatus, 1000);
     setInterval(refreshValues, 350);
+    setInterval(refreshCompartment, 500);
   }
   boot();
 })();

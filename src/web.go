@@ -83,7 +83,9 @@ func (h *Host) selectedDevice() (int, string) {
 	}
 	v := h.live.state().view()
 	trackName, _ := h.live.state().trackHeader()
-	key := fmt.Sprintf("%s/%v/%s", v.dev.Track, v.path, v.dev.Name)
+	// the answer holds for this selection and these devices: a device made
+	// after it was worked out (Live restoring a Set) must not stay "none"
+	key := fmt.Sprintf("%s/%v/%s/%d", v.dev.Track, v.path, v.dev.Name, h.prov.gen.Load())
 	h.selMu.Lock()
 	if key == h.selKey {
 		n := h.selDev
@@ -181,6 +183,39 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 			json.Unmarshal([]byte(raw), &cp)
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "values": h.componentValues(d.s, comp, cp)})
+	})
+	// a device's compartments (DESIGN-v2, "Design principles"): the same
+	// screens the Push shows, and which one it shows now
+	mux.HandleFunc("GET /api/devices/{n}/compartments", func(w http.ResponseWriter, r *http.Request) {
+		d, ok := h.deviceFromPath(w, r)
+		if !ok {
+			return
+		}
+		if h.ui == nil {
+			writeJSON(w, 200, map[string]any{"ok": true, "compartments": []compartmentInfo{}, "shown": ""})
+			return
+		}
+		comps, shown := h.ui.compartmentsOf(d.c.module)
+		if comps == nil {
+			comps = []compartmentInfo{}
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "compartments": comps, "shown": shown})
+	})
+	// the web page picked a compartment: the Push turns to it, if it shows this device's module
+	mux.HandleFunc("POST /api/devices/{n}/compartment", func(w http.ResponseWriter, r *http.Request) {
+		d, ok := h.deviceFromPath(w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			ID string `json:"id"`
+		}
+		if json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body) != nil || body.ID == "" {
+			fail(w, 400, "body must be {\"id\":...}")
+			return
+		}
+		shown := h.ui != nil && h.ui.showCompartment(d.c.module, body.ID)
+		writeJSON(w, 200, map[string]any{"ok": true, "shown": shown})
 	})
 	mux.HandleFunc("GET /api/devices/{n}/param", func(w http.ResponseWriter, r *http.Request) {
 		d, ok := h.deviceFromPath(w, r)

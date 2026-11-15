@@ -17,15 +17,9 @@ var TAU = Math.PI * 2;
 function frac(v, k) { return v[k] ? v[k].frac : 0; }
 function hot(v, keys) { for (var i = 0; i < keys.length; i++) if (v.$touched === keys[i]) return true; return false; }
 
-// a curve through points [x, y], as 2-pixel lines
-function curve(g, pts, width, color) {
-  for (var i = 1; i < pts.length; i++) g.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], width, color);
-}
-
-// the area under a curve, as thin vertical strokes (the panel has no alpha)
-function under(g, pts, base, color) {
-  for (var i = 0; i < pts.length; i += 2) g.line(pts[i][0], base, pts[i][0], pts[i][1], 1, color);
-}
+// a curve, and the area under it: one call each (a draw has 8 ms)
+function curve(g, pts, width, color) { g.poly(pts, width, color); }
+function under(g, pts, base, color) { g.area(pts, base, color); }
 
 function title(g, s) {
   g.fill(g.w - 6 - s.length * 7 - 8, 3, s.length * 7 + 8, 14, "black");

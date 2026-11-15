@@ -100,6 +100,8 @@ type surface struct {
 	held      map[byte]byte // pad -> note it started, for its note-off
 	leds      map[uint16]uint8
 	ov        *overrides
+	// what the last Live refresh read from Pung's own device (state: "fallback")
+	fallbackDev, fallbackRead int
 	lvIdx     map[string]int // live mode: module key -> Live parameter index
 }
 
@@ -107,9 +109,11 @@ func newSurface(h *Host) *surface {
 	pm := pmclient.New("http://127.0.0.1:7701")
 	pm.App = "pung"
 	exe, _ := os.Executable()
-	return &surface{h: h, pm: pm, view: "chain", touched: -1, peekEnc: -1,
+	u := &surface{h: h, pm: pm, view: "chain", touched: -1, peekEnc: -1,
 		meta: map[string]*compMeta{}, vals: map[string]string{}, held: map[byte]byte{}, leds: map[uint16]uint8{},
 		ov: newOverrides(filepath.Join(h.dataDir, "overrides"), filepath.Join(filepath.Dir(exe), "overrides"))}
+	h.ui = u
+	return u
 }
 
 // ---- wiring ------------------------------------------------------------------
@@ -310,6 +314,7 @@ func (u *surface) routes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "focused": u.focused.Load(), "view": u.view, "slot": u.slot + 1,
 			"device_row": row, "device_row_selected": rowSel, "bank_list": u.bankList,
+			"fallback": map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
 			"position": p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
 			"octave": u.octave, "toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,
 			"live_path": func() []int {
@@ -528,6 +533,9 @@ func (u *surface) metaFor(p position) *compMeta {
 		}
 		cm, ok := u.h.probeMeta(m)
 		cm = liveBanks(cm)
+		if set := u.ov.get(u.h.modulesDir, m.ID); set != nil && set.failed == "" && len(set.compartments) > 0 {
+			cm = withCompartments(cm, set.compartments)
+		}
 		if ok { // a probe that could not run is asked again
 			u.meta[k] = cm
 		}
@@ -568,6 +576,122 @@ func liveBanks(cm *compMeta) *compMeta {
 		}
 	}
 	return &out
+}
+
+// withCompartments: the pages of a module that declares compartments. Each
+// compartment is one screen, its keys 8 to a page in the order given; the
+// parameters no compartment names stay reachable after them, on the
+// module's generic banks.
+func withCompartments(cm *compMeta, comps []*ovCompartment) *compMeta {
+	if cm == nil {
+		return nil
+	}
+	out := *cm
+	out.Banks = nil
+	covered := map[string]bool{}
+	for _, c := range comps {
+		pages := c.pages
+		if len(pages) == 0 {
+			pages = []ovPage{{keys: c.keys}}
+		}
+		n := len(out.Banks)
+		for _, pg := range pages {
+			var keys []string
+			for _, k := range pg.keys {
+				if cm.Params[k] != nil {
+					keys = append(keys, k)
+					covered[k] = true
+				}
+			}
+			for i := 0; i < len(keys); i += 8 {
+				name := c.label
+				if pg.label != "" {
+					name = pg.label
+				}
+				if i > 0 {
+					name = fmt.Sprintf("%s %d", name, i/8+1)
+				}
+				out.Banks = append(out.Banks, bank{Name: name, Keys: keys[i:min(i+8, len(keys))], Compartment: c.id, CompLabel: c.label})
+			}
+		}
+		if len(out.Banks) == n && c.screen != nil {
+			// a screen with no encoders is still a page
+			out.Banks = append(out.Banks, bank{Name: c.label, Keys: []string{""}, Compartment: c.id, CompLabel: c.label})
+		}
+	}
+	for _, b := range cm.Banks {
+		var keys []string
+		for _, k := range b.Keys {
+			if k != "" && !covered[k] {
+				keys = append(keys, k)
+			}
+		}
+		if len(keys) > 0 {
+			out.Banks = append(out.Banks, bank{Name: b.Name, Keys: keys})
+		}
+	}
+	return &out
+}
+
+// compartmentInfo is a compartment as the web page sees it.
+type compartmentInfo struct {
+	ID     string   `json:"id"`
+	Label  string   `json:"label"`
+	Keys   []string `json:"keys"`
+	Custom bool     `json:"custom"` // it has its own screen on the Push
+}
+
+// compartmentsOf: a module's compartments, declared ones else its banks (a
+// generic bank is a compartment too), and the one the Push shows for this
+// module now ("" when the Pung view shows something else).
+func (u *surface) compartmentsOf(module string) ([]compartmentInfo, string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	var out []compartmentInfo
+	if set := u.ov.get(u.h.modulesDir, module); set != nil && set.failed == "" && len(set.compartments) > 0 {
+		for _, c := range set.compartments {
+			out = append(out, compartmentInfo{ID: c.id, Label: c.label, Keys: c.keys, Custom: c.screen != nil})
+		}
+	} else if m, ok := findModule(u.h.modulesDir, module); ok {
+		if cm, _ := u.h.probeMeta(m); cm != nil {
+			for i, b := range liveBanks(cm).Banks {
+				out = append(out, compartmentInfo{ID: fmt.Sprintf("bank%d", i+1), Label: b.Name, Keys: b.Keys})
+			}
+		}
+	}
+	shown := ""
+	if p, cm, b := u.currentBank(); b != nil && p.Module == module && u.focused.Load() {
+		shown = b.Compartment
+		if shown == "" {
+			for i := range cm.Banks {
+				if &cm.Banks[i] == b {
+					shown = fmt.Sprintf("bank%d", i+1)
+				}
+			}
+		}
+	}
+	return out, shown
+}
+
+// showCompartment turns the Push to a compartment of the module it shows (the
+// web page asked). false: the Push does not show that module.
+func (u *surface) showCompartment(module, id string) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	p, cm, _ := u.currentBank()
+	if cm == nil || p.Module != module {
+		return false
+	}
+	for i, b := range cm.Banks {
+		if b.Compartment == id || (b.Compartment == "" && fmt.Sprintf("bank%d", i+1) == id) {
+			u.bank = i
+			u.bankOff = i / 8 * 8
+			u.peekUntil = time.Time{}
+			u.refreshValues()
+			return true
+		}
+	}
+	return false
 }
 
 func (u *surface) currentBank() (position, *compMeta, *bank) {
@@ -964,6 +1088,10 @@ func (u *surface) turn(enc, delta int) {
 			if len(v.path) > 0 {
 				u.live.state().write(paramWrite{track: v.dev.Track, path: v.path, index: idx, norm: m.toNormValue(nv)})
 			}
+		} else if d, prefix := u.pungDevice(); d != nil {
+			// a parameter Live's list does not reach: into Pung's device,
+			// which reports it to Live (SetOutside)
+			go d.SetOutside(prefix+":"+key, nv)
 		}
 		return
 	}
@@ -1446,6 +1574,47 @@ func (u *surface) refreshLive() {
 			u.vals[u.valKey(sel, key)] = m.fromNorm((lp.V - lp.Min) / (lp.Max - lp.Min))
 		}
 	}
+	// What Live does not list (the Remote Script reads 128 parameters of a
+	// device; Osirus has 156, the JV-880 419): read from Pung's own device
+	// for it, the keys this page and its compartment show.
+	u.fallbackDev, u.fallbackRead = -1, 0
+	if d, prefix := u.pungDevice(); d != nil {
+		u.fallbackDev = d.s.Index
+		need := []string{}
+		if _, _, b := u.currentBank(); b != nil {
+			need = append(need, b.Keys...)
+			if c := u.ov.get(u.h.modulesDir, sel.Module).compartment(b.Compartment); c != nil {
+				need = append(need, c.keys...)
+			}
+		}
+		for _, key := range need {
+			if _, live := u.lvIdx[key]; key == "" || live || cm.Params[key] == nil {
+				continue
+			}
+			if v, ok := d.s.Get(prefix + ":" + key); ok {
+				u.vals[u.valKey(sel, key)] = v
+				u.fallbackRead++
+			}
+		}
+	}
+}
+
+// pungDevice: Pung's device for the device selected in Live, and the chain
+// component its parameters live in ("synth", "fx1", ...). nil when the
+// selection is not one of Pung's.
+func (u *surface) pungDevice() (*device, string) {
+	if u.h.prov == nil {
+		return nil, ""
+	}
+	n, _ := u.h.selectedDevice()
+	if n < 0 {
+		return nil, ""
+	}
+	d := u.h.prov.device(n)
+	if d == nil {
+		return nil, ""
+	}
+	return d, d.c.component()
 }
 
 // padToLive sends a pad's note to Live through the "Pung" input, which

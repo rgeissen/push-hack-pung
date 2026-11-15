@@ -18,12 +18,14 @@ package main
 //
 //   g  drawing, in the widget's own frame (0,0 = its top left; nothing it
 //      draws can leave the frame): g.w, g.h, g.fill(x,y,w,h,c),
-//      g.line(x1,y1,x2,y2,width,c), g.arc(cx,cy,r,from,sweep,width,c)
+//      g.line(x1,y1,x2,y2,width,c), g.arc(cx,cy,r,from,sweep,width,c),
+//      g.poly(points,width,c) and g.area(points,baseY,c) (a curve, the area
+//      under it: one call for many points),
 //      (radians, 0 = 3 o'clock, clockwise), g.dot(x,y,r,c),
 //      g.text(x,y,s,c[,align -1|0|1]), g.value(x,y,s,c[,align]) (the value face)
 //      Colors: "#rrggbb", a Push palette name, or "slot" "fg" "dim" "faint"
 //      "line" "mod" "warn".
-//   v  one entry per key: {value, frac, display, unit, name}, plus
+//   v  one entry per key: {value, frac, display, unit, name, known}, plus
 //      v.$touched: the key under a finger, or "".
 //   t  seconds, for motion.
 //
@@ -31,7 +33,7 @@ package main
 // <data>/overrides/<id>/push_ui.js (the user's), then
 // <hack>/overrides/<id>/push_ui.js (shipped with Pung).
 //
-// A script that throws, or a draw that takes more than 8 ms, is switched off
+// A script that throws, or draws over 8 ms three frames in a row (or 40 ms once), is switched off
 // for the session and the native page comes back with a mark saying so.
 
 import (
@@ -54,7 +56,9 @@ import (
 const (
 	ovTop    = 26
 	ovHeight = 86
-	ovBudget = 8 * time.Millisecond
+	ovBudget     = 8 * time.Millisecond  // a frame's draw, held over time (ovOverruns)
+	ovHardBudget = 40 * time.Millisecond // a draw is stopped here, once is enough
+	ovOverruns   = 3
 )
 
 type ovWidget struct {
@@ -62,12 +66,31 @@ type ovWidget struct {
 	draw goja.Callable
 }
 
+// ovCompartment is one of a module's compartments (DESIGN-v2, "Design
+// principles"): one screen on the Push, one section of the web page. Its
+// keys are on the encoders, 8 to a page; screen, when set, draws the whole
+// screen (a custom screen) over the encoders' names and values.
+type ovCompartment struct {
+	id, label string
+	keys      []string // all of them, in order (what a screen gets)
+	pages     []ovPage // the encoder pages; from keys, 8 at a time, when none are given
+	screen    goja.Callable
+}
+
+// ovPage: one encoder page of a compartment (a card of its web section).
+type ovPage struct {
+	label string
+	keys  []string
+}
+
 type overrideSet struct {
-	module  string
-	source  string // the file it came from
-	vm      *goja.Runtime
-	widgets []*ovWidget
+	module       string
+	source       string // the file it came from
+	vm           *goja.Runtime
+	widgets      []*ovWidget
+	compartments []*ovCompartment // in the order declared
 	failed  string // why it is off; "" while it works
+	overruns int   // frames in a row over ovBudget
 	off     bool   // the user chose the native UI
 }
 
@@ -128,6 +151,47 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		set.widgets = append(set.widgets, &ovWidget{keys: keys, draw: fn})
 		return goja.Undefined()
 	})
+	push.Set("compartment", func(call goja.FunctionCall) goja.Value {
+		spec := call.Argument(0).ToObject(vm)
+		c := &ovCompartment{id: spec.Get("id").String(), label: spec.Get("label").String()}
+		if kv := spec.Get("keys"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
+			vm.ExportTo(kv, &c.keys) //nolint:errcheck
+		}
+		// pages: [{label, keys}] — the encoder pages, e.g. the cards of the
+		// module's web section; their keys are the compartment's keys
+		if pv := spec.Get("pages"); pv != nil && !goja.IsUndefined(pv) && !goja.IsNull(pv) {
+			// read field by field: ExportTo maps Go field names, not JS ones
+			arr := pv.ToObject(vm)
+			c.keys = nil
+			for i := 0; i < int(arr.Get("length").ToInteger()); i++ {
+				o := arr.Get(fmt.Sprint(i)).ToObject(vm)
+				pg := ovPage{}
+				if l := o.Get("label"); l != nil && !goja.IsUndefined(l) {
+					pg.label = l.String()
+				}
+				if kv := o.Get("keys"); kv != nil && !goja.IsUndefined(kv) {
+					vm.ExportTo(kv, &pg.keys) //nolint:errcheck
+				}
+				c.pages = append(c.pages, pg)
+				c.keys = append(c.keys, pg.keys...)
+			}
+		}
+		if v := spec.Get("screen"); v != nil && !goja.IsUndefined(v) {
+			fn, ok := goja.AssertFunction(v)
+			if !ok {
+				panic(vm.NewTypeError("push.compartment: screen must be a function"))
+			}
+			c.screen = fn
+		}
+		if c.id == "" || c.id == "undefined" || len(c.keys) == 0 {
+			panic(vm.NewTypeError("push.compartment needs an id and keys"))
+		}
+		if c.label == "" || c.label == "undefined" {
+			c.label = c.id
+		}
+		set.compartments = append(set.compartments, c)
+		return goja.Undefined()
+	})
 	vm.Set("push", push)
 	timer := time.AfterFunc(200*time.Millisecond, func() { vm.Interrupt("push_ui.js took too long to load") })
 	_, err = vm.RunScript(path, string(src))
@@ -137,7 +201,7 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		log.Printf("override %s: %s (the native page stays)", path, set.failed)
 		return set
 	}
-	log.Printf("override %s: %d widget(s)", path, len(set.widgets))
+	log.Printf("override %s: %d widget(s), %d compartment(s)", path, len(set.widgets), len(set.compartments))
 	return set
 }
 
@@ -185,6 +249,7 @@ func (s *overrideSet) place(keys []string) []placement {
 type ovValue struct {
 	Value, Display, Unit, Name string
 	Frac                       float64
+	Known                      bool // a value has been read (else Frac is 0 and means nothing)
 }
 
 // render draws one widget into its own image (so it cannot draw outside its
@@ -201,6 +266,30 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	g.Set("line", func(x1, y1, x2, y2, width float64, c goja.Value) { aaLine(img, x1, y1, x2, y2, width, col(c)) })
 	g.Set("arc", func(cx, cy, r, from, sweep, width float64, c goja.Value) { arc(img, cx, cy, r, from, sweep, width, col(c)) })
 	g.Set("dot", func(x, y, r float64, c goja.Value) { disc(img, x, y, r, col(c)) })
+	// a curve in one call: pts is [[x,y], ...] or [x0,y0,x1,y1,...]; hundreds
+	// of g.line calls from JS cost more than the 8 ms a draw has
+	g.Set("poly", func(call goja.FunctionCall) goja.Value {
+		pts := ovPoints(vm, call.Argument(0))
+		w, c := call.Argument(1).ToFloat(), col(call.Argument(2))
+		for i := 1; i < len(pts); i++ {
+			aaLine(img, pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1], w, c)
+		}
+		return goja.Undefined()
+	})
+	// the area between a curve and a base line, filled (pts as for poly)
+	g.Set("area", func(call goja.FunctionCall) goja.Value {
+		pts := ovPoints(vm, call.Argument(0))
+		base, c := call.Argument(1).ToFloat(), col(call.Argument(2))
+		for i := 1; i < len(pts); i++ {
+			x0, y0, x1, y1 := pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1]
+			for x := int(x0); x < int(x1); x++ {
+				y := y0 + (y1-y0)*(float64(x)-x0)/math.Max(1, x1-x0)
+				top, bot := int(math.Min(y, base)), int(math.Max(y, base))
+				rect(img, x, top, 1, bot-top, c)
+			}
+		}
+		return goja.Undefined()
+	})
 	g.Set("text", func(call goja.FunctionCall) goja.Value {
 		label(img, int(call.Argument(0).ToFloat()), int(call.Argument(1).ToFloat()), call.Argument(2).String(),
 			col(call.Argument(3)), int(call.Argument(4).ToInteger()))
@@ -220,18 +309,26 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		o.Set("display", e.Display)
 		o.Set("unit", e.Unit)
 		o.Set("name", e.Name)
+		o.Set("known", e.Known)
 		v.Set(k, o)
 	}
 	v.Set("$touched", touched)
 	t := float64(time.Now().UnixNano()%1e12) / 1e9
 
+	// The budget is 8 ms a frame, kept over time: one slow frame (curves
+	// computed the first time, a cache filled) is allowed, three in a row
+	// switch the picture off. A draw is stopped outright at ovHardBudget.
 	start := time.Now()
-	timer := time.AfterFunc(ovBudget, func() { vm.Interrupt("draw took longer than 8 ms") })
+	timer := time.AfterFunc(ovHardBudget, func() { vm.Interrupt("draw took longer than 40 ms") })
 	_, err := p.w.draw(goja.Undefined(), g, v, vm.ToValue(t))
 	timer.Stop()
 	vm.ClearInterrupt()
-	if err == nil && time.Since(start) > ovBudget {
-		err = fmt.Errorf("draw took %v", time.Since(start).Round(time.Millisecond))
+	if took := time.Since(start); err == nil && took > ovBudget {
+		if s.overruns++; s.overruns >= ovOverruns {
+			err = fmt.Errorf("draw took %v, %d frames in a row over 8 ms", took.Round(time.Millisecond), s.overruns)
+		}
+	} else if err == nil {
+		s.overruns = 0
 	}
 	if err != nil {
 		s.failed = firstLine(err.Error())
@@ -290,4 +387,38 @@ func aaLine(img *image.NRGBA, x1, y1, x2, y2, width float64, c color.NRGBA) {
 			blend(img, x, y, c, width/2+0.5-d)
 		}
 	}
+}
+
+// compartment: the declared compartment with this id, or nil.
+func (s *overrideSet) compartment(id string) *ovCompartment {
+	if s == nil || id == "" {
+		return nil
+	}
+	for _, c := range s.compartments {
+		if c.id == id {
+			return c
+		}
+	}
+	return nil
+}
+
+// ovPoints reads a module's points: [[x,y], ...] or a flat [x0,y0,x1,y1,...].
+func ovPoints(vm *goja.Runtime, v goja.Value) [][2]float64 {
+	var flat []float64
+	if vm.ExportTo(v, &flat) == nil && len(flat) >= 2 {
+		out := make([][2]float64, 0, len(flat)/2)
+		for i := 0; i+1 < len(flat); i += 2 {
+			out = append(out, [2]float64{flat[i], flat[i+1]})
+		}
+		return out
+	}
+	var pairs [][]float64
+	vm.ExportTo(v, &pairs) //nolint:errcheck
+	out := make([][2]float64, 0, len(pairs))
+	for _, p := range pairs {
+		if len(p) >= 2 {
+			out = append(out, [2]float64{p[0], p[1]})
+		}
+	}
+	return out
 }

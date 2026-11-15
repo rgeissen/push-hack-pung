@@ -59,6 +59,9 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			bank := ""
 			if cm != nil && u.bank < len(cm.Banks) && !u.bankList {
 				bank = strings.ToUpper(cm.Banks[u.bank].Name)
+				if cl := cm.Banks[u.bank].CompLabel; cl != "" && !strings.EqualFold(cl, cm.Banks[u.bank].Name) {
+					bank = strings.ToUpper(cl) + " / " + bank // the compartment, then its page
+				}
 			}
 			// one line, as on Push: TRACK  BANK. A second line under it ran
 			// into the last column's name.
@@ -95,29 +98,35 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		// their names and values, under the widget
 		covered := make([]bool, 8)
 		set := u.ov.get(u.h.modulesDir, p.Module)
-		for _, pl := range set.place(b.Keys) {
-			vals := map[string]ovValue{}
-			for _, k := range pl.w.keys {
-				m := cm.Params[k]
-				raw, ok := u.vals[u.valKey(p, k)]
-				e := ovValue{Value: raw, Name: k}
-				if m != nil {
-					e.Name = m.Name
-					e.Display, e.Unit = m.display(raw, ok)
-					e.Frac = m.frac(raw)
-				}
-				vals[k] = e
-			}
-			touched := ""
-			if u.touched >= pl.col && u.touched < pl.col+pl.span {
-				touched = b.Keys[u.touched]
-			}
-			if set.render(img, pl, vals, touched, sc) {
-				for c := pl.col; c < pl.col+pl.span; c++ {
+		touchedKey := ""
+		if u.touched >= 0 && u.touched < len(b.Keys) {
+			touchedKey = b.Keys[u.touched]
+		}
+		if comp := set.compartment(b.Compartment); comp != nil && comp.screen != nil && set.failed == "" && !set.off {
+			// a custom screen: the compartment draws the whole band, with
+			// every one of its keys' values; the encoders' names and values
+			// stay under it
+			pl := placement{w: &ovWidget{keys: comp.keys, draw: comp.screen}, col: 0, span: 8}
+			if set.render(img, pl, u.ovValues(p, cm, comp.keys), touchedKey, sc) {
+				for c := range covered {
 					covered[c] = true
 				}
 			} else {
 				u.say("MODULE UI OFF: " + set.failed)
+			}
+		} else {
+			for _, pl := range set.place(b.Keys) {
+				touched := ""
+				if u.touched >= pl.col && u.touched < pl.col+pl.span {
+					touched = b.Keys[u.touched]
+				}
+				if set.render(img, pl, u.ovValues(p, cm, pl.w.keys), touched, sc) {
+					for c := pl.col; c < pl.col+pl.span; c++ {
+						covered[c] = true
+					}
+				} else {
+					u.say("MODULE UI OFF: " + set.failed)
+				}
 			}
 		}
 		for i := 1; i < 8; i++ {
@@ -136,7 +145,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			}
 		}
 		if set != nil && set.failed != "" && nb <= 6 {
-			label(img, scrW-150, 17, "UI!", cWarn, 1)
+			label(img, scrW/2, 17, "MODULE UI OFF", cWarn, 0) // the top bar's middle: the header is on the right
 		}
 		if u.peekEnc >= 0 && u.peekEnc < len(b.Keys) && time.Now().Before(u.peekUntil) && b.Keys[u.peekEnc] != "" {
 			u.drawPeek(img, u.peekEnc, p, cm.Params[b.Keys[u.peekEnc]], b.Keys[u.peekEnc], sc)
@@ -470,4 +479,24 @@ func (u *surface) drawBrowser(img *image.NRGBA) {
 	}
 	frameRect(img, 7*colW+7, botY+3, colW-14, scrH-botY-6, cWarn)
 	label(img, 7*colW+colW/2, botY+17, "CANCEL", cWarn, 0)
+}
+
+// ovValues: what a module's drawing gets for its keys (override.go, v).
+func (u *surface) ovValues(p position, cm *compMeta, keys []string) map[string]ovValue {
+	vals := map[string]ovValue{}
+	for _, k := range keys {
+		if k == "" {
+			continue
+		}
+		m := cm.Params[k]
+		raw, ok := u.vals[u.valKey(p, k)]
+		e := ovValue{Value: raw, Name: k, Known: ok}
+		if m != nil {
+			e.Name = m.Name
+			e.Display, e.Unit = m.display(raw, ok)
+			e.Frac = m.frac(raw)
+		}
+		vals[k] = e
+	}
+	return vals
 }

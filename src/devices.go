@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -294,6 +295,7 @@ func moduleWantsAudioIn(m ModuleInfo) bool {
 
 type provider struct {
 	h       *Host
+	gen     atomic.Uint64 // bumped when a device comes or goes (what selectedDevice caches depends on it)
 	mu      sync.Mutex
 	classes map[string]*sclass
 	used    map[int]bool    // chain slots in use by devices
@@ -355,6 +357,7 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 	p.mu.Lock()
 	p.devs[slot] = d
 	p.mu.Unlock()
+	p.gen.Add(1)
 	return d, nil
 }
 
@@ -378,6 +381,7 @@ func (p *provider) list() []*device {
 }
 
 func (p *provider) release(slot int) {
+	defer p.gen.Add(1)
 	p.mu.Lock()
 	delete(p.used, slot)
 	delete(p.devs, slot)
@@ -628,6 +632,14 @@ func (d *device) SetState(state string) error {
 	if json.Unmarshal([]byte(state), &st) != nil || len(st.Chain) == 0 {
 		return errors.New("not a Pung device state")
 	}
+	// A device of one module never loads another's patch: a state that
+	// names another module came from the wrong device (a plugin that asked
+	// with a stale id after a restart, 2026-11-15) and is refused, so the
+	// device keeps its own module.
+	if m := patchModule(st.Chain, d.c.Kind); m != d.c.module {
+		log.Printf("%s: refused a state for module %q (this device is %s)", d.c.Name, m, d.c.module)
+		return fmt.Errorf("a state for %q, not %s", m, d.c.module)
+	}
 	if err := d.p.h.loadPatch(d.s, st.Chain); err != nil {
 		return err
 	}
@@ -678,3 +690,36 @@ func sinkMIDI(s *Slot) {
 }
 
 const sinkModule = "midi-sink"
+
+// patchModule: the module a saved chain is built around, for a device of
+// this kind: the synth of an instrument, the first audio effect of an
+// effect, the first MIDI effect of a MIDI device ("" if none).
+func patchModule(chain json.RawMessage, kind string) string {
+	var p struct {
+		Synth struct {
+			Module string `json:"module"`
+		} `json:"synth"`
+		AudioFX []struct {
+			Type string `json:"type"`
+		} `json:"audio_fx"`
+		MidiFX []struct {
+			Type string `json:"type"`
+		} `json:"midi_fx"`
+	}
+	if json.Unmarshal(chain, &p) != nil {
+		return ""
+	}
+	switch kind {
+	case livedevice.Effect:
+		if len(p.AudioFX) > 0 {
+			return p.AudioFX[0].Type
+		}
+	case livedevice.MIDI:
+		if len(p.MidiFX) > 0 {
+			return p.MidiFX[0].Type
+		}
+	default:
+		return p.Synth.Module
+	}
+	return ""
+}

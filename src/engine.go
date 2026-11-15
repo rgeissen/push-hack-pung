@@ -26,6 +26,7 @@ import (
 	"math"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -71,14 +72,34 @@ func engineInit(chainDir string) error {
 	return nil
 }
 
+// chainLoadMu: one module load at a time, across every chain. Schwung's
+// chain host was written for Move, where one worker loads modules one after
+// another; Pung creates devices concurrently (one goroutine per plugin in
+// Live), and two loads at once in different chains crossed over: a chain
+// came out holding another device's module (2026-11-15). Rendering and
+// ordinary parameter changes never take this lock.
+var chainLoadMu sync.Mutex
+
+// loadsModule: a key whose set loads, unloads or rearranges modules.
+func loadsModule(key string) bool {
+	return strings.HasSuffix(key, ":module") || key == "load_file" ||
+		strings.HasPrefix(key, "fx:") || strings.HasPrefix(key, "midi_fx:")
+}
+
 func cSlotCreate(i int) error {
+	chainLoadMu.Lock()
+	defer chainLoadMu.Unlock()
 	if C.sb_slot_create(C.int(i)) != 0 {
 		return errors.New(C.GoString(C.sb_error()))
 	}
 	return nil
 }
 
-func cSlotDestroy(i int) { C.sb_slot_destroy(C.int(i)) }
+func cSlotDestroy(i int) {
+	chainLoadMu.Lock()
+	defer chainLoadMu.Unlock()
+	C.sb_slot_destroy(C.int(i))
+}
 
 // cCloseInChildren: fd is closed in any process a module forks (bridge.c).
 func cCloseInChildren(fd int) { C.sb_close_in_children(C.int(fd)) }
@@ -88,6 +109,10 @@ func cWarm(i, blocks int) { C.sb_warm(C.int(i), C.int(blocks)) }
 func cSetRealtime(prio int) int { return int(C.sb_set_realtime(C.int(prio))) }
 
 func cSet(i int, key, val string) {
+	if loadsModule(key) {
+		chainLoadMu.Lock()
+		defer chainLoadMu.Unlock()
+	}
 	k, v := C.CString(key), C.CString(val)
 	C.sb_set_param(C.int(i), k, v)
 	C.free(unsafe.Pointer(k))

@@ -63,6 +63,7 @@ type Host struct {
 	prov      *provider       // Pung's devices in Live (devices.go)
 	live      *live           // the PushHack Remote Script session (live.go)
 	screened  map[string]bool // module id -> passed the crash screen (screen.go); set once at start
+	ui        *surface        // the Pung view on the Push (surface.go); nil without one
 
 	selMu  sync.Mutex
 	selKey string // Live's selection that selDev was worked out for
