@@ -26,8 +26,12 @@ type presetList struct {
 	Count string `json:"count,omitempty"`
 	Name  string `json:"name,omitempty"` // the current sound's name
 	Base  int    `json:"base,omitempty"` // the index the module counts from (palette: 1)
-	// NameAt names any index without loading it ("patch_name:%d"): a whole
-	// list's names at once
+	// Bulk names every sound in one read (a JSON array, "preset_names");
+	// NameAt names any index without loading it ("preset_name_%d"): a whole
+	// list's names without a sound played. Schwung's order (the param-pages
+	// audit, 2026-07-26): bulk, per index, else the current name only. A
+	// module that does not answer them is learned as it is heard.
+	Bulk    string   `json:"bulk,omitempty"`
 	NameAt  string   `json:"name_at,omitempty"`
 	Options []string `json:"-"` // a preset knob's options: every name, up front
 	// a bank chooser: an items level (rows, the key that picks one)
@@ -110,6 +114,9 @@ func factoryLists(cm *compMeta, q presetQuirk) []presetList {
 			if p.NameAt != "" {
 				out[i].NameAt = p.NameAt
 			}
+			if p.Bulk != "" {
+				out[i].Bulk = p.Bulk
+			}
 			if p.BankName != "" {
 				out[i].BankName = p.BankName
 			}
@@ -142,6 +149,9 @@ func listOf(levels map[string]map[string]any, name string, lv map[string]any) pr
 	pl := presetList{List: str(lv["list_param"]), Count: str(lv["count_param"]), Name: str(lv["name_param"])}
 	if pl.Name == "" {
 		pl.Name = "preset_name" // Schwung's default (page_plan.mjs)
+	}
+	if pl.Name == "preset_name" { // Schwung's naming convention for the rest
+		pl.Bulk, pl.NameAt = "preset_names", "preset_name_%d"
 	}
 	pl.BankItems, pl.BankSelect = bankChooser(levels, name, lv)
 	pl.Jump = strings.HasPrefix(pl.BankSelect, "jump_to")

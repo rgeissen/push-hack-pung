@@ -58,6 +58,12 @@ type sbState struct {
 	confirm string    // DELETE pressed once on this sound: press again
 	confAt  time.Time // when
 	ed      *nameEd
+	// rows() of a source, built once per model: a list of 4133 built for
+	// every row, button and light of every frame, under the surface's lock,
+	// made the hands wait (Mini-JV, 2026-11-15)
+	cacheM   *sbModel
+	cacheSrc int
+	cache    []sbRow
 }
 
 type sbModel struct {
@@ -214,11 +220,20 @@ func (u *surface) readSounds(first bool) {
 	}
 }
 
-// sbRows: the rows of the current source. Caller holds u.mu.
+// rows: the rows of the current source, from the cache while the model and
+// the source are the same. Caller holds u.mu.
 func (sb *sbState) rows() []sbRow {
 	if sb.m == nil {
 		return nil
 	}
+	if sb.cacheM == sb.m && sb.cacheSrc == sb.source && sb.cache != nil {
+		return sb.cache
+	}
+	sb.cache, sb.cacheM, sb.cacheSrc = sb.buildRows(), sb.m, sb.source
+	return sb.cache
+}
+
+func (sb *sbState) buildRows() []sbRow {
 	v := sb.m.v
 	var out []sbRow
 	switch sb.source {
@@ -354,6 +369,7 @@ func (u *surface) sbBank(delta int) {
 	}
 	row := f.Banks[n]
 	sb.m.v.Factory.Bank, sb.m.v.Factory.BankAt = row.Name, row.Index // shown at once
+	sb.cache = nil
 	d, lib := sb.dev, u.h.sounds
 	go func() {
 		cm := lib.meta(d)

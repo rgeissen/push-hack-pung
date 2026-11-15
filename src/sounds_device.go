@@ -26,6 +26,11 @@ type soundLib struct {
 	h      *Host
 	store  *soundStore
 	quirks map[string]presetQuirk
+
+	namesMu sync.Mutex
+	named   map[string]bool // a list whose names were asked of the module (module|list|count)
+	// onNames: a list's names arrived (read in the background)
+	onNames func(d *device)
 }
 
 func newSoundLib(h *Host, presetsDir string, quirkDirs ...string) *soundLib {
@@ -152,13 +157,88 @@ func (lib *soundLib) factory(d *device) (*factoryView, presetList, bool) {
 			fv.Names[fmt.Sprint(i)] = o
 		}
 	} else {
+		key := lib.listBank(pl, fv)
 		ix := lib.store.Index(d.c.module)
-		fv.Names = ix.Names[namesKey(lib.listBank(pl, fv))]
+		if fv.Count > 0 && len(ix.Names[namesKey(key)]) < fv.Count && lib.fillNames(d, pl, fv, key) {
+			ix = lib.store.Index(d.c.module)
+		}
+		fv.Names = ix.Names[namesKey(key)]
+		fv.AllNamed = fv.Count > 0 && len(fv.Names) >= fv.Count
 		if fv.Index >= 0 && fv.Name != "" {
-			lib.learn(d.c.module, lib.listBank(pl, fv), fv.Index, fv.Name)
+			lib.learn(d.c.module, key, fv.Index, fv.Name)
 		}
 	}
 	return fv, pl, true
+}
+
+// fillNames asks the module for a list's names without playing a sound,
+// once per list (and length): a bulk read now (true: they are in the
+// index), else one read per sound in the background (onNames when done). A
+// module's answer is used only where it names the current sound as the
+// module itself does: a key it does not mean as a name is never trusted.
+func (lib *soundLib) fillNames(d *device, pl presetList, fv *factoryView, key string) bool {
+	tag := fmt.Sprintf("%s|%s|%d", d.c.module, key, fv.Count)
+	lib.namesMu.Lock()
+	if lib.named == nil {
+		lib.named = map[string]bool{}
+	}
+	done := lib.named[tag]
+	lib.namesMu.Unlock()
+	if done {
+		return false
+	}
+	// marked once the names are in, or on their way: a module still loading
+	// answers nothing, and is asked again next time
+	mark := func() {
+		lib.namesMu.Lock()
+		lib.named[tag] = true
+		lib.namesMu.Unlock()
+	}
+	get := lib.getter(d)
+	agrees := func(name string) bool {
+		return fv.Index < 0 || fv.Name == "" || strings.TrimSpace(name) == fv.Name
+	}
+	if pl.Bulk != "" {
+		if raw, ok := get(pl.Bulk); ok {
+			var names []string
+			if json.Unmarshal([]byte(raw), &names) == nil && len(names) == fv.Count &&
+				(fv.Index < 0 || fv.Index >= len(names) || agrees(names[fv.Index])) {
+				lib.storeNames(d.c.module, key, 0, names)
+				mark()
+				return true
+			}
+		}
+	}
+	if pl.NameAt == "" || fv.Index < 0 || fv.Name == "" {
+		return false
+	}
+	if n, ok := pl.nameAt(fv.Index, get); !ok || !agrees(n) {
+		return false
+	}
+	mark()
+	go func() {
+		const chunk = 256
+		for first := 0; first < fv.Count; first += chunk {
+			var names []string
+			for i := first; i < min(first+chunk, fv.Count); i++ {
+				n, _ := pl.nameAt(i, get)
+				names = append(names, n)
+			}
+			lib.storeNames(d.c.module, key, first, names)
+		}
+		if lib.onNames != nil {
+			lib.onNames(d)
+		}
+	}()
+	return false
+}
+
+func (lib *soundLib) storeNames(module, key string, first int, names []string) {
+	lib.store.Update(module, func(ix *soundIndex) { //nolint:errcheck
+		for i, n := range names {
+			ix.learnName(key, first+i, n)
+		}
+	})
 }
 
 // listBank: the bank a list's names are kept under. A bank chooser's bank

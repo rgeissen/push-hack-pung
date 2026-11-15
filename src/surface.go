@@ -146,6 +146,16 @@ func (u *surface) run(done <-chan struct{}) {
 	go u.frames(done)
 	go u.status(done)
 	go u.watchLive(done)
+	if lib := u.h.sounds; lib != nil {
+		lib.onNames = func(d *device) { // a list's names, read in the background: show them
+			u.mu.Lock()
+			open := u.sb != nil && u.sb.dev == d
+			u.mu.Unlock()
+			if open {
+				u.readSounds(false)
+			}
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { <-done; cancel() }()
 	for ctx.Err() == nil {

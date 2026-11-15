@@ -3,5 +3,10 @@
   "path": "../schwung-je8086",
   "why": "rgeissen's fork, branch remote-ui: the JP-8000 front panel as the module's web page, and the modulation lever; not upstream yet",
   "github_repo": "rgeissen/schwung-je8086"
+ },
+ "schwung-jv880": {
+  "path": "../schwung-jv880",
+  "why": "rgeissen's fork: preset_names and preset_name_<N>, every sound's name without loading it (Schwung's naming convention); proposed upstream",
+  "github_repo": "rgeissen/schwung-jv880"
  }
 }
