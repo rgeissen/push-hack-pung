@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/dop251/goja"
 	"image"
 	"image/png"
 	"os"
@@ -85,9 +86,12 @@ func TestShippedOverlaysDraw(t *testing.T) {
 				continue
 			}
 			for _, touched := range []string{"", c.keys[0]} {
-				pl := placement{w: &ovWidget{keys: c.keys, draw: c.screen}, col: 0, span: 8}
+				knobs := make([]string, 8)
+				copy(knobs, c.keys)
+				info := map[string]any{"$knobs": knobs, "$pages": []string{"ONE", "TWO"}, "$page": 0, "$name": "X", "$track": "1-X"}
+				pl := placement{w: &ovWidget{keys: c.screenKeys(), draw: c.screen}, col: 0, span: 8, full: c.takeover, info: info}
 				img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
-				if !set.render(img, pl, vals(c.keys), touched, slotColor(0)) {
+				if !set.render(img, pl, vals(c.screenKeys()), touched, slotColor(0)) {
 					t.Errorf("%s/%s: %s", e.Name(), c.id, set.failed)
 				}
 				// PUNG_SHOTS=dir: the screens, for a look
@@ -123,6 +127,21 @@ func TestPatchModule(t *testing.T) {
 	} {
 		if got := patchModule(c.chain, c.kind); got != c.want {
 			t.Errorf("%s %s: %q, want %q", c.chain, c.kind, got, c.want)
+		}
+	}
+}
+
+// g.poly takes [[x,y], ...] and [x0,y0,x1,y1,...] alike (overrides.md).
+func TestPolyBothForms(t *testing.T) {
+	vm := goja.New()
+	for _, src := range []string{"[[1,2],[3,4],[5,6]]", "[1,2,3,4,5,6]"} {
+		v, err := vm.RunString(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pts := ovPoints(vm, v)
+		if len(pts) != 3 || pts[1] != [2]float64{3, 4} {
+			t.Errorf("%s: %v", src, pts)
 		}
 	}
 }

@@ -478,8 +478,16 @@ func (s *overrideSet) compartment(id string) *ovCompartment {
 
 // ovPoints reads a module's points: [[x,y], ...] or a flat [x0,y0,x1,y1,...].
 func ovPoints(vm *goja.Runtime, v goja.Value) [][2]float64 {
+	// which form: goja exports [[x,y], ...] into a []float64 without an
+	// error (as NaNs), so the first element decides, not ExportTo
+	pairsForm := false
+	if o, ok := v.(*goja.Object); ok {
+		if first := o.Get("0"); first != nil {
+			_, pairsForm = first.(*goja.Object)
+		}
+	}
 	var flat []float64
-	if vm.ExportTo(v, &flat) == nil && len(flat) >= 2 {
+	if !pairsForm && vm.ExportTo(v, &flat) == nil && len(flat) >= 2 {
 		out := make([][2]float64, 0, len(flat)/2)
 		for i := 0; i+1 < len(flat); i += 2 {
 			out = append(out, [2]float64{flat[i], flat[i+1]})

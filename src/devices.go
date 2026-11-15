@@ -415,6 +415,8 @@ type device struct {
 	reports map[int]float64
 	resync  *time.Timer // under repMu
 	closed  bool        // under repMu: its chain slot may belong to another device now
+
+	lastChain json.RawMessage // the last state loaded (SetState), to load again (revive)
 }
 
 // Process runs one block on the device's realtime thread.
@@ -643,6 +645,13 @@ func (d *device) SetState(state string) error {
 	if err := d.p.h.loadPatch(d.s, st.Chain); err != nil {
 		return err
 	}
+	d.lastChain = st.Chain
+	// Live hears the loaded values: Push reads Live's, and showed the old
+	// ones beside a module that had another state (Edit Part Lower beside
+	// Upper, 2026-11-15). Later, and again, for a module that boots a ROM.
+	for _, after := range []time.Duration{500 * time.Millisecond, 3 * time.Second} {
+		time.AfterFunc(after, d.resyncLive)
+	}
 	if d.c.Kind == livedevice.MIDI {
 		sinkMIDI(d.s) // also repairs a state saved with pre mode
 	}
@@ -661,6 +670,61 @@ func (d *device) Close() {
 	cSlotDestroy(d.s.Index)
 	d.s.own.Unlock()
 	d.p.release(d.s.Index)
+	go d.p.reviveSiblings(d.c.module)
+}
+
+// reviveSiblings: devices of a module that allows one instance per device
+// (JE-8086: "already running in another slot") refuse to start while
+// another holds it. Live re-creates a device before closing the old one
+// when Pung restarts, so the new one came up dead and stayed dead
+// (2026-11-15). When a device closes, a sibling that answers no values is
+// loaded again, with its last state.
+//
+// What the closed instance held can outlive it by seconds (JE-8086's lock
+// goes when the last of its forked DSP stages exits), so this tries again,
+// a few times, further apart.
+func (p *provider) reviveSiblings(module string) {
+	for _, wait := range []time.Duration{400 * time.Millisecond, 1500 * time.Millisecond, 3 * time.Second, 6 * time.Second} {
+		time.Sleep(wait)
+		dead := 0
+		for _, o := range p.list() {
+			if o.c.module != module || o.alive() {
+				continue
+			}
+			dead++
+			log.Printf("%s (chain %d): its module answers nothing; loading it again", o.c.Name, o.s.Index)
+			o.reload()
+		}
+		if dead == 0 {
+			return
+		}
+	}
+}
+
+// alive: the module answers for its parameters.
+func (d *device) alive() bool {
+	comp := d.c.component()
+	var cp []map[string]any
+	if raw, ok := d.s.Meta(comp, "chain_params"); ok && raw != "" {
+		json.Unmarshal([]byte(raw), &cp) //nolint:errcheck
+	}
+	return len(cp) == 0 || len(d.p.h.componentValues(d.s, comp, cp)) > 0
+}
+
+// reload: the module again, and the device's last state.
+func (d *device) reload() {
+	comp := d.c.component()
+	d.s.Set(comp+":module", "")
+	d.s.Set(comp+":module", d.c.module)
+	if d.lastChain != nil {
+		if err := d.p.h.loadPatch(d.s, d.lastChain); err != nil {
+			log.Printf("%s: reloading its state: %v", d.c.Name, err)
+		}
+	}
+	if d.c.Kind == livedevice.MIDI {
+		sinkMIDI(d.s)
+	}
+	d.p.gen.Add(1)
 }
 
 // Stats adds Pung's view of a device to /api/devices.
