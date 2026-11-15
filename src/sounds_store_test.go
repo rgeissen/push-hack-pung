@@ -193,3 +193,32 @@ func TestExportImport(t *testing.T) {
 		t.Fatal("something that is neither is refused")
 	}
 }
+
+// The whole library leaves as presets/<module>/ and comes back to the
+// module each file names (or, naming none, its folder), never overwriting.
+func TestExportImportAll(t *testing.T) {
+	a := &soundLib{store: &soundStore{root: t.TempDir()}}
+	a.store.SaveAs("obxd", "Fat Brass", `{"cutoff":1}`, nil)
+	a.store.SaveAs("dexed", "E.Piano", `{"op":1}`, nil)
+	a.store.Update("dexed", func(ix *soundIndex) { ix.toggleFavourite(soundRef{Source: "user", Name: "E.Piano"}) })
+	zipped, n, err := a.ExportAll()
+	if err != nil || n != 2 {
+		t.Fatal(n, err)
+	}
+	b := &soundLib{store: &soundStore{root: t.TempDir()}}
+	added, skipped, err := b.ImportAll(zipped)
+	if err != nil || len(added["obxd"]) != 1 || len(added["dexed"]) != 1 || len(skipped) != 0 {
+		t.Fatalf("%v %v %v", added, skipped, err)
+	}
+	if s, _, _ := b.store.Read("dexed", "E.Piano"); s != `{"op":1}` {
+		t.Fatalf("dexed's sound in dexed: %q", s)
+	}
+	added, _, _ = b.ImportAll(zipped)
+	if added["obxd"][0] != "Fat Brass 2" {
+		t.Fatalf("never overwritten: %v", added)
+	}
+	lib := a.Library()
+	if len(lib) != 2 || lib[0].ID != "dexed" || !lib[0].User[0].Fav || lib[1].User[0].Name != "Fat Brass" {
+		t.Fatalf("library: %+v", lib)
+	}
+}

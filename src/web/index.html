@@ -11,6 +11,7 @@
   <div class="brand">Pung <span class="sub">Schwung modules on Push</span></div>
   <nav class="views" aria-label="Pung">
     <button type="button" data-view="devices" aria-current="page">Devices</button>
+    <button type="button" data-view="library" aria-current="false">Sounds</button>
     <button type="button" data-view="modules" aria-current="false">Modules <span class="count" id="view-modules-badge" hidden title="Updates"></span></button>
   </nav>
   <nav class="slots" id="slots" aria-label="Pung tracks" data-view-of="devices"></nav>
@@ -96,6 +97,24 @@
     </ol>
     <p>On the Push itself: Shift + Help opens Home, then <b>Pung</b>.</p>
   </section>
+  <section class="library" id="library-view" hidden aria-labelledby="lib-title">
+    <div class="mod-head">
+      <h2 id="lib-title">Sounds</h2>
+      <span class="mod-status" id="lib-status" aria-live="polite"></span>
+      <span class="grow"></span>
+      <a class="tool" id="lib-export" href="/api/library/export" download>Export all</a>
+      <label class="tool file">Import…<input type="file" id="lib-import" accept=".zip,application/zip"></label>
+    </div>
+    <p class="lib-intro">Your sounds for every module: Schwung's own user presets, so a Move opens them too. Export all is the folder a Move keeps (<code>presets/&lt;module&gt;/</code>); Import takes such a zip and sorts every sound into its module.</p>
+    <div class="mod-tools">
+      <input type="search" id="lib-search" placeholder="Search all sounds" aria-label="Search all sounds" autocomplete="off">
+      <div class="seg" id="lib-shows" role="group" aria-label="Show">
+        <button type="button" data-show="mine" aria-pressed="true">With sounds</button>
+        <button type="button" data-show="all" aria-pressed="false">All modules</button>
+      </div>
+    </div>
+    <div class="lib-list" id="lib-list"></div>
+  </section>
   <section class="modules" id="modules-view" hidden aria-labelledby="mod-title">
     <div class="mod-head">
       <h2 id="mod-title">Modules</h2>
@@ -127,6 +146,7 @@
 <script src="/visuals.js"></script>
 <script src="/app.js"></script>
 <script src="/sounds.js"></script>
+<script src="/library.js"></script>
 <script src="/modules.js"></script>
 </body>
 </html>

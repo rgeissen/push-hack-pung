@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 //go:embed web
@@ -188,7 +189,18 @@ func (h *Host) deviceFromPath(w http.ResponseWriter, r *http.Request) (*device, 
 
 func (h *Host) webRoutes(mux *http.ServeMux) {
 	sub, _ := fs.Sub(webFS, "web")
-	mux.Handle("GET /", http.FileServer(http.FS(sub)))
+	files := http.FileServer(http.FS(sub))
+	// The page's files are embedded, so they carry no date, and a browser
+	// cached them by guesswork: after an update it ran the old page against
+	// the new Pung (2026-11-15). Every load asks again; Pung's version is the
+	// ETag, so between updates the answer is a 304.
+	// (and its start: two builds of one version are two pages)
+	etag := fmt.Sprintf(`"pung-%s-%d"`, buildVersion, time.Now().Unix())
+	mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", etag)
+		files.ServeHTTP(w, r)
+	}))
 
 	// Pung's devices in Live, and which one Live has selected
 	mux.HandleFunc("GET /api/pung-devices", func(w http.ResponseWriter, r *http.Request) {

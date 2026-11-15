@@ -301,3 +301,31 @@ body[data-view="modules"] [data-view-of="devices"] { display: none !important; }
 .compartments button.all { font-weight: 600; }
 .compartments .dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; flex: none; }
 .compartments button.shown .dot { background: var(--slot); }
+
+/* the other views hide the devices view's sections too */
+body[data-view="library"] [data-view-of="devices"] { display: none !important; }
+
+/* ---- Sounds, the library (library.js) ---- */
+.library { display: flex; flex-direction: column; gap: 14px; }
+.library .grow { flex: 1; }
+.lib-intro { margin: 0; color: var(--muted); font-size: 13.5px; max-width: 80ch; }
+#lib-search { flex: 1 1 240px; min-width: 0; background: var(--raise); border: 1px solid var(--line); border-radius: 6px; color: var(--fg);
+  padding: 7px 10px; font: inherit; }
+.lib-list { display: flex; flex-direction: column; gap: 10px; }
+.lib-mod { --k: var(--inst); background: var(--raise); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px 12px 18px; position: relative; }
+.lib-mod.afx { --k: var(--afx); } .lib-mod.midi { --k: var(--midi); }
+.lib-mod::before { content: ""; position: absolute; left: 7px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--k); }
+.lib-mod header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.lib-mod h3 { margin: 0; font-size: 16px; }
+.lib-mod .sub { color: var(--muted); font-size: 12.5px; }
+.lib-mod header .acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.lib-sounds { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; }
+.lib-sounds li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid #1d1c19; min-height: 34px; }
+.lib-sounds .nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.lib-sounds .nm .src { font: 11px var(--mono); color: var(--muted); font-weight: 400; margin-left: 8px; }
+.lib-sounds .ico { background: none; border: 0; padding: 2px 6px; color: var(--muted); font-size: 15px; border-radius: 4px; }
+.lib-sounds .ico:hover { color: var(--fg); background: var(--raise2); }
+.lib-sounds .star[aria-pressed="true"] { color: var(--slot); }
+.lib-sounds .ask { color: var(--warn); font-size: 13px; }
+.lib-sounds .rename { flex: 1 1 auto; min-width: 0; background: var(--ink); border: 1px solid var(--slot); border-radius: 6px; color: var(--fg); padding: 4px 8px; font: inherit; }
+.lib-empty { color: var(--muted); padding: 18px; border: 1px dashed var(--line); border-radius: 8px; }

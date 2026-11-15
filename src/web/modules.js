@@ -376,9 +376,13 @@
     // browser with no device) on every switch back
     document.body.dataset.view = view;
     $("modules-view").hidden = !mods;
+    const libv = $("library-view");
+    if (libv) libv.hidden = view !== "library";
     document.querySelectorAll(".views button").forEach((b) => b.setAttribute("aria-current", b.dataset.view === view ? "page" : "false"));
-    if (!(mods && location.hash.startsWith("#modules")) && !(!mods && !location.hash)) history.replaceState(null, "", mods ? "#modules" : location.pathname);
+    const want = view === "devices" ? "" : "#" + view;
+    if (!(want && location.hash.startsWith(want)) && !(!want && !location.hash)) history.replaceState(null, "", want || location.pathname);
     if (mods) load(false);
+    window.dispatchEvent(new CustomEvent("pung:view", { detail: { view } }));
   }
 
   function boot() {
@@ -401,7 +405,7 @@
     // #modules, or #modules/<id>: a module's sheet, to link to
     const h = location.hash.match(/^#modules(?:\/(.+))?$/);
     if (h && h[1]) m.wantOpen = decodeURIComponent(h[1]);
-    show(h ? "modules" : "devices");
+    show(h ? "modules" : location.hash.startsWith("#library") ? "library" : "devices");
     // the updates badge, even while the Devices view is shown
     if (!h) api("/api/catalog").then((d) => {
       const n = (d.modules || []).filter((x) => x.supported && x.status === "update").length;
