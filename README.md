@@ -13,7 +13,7 @@ supported by Ableton.
 Every Schwung module is a device in Live, on Push Hack's Live device layer
 ([`core/livedevice`](https://github.com/federico-pepe/ableton-push-hack/blob/main/docs/live-devices.md)):
 
-- **Push's browser** lists them: *Instruments/Pung* (Braids, OB-Xd, Dexed, Hera, ...), *Audio
+- **Push's browser** lists them in the User Library, under *Presets*: *Instruments/Pung* (Braids, OB-Xd, Dexed, Hera, ...), *Audio
   Effects/Pung* (CloudSeed, MVerb, OTTx, ...) and *Instruments/Pung MIDI Effects* (Arpeggiator,
   Chord).
 - **The Pung view takes the place of Push's device view.** Select a Pung device with Push in its
