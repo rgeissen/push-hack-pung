@@ -164,3 +164,104 @@ func TestPolyBothForms(t *testing.T) {
 		}
 	}
 }
+
+// Every DX7 algorithm draws (Dexed's takeover reads the engine's own
+// table); PUNG_SHOTS=dir writes them for a look.
+func TestDexedAlgorithms(t *testing.T) {
+	ovDir, _ := filepath.Abs("../overrides")
+	root := t.TempDir()
+	dir := filepath.Join(root, "sound_generators", "dexed")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"dexed","component_type":"sound_generator"}`), 0o644)
+	initFaces()
+	set := newOverrides(ovDir).get(root, "dexed")
+	if set == nil || set.failed != "" {
+		t.Skip("no dexed overlay")
+	}
+	c := set.compartment("algorithm")
+	shots := os.Getenv("PUNG_SHOTS")
+	for a := 1; a <= 32; a++ {
+		vals := map[string]ovValue{}
+		for _, k := range c.screenKeys() {
+			vals[k] = ovValue{Value: "70", Display: "70", Name: k, Frac: 0.7, Known: true}
+		}
+		vals["algorithm"] = ovValue{Value: fmt.Sprint(a), Display: fmt.Sprint(a), Name: "Algorithm", Frac: float64(a-1) / 31, Known: true}
+		vals["feedback"] = ovValue{Value: "5", Display: "5", Name: "Feedback", Frac: 5.0 / 7, Known: true}
+		for n := 1; n <= 6; n++ {
+			vals[fmt.Sprintf("op%d_coarse", n)] = ovValue{Value: fmt.Sprint(n), Known: true}
+			vals[fmt.Sprintf("op%d_osc_mode", n)] = ovValue{Value: "0", Known: true}
+		}
+		img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+		knobs := make([]string, 8)
+		copy(knobs, c.pages[0].keys)
+		pl := placement{w: &ovWidget{keys: c.screenKeys(), draw: c.screen}, full: true, span: 8, info: map[string]any{"$knobs": knobs, "$page": 0, "$pages": []string{"Algorithm"}}}
+		if !set.render(img, pl, vals, "", slotColor(0)) {
+			t.Fatalf("algorithm %d: %s", a, set.failed)
+		}
+		set.overruns = 0
+		if shots != "" {
+			f, _ := os.Create(filepath.Join(shots, fmt.Sprintf("dexed-alg%02d.png", a)))
+			png.Encode(f, img)
+			f.Close()
+		}
+	}
+}
+
+// Dexed's screens with the values the module really starts with (its probe
+// record), through the same metadata the Push uses. PUNG_SHOTS=dir only.
+func TestDexedRealValues(t *testing.T) {
+	shots := os.Getenv("PUNG_SHOTS")
+	if shots == "" {
+		t.Skip("PUNG_SHOTS not set")
+	}
+	get := map[string]string{}
+	for _, k := range []string{"ui_hierarchy", "chain_params"} {
+		raw, _ := os.ReadFile("testdata/dexed_" + k + ".json")
+		get[k] = string(raw)
+	}
+	cm := buildMeta("dexed", getter(get))
+	var init map[string]string
+	raw, _ := os.ReadFile("testdata/dexed_initial.json")
+	json.Unmarshal(raw, &init)
+	ovDir, _ := filepath.Abs("../overrides")
+	root := t.TempDir()
+	dir := filepath.Join(root, "sound_generators", "dexed")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"dexed","component_type":"sound_generator"}`), 0o644)
+	initFaces()
+	set := newOverrides(ovDir).get(root, "dexed")
+	cm = withCompartments(cm, set.compartments)
+	for _, c := range set.compartments {
+		for pi := range c.pages {
+			scr, keys := c.pageScreen(pi)
+			if scr == nil {
+				continue
+			}
+			var b *bank
+			for i := range cm.Banks {
+				if cm.Banks[i].Compartment == c.id && cm.Banks[i].Page == pi {
+					b = &cm.Banks[i]
+				}
+			}
+			if b == nil {
+				continue
+			}
+			vals := ovValuesOf(cm, keys, func(k string) (string, bool) { v, ok := init[k]; return v, ok })
+			knobs := make([]string, 8)
+			copy(knobs, b.Keys)
+			img := newFrame()
+			pl := placement{w: &ovWidget{keys: keys, draw: scr}, span: 8, full: c.takeover, info: map[string]any{"$knobs": knobs, "$page": 0, "$pages": []string{b.Name}}}
+			touched := ""
+			if len(b.Keys) > 1 {
+				touched = b.Keys[1]
+			}
+			if !set.render(img, pl, vals, touched, slotColor(0)) {
+				t.Fatalf("%s/%d: %s", c.id, pi, set.failed)
+			}
+			set.overruns = 0
+			f, _ := os.Create(filepath.Join(shots, fmt.Sprintf("real-dexed-%s-%d.png", c.id, pi)))
+			png.Encode(f, img)
+			f.Close()
+		}
+	}
+}
