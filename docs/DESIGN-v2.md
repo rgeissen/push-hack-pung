@@ -181,7 +181,16 @@ is the same unit everywhere:
 - A module's own `web_ui.html` mostly follows this already (its panels are its compartments). The standard
   makes it explicit, so both surfaces show the same structure.
 
-A compartment is drawn in one of two ways, and the choice is per compartment:
+**Three levels of interface on the Push**, each further from Push's own look:
+
+1. **Push native**: Push's own device view of the Live device (Live's parameter banks). Always there, for
+   every module, and the fallback.
+2. **Pung default**: the Pung view, a generic design built from the module's parameters (knob cells, value
+   faces, the device and bank rows), optionally with **widgets** over groups of knobs (`push_ui.js`).
+3. **Custom**: a module's own full screen for a compartment (`push.compartment({screen})`), only where it is
+   substantially better than 2 (below).
+
+Within Pung (2 and 3), a compartment is drawn in one of two ways, and the choice is per compartment:
 
 1. **The Pung view** (the default): the generic Pung design. Knob cells, value faces and
    widgets over the knobs (`push_ui.js` widgets). Every module gets this for nothing.
@@ -195,9 +204,12 @@ means the instrument's own structure (a JV-880's patch, tones and its LCD), its 
 own character, not a prettier knob row. If a drawing would only restyle the generic page, the generic
 page stays. A custom screen that cannot beat the generic one is not shipped.
 
-The first custom screens should be for a deep, characterful instrument: Osirion or the JV-880 (minijv).
-They show what the standard is for. OB-Xd's `push_ui.js` widgets are the generic layer's showcase,
-not a custom screen.
+The first custom screens are Osirus's (`overrides/osirus/push_ui.js`): its seven compartments are the
+sections of its own web page, its pages that page's cards, and two compartments draw their own screen,
+because there a picture shows what knobs cannot: the Virus's filter routing as a signal path (filter 1, the
+saturation stage, filter 2, which filter the panel edits, both responses), and its envelopes with their
+sustain slope. OB-Xd's `push_ui.js` widgets are the default layer's showcase, not a custom screen. How to
+declare compartments, and their web side: `docs/overrides.md`, "Compartments".
 
 ### 7. What stays outside
 
