@@ -666,7 +666,10 @@ const resyncAfter = 150 * time.Millisecond
 // the ones that moved. On a timer, never the realtime thread; repMu is held
 // throughout, so Close cannot free the chain slot under it (Process only
 // TryLocks it: its reports wait a block).
-func (d *device) resyncLive() {
+func (d *device) resyncLive() { d.reportValues(false) }
+
+// reportValues reports the chain's values to Live: the ones that moved, or all.
+func (d *device) reportValues(all bool) {
 	d.repMu.Lock()
 	defer d.repMu.Unlock()
 	if d.closed {
@@ -688,7 +691,7 @@ func (d *device) resyncLive() {
 		// compared as values, both through the same formatting: an int's
 		// norm is not exact, and a rounding is not a change
 		n := m.toNormValue(v)
-		if m.fromNorm(n) != m.fromNorm(math.Float64frombits(d.norms[idx].Load())) {
+		if all || m.fromNorm(n) != m.fromNorm(math.Float64frombits(d.norms[idx].Load())) {
 			d.norms[idx].Store(math.Float64bits(n))
 			d.reports[idx] = n
 		}
@@ -814,8 +817,12 @@ func (d *device) loadState(seq uint64, chain json.RawMessage) {
 	// Live hears the loaded values: Push reads Live's, and showed the old
 	// ones beside a module that had another state (Edit Part Lower beside
 	// Upper, 2026-11-15). Later, and again, for a module that boots a ROM.
+	// Every value, not only those that differ from what Pung believes Live
+	// has: that belief starts at the class's defaults, not at what Live
+	// holds, so a value Live had wrong but equal to a default was never put
+	// right (Mini-JV's P.Env Depth: +6 on Push, 0 in the module, 2026-11-15).
 	for _, after := range []time.Duration{500 * time.Millisecond, 3 * time.Second} {
-		time.AfterFunc(after, d.resyncLive)
+		time.AfterFunc(after, func() { d.reportValues(true) })
 	}
 }
 

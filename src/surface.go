@@ -145,6 +145,7 @@ func (u *surface) run(done <-chan struct{}) {
 	}
 	go u.frames(done)
 	go u.status(done)
+	go u.watchLive(done)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { <-done; cancel() }()
 	for ctx.Err() == nil {

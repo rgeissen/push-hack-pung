@@ -142,6 +142,9 @@ func main() {
 	// DESIGN-v2: every Pung device in Live is a chain instance here, on
 	// push-hack's Live device layer (core/livedevice)
 	sclasses := h.buildClasses()
+	// a class whose layout changed keeps the one a running Live has (classlock.go)
+	sclasses = classesForLive(sclasses, livedevice.ClassesPath(*vst3, "Pung"), filepath.Join(*data, "classes.live.json"),
+		exists(h.mods.path(restartLiveFlag)))
 	classes := coreClasses(sclasses)
 	// The class file lives in the bundle (livedevice.ClassesPath): if the hack
 	// is removed, Sets that use its devices still open. hack.json's
@@ -223,6 +226,15 @@ func main() {
 		restart = true
 	}
 	log.Printf("stopping")
+	// The surface goes to Live, not to whatever push-manager falls back to:
+	// a Pung that stopped holding it (an update, an Apply) left Home holding
+	// the buttons and a black screen, and Live's question after its restart
+	// ("recover your work?") could not be answered (2026-11-15).
+	if surf.focused.Load() {
+		if err := surf.pm.SurfaceLeave("live"); err != nil {
+			log.Printf("surface: giving it to Live: %v", err)
+		}
+	}
 	close(stop)
 	select {
 	case <-saved:
