@@ -14,7 +14,8 @@
 set -eu
 cd "$(dirname "$0")/.."
 SRC=build/catalog
-HOST="${PUNG_CATALOG_HOST:-<user>@<nas>}"
+# the server and its SSH port: yours, from the environment
+HOST="${PUNG_CATALOG_HOST:?set PUNG_CATALOG_HOST (user@host of the server)}"
 PORT="${PUNG_CATALOG_PORT:-22}"
 DEST=/volume2/web/pung
 SSH="ssh -o BatchMode=yes -p $PORT"

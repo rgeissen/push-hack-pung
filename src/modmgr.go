@@ -43,6 +43,48 @@ const (
 	catalogTTL        = 10 * time.Minute
 )
 
+// bundledCatalog: the catalog that came with Pung (catalog/ beside the
+// binary: catalog.json and its packages, release.sh puts them there), or ""
+// for none. It is the default when present: the modules install from the
+// Push's own disk, with no download from anywhere.
+var bundledCatalog = func() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	p := filepath.Join(filepath.Dir(exe), "catalog", "catalog.json")
+	if _, err := os.Stat(p); err != nil {
+		return ""
+	}
+	return "file://" + p
+}
+
+// openURL reads a catalog or a package from the web (http, https) or from
+// this Push's disk (file://).
+func openURL(ctx context.Context, url string) (io.ReadCloser, error) {
+	if p, ok := strings.CutPrefix(url, "file://"); ok {
+		f, err := os.Open(p)
+		if err != nil {
+			return nil, err
+		}
+		return f, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Pung/"+buildVersion)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("answered %s", resp.Status)
+	}
+	return resp.Body, nil
+}
+
 // subdirs Pung can run: a Live device each (tools and overtake modules are Move's).
 var installSubdirs = map[string]string{"sound_generator": "sound_generators", "audio_fx": "audio_fx", "midi_fx": "midi_fx"}
 
@@ -141,6 +183,9 @@ func (mm *modMgr) catalogURL() string {
 	if u := mm.h.settings.get().CatalogURL; u != "" {
 		return u
 	}
+	if u := bundledCatalog(); u != "" {
+		return u
+	}
 	return defaultCatalogURL
 }
 
@@ -158,15 +203,13 @@ func (mm *modMgr) catalog(force bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	req.Header.Set("User-Agent", "Pung/"+buildVersion)
 	var doc catalogDoc
-	resp, err := http.DefaultClient.Do(req)
-	if err == nil {
-		defer resp.Body.Close()
-		if resp.StatusCode != 200 {
-			err = fmt.Errorf("the catalog answered %s", resp.Status)
-		} else if err = json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&doc); err == nil && doc.CatalogVersion != 1 {
+	body, err := openURL(ctx, url)
+	if err != nil {
+		err = fmt.Errorf("the catalog: %v", err)
+	} else {
+		defer body.Close()
+		if err = json.NewDecoder(io.LimitReader(body, 8<<20)).Decode(&doc); err == nil && doc.CatalogVersion != 1 {
 			err = fmt.Errorf("catalog version %d: this Pung reads version 1", doc.CatalogVersion)
 		}
 	}
@@ -722,21 +765,16 @@ func (mm *modMgr) install(id string) error {
 func (mm *modMgr) download(id, url, dst string, size int64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	req.Header.Set("User-Agent", "Pung/"+buildVersion)
-	resp, err := http.DefaultClient.Do(req)
+	body, err := openURL(ctx, url)
 	if err != nil {
 		return fmt.Errorf("download: %v", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("download: %s", resp.Status)
-	}
+	defer body.Close()
 	f, err := os.Create(dst + ".part")
 	if err != nil {
 		return err
 	}
-	pr := &progressReader{r: io.LimitReader(resp.Body, size+1), f: func(n int64) { mm.setJob(id, func(j *modJob) { j.Done = n }) }}
+	pr := &progressReader{r: io.LimitReader(body, size+1), f: func(n int64) { mm.setJob(id, func(j *modJob) { j.Done = n }) }}
 	_, err = io.Copy(f, pr)
 	f.Close()
 	if err != nil {
@@ -908,7 +946,21 @@ func (mm *modMgr) toTrash(p string) error {
 
 func (mm *modMgr) addPending(s string) {
 	mm.mu.Lock()
-	mm.pending = append(mm.pending, s)
+	// installed, then removed before Live saw it: nothing changed, and an
+	// Apply (a restart of Live) for it would be for nothing
+	cancelled := false
+	if name, ok := strings.CutSuffix(s, " removed"); ok {
+		for i, p := range mm.pending {
+			if strings.EqualFold(p, name+" installed") {
+				mm.pending = append(mm.pending[:i:i], mm.pending[i+1:]...)
+				cancelled = true
+				break
+			}
+		}
+	}
+	if !cancelled {
+		mm.pending = append(mm.pending, s)
+	}
 	raw, _ := json.Marshal(mm.pending)
 	mm.mu.Unlock()
 	writeFileAtomic(mm.path("pending-changes.json"), raw)

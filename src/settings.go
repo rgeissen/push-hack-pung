@@ -20,7 +20,7 @@ type settings struct {
 	// mode in place (view.go, drawCell). Off unless asked for.
 	TouchCard bool `json:"touch_card"`
 	// CatalogURL: where the Modules page reads the module catalog; empty:
-	// the published one (modmgr.go, defaultCatalogURL)
+	// the one that came with Pung, else the published one (modmgr.go)
 	CatalogURL string `json:"catalog_url,omitempty"`
 }
 

@@ -3,6 +3,9 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -132,5 +135,63 @@ func TestWithRetired(t *testing.T) {
 	got := withRetired(data, []*livedevice.Class{a}) // B removed
 	if len(got) != 2 || got[1].UID != b.UID {
 		t.Fatalf("B is not retired: %+v", got)
+	}
+}
+
+// A catalog that came with Pung is the default, and its packages are read
+// from the Push's own disk: no download from anywhere.
+func TestBundledCatalog(t *testing.T) {
+	dir := t.TempDir()
+	pkg := []byte("a package")
+	sum := sha256.Sum256(pkg)
+	os.MkdirAll(filepath.Join(dir, "modules"), 0o755) //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "modules", "x.tar.gz"), pkg, 0o644) //nolint:errcheck
+	doc := map[string]any{"catalog_version": 1, "base_url": "", "modules": []map[string]any{
+		{"id": "x", "asset": "modules/x.tar.gz", "size": len(pkg), "sha256": hex.EncodeToString(sum[:])}}}
+	raw, _ := json.Marshal(doc)
+	os.WriteFile(filepath.Join(dir, "catalog.json"), raw, 0o644) //nolint:errcheck
+
+	old := bundledCatalog
+	bundledCatalog = func() string { return "file://" + filepath.Join(dir, "catalog.json") }
+	defer func() { bundledCatalog = old }()
+
+	h := &Host{dataDir: t.TempDir(), settings: loadSettings(t.TempDir())}
+	mm := &modMgr{h: h}
+	if u := mm.catalogURL(); !strings.HasPrefix(u, "file://") {
+		t.Fatalf("the bundled catalog is not the default: %s", u)
+	}
+	mm.catalog(true)
+	if mm.catOffline || mm.cat == nil {
+		t.Fatalf("the bundled catalog did not load: %s", mm.catErr)
+	}
+	if mm.cat.BaseURL != "file://"+dir {
+		t.Fatalf("its packages are looked for at %s", mm.cat.BaseURL)
+	}
+	e, _ := mm.entry("x")
+	dst := filepath.Join(t.TempDir(), "x.tar.gz")
+	if err := mm.download("x", mm.cat.BaseURL+"/"+e.Asset, dst, e.Size); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(dst); string(got) != string(pkg) {
+		t.Fatalf("read %q", got)
+	}
+	// a setting still wins (the published catalog, for instance)
+	if _, err := h.settings.update([]byte(`{"catalog_url":"https://example.org/catalog.json"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if u := mm.catalogURL(); u != "https://example.org/catalog.json" {
+		t.Fatalf("the setting lost to the bundle: %s", u)
+	}
+}
+
+// Installed and removed again before an Apply: nothing for Live to see.
+func TestPendingCancels(t *testing.T) {
+	mm := &modMgr{h: &Host{dataDir: t.TempDir()}}
+	mm.addPending("Filter updated")
+	mm.addPending("GATE installed")
+	mm.addPending("GATE removed")
+	mm.addPending("OB-Xd removed")
+	if got := strings.Join(mm.pending, ", "); got != "Filter updated, OB-Xd removed" {
+		t.Fatalf("pending: %s", got)
 	}
 }

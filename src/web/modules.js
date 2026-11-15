@@ -230,7 +230,9 @@
     ];
     const links = [];
     if (src.repo) links.push(`<a href="${esc(src.repo)}" target="_blank" rel="noopener">Repository</a>`);
-    if (src.archive) links.push(`<a href="${esc(base + "/" + src.archive)}">Source of this build${src.archive_size ? ` (${(src.archive_size / 1048576).toFixed(1)} MB)` : ""}</a>`);
+    // a full address (a bundled catalog keeps its sources on GitHub), or one under the catalog's
+    const srcURL = /^https?:\/\//.test(src.archive || "") ? src.archive : base + "/" + src.archive;
+    if (src.archive) links.push(`<a href="${esc(srcURL)}">Source of this build${src.archive_size ? ` (${(src.archive_size / 1048576).toFixed(1)} MB)` : ""}</a>`);
     body.innerHTML = `
       <header class="sheet-head ${t.cls}">
         <span class="kind">${esc(t.label)}</span>

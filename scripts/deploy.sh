@@ -13,6 +13,11 @@ $SSH "root@$HOST" "mkdir -p $DIR /data/push-hack/logs /data/push-hack/data/pung"
 rsync -a -e "$SSH" build/modules build/patches overrides "root@$HOST:$DIR/"
 # the licences travel with every copy (THIRD_PARTY_LICENSES.md)
 rsync -a -e "$SSH" LICENSE THIRD_PARTY_LICENSES.md licenses "root@$HOST:$DIR/"
+# the module catalog Pung ships (scripts/release.sh): the Modules page
+# installs from it, from this Push's own disk
+if [ -f dist/pung/catalog/catalog.json ]; then
+  rsync -a --delete -e "$SSH" dist/pung/catalog "root@$HOST:$DIR/"
+fi
 # the binary is swapped by rename, so a running copy keeps its file
 rsync -a -e "$SSH" pung "root@$HOST:$DIR/pung.new"
 
