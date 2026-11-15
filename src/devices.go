@@ -1,78 +1,84 @@
 package main
 
-// devices.go: the Schwung service's side of DESIGN-v2. Every Schwung device
-// in Live (a Schwung.vst3 plugin) is one chain instance here, outside Live's
-// process, so a module that crashes cannot take Live down.
-//
-//   - vst3-classes.json: one plugin class per installed module, with its
-//     parameters, written at start. Schwung.vst3 builds its factory from it,
-//     so Live sees every module even while this service is down.
-//   - devices.sock: JSON lines from the plugins (create, destroy, state).
-//     A connection that closes takes its devices with it (Live quit or
-//     crashed).
-//   - /dev/shm/schwung-dev-<id>: one block at a time, see schwung_ipc.h.
-//     One realtime thread per device, at Live's own audio priority.
-
-/*
-#include "schwung_ipc.h"
-*/
-import "C"
+// devices.go: Pung's devices in Live, on push-hack's Live device layer
+// (core/livedevice). Every Schwung module is a plugin class in Live; every
+// instance Live makes is one Pung chain here, outside Live's process, so a
+// module that crashes cannot take Live down. core/livedevice brings the
+// plugin, the block protocol, the realtime loop, the control socket and the
+// browser entries; this file says what a Pung device is.
 
 import (
-	"bufio"
-	"crypto/md5"
-	"encoding/hex"
+	"time"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"math"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
-	"time"
-	"unsafe"
 
+	"github.com/federico-pepe/ableton-push-hack/core/livedevice"
 )
+
+// uidNamespace: the class UIDs hash it with each module (Sets save them, so it
+// never changes again). It changed once, when the product was renamed Pung
+// (2026-11-15, before any release): Sets saved before that lost their devices.
+const uidNamespace = "pung-vst3"
 
 // ---- classes ------------------------------------------------------------------
 
+// vstParam is a class parameter while it is being built, with what the
+// device needs to apply it.
 type vstParam struct {
-	Name    string   `json:"name"`
-	Key     string   `json:"key"`  // the chain key it writes: synth:cutoff, fx1:mix, midi_fx1:rate
-	Type    string   `json:"type"` // float | int | enum
-	Min     float64  `json:"min"`
-	Max     float64  `json:"max"`
-	Unit    string   `json:"unit,omitempty"`
-	Format  string   `json:"format,omitempty"`
-	Options []string `json:"options,omitempty"`
-	Default float64  `json:"default"` // normalized
-	Gate    string   `json:"gate,omitempty"` // only while this MIDI effect is loaded
-	Role    string   `json:"role,omitempty"` // "midifx" (which MIDI effect), "outch" (MIDI out channel)
+	livedevice.Param
 	meta    *paramMeta
-	gateIdx int // 1-based index of the MIDI effect in the selector, 0 = none
+	gate    string // only while this MIDI effect is loaded
+	gateIdx int    // its 1-based index in the selector, 0 = none
 }
 
-type vstClass struct {
-	UID      string     `json:"uid"`
-	Name     string     `json:"name"`
-	Kind     string     `json:"kind"` // instrument | effect | midi
-	Module   string     `json:"module"`
-	Category string     `json:"category"` // VST3 sub categories
-	Params   []vstParam `json:"params"`
-	Banks    [][]int    `json:"banks"` // parameter indexes, 8 per bank, in the module's own order
-	midiFX   []string   // the selector's modules (index 0 = none)
+// sclass is a Pung class: the core class plus how to apply its params.
+type sclass struct {
+	*livedevice.Class
+	keyIdx  map[string]int // a chain key -> its parameter index
+	order   []int          // the rack's parameter map: Live lists the plugin's parameters in this order
+	module  string
+	meta    []*paramMeta // per parameter index; nil for selectors and placeholders
+	role    []string     // "midifx" (which MIDI effect), "outch" (MIDI out channel)
+	gateIdx []int
+	midiFX  []string // the selector's modules (index 0 = none)
+	// inCh: the channel Live's MIDI reaches the module on (0-15), or -1 to
+	// keep Live's channel. Live sends each note on its own channel (MPE
+	// style); a module listening on one channel (the Virus) heard nothing.
+	// Move's host remaps to the slot's channel unless the module asks for
+	// passthrough; here a device's channel is 1 (moduleInChannel).
+	inCh int
 }
 
-func classUID(kind, module string) string {
-	sum := md5.Sum([]byte("schwung-vst3:" + kind + ":" + module))
-	return strings.ToUpper(hex.EncodeToString(sum[:]))
+// moduleInChannel: capabilities.default_forward_channel, as Schwung's host
+// reads it (docs/MODULES.md): -2 keeps the channel (MPE), 1..16 remaps to it,
+// anything else: channel 1.
+func moduleInChannel(m ModuleInfo) int {
+	raw, err := os.ReadFile(filepath.Join(m.Dir, "module.json"))
+	if err != nil {
+		return 0
+	}
+	var j struct {
+		Capabilities struct {
+			Fwd *int `json:"default_forward_channel"`
+		} `json:"capabilities"`
+	}
+	if json.Unmarshal(raw, &j) != nil || j.Capabilities.Fwd == nil {
+		return 0
+	}
+	switch f := *j.Capabilities.Fwd; {
+	case f == -2:
+		return -1
+	case f >= 1 && f <= 16:
+		return f - 1
+	}
+	return 0
 }
 
 func toVstParams(cm *compMeta, prefix string) []vstParam {
@@ -94,21 +100,19 @@ func toVstParams(cm *compMeta, prefix string) []vstParam {
 		default:
 			continue // strings, paths: not a knob
 		}
-		// where a new instance really starts; the declared default only
-		// if the module would not say
+		// where a new instance really starts; the declared default only if the
+		// module would not say (Live pushes it into the device on load)
 		def := 0.0
 		if v, ok := cm.Initial[k]; ok {
 			def = m.toNormValue(v)
 		} else if m.Default != nil {
-			def = m.toNormValue(strconvFloat(*m.Default))
+			def = m.toNormValue(fmt.Sprintf("%g", *m.Default))
 		}
-		out = append(out, vstParam{Name: m.Name, Key: prefix + ":" + k, Type: m.Type, Min: m.Min, Max: m.Max,
-			Unit: m.Unit, Format: m.Format, Options: m.Options, Default: def, meta: m})
+		out = append(out, vstParam{Param: livedevice.Param{Name: m.Name, Key: prefix + ":" + k, Type: m.Type,
+			Min: m.Min, Max: m.Max, Unit: m.Unit, Format: m.Format, Options: m.Options, Default: def}, meta: m})
 	}
 	return out
 }
-
-func strconvFloat(f float64) string { return fmt.Sprintf("%g", f) }
 
 // banksFor lays out a class's parameters in the module's own banks.
 func banksFor(params []vstParam, cm *compMeta, prefix string) [][]int {
@@ -117,14 +121,12 @@ func banksFor(params []vstParam, cm *compMeta, prefix string) [][]int {
 		idx[p.Key] = i
 	}
 	var banks [][]int
-	seen := map[int]bool{}
 	if cm != nil {
 		for _, b := range cm.Banks {
 			var row []int
 			for _, k := range b.Keys {
-				if i, ok := idx[prefix+":"+k]; ok && !seen[i] {
+				if i, ok := idx[prefix+":"+k]; ok {
 					row = append(row, i)
-					seen[i] = true
 				}
 			}
 			if len(row) > 0 {
@@ -132,32 +134,56 @@ func banksFor(params []vstParam, cm *compMeta, prefix string) [][]int {
 			}
 		}
 	}
-	var rest []int
-	for i := range params {
-		if !seen[i] {
-			rest = append(rest, i)
+	return banks // livedevice.PadBanks adds what no bank holds
+}
+
+// finish turns a built parameter list into a Pung class.
+func finish(name, kind, category, module, folder string, ps []vstParam, banks [][]int, midiFX []string) *sclass {
+	c := &livedevice.Class{UID: livedevice.ClassUID(uidNamespace, kind, module), Name: name, Kind: kind,
+		Category: category, Ref: module, Folder: folder, Banks: banks}
+	sc := &sclass{Class: c, module: module, midiFX: midiFX}
+	for _, p := range ps {
+		c.Params = append(c.Params, p.Param)
+		sc.meta = append(sc.meta, p.meta)
+		sc.role = append(sc.role, p.Role)
+		sc.gateIdx = append(sc.gateIdx, p.gateIdx)
+	}
+	livedevice.PadBanks(c) // Push's Bank N is the module's bank N
+	if len(c.Params) > livedevice.MaxParams {
+		c.Params = c.Params[:livedevice.MaxParams]
+	}
+	sc.keyIdx = map[string]int{}
+	for i, p := range c.Params {
+		if p.Key != "" {
+			sc.keyIdx[p.Key] = i
 		}
 	}
-	for i := 0; i < len(rest); i += 8 {
-		end := i + 8
-		if end > len(rest) {
-			end = len(rest)
+	seen := map[int]bool{}
+	for _, bank := range c.Banks { // as livedevice.WritePresets lists them
+		for _, i := range bank {
+			if !seen[i] && len(sc.order) < 128 {
+				seen[i] = true
+				sc.order = append(sc.order, i)
+			}
 		}
-		banks = append(banks, rest[i:end])
 	}
-	return banks
+	return sc
 }
 
 // buildClasses makes one class per installed module.
-func (h *Host) buildClasses() []*vstClass {
-	mods := scanModules(h.modulesDir)
+func (h *Host) buildClasses() []*sclass {
+	mods := h.screenModules(scanModules(h.modulesDir)) // a module that crashes its probe stays out
+	h.screened = map[string]bool{}
+	for _, m := range mods {
+		h.screened[m.ID] = m.Loadable
+	}
 	var midiFX []ModuleInfo
 	for _, m := range mods {
 		if m.Type == "midi_fx" && m.Loadable {
 			midiFX = append(midiFX, m)
 		}
 	}
-	var classes []*vstClass
+	var classes []*sclass
 	for _, m := range mods {
 		if !m.Loadable {
 			continue
@@ -166,110 +192,81 @@ func (h *Host) buildClasses() []*vstClass {
 		if !ok || cm == nil {
 			continue
 		}
-		c := &vstClass{Module: m.ID, Name: "Schwung " + m.Name}
 		switch m.Type {
 		case "sound_generator":
 			if moduleWantsAudioIn(m) {
 				continue // Line In and friends: Live has its own inputs
 			}
-			c.Kind, c.Category = "instrument", "Instrument|Synth"
-			c.Params = toVstParams(cm, "synth")
-			c.Banks = banksFor(c.Params, cm, "synth")
-			// form 1 of the MIDI-effect design: one MIDI effect in front of the synth
+			ps := toVstParams(cm, "synth")
+			banks := banksFor(ps, cm, "synth")
+			var fx []string
+			// a MIDI effect in front of the synth, picked with a selector
 			if len(midiFX) > 0 {
-				sel := vstParam{Name: "MIDI FX", Key: "midi_fx1:module", Type: "enum", Options: []string{"None"}, Role: "midifx"}
-				c.midiFX = []string{""}
+				sel := vstParam{Param: livedevice.Param{Name: "MIDI FX", Key: "midi_fx1:module", Type: "enum",
+					Options: []string{"None"}, Role: "midifx"}}
+				fx = []string{""}
 				for _, f := range midiFX {
 					sel.Options = append(sel.Options, f.Name)
-					c.midiFX = append(c.midiFX, f.ID)
+					fx = append(fx, f.ID)
 				}
 				sel.Max = float64(len(sel.Options) - 1)
-				sel.meta = &paramMeta{Key: "midi_fx", Name: "MIDI FX", Type: "enum", Options: sel.Options}
-				selIdx := len(c.Params)
-				c.Params = append(c.Params, sel)
+				selIdx := len(ps)
+				ps = append(ps, sel)
 				for gi, f := range midiFX {
 					fm, ok := h.probeMeta(f)
 					if !ok || fm == nil {
 						continue
 					}
-					first := len(c.Params)
+					row := []int{selIdx}
 					for _, p := range toVstParams(fm, "midi_fx1") {
 						p.Name = shortName(f) + " " + p.Name
-						p.Gate, p.gateIdx = f.ID, gi+1
-						c.Params = append(c.Params, p)
+						p.gate, p.gateIdx = f.ID, gi+1
+						if len(row) < 8 {
+							row = append(row, len(ps))
+						}
+						ps = append(ps, p)
 					}
-					row := []int{selIdx}
-					for i := first; i < len(c.Params) && len(row) < 8; i++ {
-						row = append(row, i)
-					}
-					c.Banks = append(c.Banks, row)
+					banks = append(banks, row)
 				}
 			}
+			classes = append(classes, finish(m.Name, livedevice.Instrument, "Instrument|Synth",
+				m.ID, "Pung", ps, banks, fx))
 		case "audio_fx":
-			c.Kind, c.Category = "effect", "Fx"
-			c.Params = toVstParams(cm, "fx1")
-			c.Banks = banksFor(c.Params, cm, "fx1")
+			ps := toVstParams(cm, "fx1")
+			classes = append(classes, finish(m.Name, livedevice.Effect, "Fx", m.ID, "Pung",
+				ps, banksFor(ps, cm, "fx1"), nil))
 		case "midi_fx":
-			// No MIDI-in/MIDI-out class: Live 13.0b25's scan files that shape as
-			// an audio effect (device:vst3:audiofx, measured 2026-11-14), so it
-			// cannot sit in Live's MIDI-effect position. The proxy still knows
-			// the "midifx" kind, for a Live that takes it one day.
-			// form 2: a device on its own track whose MIDI other tracks hear
-			c.Name = "Schwung " + m.Name + " Track"
-			c.Kind, c.Category = "midi", "Instrument"
-			c.Params = toVstParams(cm, "midi_fx1")
-			c.Banks = banksFor(c.Params, cm, "midi_fx1")
-			ch := vstParam{Name: "MIDI Out Ch", Key: "outch", Type: "enum", Role: "outch", Max: 15}
+			// A device on its own track whose notes other tracks take with
+			// Live's "MIDI From". Not a MIDI-in/MIDI-out plugin: Live 13.0b25
+			// scans that shape as an audio effect (docs/DESIGN-v2.md).
+			ps := toVstParams(cm, "midi_fx1")
+			banks := banksFor(ps, cm, "midi_fx1")
+			ch := vstParam{Param: livedevice.Param{Name: "MIDI Out Ch", Key: "outch", Type: "enum", Role: "outch", Max: 15}}
 			for i := 1; i <= 16; i++ {
 				ch.Options = append(ch.Options, fmt.Sprintf("Ch. %d", i))
 			}
-			ch.meta = &paramMeta{Key: "outch", Name: "MIDI Out Ch", Type: "enum", Options: ch.Options}
-			c.Params = append(c.Params, ch)
-			c.Banks = append(c.Banks, []int{len(c.Params) - 1})
-		default:
-			continue
+			banks = append(banks, []int{len(ps)})
+			ps = append(ps, ch)
+			classes = append(classes, finish(m.Name+" Track", livedevice.MIDI, "Instrument", m.ID,
+				"Pung MIDI Effects", ps, banks, nil))
 		}
-		padBanks(c)
-		if len(c.Params) > C.SB_IPC_MAXPAR {
-			c.Params = c.Params[:C.SB_IPC_MAXPAR]
+		if n := len(classes); n > 0 && classes[n-1].module == m.ID {
+			classes[n-1].inCh = moduleInChannel(m)
 		}
-		c.UID = classUID(c.Kind, m.ID)
-		classes = append(classes, c)
 	}
 	sort.Slice(classes, func(i, j int) bool { return classes[i].Name < classes[j].Name })
+	for _, c := range classes {
+		deviceNames[c.Name] = c.module
+	}
 	return classes
 }
 
-// padBanks makes every bank but the last fill whole pages of 8: Push shows a
-// plugin's parameters 8 to a page in the order the browser entry lists them,
-// so a bank of 5 would otherwise share its page with the next bank's first 3.
-// Each gap is a placeholder parameter of its own (Role "pad": blank, read
-// only, ignored by the service): a parameter listed twice gets two values in
-// Live, so one placeholder cannot fill two gaps.
-func padBanks(c *vstClass) {
-	// each parameter once, in its first bank (the MIDI FX selector heads every
-	// MIDI-effect bank); an emptied bank goes
-	seen := map[int]bool{}
-	var banks [][]int
-	for _, bank := range c.Banks {
-		var keep []int
-		for _, i := range bank {
-			if !seen[i] {
-				seen[i] = true
-				keep = append(keep, i)
-			}
-		}
-		if len(keep) > 0 {
-			banks = append(banks, keep)
-		}
+func coreClasses(cs []*sclass) []*livedevice.Class {
+	out := make([]*livedevice.Class, len(cs))
+	for i, c := range cs {
+		out[i] = c.Class
 	}
-	c.Banks = banks
-	for b := 0; b < len(c.Banks)-1; b++ {
-		for len(c.Banks[b])%8 != 0 {
-			c.Banks[b] = append(c.Banks[b], len(c.Params))
-			c.Params = append(c.Params, vstParam{Name: "", Key: "", Type: "pad", Role: "pad"})
-		}
-	}
+	return out
 }
 
 func shortName(m ModuleInfo) string {
@@ -293,360 +290,380 @@ func moduleWantsAudioIn(m ModuleInfo) bool {
 	return j.Capabilities.AudioIn
 }
 
-// writeClasses writes vst3-classes.json. When it changed, the plugin's
-// timestamp is touched, so Live scans the bundle again at its next start.
-func writeClasses(path, bundle string, classes []*vstClass) error {
-	doc, _ := json.MarshalIndent(map[string]any{"version": 1, "classes": classes}, "", " ")
-	if old, err := os.ReadFile(path); err == nil && string(old) == string(doc) {
-		return nil
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, doc, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return err
-	}
-	so := filepath.Join(bundle, "Contents", "x86_64-linux", "Schwung.so")
-	now := time.Now()
-	os.Chtimes(so, now, now)
-	log.Printf("devices: %d classes written to %s", len(classes), path)
-	return nil
-}
+// ---- the provider: one Pung chain per device ----------------------------------
 
-// ---- devices ------------------------------------------------------------------
-
-type device struct {
-	id    int
-	class *vstClass
-	s     *Slot
-	shm   []byte
-	path  string
-	quit  atomic.Bool
-	done  chan struct{}
-	outCh int
-
-	midiFX      int // loaded MIDI effect (index into class.midiFX)
-	wantMidiFX  atomic.Int32
-	switchingFX atomic.Bool
-
-	// what the device did, for /api/devices (written by run, read by HTTP)
-	blocks, notesIn, notesOut atomic.Uint64
-	inPeak, outPeak         atomic.Uint32 // float32 bits, the last second's peak
-}
-
-type devices struct {
+type provider struct {
 	h       *Host
 	mu      sync.Mutex
-	classes map[string]*vstClass
-	list    map[int]*device
-	next    int
+	classes map[string]*sclass
+	used    map[int]bool    // chain slots in use by devices
+	devs    map[int]*device // by chain slot
 }
 
-func newDevices(h *Host, classes []*vstClass) *devices {
-	d := &devices{h: h, classes: map[string]*vstClass{}, list: map[int]*device{}, next: 1}
+func newProvider(h *Host, classes []*sclass) *provider {
+	p := &provider{h: h, classes: map[string]*sclass{}, used: map[int]bool{maxSlots - 1: true}, // the metadata probe
+		devs: map[int]*device{}}
 	for _, c := range classes {
-		d.classes[c.UID] = c
+		p.classes[c.UID] = c
 	}
-	return d
+	return p
 }
 
-func (ds *devices) freeSlot() int {
-	used := map[int]bool{maxSlots - 1: true} // the metadata probe
-	for _, d := range ds.list {
-		used[d.s.Index] = true
-	}
+func (p *provider) freeSlot() int {
 	for i := 0; i < maxSlots; i++ {
-		if !used[i] && ds.h.slot(i) == nil {
+		if !p.used[i] && p.h.slot(i) == nil {
 			return i
 		}
 	}
 	return -1
 }
 
-func (ds *devices) create(uid string) (*device, error) {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	c, ok := ds.classes[uid]
-	if !ok {
-		return nil, fmt.Errorf("unknown class %s", uid)
+func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
+	sc := p.classes[c.UID]
+	if sc == nil {
+		return nil, errors.New("not a Pung class")
 	}
-	slot := ds.freeSlot()
+	p.mu.Lock()
+	slot := p.freeSlot()
+	if slot >= 0 {
+		p.used[slot] = true
+	}
+	p.mu.Unlock()
 	if slot < 0 {
-		return nil, fmt.Errorf("all %d device instances are in use", maxSlots-1)
+		return nil, fmt.Errorf("all %d Pung chains are in use", maxSlots-1)
 	}
 	if err := cSlotCreate(slot); err != nil {
+		p.release(slot)
 		return nil, err
 	}
-	s := &Slot{Index: slot, Name: c.Name, midi: make(chan midiMsg, 1024), seq: ds.h.seq}
+	s := &Slot{Index: slot, Name: c.Name, midi: make(chan midiMsg, 1024), seq: p.h.seq}
 	switch c.Kind {
-	case "instrument":
-		s.Set("synth:module", c.Module)
-	case "effect":
-		s.Set("fx1:module", c.Module)
-	case "midi", "midifx":
-		s.Set("midi_fx1:module", c.Module)
+	case livedevice.Instrument:
+		s.Set("synth:module", sc.module)
+	case livedevice.Effect:
+		s.Set("fx1:module", sc.module)
+	case livedevice.MIDI:
+		s.Set("midi_fx1:module", sc.module)
 		sinkMIDI(s)
 	}
-	id := ds.next
-	ds.next++
-	path := fmt.Sprintf("/dev/shm/schwung-dev-%d", id)
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
-	if err != nil {
-		cSlotDestroy(slot)
-		return nil, err
+	d := &device{p: p, c: sc, s: s, in: make([]float32, livedevice.MaxFrames*2),
+		out: make([]float32, livedevice.MaxFrames*2), midiBuf: make([]byte, 256),
+		norms: make([]atomic.Uint64, len(c.Params)), reports: map[int]float64{}}
+	for i, prm := range c.Params {
+		d.norms[i].Store(math.Float64bits(prm.Default))
 	}
-	os.Chmod(path, 0o666) // Live runs as ableton
-	if err := f.Truncate(C.SB_IPC_SIZE); err != nil {
-		f.Close()
-		cSlotDestroy(slot)
-		return nil, err
-	}
-	mem, err := syscall.Mmap(int(f.Fd()), 0, C.SB_IPC_SIZE, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
-	f.Close()
-	if err != nil {
-		cSlotDestroy(slot)
-		return nil, err
-	}
-	*u32(mem, C.SB_OFF_MAGIC) = C.SB_IPC_MAGIC
-	*u32(mem, C.SB_OFF_VERSION) = C.SB_IPC_VERSION
-	d := &device{id: id, class: c, s: s, shm: mem, path: path, done: make(chan struct{})}
-	ds.list[id] = d
-	go d.run(ds.h)
-	log.Printf("devices: %d %s (chain %d)", id, c.Name, slot)
+	p.mu.Lock()
+	p.devs[slot] = d
+	p.mu.Unlock()
 	return d, nil
 }
 
-func (ds *devices) destroy(id int) {
-	ds.mu.Lock()
-	d := ds.list[id]
-	delete(ds.list, id)
-	ds.mu.Unlock()
-	if d == nil {
+// device: the one at chain slot n, or nil.
+func (p *provider) device(n int) *device {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.devs[n]
+}
+
+// list: every device, by chain slot.
+func (p *provider) list() []*device {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []*device
+	for _, d := range p.devs {
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].s.Index < out[j].s.Index })
+	return out
+}
+
+func (p *provider) release(slot int) {
+	p.mu.Lock()
+	delete(p.used, slot)
+	delete(p.devs, slot)
+	p.mu.Unlock()
+}
+
+type device struct {
+	p *provider
+	c *sclass
+	s *Slot
+
+	// the last MIDI messages Live delivered (Stats: "midi_recent"); written on
+	// the realtime thread, a fixed ring, read anywhere (a torn read shows a
+	// mixed message, never a crash)
+	recentMidi [16][4]byte
+	recentN    atomic.Uint32
+
+	in, out []float32 // interleaved, as the chain renders
+	midiBuf []byte
+	outCh   int
+
+	midiFX      int // loaded MIDI effect (index into c.midiFX)
+	switchingFX atomic.Bool
+
+	// norms: each parameter's value as Live last knows it (Live's own
+	// changes, and the ones reported back); compared with Live's to tell
+	// which device in Live this is (identify)
+	norms []atomic.Uint64
+	// reports: changes made here (the web page), told to Live next block
+	repMu   sync.Mutex
+	reports map[int]float64
+	resync  *time.Timer // under repMu
+	closed  bool        // under repMu: its chain slot may belong to another device now
+}
+
+// Process runs one block on the device's realtime thread.
+func (d *device) Process(b *livedevice.Block) {
+	if b.TransportValid {
+		setTempo(b.BPM)
+		if b.Playing {
+			setClock(2, b.Beat)
+		} else {
+			setClock(1, -1)
+		}
+	}
+	if !d.s.acquire() {
+		return // a module is loading: silence, never a wait
+	}
+	defer d.s.own.Unlock()
+	b.Params(d.applyParam)
+	b.Events(func(_ int, msg []byte) {
+		n := d.recentN.Add(1) - 1
+		var e [4]byte
+		e[3] = byte(copy(e[:3], msg))
+		d.recentMidi[n%16] = e
+		if ch := d.c.inCh; ch >= 0 && len(msg) > 0 && msg[0] >= 0x80 && msg[0] < 0xF0 {
+			var m [3]byte
+			k := copy(m[:], msg)
+			m[0] = m[0]&0xF0 | byte(ch)
+			cMidi(d.s.Index, m[:k], 0)
+			return
+		}
+		cMidi(d.s.Index, msg, 0)
+	})
+	n := b.Frames
+	var input []float32
+	if d.c.Kind == livedevice.Effect {
+		input = d.in[:n*2]
+		for i := 0; i < n; i++ {
+			input[i*2], input[i*2+1] = b.In[0][i], b.In[1][i]
+		}
+	}
+	if n > 0 {
+		o := d.out[:n*2]
+		cRender(d.s.Index, o, input)
+		for i := 0; i < n; i++ {
+			b.Out[0][i], b.Out[1][i] = o[i*2], o[i*2+1]
+		}
+	}
+	if d.repMu.TryLock() { // never wait on the realtime thread: next block, then
+		for idx, n := range d.reports {
+			b.Report(idx, n)
+			delete(d.reports, idx)
+		}
+		d.repMu.Unlock()
+	}
+	for {
+		got := cTakeMidiOut(d.s.Index, d.midiBuf)
+		if got <= 0 {
+			break
+		}
+		if d.c.Kind != livedevice.MIDI {
+			continue // what a synth sends has nowhere to go
+		}
+		for i := 0; i+3 < got; i += 4 {
+			msg := usbMidiToRaw(d.midiBuf[i : i+4])
+			if len(msg) == 0 || msg[0] >= 0xF0 {
+				continue
+			}
+			msg[0] = msg[0]&0xF0 | byte(d.outCh&15) // the device's "MIDI Out Ch"
+			b.Emit(0, msg)
+		}
+	}
+}
+
+func (d *device) applyParam(idx int, norm float64) {
+	if idx < len(d.norms) {
+		d.norms[idx].Store(math.Float64bits(norm))
+	}
+	if idx >= len(d.c.meta) {
 		return
 	}
-	d.quit.Store(true)
-	futexWake(u32(d.shm, C.SB_OFF_REQ))
-	<-d.done
-	d.s.own.Lock()
-	cSlotDestroy(d.s.Index)
-	d.s.own.Unlock()
-	syscall.Munmap(d.shm)
-	os.Remove(d.path)
-	log.Printf("devices: %d %s closed", id, d.class.Name)
-}
-
-// C_SB_IPC_SOCKET is the control socket's path (schwung_ipc.h).
-var C_SB_IPC_SOCKET = C.SB_IPC_SOCKET
-
-func u32(b []byte, off int) *uint32 { return (*uint32)(unsafe.Pointer(&b[off])) }
-func f32(b []byte, off int) *float32 { return (*float32)(unsafe.Pointer(&b[off])) }
-func f64(b []byte, off int) *float64 { return (*float64)(unsafe.Pointer(&b[off])) }
-
-func futexWait(addr *uint32, val uint32, d time.Duration) {
-	ts := syscall.NsecToTimespec(int64(d))
-	syscall.Syscall6(syscall.SYS_FUTEX, uintptr(unsafe.Pointer(addr)), 0 /* FUTEX_WAIT, shared */, uintptr(val),
-		uintptr(unsafe.Pointer(&ts)), 0, 0)
-}
-
-func futexWake(addr *uint32) {
-	syscall.Syscall6(syscall.SYS_FUTEX, uintptr(unsafe.Pointer(addr)), 1 /* FUTEX_WAKE, shared */, 1<<30, 0, 0, 0)
-}
-
-// run renders the device one block at a time, as the proxy asks.
-func (d *device) run(h *Host) {
-	defer close(d.done)
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	cSetRealtime(70) // Live's own audio threads run at FIFO 70
-	req, done := u32(d.shm, C.SB_OFF_REQ), u32(d.shm, C.SB_OFF_DONE)
-	last := atomic.LoadUint32(req)
-	in := make([]float32, C.SB_IPC_MAXF*2)
-	out := make([]float32, C.SB_IPC_MAXF*2)
-	midiBuf := make([]byte, 256)
-	for !d.quit.Load() {
-		r := atomic.LoadUint32(req)
-		if r == last {
-			futexWait(req, r, 200*time.Millisecond)
-			atomic.AddUint32(u32(d.shm, C.SB_OFF_ALIVE), 1)
-			continue
+	switch d.c.role[idx] {
+	case "outch":
+		d.outCh = int(math.Round(norm * 15))
+		return
+	case "midifx":
+		want := int(math.Round(norm * float64(len(d.c.midiFX)-1)))
+		if want != d.midiFX && !d.switchingFX.Load() {
+			d.switchMidiFX(want)
 		}
-		last = r
-		frames := int(atomic.LoadUint32(u32(d.shm, C.SB_OFF_FRAMES)))
-		if frames <= 0 || frames > C.SB_IPC_MAXF {
-			frames = 0
-		}
-		flags := *u32(d.shm, C.SB_OFF_FLAGS)
-		if flags&2 != 0 {
-			setTempo(*f64(d.shm, C.SB_OFF_BPM))
-			if flags&1 != 0 {
-				setClock(2, *f64(d.shm, C.SB_OFF_BEAT))
-			} else {
-				setClock(1, -1)
-			}
-		}
-		o := out[:frames*2]
-		if d.s.acquire() {
-			d.applyParams()
-			d.applyEvents()
-			var input []float32
-			if d.class.Kind == "effect" {
-				input = in[:frames*2]
-				for i := 0; i < frames; i++ {
-					input[i*2] = *f32(d.shm, C.SB_OFF_IN_L+i*4)
-					input[i*2+1] = *f32(d.shm, C.SB_OFF_IN_R+i*4)
-				}
-			}
-			if frames > 0 {
-				cRender(d.s.Index, o, input)
-			}
-			d.blocks.Add(1)
-			d.peak(&d.inPeak, input)
-			d.peak(&d.outPeak, o)
-			nout := 0
-			for {
-				n := cTakeMidiOut(d.s.Index, midiBuf)
-				if n <= 0 {
-					break
-				}
-				for i := 0; i+3 < n; i += 4 {
-					if midiBuf[i]&0x0F == 0x09 && midiBuf[i+3] > 0 {
-						d.notesOut.Add(1)
-					}
-				}
-				nout = d.eventsOut(midiBuf[:n], nout)
-			}
-			*u32(d.shm, C.SB_OFF_ONEV) = uint32(nout)
-			d.s.own.Unlock()
-		} else {
-			clear(o) // a module is loading: silence, never a wait
-		}
-		for i := 0; i < frames; i++ {
-			*f32(d.shm, C.SB_OFF_OUT_L+i*4) = o[i*2]
-			*f32(d.shm, C.SB_OFF_OUT_R+i*4) = o[i*2+1]
-		}
-		atomic.StoreUint32(done, r)
-		futexWake(done)
+		return
 	}
-}
-
-func (d *device) applyParams() {
-	n := int(*u32(d.shm, C.SB_OFF_NPAR))
-	if n > C.SB_IPC_MAXPAR {
-		n = C.SB_IPC_MAXPAR
+	if g := d.c.gateIdx[idx]; g != 0 && g != d.midiFX {
+		return // belongs to a MIDI effect that is not loaded
 	}
-	for i := 0; i < n; i++ {
-		off := C.SB_OFF_PARAMS + i*8
-		idx := int(*u32(d.shm, off))
-		norm := float64(*f32(d.shm, off+4))
-		if idx < 0 || idx >= len(d.class.Params) {
-			continue
-		}
-		p := &d.class.Params[idx]
-		switch p.Role {
-		case "pad":
-			continue // a placeholder: nothing behind it
-		case "outch":
-			d.outCh = int(math.Round(norm * 15))
-			continue
-		case "midifx":
-			want := int(math.Round(norm * float64(len(d.class.midiFX)-1)))
-			if want != d.midiFX && !d.switchingFX.Load() {
-				d.switchMidiFX(want)
-			}
-			continue
-		}
-		if p.gateIdx != 0 && p.gateIdx != d.midiFX {
-			continue // belongs to a MIDI effect that is not loaded
-		}
-		cSet(d.s.Index, p.Key, p.meta.fromNorm(norm))
+	if m := d.c.meta[idx]; m != nil {
+		cSet(d.s.Index, d.c.Params[idx].Key, m.fromNorm(norm))
 	}
 }
 
 // switchMidiFX loads another MIDI effect off the render thread: a module load
-// is a dlopen. The slot is skipped (silent) while it loads.
+// is a dlopen. The chain is skipped (silent) while it loads.
 func (d *device) switchMidiFX(want int) {
 	d.switchingFX.Store(true)
 	d.midiFX = want
-	id := d.class.midiFX[want]
+	id := d.c.midiFX[want]
 	go func() {
 		defer d.switchingFX.Store(false)
 		d.s.Set("midi_fx1:module", id)
 	}()
 }
 
-func (d *device) applyEvents() {
-	n := int(*u32(d.shm, C.SB_OFF_NEV))
-	if n > C.SB_IPC_MAXEV {
-		n = C.SB_IPC_MAXEV
+// SetOutside is a change made on Pung's side (the web page): the chain
+// gets it now, and Live hears of it at the next block (Block.Report), so
+// Push's device view, the Pung view and automation follow.
+func (d *device) SetOutside(key, value string) {
+	d.s.Set(key, value)
+	d.repMu.Lock()
+	defer d.repMu.Unlock()
+	if idx, ok := d.c.keyIdx[key]; ok && idx < len(d.c.meta) && d.c.meta[idx] != nil {
+		norm := d.c.meta[idx].toNormValue(value)
+		d.norms[idx].Store(math.Float64bits(norm))
+		d.reports[idx] = norm
 	}
-	for i := 0; i < n; i++ {
-		off := C.SB_OFF_EVENTS + i*8
-		l := int(d.shm[off+4])
-		if l < 1 || l > 3 {
+	// and whatever else it moved, once the writes stop (even a key Live
+	// does not have: an action like loading a preset)
+	if d.resync == nil {
+		d.resync = time.AfterFunc(resyncAfter, d.resyncLive)
+	} else if !d.closed {
+		d.resync.Reset(resyncAfter)
+	}
+}
+
+// resyncAfter: how long after the last change from the web page the chain is
+// read back whole. One key can move many (a preset, an "init" button), and
+// Live heard only of the key itself; once, after a drag ends, not per step.
+const resyncAfter = 150 * time.Millisecond
+
+// resyncLive reads every parameter Live has back from the chain and reports
+// the ones that moved. On a timer, never the realtime thread; repMu is held
+// throughout, so Close cannot free the chain slot under it (Process only
+// TryLocks it: its reports wait a block).
+func (d *device) resyncLive() {
+	d.repMu.Lock()
+	defer d.repMu.Unlock()
+	if d.closed {
+		return
+	}
+	for idx, m := range d.c.meta {
+		if m == nil || d.c.role[idx] != "" || d.c.gateIdx[idx] != 0 {
+			continue // selectors, and a switchable MIDI effect's (its key was reported)
+		}
+		v, ok := d.s.Get(d.c.Params[idx].Key)
+		if !ok {
 			continue
 		}
-		m := d.shm[off+5 : off+5+l]
-		if l == 3 && m[0]&0xF0 == 0x90 && m[2] > 0 {
-			d.notesIn.Add(1)
+		// compared as values, both through the same formatting: an int's
+		// norm is not exact, and a rounding is not a change
+		n := m.toNormValue(v)
+		if m.fromNorm(n) != m.fromNorm(math.Float64frombits(d.norms[idx].Load())) {
+			d.norms[idx].Store(math.Float64bits(n))
+			d.reports[idx] = n
 		}
-		cMidi(d.s.Index, m, 0)
 	}
 }
 
-// peak keeps the loudest sample of the last second (44100 frames, about
-// 344 blocks of 128): one atomic store per block, no lock on the RT thread.
-func (d *device) peak(dst *atomic.Uint32, buf []float32) {
-	var p float32
-	for _, v := range buf {
-		if v < 0 {
-			v = -v
-		}
-		if v > p {
-			p = v
-		}
+// component: the chain component a device of this class edits.
+func (c *sclass) component() string {
+	switch c.Kind {
+	case livedevice.Effect:
+		return "fx1"
+	case livedevice.MIDI:
+		return "midi_fx1"
 	}
-	old := math.Float32frombits(dst.Load())
-	if d.blocks.Load()%344 == 0 {
-		old = 0
-	}
-	if p > old {
-		old = p
-	}
-	dst.Store(math.Float32bits(old))
+	return "synth"
 }
 
-// stats is one line of /api/devices.
-func (d *device) stats() map[string]any {
-	return map[string]any{"id": d.id, "name": d.class.Name, "kind": d.class.Kind, "module": d.class.Module,
-		"blocks": d.blocks.Load(), "notes_in": d.notesIn.Load(), "notes_out": d.notesOut.Load(),
-		"in_peak": math.Float32frombits(d.inPeak.Load()), "out_peak": math.Float32frombits(d.outPeak.Load()),
-		"midi_fx": d.midiFXName()}
-}
-
-// midiFXName: the MIDI effect an instrument device runs in front of its
-// synth, "" for none.
-func (d *device) midiFXName() string {
-	if d.class.Kind != "instrument" {
-		return ""
-	}
-	v, _ := d.s.Get("midi_fx1_module")
-	return v
-}
-
-// handle serves GET /api/devices: every Schwung device Live has made.
-func (ds *devices) handle(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/devices", func(w http.ResponseWriter, r *http.Request) {
-		ds.mu.Lock()
-		out := []map[string]any{}
-		for _, d := range ds.list {
-			out = append(out, d.stats())
+// matches: how well Live's parameter values (the plugin's parameter list in
+// Live, "Device On" first) fit this device's. 0 is a perfect fit.
+func (d *device) matches(liveParams []liveParam) float64 {
+	diff, n := 0.0, 0
+	for k, p := range liveParams {
+		if k == 0 || k-1 >= len(d.c.order) || p.Max <= p.Min {
+			continue
 		}
-		ds.mu.Unlock()
-		sort.Slice(out, func(i, j int) bool { return out[i]["id"].(int) < out[j]["id"].(int) })
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"devices": out})
-	})
+		idx := d.c.order[k-1]
+		if idx >= len(d.norms) || d.c.Params[idx].Type == livedevice.PadType {
+			continue
+		}
+		live := (p.V - p.Min) / (p.Max - p.Min)
+		diff += math.Abs(live - math.Float64frombits(d.norms[idx].Load()))
+		n++
+	}
+	if n == 0 {
+		return math.Inf(1)
+	}
+	return diff
+}
+
+// State is the device's Pung patch, the format Move saves, plus what the
+// device keeps outside the chain.
+func (d *device) State() (string, error) {
+	p, err := d.s.patch(d.c.Name)
+	if err != nil {
+		return "", err
+	}
+	doc, err := json.Marshal(map[string]any{"pung_device": 1, "midi_fx": d.midiFX, "out_ch": d.outCh, "chain": p})
+	return string(doc), err
+}
+
+func (d *device) SetState(state string) error {
+	var st struct {
+		MidiFX int             `json:"midi_fx"`
+		OutCh  int             `json:"out_ch"`
+		Chain  json.RawMessage `json:"chain"`
+	}
+	if json.Unmarshal([]byte(state), &st) != nil || len(st.Chain) == 0 {
+		return errors.New("not a Pung device state")
+	}
+	if err := d.p.h.loadPatch(d.s, st.Chain); err != nil {
+		return err
+	}
+	if d.c.Kind == livedevice.MIDI {
+		sinkMIDI(d.s) // also repairs a state saved with pre mode
+	}
+	d.midiFX, d.outCh = st.MidiFX, st.OutCh
+	return nil
+}
+
+func (d *device) Close() {
+	d.repMu.Lock()
+	d.closed = true
+	if d.resync != nil {
+		d.resync.Stop()
+	}
+	d.repMu.Unlock()
+	d.s.own.Lock()
+	cSlotDestroy(d.s.Index)
+	d.s.own.Unlock()
+	d.p.release(d.s.Index)
+}
+
+// Stats adds Pung's view of a device to /api/devices.
+func (d *device) Stats() map[string]any {
+	fx := ""
+	if d.c.Kind == livedevice.Instrument {
+		fx, _ = d.s.Get("midi_fx1_module")
+	}
+	n := d.recentN.Load()
+	var recent []string
+	for i := uint32(0); i < 16 && i < n; i++ {
+		e := d.recentMidi[(n-1-i)%16]
+		recent = append(recent, fmt.Sprintf("% X", e[:e[3]]))
+	}
+	return map[string]any{"module": d.c.module, "midi_fx": fx, "midi_recent": recent}
 }
 
 // sinkMIDI makes a chain's MIDI FX output the device's MIDI out: the
@@ -661,135 +678,3 @@ func sinkMIDI(s *Slot) {
 }
 
 const sinkModule = "midi-sink"
-
-// eventsOut hands a MIDI-effect device's output back to its plugin, which
-// gives it to Live in the same block (the traditional MIDI-effect shape).
-func (d *device) eventsOut(packets []byte, n int) int {
-	if d.class.Kind != "midifx" && d.class.Kind != "midi" {
-		return n
-	}
-	for i := 0; i+3 < len(packets) && n < C.SB_IPC_MAXEV; i += 4 {
-		msg := usbMidiToRaw(packets[i : i+4])
-		if len(msg) == 0 || msg[0] >= 0xF0 {
-			continue
-		}
-		off := C.SB_OFF_OEVENTS + n*8
-		*u32(d.shm, off) = 0
-		d.shm[off+4] = byte(len(msg))
-		copy(d.shm[off+5:off+8], msg)
-		if d.class.Kind == "midi" { // the device's "MIDI Out Ch"
-			d.shm[off+5] = msg[0]&0xF0 | byte(d.outCh&15)
-		}
-		n++
-	}
-	return n
-}
-
-// ---- the control socket -------------------------------------------------------
-
-func (ds *devices) serve(path string) error {
-	os.Remove(path)
-	ln, err := net.Listen("unix", path)
-	if err != nil {
-		return err
-	}
-	os.Chmod(path, 0o666)
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go ds.conn(c)
-		}
-	}()
-	log.Printf("devices: listening on %s", path)
-	return nil
-}
-
-func (ds *devices) conn(c net.Conn) {
-	defer c.Close()
-	mine := map[int]bool{}
-	defer func() {
-		for id := range mine { // the plugin is gone: so are its devices
-			ds.destroy(id)
-		}
-	}()
-	r := bufio.NewReaderSize(c, 1<<20)
-	enc := json.NewEncoder(c)
-	for {
-		line, err := r.ReadBytes('\n')
-		if err != nil {
-			return
-		}
-		var req struct {
-			Op    string `json:"op"`
-			UID   string `json:"uid"`
-			ID    int    `json:"id"`
-			State string `json:"state"`
-		}
-		if json.Unmarshal(line, &req) != nil {
-			enc.Encode(map[string]any{"ok": false, "error": "bad request"})
-			continue
-		}
-		switch req.Op {
-		case "create":
-			d, err := ds.create(req.UID)
-			if err != nil {
-				enc.Encode(map[string]any{"ok": false, "error": err.Error()})
-				continue
-			}
-			mine[d.id] = true
-			enc.Encode(map[string]any{"ok": true, "id": d.id, "shm": d.path})
-		case "destroy":
-			ds.destroy(req.ID)
-			delete(mine, req.ID)
-			enc.Encode(map[string]any{"ok": true})
-		case "get_state":
-			d := ds.get(req.ID)
-			if d == nil {
-				enc.Encode(map[string]any{"ok": false, "error": "no such device"})
-				continue
-			}
-			p, err := d.s.patch(d.class.Name)
-			if err != nil {
-				enc.Encode(map[string]any{"ok": false, "error": err.Error()})
-				continue
-			}
-			doc, _ := json.Marshal(map[string]any{"schwung_device": 1, "midi_fx": d.midiFX, "out_ch": d.outCh, "chain": p})
-			enc.Encode(map[string]any{"ok": true, "state": string(doc)})
-		case "set_state":
-			d := ds.get(req.ID)
-			if d == nil {
-				enc.Encode(map[string]any{"ok": false, "error": "no such device"})
-				continue
-			}
-			var st struct {
-				MidiFX int             `json:"midi_fx"`
-				OutCh  int             `json:"out_ch"`
-				Chain  json.RawMessage `json:"chain"`
-			}
-			if json.Unmarshal([]byte(req.State), &st) != nil || len(st.Chain) == 0 {
-				enc.Encode(map[string]any{"ok": false, "error": "not a Schwung device state"})
-				continue
-			}
-			if err := ds.h.loadPatch(d.s, st.Chain); err != nil {
-				enc.Encode(map[string]any{"ok": false, "error": err.Error()})
-				continue
-			}
-			if d.class.Kind == "midi" || d.class.Kind == "midifx" {
-				sinkMIDI(d.s) // also repairs a state saved with pre mode
-			}
-			d.midiFX, d.outCh = st.MidiFX, st.OutCh
-			enc.Encode(map[string]any{"ok": true})
-		default:
-			enc.Encode(map[string]any{"ok": false, "error": "unknown op " + req.Op})
-		}
-	}
-}
-
-func (ds *devices) get(id int) *device {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	return ds.list[id]
-}

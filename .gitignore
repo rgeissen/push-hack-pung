@@ -1,6 +1,7 @@
 /build/
-/schwung
-/src/schwung
+/pung
+/src/pung
 /vst3-classes.json
 .DS_Store
 __pycache__/
+/livedevice.so

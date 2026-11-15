@@ -1,15 +1,18 @@
-# Schwung for Push 3. Everything builds in one Ubuntu 22.04 amd64 container
+# Pung for Push 3. Everything builds in one Ubuntu 22.04 amd64 container
 # (docker/Dockerfile): glibc 2.35 is what AbletonOS runs, so the binary and
 # every module built here load on the device.
 
-IMAGE   := push-hack-schwung-builder
+IMAGE   := push-hack-pung-builder
 HOST    ?= push.local
 SCHWUNG ?= $(abspath $(CURDIR)/../schwung)
+# push-hack: core/livedevice (Live devices) comes from here while src/go.mod
+# replaces core with this checkout (until core/v0.6.0 is tagged)
+PUSHHACK ?= $(abspath $(CURDIR)/../ableton-push-hack)
 MODSRC  ?= $(CURDIR)/build/modsrc
 VERSION := $(shell cat VERSION 2>/dev/null || echo dev)
 SSH     := ssh -o BatchMode=yes -o HostKeyAlias=push.local
 DOCKER  := docker run --rm --platform linux/amd64 \
-	-v $(CURDIR):/w -v push-hack-schwung-gomod:/root/go/pkg/mod -w /w
+	-v $(CURDIR):/w -v $(PUSHHACK):/ableton-push-hack:ro -v push-hack-pung-gomod:/root/go/pkg/mod -w /w
 
 # AbletonOS keeps its dynamic linker at /lib, not /lib64.
 LDFLAGS := -s -w -X main.buildVersion=$(VERSION) -linkmode external \
@@ -22,8 +25,11 @@ all: build
 image:
 	docker build -q --platform linux/amd64 -t $(IMAGE) docker/
 
+# the service, and the Live plugin it installs (core/livedevice's prebuilt
+# livedevice.so, from the core this build uses)
 build:
-	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go build -trimpath -ldflags '$(LDFLAGS)' -o ../schwung ."
+	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go build -trimpath -ldflags '$(LDFLAGS)' -o ../pung . && \
+	  cp \$$(go list -m -f '{{.Dir}}' github.com/federico-pepe/ableton-push-hack/core)/livedevice/vst3/livedevice.so ../livedevice.so"
 
 test:
 	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go test ./..."
@@ -31,7 +37,7 @@ test:
 vet:
 	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go vet ./..."
 
-# Schwung's chain host and its built-in modules, from the Schwung checkout
+# Schwung's chain host and its built-in modules, from the Pung checkout
 modules:
 	$(DOCKER) -v $(SCHWUNG):/schwung:ro -v $(CURDIR)/build/modules:/out $(IMAGE) bash /w/scripts/build-modules.sh
 
@@ -44,4 +50,4 @@ deploy: build
 	scripts/deploy.sh $(HOST)
 
 clean:
-	rm -f schwung
+	rm -f pung livedevice.so

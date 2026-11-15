@@ -1,10 +1,10 @@
 package main
 
-// liveview.go: the Schwung view of a Live device (DESIGN-v2, step 1).
+// liveview.go: the Pung view of a Live device (DESIGN-v2, step 1).
 //
-// Schwung modules are Live devices now (Schwung.vst3). Push's own device view
-// shows them as plain parameter lists; the Schwung view shows the selected
-// Schwung device with the module's own design: its banks, its widgets, the
+// Schwung modules are Live devices now (Pung.vst3). Push's own device view
+// shows them as plain parameter lists; the Pung view shows the selected
+// Pung device with the module's own design: its banks, its widgets, the
 // detail card. It opens with Push Hack Home's superstar gesture.
 //
 // Everything goes through Live (the PushHack Remote Script):
@@ -53,13 +53,13 @@ type liveScale struct {
 
 // ---- the device, the devices around it, the scale ----------------------------
 //
-// A Schwung device is often inside a rack: a browser entry is an Instrument
+// A Pung device is often inside a rack: a browser entry is an Instrument
 // Rack wrapping the plugin, and racks are half the point of making modules
 // Live devices. Live's "device" topic only finds devices at the top of a
 // track (it reports device -1 with the name for one inside a rack). So the
 // selected device is found by its name, inside racks, and addressed by its
 // path (device, chain, device, ...). A nested device's parameters are read
-// directly, a few times a second, only while the Schwung view is up.
+// directly, a few times a second, only while the Pung view is up.
 
 type liveDevSummary struct {
 	I      int    `json:"i"`
@@ -68,8 +68,23 @@ type liveDevSummary struct {
 	Chains int    `json:"chains"`
 }
 
+// liveTrack is one of Live's tracks (the "tracks" topic): the Pung view's
+// lower row, as on Push's device view.
+type liveTrack struct {
+	Ref   json.RawMessage `json:"ref"`
+	Name  string          `json:"name"`
+	Kind  string          `json:"kind"`
+	Color int             `json:"color"`
+}
+
 type liveState struct {
 	mu       sync.Mutex
+	tracks   []liveTrack     // Live's tracks (not returns or master)
+	selTrack json.RawMessage // the selected one, from the tracks topic
+	// the selected track's devices (its top level) and which of them holds
+	// the selected device: the Pung view's upper row, as on Push
+	trackDevs []liveDevSummary
+	selTop    int
 	dev      liveDevice
 	path     []int // the selected device; nil = none found
 	cont     []int // path of the rack holding it; nil = the track itself
@@ -78,7 +93,7 @@ type liveState struct {
 	devsKey  string
 	scale    liveScale
 	onChange func()
-	active   atomic.Bool // the Schwung view is on the screen
+	active   atomic.Bool // the Pung view is on the screen
 
 	wmu     sync.Mutex
 	pending map[string]paramWrite
@@ -95,6 +110,56 @@ type paramWrite struct {
 	path  []int
 	index int
 	norm  float64
+}
+
+// setTracks takes the "tracks" topic.
+func (s *liveState) setTracks(raw json.RawMessage) {
+	var d struct {
+		Tracks   []liveTrack     `json:"tracks"`
+		Selected json.RawMessage `json:"selected"`
+	}
+	if json.Unmarshal(raw, &d) != nil {
+		return
+	}
+	s.mu.Lock()
+	s.tracks, s.selTrack = d.Tracks, d.Selected
+	s.mu.Unlock()
+	s.changed()
+}
+
+// deviceRow: the selected track's devices and the index of the one holding
+// the selected device (-1 none).
+func (s *liveState) deviceRow() ([]liveDevSummary, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]liveDevSummary(nil), s.trackDevs...), s.selTop
+}
+
+// trackColorName: the selected track's name and colour.
+func (s *liveState) trackHeader() (string, int) {
+	tracks, i := s.trackRow()
+	if i < 0 {
+		return "", 0
+	}
+	return tracks[i].Name, tracks[i].Color
+}
+
+// trackRow: Live's tracks and the selected one's index (-1 none). The
+// device topic knows the selection first; the tracks topic comes every half
+// second.
+func (s *liveState) trackRow() ([]liveTrack, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sel := s.dev.Track
+	if len(sel) == 0 {
+		sel = s.selTrack
+	}
+	for i, t := range s.tracks {
+		if string(t.Ref) == string(sel) {
+			return s.tracks, i
+		}
+	}
+	return s.tracks, -1
 }
 
 func (l *live) state() *liveState {
@@ -127,7 +192,7 @@ func (s *liveState) setDevice(raw json.RawMessage) {
 	}
 	if len(s.path) > 1 || (len(s.path) == 1 && s.path[0] != d.Device) {
 		// the topic's parameters belong to the top-level device (a rack);
-		// the Schwung plugin's own are read directly
+		// the Pung plugin's own are read directly
 		d.Params = s.dev.Params
 	}
 	s.dev = d
@@ -161,14 +226,17 @@ func listDevices(track json.RawMessage, cont []int, chain int) ([]liveDevSummary
 	return r.Devices, json.Unmarshal(data, &r)
 }
 
-// resolve finds the Schwung plugin the user means: the selected device when it
+// resolve finds the Pung plugin the user means: the selected device when it
 // is the plugin, else the plugin inside the selected rack (a browser entry is
 // a rack named like the plugin), searched up to two racks deep. hint is the
 // top-level index Live reported (-1 inside a rack); it is searched first, so
-// two "Schwung Braids" on one track are not confused.
+// two "Braids" on one track are not confused. Inside the selected
+// rack any Pung plugin will do: a rack is named by its preset or by the
+// user ("My Lead"), not after the
+// plugin in it.
 func (s *liveState) resolve(track json.RawMessage, name string, hint int) {
-	var walk func(cont []int, chain int, depth int) ([]int, []int, int, []liveDevSummary, bool)
-	walk = func(cont []int, chain int, depth int) ([]int, []int, int, []liveDevSummary, bool) {
+	var walk func(cont []int, chain int, depth int, loose bool) ([]int, []int, int, []liveDevSummary, bool)
+	walk = func(cont []int, chain int, depth int, loose bool) ([]int, []int, int, []liveDevSummary, bool) {
 		devs, err := listDevices(track, cont, chain)
 		if err != nil {
 			return nil, nil, 0, nil, false
@@ -178,7 +246,7 @@ func (s *liveState) resolve(track json.RawMessage, name string, hint int) {
 			base = nil
 		}
 		for _, d := range devs {
-			if d.Name == name && d.Class == "PluginDevice" {
+			if d.Class == "PluginDevice" && (d.Name == name || loose && deviceNames[d.Name] != "") {
 				return append(append([]int(nil), base...), d.I), cont, chain, devs, true
 			}
 		}
@@ -191,15 +259,23 @@ func (s *liveState) resolve(track json.RawMessage, name string, hint int) {
 		}
 		for _, d := range order {
 			for c := 0; c < d.Chains; c++ {
-				if p, ct, ch, ds, ok := walk(append(append([]int(nil), base...), d.I), c, depth-1); ok {
+				in := loose || cont == nil && d.I == hint
+				if p, ct, ch, ds, ok := walk(append(append([]int(nil), base...), d.I), c, depth-1, in); ok {
 					return p, ct, ch, ds, true
 				}
 			}
 		}
 		return nil, nil, 0, nil, false
 	}
-	path, cont, chain, devs, ok := walk(nil, 0, 2)
+	path, cont, chain, devs, ok := walk(nil, 0, 2, false)
+	top, _ := listDevices(track, nil, 0)
 	s.mu.Lock()
+	if string(s.dev.Track) == string(track) {
+		s.trackDevs, s.selTop = top, hint
+		if ok {
+			s.selTop = path[0]
+		}
+	}
 	if !ok {
 		s.path, s.cont, s.devs = nil, nil, nil
 	}
@@ -364,17 +440,22 @@ func (s *liveState) writer() {
 	}
 }
 
-// ---- Schwung devices ---------------------------------------------------------
+// ---- Pung devices ---------------------------------------------------------
 
-// schwungModuleOf: the module behind a Live device named "Schwung <module>".
-func schwungModuleOf(modulesDir, name string) (ModuleInfo, bool) {
+// deviceNames maps a Pung device's name in Live (its class name: the
+// module's own name, "OB-Xd") to the module. Set at start (buildClasses).
+var deviceNames = map[string]string{}
+
+// moduleOfLiveDevice: the module behind a Live device of Pung's, by its
+// class name (the module's name).
+func moduleOfLiveDevice(modulesDir, name string) (ModuleInfo, bool) {
 	n := strings.TrimSpace(name)
-	if !strings.HasPrefix(strings.ToLower(n), "schwung ") {
+	id, ok := deviceNames[n]
+	if !ok {
 		return ModuleInfo{}, false
 	}
-	rest := strings.ToLower(strings.TrimSpace(n[len("schwung "):]))
 	for _, m := range scanModules(modulesDir) {
-		if strings.ToLower(m.Name) == rest || strings.ToLower(m.ID) == rest {
+		if m.ID == id {
 			return m, true
 		}
 	}
@@ -384,6 +465,9 @@ func schwungModuleOf(modulesDir, name string) (ModuleInfo, bool) {
 // probeMeta reads a module's chain_params and ui_hierarchy from a hidden
 // chain instance (never published to the engine, so it never renders).
 func (h *Host) probeMeta(m ModuleInfo) (*compMeta, bool) {
+	if ok, known := h.screened[m.ID]; known && !ok {
+		return nil, false // it crashed its probe in a child (screen.go): never in-process
+	}
 	h.probeMu.Lock()
 	defer h.probeMu.Unlock()
 	if h.probeCache == nil {
@@ -392,17 +476,21 @@ func (h *Host) probeMeta(m ModuleInfo) (*compMeta, bool) {
 	if cm, ok := h.probeCache[m.ID]; ok {
 		return cm, cm != nil
 	}
+	// what the child probe recorded once the module was ready (screen.go):
+	// no module code runs in this process for it
+	if rec := probeRecordFor(m.ID); rec != nil {
+		cm := buildMeta(m.ID, func(k string) (string, bool) { v, ok := rec.Meta[k]; return v, ok })
+		if cm != nil {
+			cm.Initial = rec.Initial
+		}
+		h.probeCache[m.ID] = cm
+		return cm, cm != nil
+	}
 	const probe = maxSlots - 1
 	if err := cSlotCreate(probe); err != nil {
 		return nil, false
 	}
-	prefix := "synth"
-	switch m.Type {
-	case "audio_fx":
-		prefix = "fx1"
-	case "midi_fx":
-		prefix = "midi_fx1"
-	}
+	prefix := probePrefix(m)
 	cSet(probe, prefix+":module", m.ID)
 	cm := buildMeta(m.ID, func(key string) (string, bool) { return cGet(probe, prefix+":"+key) })
 	if cm != nil {
@@ -419,7 +507,7 @@ func (h *Host) probeMeta(m ModuleInfo) (*compMeta, bool) {
 }
 
 // ---- values: Live's normalized 0..1 <-> the module's own values --------------
-// The same formulas as Schwung.vst3's ParamMeta (vst3/source/params.h).
+// The same formulas as Pung.vst3's ParamMeta (vst3/source/params.h).
 
 func (m *paramMeta) fromNorm(n float64) string {
 	n = math.Max(0, math.Min(1, n))
@@ -443,7 +531,7 @@ func (m *paramMeta) toNormValue(raw string) float64 {
 }
 
 // padNoteInKey: Push's in-key layout (rows a fourth apart: three scale steps),
-// so the pads play the Set's scale while the Schwung view is up.
+// so the pads play the Set's scale while the Pung view is up.
 func padNoteInKey(col, row, octave int, sc liveScale) (byte, bool) {
 	iv := sc.Intervals
 	if !sc.Supported || len(iv) == 0 {

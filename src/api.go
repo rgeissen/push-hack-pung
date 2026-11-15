@@ -83,6 +83,9 @@ func (h *Host) routes(mux *http.ServeMux) {
 		})
 	})
 
+	mux.HandleFunc("GET /api/modules/screen", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, screenReport())
+	})
 	mux.HandleFunc("GET /api/modules", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"ok": true, "modules": scanModules(h.modulesDir)})
 	})
@@ -192,7 +195,7 @@ func (h *Host) routes(mux *http.ServeMux) {
 		}
 		raw, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 		if err != nil || !json.Valid(raw) {
-			fail(w, 400, "body must be a Schwung patch (JSON)")
+			fail(w, 400, "body must be a Pung patch (JSON)")
 			return
 		}
 		if err := h.loadPatch(s, raw); err != nil {

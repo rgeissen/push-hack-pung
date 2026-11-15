@@ -1,4 +1,4 @@
-/* Schwung on Push: one dark world, like the Push panel it sits beside. */
+/* Pung on Push: one dark world, like the Push panel it sits beside. */
 :root {
   --ink: #111110; --raise: #1a1a17; --raise2: #22211d; --line: #34332e;
   --fg: #ecebe5; --muted: #a3a198; --slot: #ff8a1f;
@@ -72,3 +72,7 @@ main { padding: 16px max(16px, env(safe-area-inset-left)) 48px; max-width: 1180p
 .howto ol { padding-left: 20px; margin: 6px 0; }
 .howto b { color: var(--fg); }
 [hidden] { display: none !important; }
+/* Pung's devices in Live */
+.slots button.dev { color: var(--fg, #eee); text-align: left; }
+.slots button.dev .where { display: block; font-size: 11px; opacity: .7; }
+.slots button.dev[aria-current="true"] .where { opacity: .8; }

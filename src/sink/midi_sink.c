@@ -1,5 +1,5 @@
 /*
- * midi_sink: the instrument behind a Schwung MIDI-effect device.
+ * midi_sink: the instrument behind a Pung MIDI-effect device.
  *
  * A MIDI-effect device is a chain with the effect in midi_fx1 and this in the
  * synth position. The chain hands its MIDI FX output to the synth -- from

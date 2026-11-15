@@ -9,6 +9,7 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "third_party/schwung/host/plugin_api_v1.h"
 
@@ -86,7 +87,26 @@ static int h_clock_status(void) { return atomic_load(&g_clock); }
 static float h_bpm(void) { return atomic_load(&g_bpm); }
 static double h_beat(void) { return atomic_load(&g_beat); }
 
+/* Pung's own listening sockets, closed in every child a module forks.
+ * Some modules fork their engine without exec (Osirus's emulator); such a
+ * child inherits every descriptor, and one that outlives Pung kept the web
+ * port bound, so the next Pung could not start (2026-11-15). A fork handler
+ * closes them in the child; the parent keeps its own. */
+#define SB_MAX_CLOSE 8
+static int g_close_fds[SB_MAX_CLOSE];
+static atomic_int g_nclose;
+static void sb_atfork_child(void) {
+    int n = atomic_load(&g_nclose);
+    for (int i = 0; i < n && i < SB_MAX_CLOSE; i++) close(g_close_fds[i]);
+}
+void sb_close_in_children(int fd) {
+    int i = atomic_fetch_add(&g_nclose, 1);
+    if (i < SB_MAX_CLOSE) g_close_fds[i] = fd;
+}
+
 int sb_init(const char *chain_dir) {
+    static int forkhook;
+    if (!forkhook) { pthread_atfork(NULL, NULL, sb_atfork_child); forkhook = 1; }
     char path[1200];
     snprintf(g_chain_dir, sizeof g_chain_dir, "%s", chain_dir);
     snprintf(path, sizeof path, "%s/dsp.so", chain_dir);
@@ -108,7 +128,7 @@ int sb_init(const char *chain_dir) {
     g_host.get_bpm = h_bpm;
     g_host.get_beat_position = h_beat;
     /* "inject to Move" is a MIDI effect's output in pre mode: on Push it
-     * becomes a Schwung MIDI-effect device's MIDI out. slot_recv_channel
+     * becomes a Pung MIDI-effect device's MIDI out. slot_recv_channel
      * stays NULL; modules guard every host call. */
     g_host.midi_inject_to_move = h_inject;
     g_api = init(&g_host);

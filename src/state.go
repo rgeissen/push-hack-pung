@@ -1,6 +1,6 @@
 package main
 
-// state.go: a slot's chain is saved as a Schwung patch (the document the
+// state.go: a slot's chain is saved as a Pung patch (the document the
 // chain host's load_file reads) wrapped the way Schwung's slot autosave
 // wraps it (slot_N.json: name, version, chain). The same file therefore
 // loads on Move and on Push.
@@ -91,7 +91,7 @@ func (c Composition) empty() bool {
 	return true
 }
 
-// patch builds the slot's chain as a Schwung patch document.
+// patch builds the slot's chain as a Pung patch document.
 func (s *Slot) patch(name string) (map[string]any, error) {
 	c := s.composition()
 	p := map[string]any{"custom_name": name, "input": "both", "audio_fx": []any{}}

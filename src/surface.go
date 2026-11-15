@@ -1,12 +1,14 @@
 package main
 
-// surface.go: Schwung's chain editor on the Push screen, buttons and pads,
+// surface.go: Pung's chain editor on the Push screen, buttons and pads,
 // as an app of Push Hack Home (Shift + Help opens Home; Help goes back to
 // Live; push-manager owns those gestures).
 //
 // The layout follows Push's own Device view so a Push user's hands already
 // know it:
-//   bottom row   the chain: MIDI FX > synth > audio FX > +ADD
+//   bottom row   the chain: MIDI FX > synth > audio FX > +ADD; while the view
+//                follows a device in Live: Live's tracks, as on Push's device
+//                view (the left and right arrows step through them)
 //   top row      the parameter banks of the selected component
 //   encoders     the 8 parameters shown above them; touch shows details
 //   Add / Swap   insert after the selection / replace it (module browser)
@@ -65,6 +67,9 @@ type surface struct {
 
 	focused atomic.Bool
 	dirty   atomic.Bool
+	// standIn: push-manager opened the view in place of Push's device view
+	// (pmclient.FocusInfo.DeviceView); its leaving buttons are push-manager's
+	standIn atomic.Bool
 
 	mu        sync.Mutex
 	slot      int
@@ -72,6 +77,9 @@ type surface struct {
 	chainOff  int // first chain position shown on the bottom row
 	bank      int
 	bankOff   int
+	// bankList: the upper row lists the banks instead of the track's devices
+	// (pressing the selected device's button, as on Push)
+	bankList bool
 	view      string
 	shift     bool
 	del, mute bool
@@ -97,7 +105,7 @@ type surface struct {
 
 func newSurface(h *Host) *surface {
 	pm := pmclient.New("http://127.0.0.1:7701")
-	pm.App = "schwung"
+	pm.App = "pung"
 	exe, _ := os.Executable()
 	return &surface{h: h, pm: pm, view: "chain", touched: -1, peekEnc: -1,
 		meta: map[string]*compMeta{}, vals: map[string]string{}, held: map[byte]byte{}, leds: map[uint16]uint8{},
@@ -123,8 +131,12 @@ func (u *surface) run(done <-chan struct{}) {
 			}
 			continue
 		}
-		// Play and Record still reach Live while Schwung owns the surface
-		u.pm.RunSurface(ctx, []int{85, 86}, pmclient.SurfaceHandler{ //nolint:errcheck
+		// Push's playing UX stays Live's while Pung owns the surface: the
+		// pads (pmclient Pads) and every button that plays, records or edits
+		// in Live (liveButtons). Pung keeps the screen, the encoders, the
+		// rows above and below the screen, the jog wheel, left/right and Page.
+		u.pm.RunSurface(ctx, liveButtons, pmclient.SurfaceHandler{ //nolint:errcheck
+			Pads: true,
 			OnFocus: func() {
 				u.focused.Store(true)
 				if u.live != nil {
@@ -137,8 +149,13 @@ func (u *surface) run(done <-chan struct{}) {
 				u.mu.Unlock()
 				u.dirty.Store(true)
 			},
+			OnFocusInfo: func(fi pmclient.FocusInfo) {
+				u.standIn.Store(fi.DeviceView)
+				u.dirty.Store(true)
+			},
 			OnBlur: func() {
 				u.focused.Store(false)
+				u.standIn.Store(false)
 				if u.live != nil {
 					u.live.state().active.Store(false)
 				}
@@ -157,8 +174,8 @@ func (u *surface) attach() error {
 	if err != nil {
 		return err
 	}
-	c.SetName("Schwung Surface")
-	if _, err := c.CreatePort("Schwung Surface", alsaseq.CapWrite|alsaseq.CapSubsWrite, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
+	c.SetName("Pung Surface")
+	if _, err := c.CreatePort("Pung Surface", alsaseq.CapWrite|alsaseq.CapSubsWrite, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
 		c.Close()
 		return err
 	}
@@ -196,7 +213,7 @@ func (r pushReader) Fixed(evType uint8, src alsaseq.Addr, data []byte) {
 }
 func (r pushReader) VarLen(uint8, alsaseq.Addr, []byte) {}
 
-// status keeps Schwung's card in Home current.
+// status keeps Pung's card in Home current.
 func (u *surface) status(done <-chan struct{}) {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
@@ -217,6 +234,23 @@ func (u *surface) status(done <-chan struct{}) {
 				l1 += " " + u.moduleName(m)
 			}
 		}
+		// In Live, Pung's devices are what there is (its own slots are
+		// not used there): the selected one, and how many Live holds.
+		if u.h.live != nil && u.h.prov != nil {
+			n := len(u.h.prov.list())
+			l1, l2 = "NO DEVICE IN LIVE", fmt.Sprintf("%d DEVICES IN LIVE", n)
+			if n == 1 {
+				l2 = "1 DEVICE IN LIVE"
+			}
+			if n > 0 {
+				l1 = "SELECT ONE IN LIVE"
+			}
+			if i, _ := u.h.selectedDevice(); i >= 0 {
+				if d := u.h.prov.device(i); d != nil {
+					l1 = strings.ToUpper(d.c.Name)
+				}
+			}
+		}
 		if l1 != last[0] || l2 != last[1] {
 			if u.pm.SurfaceStatus(asciiOnly(l1), l2) == nil {
 				last = [2]string{l1, l2}
@@ -232,14 +266,14 @@ func (u *surface) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/surface/press", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Msg   []int `json:"msg"`
-			Force bool  `json:"force"` // even when Schwung does not own the surface
+			Force bool  `json:"force"` // even when Pung does not own the surface
 		}
 		if json.NewDecoder(r.Body).Decode(&body) != nil || len(body.Msg) == 0 {
 			fail(w, 400, "body must be {\"msg\":[status,data1,data2]}")
 			return
 		}
 		if !u.focused.Load() && !body.Force {
-			fail(w, 409, "Schwung does not own the surface (open it from Home)")
+			fail(w, 409, "Pung does not own the surface (open it from Home)")
 			return
 		}
 		msg := make([]byte, len(body.Msg))
@@ -263,7 +297,19 @@ func (u *surface) routes(mux *http.ServeMux) {
 		if b != nil {
 			keys = b.Keys
 		}
+		// the upper row in Live: the track's devices, and the selected one's button
+		row, rowSel := []string{}, -1
+		if u.live != nil {
+			devs, sel := u.live.state().deviceRow()
+			for i, d := range devs {
+				row = append(row, d.Name)
+				if d.I == sel {
+					rowSel = i
+				}
+			}
+		}
 		writeJSON(w, 200, map[string]any{"ok": true, "focused": u.focused.Load(), "view": u.view, "slot": u.slot + 1,
+			"device_row": row, "device_row_selected": rowSel, "bank_list": u.bankList,
 			"position": p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
 			"octave": u.octave, "toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,
 			"live_path": func() []int {
@@ -378,6 +424,72 @@ func (u *surface) keepVisible() {
 	}
 }
 
+// liveButtons stay Live's while Pung owns the surface, with the pads:
+// transport, Shift, the pad modes, layouts, scales, Note Repeat and Accent,
+// the octaves, the repeat rates (the scene column), up and down, the track
+// buttons (mute, solo, stop) and Live's editing buttons.
+var liveButtons = []int{
+	85, 86, // Play, Record
+	push3.CCShift, push3.CCNote, push3.CCSession, push3.CCLayout, push3.CCScale, push3.CCRepeat, push3.CCAccent,
+	54, 55, // octave down, up
+	36, 37, 38, 39, 40, 41, 42, 43, // repeat rates / scenes
+	46, 47, // up, down
+	push3.CCMute, push3.CCSolo, push3.CCStopClips,
+	push3.CCUndo, push3.CCDelete, push3.CCDuplicate, push3.CCDoubleLoop, push3.CCQuantize, push3.CCConvert,
+	push3.CCFixedLength, push3.CCCapture, push3.CCTapTempo, push3.CCMetronome,
+}
+
+// isLiveButton: a button in liveButtons. Pung sees its press too (it
+// reads the hardware) and must leave it alone.
+func isLiveButton(n byte) bool {
+	for _, b := range liveButtons {
+		if int(n) == b {
+			return true
+		}
+	}
+	return false
+}
+
+// pushManagersButton: the buttons that leave Push's device view. While the
+// view stands in for it, push-manager acts on them (Surface.ViewButton in
+// push-manager): Pung must not act on the same press.
+func pushManagersButton(n byte) bool {
+	switch n {
+	case 110, 112, 113, 34, push3.CCAdd, push3.CCSwap, push3.CCSettings, push3.CCSet, push3.CCUserMode, 92:
+		return true
+	}
+	return false
+}
+
+// trackPage: the 8 tracks the lower row shows (the page holding the
+// selected track) and the index of the first.
+func (u *surface) trackPage() ([]liveTrack, int, int) {
+	tracks, sel := u.live.state().trackRow()
+	first := 0
+	if sel >= 0 {
+		first = sel / 8 * 8
+	}
+	return tracks[first:min(first+8, len(tracks))], first, sel
+}
+
+// selectTrack selects the track under lower button i in Live. Live's device
+// topic then brings its device: a Pung one shows here, any other gives
+// the screen back to Push (push-manager's device view).
+func (u *surface) selectTrack(i int) {
+	page, _, _ := u.trackPage()
+	if i < len(page) {
+		go liveCall("track", "select", map[string]any{"track": page[i].Ref})
+	}
+}
+
+// stepTrack selects the previous or next track (the left and right arrows).
+func (u *surface) stepTrack(d int) {
+	tracks, sel := u.live.state().trackRow()
+	if n := sel + d; sel >= 0 && n >= 0 && n < len(tracks) {
+		go liveCall("track", "select", map[string]any{"track": tracks[n].Ref})
+	}
+}
+
 // step moves the selection along the chain (D-pad, jog clicks).
 func (u *surface) step(d int) {
 	n := u.pos + d
@@ -410,7 +522,15 @@ func (u *surface) metaFor(p position) *compMeta {
 		if !ok {
 			return nil
 		}
-		cm, _ := u.h.probeMeta(m)
+		k := "live|" + m.ID
+		if cm, ok := u.meta[k]; ok {
+			return cm
+		}
+		cm, ok := u.h.probeMeta(m)
+		cm = liveBanks(cm)
+		if ok { // a probe that could not run is asked again
+			u.meta[k] = cm
+		}
 		return cm
 	}
 	k := fmt.Sprintf("%d|%s|%s", u.slot, p.Prefix, p.Module)
@@ -424,6 +544,30 @@ func (u *surface) metaFor(p position) *compMeta {
 	cm := buildMeta(p.Module, func(key string) (string, bool) { return s.Meta(p.Prefix, key) })
 	u.meta[k] = cm
 	return cm
+}
+
+// liveBanks: the module's banks as its device in Live has them. A key with
+// no parameter metadata (in ui_hierarchy, not in chain_params) is not one of
+// the device's parameters: Live has no value for it and nothing to write, so
+// a column for it could only show "--". A bank left empty goes too.
+func liveBanks(cm *compMeta) *compMeta {
+	if cm == nil {
+		return nil
+	}
+	out := *cm
+	out.Banks = nil
+	for _, b := range cm.Banks {
+		nb := bank{Name: b.Name}
+		for _, k := range b.Keys {
+			if k != "" && cm.Params[k] != nil {
+				nb.Keys = append(nb.Keys, k)
+			}
+		}
+		if len(nb.Keys) > 0 {
+			out.Banks = append(out.Banks, nb)
+		}
+	}
+	return &out
 }
 
 func (u *surface) currentBank() (position, *compMeta, *bank) {
@@ -496,13 +640,7 @@ func (u *surface) handle(msg []byte) {
 				u.peekUntil = time.Now().Add(300 * time.Millisecond)
 			}
 		case push3.IsPadNote(n):
-			u.pad(n, v, on)
-		}
-	case st == 0xA0 && len(msg) == 3 && push3.IsPadNote(msg[1]):
-		if note, ok := u.held[msg[1]]; ok {
-			if s := u.cur(); s != nil {
-				s.queue([]byte{0xA0 | byte(u.slot&0x0F), note, msg[2]})
-			}
+			// the pads are Live's (pmclient Pads): Push's own playing UX
 		}
 	case st == 0xB0 && len(msg) == 3 && msg[0]&0x0F == 0:
 		// channel 1 only: in MPE mode a pad's slide is CC 74 on the pad's own
@@ -517,12 +655,8 @@ func (u *surface) cc(n, v byte) {
 	case push3.CCShift:
 		u.shift = press
 		return
-	case push3.CCDelete:
-		u.del = press
-		return
-	case push3.CCMute:
-		u.mute = press
-		return
+	case push3.CCDelete, push3.CCMute:
+		return // Live's (liveButtons)
 	}
 	if n >= push3.CCEncoder1 && n < push3.CCEncoder1+8 {
 		u.turn(int(n-push3.CCEncoder1), push3.DecodeRel(v))
@@ -534,6 +668,12 @@ func (u *surface) cc(n, v byte) {
 	}
 	if !press {
 		return
+	}
+	if isLiveButton(n) {
+		return // Live's: it plays, records or edits there
+	}
+	if u.standIn.Load() && pushManagersButton(n) {
+		return // push-manager closes the view and passes it on to Push
 	}
 	switch {
 	case n >= push3.CCScreenTop1 && n < push3.CCScreenTop1+8:
@@ -558,7 +698,7 @@ func (u *surface) cc(n, v byte) {
 			case err != nil:
 				u.say("LIVE: " + err.Error())
 			default:
-				u.say(fmt.Sprintf("MIDI TRACK 'SCHWUNG %d' IS READY|NOW AN AUDIO TRACK: INPUT PUSHHACK, SCHWUNG %d, MONITOR IN", slot+1, slot+1))
+				u.say(fmt.Sprintf("MIDI TRACK 'PUNG %d' IS READY|NOW AN AUDIO TRACK: INPUT PUSHHACK, PUNG %d, MONITOR IN", slot+1, slot+1))
 			}
 			u.mu.Unlock()
 		}()
@@ -579,6 +719,8 @@ func (u *surface) cc(n, v byte) {
 		}
 	case n == push3.CCSwap:
 		u.openBrowser("swap")
+	case (n == 44 || n == 45) && u.view != "browse" && u.liveActive():
+		u.stepTrack(map[bool]int{true: -1, false: 1}[n == 44]) // as on Push: the tracks
 	case n == 44 || n == push3.CCJogClickLeft: // D-pad left, jog click left
 		if u.view == "browse" {
 			u.moveCursor(-1)
@@ -607,6 +749,8 @@ func (u *surface) cc(n, v byte) {
 			u.octave--
 			u.say(fmt.Sprintf("OCTAVE %+d", u.octave))
 		}
+	case (n == 62 || n == 63) && u.view != "browse" && u.liveActive():
+		u.stepBank(map[bool]int{true: -1, false: 1}[n == 62]) // Page < >: the banks
 	case n == 62: // page left
 		if u.view == "browse" {
 			u.moveCursor(-8)
@@ -663,11 +807,40 @@ func (u *surface) top(i int) {
 		}
 		return
 	}
+	if u.liveActive() && !u.bankList { // the track's devices, as on Push
+		devs, sel := u.live.state().deviceRow()
+		switch {
+		case i >= len(devs):
+		case devs[i].I == sel:
+			u.bankList = true // the selected device again: its banks
+		default:
+			// select it in Live; a Pung device stays here, any other gives
+			// the screen to Push (push-manager's device view)
+			go liveCall("device", "select", map[string]any{"track": u.live.state().view().dev.Track, "path": []int{devs[i].I}})
+		}
+		return
+	}
 	_, cm, _ := u.currentBank()
 	if cm != nil && u.bankOff+i < len(cm.Banks) {
 		u.bank = u.bankOff + i
 		u.peekUntil = time.Time{} // the card belonged to the old bank
 		u.refreshValues()
+	}
+	u.bankList = false // a bank chosen: the devices again
+}
+
+// stepBank: the previous or next bank (Page < >, while the view follows Live).
+func (u *surface) stepBank(d int) {
+	_, cm, _ := u.currentBank()
+	if cm == nil {
+		return
+	}
+	if n := u.bank + d; n >= 0 && n < len(cm.Banks) {
+		u.bank = n
+		u.bankOff = n / 8 * 8
+		u.peekUntil = time.Time{}
+		u.refreshValues()
+		u.say(strings.ToUpper(cm.Banks[n].Name))
 	}
 }
 
@@ -685,19 +858,12 @@ func (u *surface) bottom(i int) {
 		}
 		return
 	}
-	i += u.chainOff // the button shows a window of the chain
-	if i >= len(u.positions) {
+	if u.liveActive() { // Live's tracks, as on Push's device view
+		u.selectTrack(i)
 		return
 	}
-	if u.liveActive() { // select that device in Live; the topic brings it back
-		v := u.live.state().view()
-		path := []int{u.positions[i].N}
-		if len(v.cont) > 0 {
-			path = append(append(append([]int(nil), v.cont...), v.chain), u.positions[i].N)
-		}
-		u.pos = i
-		u.keepVisible()
-		go liveCall("device", "select", map[string]any{"track": v.dev.Track, "path": path})
+	i += u.chainOff // the button shows a window of the chain
+	if i >= len(u.positions) {
 		return
 	}
 	p := u.positions[i]
@@ -1071,6 +1237,13 @@ func (u *surface) paintLEDs() {
 					v = white
 				}
 			}
+		} else if u.liveActive() && !u.bankList { // the track's devices
+			if devs, sel := u.live.state().deviceRow(); i < len(devs) {
+				v = dimw
+				if devs[i].I == sel {
+					v = sc
+				}
+			}
 		} else if _, cm, _ := u.currentBank(); cm != nil && u.bankOff+i < len(cm.Banks) {
 			v = dimw
 			if u.bankOff+i == u.bank {
@@ -1092,6 +1265,13 @@ func (u *surface) paintLEDs() {
 			} else if i == 7 {
 				v = pIdx("red")
 			}
+		} else if u.liveActive() {
+			if page, first, sel := u.trackPage(); i < len(page) {
+				v = dimw
+				if first+i == sel {
+					v = white
+				}
+			}
 		} else if j := u.chainOff + i; j < len(u.positions) {
 			p := u.positions[j]
 			switch {
@@ -1105,23 +1285,9 @@ func (u *surface) paintLEDs() {
 		}
 		u.led(false, push3.CCScreenBot1+uint8(i), v)
 	}
-	// scene column: slots
-	for i := 0; i < 8; i++ {
-		v := uint8(0)
-		if u.h.slot(i) != nil {
-			v = pIdx("dk_" + map[string]string{"orange": "orange", "sky": "cobalt", "pink_hot": "pink", "mint": "green",
-				"yellow": "gold", "violet": "violet", "cyan_lt": "teal", "red": "red"}[slotLED[i%len(slotLED)]])
-			if v == 0 {
-				v = dimw
-			}
-			if i == u.slot {
-				v = pIdx(slotLED[i%len(slotLED)])
-			}
-		}
-		u.led(false, uint8(36+i), v)
-	}
+	// the scene column (repeat rates) and the pads are Live's (liveButtons, Pads)
 	// white buttons this app answers to
-	for _, b := range []uint8{push3.CCAdd, push3.CCSwap, push3.CCDelete, push3.CCMute, push3.CCShift, 54, 55, 62, 63, 92} {
+	for _, b := range []uint8{push3.CCAdd, push3.CCSwap, 62, 63, 92} { // Live lights its own (liveButtons)
 		u.led(false, b, 63)
 	}
 	// D-pad left/right: lit when the chain goes on in that direction
@@ -1133,45 +1299,6 @@ func (u *surface) paintLEDs() {
 	}
 	u.led(false, 44, lr(u.view == "chain" && u.pos > 0))
 	u.led(false, 45, lr(u.view == "chain" && u.pos < len(u.positions)-1))
-	// pads: C in the slot's color, other notes dim, held notes white
-	playing := map[byte]bool{}
-	for _, n := range u.held {
-		playing[n] = true
-	}
-	live := u.liveActive()
-	var sc0 liveScale
-	if live {
-		_, _, sc0 = u.live.state().snapshot()
-	}
-	for row := 0; row < 8; row++ {
-		for col := 0; col < 8; col++ {
-			pad := push3.PadNote(col, row)
-			v := uint8(0)
-			if live { // in key: the root in the color, a held pad white, by PAD not note
-				if n, ok := padNoteInKey(col, row, u.octave, sc0); ok {
-					v = dimw
-					if (int(n)-sc0.Root)%12 == 0 {
-						v = sc
-					}
-					if _, held := u.held[pad]; held {
-						v = white
-					}
-				}
-				u.led(true, pad, v)
-				continue
-			}
-			if n, ok := u.padNote(pad); ok {
-				v = dimw
-				if n%12 == 0 {
-					v = sc
-				}
-				if playing[n] {
-					v = white
-				}
-			}
-			u.led(true, pad, v)
-		}
-	}
 }
 
 // ---- frames ---------------------------------------------------------------------
@@ -1219,9 +1346,9 @@ func (u *surface) frames(done <-chan struct{}) {
 func (u *surface) render(peak float64) *image.NRGBA {
 	img := newFrame()
 	if !u.liveActive() {
-		// the Schwung view edits Live devices through the PushHack Remote Script
+		// the Pung view edits Live devices through the PushHack Remote Script
 		rect(img, 0, 0, scrW, 2, slotColor(0))
-		label(img, scrW/2, 60, "THE SCHWUNG VIEW NEEDS THE PUSHHACK REMOTE SCRIPT", cFg, 0)
+		label(img, scrW/2, 60, "THE PUNG VIEW NEEDS THE PUSHHACK REMOTE SCRIPT", cFg, 0)
 		label(img, scrW/2, 84, "LIVE'S SETTINGS > MIDI > CONTROL SURFACE: PUSHHACK", cDim, 0)
 		label(img, scrW/2, 108, "SHIFT + HELP, HELP GOES BACK TO PUSH", cDim, 0)
 		return img
@@ -1280,7 +1407,7 @@ func (u *surface) refreshLive() {
 	var ps []position
 	for _, d := range devs {
 		p := position{Kind: "other", Prefix: fmt.Sprintf("dev%d", d.I), N: d.I, Name: d.Name}
-		if m, ok := schwungModuleOf(u.h.modulesDir, d.Name); ok {
+		if m, ok := moduleOfLiveDevice(u.h.modulesDir, d.Name); ok {
 			p.Module = m.ID
 			switch m.Type {
 			case "sound_generator":
@@ -1321,7 +1448,7 @@ func (u *surface) refreshLive() {
 	}
 }
 
-// padToLive sends a pad's note to Live through the "Schwung" input, which
+// padToLive sends a pad's note to Live through the "Pung" input, which
 // Live listens to on the selected (armed) track. Caller holds u.mu.
 func (u *surface) padToLive(pad, vel byte, on bool) {
 	if u.h.seq == nil {

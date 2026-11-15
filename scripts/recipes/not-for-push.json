@@ -1,0 +1,5 @@
+{
+ "movy": "Move only: a standalone boot target that replaces Move's firmware (module.json \"standalone\"), with its own host",
+ "dronage-tool": "no source published: its repo holds only a release.json pointing at an ARM tarball",
+ "stems": "ships a prebuilt ARM64 separation engine (src/engine/spleeter + libopenblas, libgfortran) with no source in the repo"
+}

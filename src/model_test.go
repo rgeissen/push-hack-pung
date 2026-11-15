@@ -2,7 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -119,10 +122,10 @@ func TestDisplayAndStep(t *testing.T) {
 
 func TestSlotOfRouting(t *testing.T) {
 	cases := map[string]int{
-		`{"output":{"type":"Schwung","channel":"Ch. 3"}}`:       2,
-		`{"output":{"type":"Schwung","channel":"Ch. 1"}}`:       0,
+		`{"output":{"type":"Pung","channel":"Ch. 3"}}`:       2,
+		`{"output":{"type":"Pung","channel":"Ch. 1"}}`:       0,
 		`{"output":{"type":"Main","channel":""}}`:               -1,
-		`{"output":{"type":"Schwung","channel":"All Channels"}}`: -1,
+		`{"output":{"type":"Pung","channel":"All Channels"}}`: -1,
 		`{"output":{"type":"Stacks In","channel":"Ch. 2"}}`:     -1,
 	}
 	for in, want := range cases {
@@ -159,7 +162,7 @@ func TestVst3FlagFindsTheLastMarker(t *testing.T) {
 }
 
 // Live hands back normalized values; the module's own value must come back
-// exactly as Schwung.vst3 wrote it (same formulas as vst3/source/params.h).
+// exactly as Pung.vst3 wrote it (same formulas as vst3/source/params.h).
 func TestLiveNormRoundTrip(t *testing.T) {
 	cm := buildMeta("braids", getter(map[string]string{"chain_params": braidsParams}))
 	eng := cm.Params["engine"]
@@ -190,23 +193,45 @@ func TestPadsInKey(t *testing.T) {
 	}
 }
 
-func TestPadBanksFillsPages(t *testing.T) {
-	c := &vstClass{Params: make([]vstParam, 13), Banks: [][]int{{0, 1, 2}, {3, 4, 5, 6, 7, 8, 9, 10, 11}, {0, 3}, {12}}}
-	padBanks(c)
-	// {0,3} empties (both already listed) and goes; the last bank is not padded
-	if len(c.Banks) != 3 || len(c.Banks[0]) != 8 || len(c.Banks[1]) != 16 || len(c.Banks[2]) != 1 {
-		t.Fatalf("banks %v", c.Banks)
+// A Live device has no parameter for a hierarchy key without chain_params:
+// its column goes, and a bank left empty goes (OB-Xd's osc_quantize).
+func TestLiveBanksDropsKeysLiveHasNot(t *testing.T) {
+	cm := &compMeta{
+		Params: map[string]*paramMeta{"osc2_detune": {Key: "osc2_detune"}, "osc2_sync": {Key: "osc2_sync"}},
+		Banks: []bank{
+			{Name: "Oscillator 2", Keys: []string{"osc2_detune", "osc2_sync", "osc_quantize", ""}},
+			{Name: "Hidden", Keys: []string{"osc_quantize"}},
+		},
 	}
-	seen := map[int]bool{}
-	for _, b := range c.Banks {
-		for _, i := range b {
-			if seen[i] {
-				t.Fatalf("param %d listed twice", i)
-			}
-			seen[i] = true
+	got := liveBanks(cm)
+	if len(got.Banks) != 1 || strings.Join(got.Banks[0].Keys, ",") != "osc2_detune,osc2_sync" {
+		t.Fatalf("banks %+v", got.Banks)
+	}
+	if len(cm.Banks) != 2 || len(cm.Banks[0].Keys) != 4 {
+		t.Fatalf("the shared metadata changed: %+v", cm.Banks)
+	}
+	if liveBanks(nil) != nil {
+		t.Fatal("nil in, nil out")
+	}
+}
+
+// Live sends each note on its own channel; a module gets channel 1 unless it
+// asks for passthrough (-2, MPE) or another channel (default_forward_channel).
+func TestModuleInChannel(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct {
+		json string
+		want int
+	}{
+		{`{"id":"a"}`, 0},
+		{`{"id":"a","capabilities":{"default_forward_channel":1}}`, 0},
+		{`{"id":"a","capabilities":{"default_forward_channel":5}}`, 4},
+		{`{"id":"a","capabilities":{"default_forward_channel":-2}}`, -1},
+		{`{"id":"a","capabilities":{"default_forward_channel":-1}}`, 0},
+	} {
+		os.WriteFile(filepath.Join(dir, "module.json"), []byte(c.json), 0o644)
+		if got := moduleInChannel(ModuleInfo{Dir: dir}); got != c.want {
+			t.Errorf("%s: %d, want %d", c.json, got, c.want)
 		}
-	}
-	if len(c.Params) != 13+5+7 || c.Params[13].Role != "pad" || c.Params[24].Role != "pad" {
-		t.Fatalf("%d params", len(c.Params))
 	}
 }

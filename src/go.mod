@@ -1,4 +1,4 @@
-module github.com/rgeissen/push-hack-schwung
+module github.com/rgeissen/push-hack-pung
 
 go 1.25.0
 
@@ -14,3 +14,8 @@ require (
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	golang.org/x/text v0.37.0 // indirect
 )
+
+// core/livedevice is new in push-hack (branch feat/live-devices) and not yet
+// in a core/vX.Y.Z tag: build against the checkout beside this repo until it
+// is, then drop this line and pin the tag.
+replace github.com/federico-pepe/ableton-push-hack/core => ../../ableton-push-hack/core

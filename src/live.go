@@ -1,12 +1,12 @@
 package main
 
-// live.go: Schwung's link to Live through the PushHack Remote Script
+// live.go: Pung's link to Live through the PushHack Remote Script
 // (127.0.0.1:7704, JSON lines; push-hack docs/pushhack-remote-script.md).
 //
-//   - tempo and transport: Live's MIDI clock on the "Schwung" port is the
+//   - tempo and transport: Live's MIDI clock on the "Pung" port is the
 //     precise source (Sync on); without it, Live's tempo and beat from the
 //     script keep synced modules near the grid instead of at 120 BPM.
-//   - selection: a Live track whose MIDI output is port "Schwung", channel N
+//   - selection: a Live track whose MIDI output is port "Pung", channel N
 //     IS slot N's track. Selecting it selects slot N on the Push.
 //   - tracks: on request (never on its own), make or find slot N's tracks.
 //
@@ -135,7 +135,7 @@ func (l *live) session(done <-chan struct{}) error {
 	if err := send(map[string]any{"id": 1, "cmd": "hello"}); err != nil {
 		return err
 	}
-	if err := send(map[string]any{"id": 2, "cmd": "subscribe", "topics": []string{"tempo", "transport", "selection", "device", "scale"}}); err != nil {
+	if err := send(map[string]any{"id": 2, "cmd": "subscribe", "topics": []string{"tempo", "transport", "selection", "device", "scale", "tracks"}}); err != nil {
 		return err
 	}
 	l.connected.Store(true)
@@ -205,6 +205,8 @@ func (l *live) session(done <-chan struct{}) error {
 			l.state().setDevice(ev.Data)
 		case "scale":
 			l.state().setScale(ev.Data)
+		case "tracks":
+			l.state().setTracks(ev.Data)
 		case "selection":
 			var d struct {
 				Track any `json:"track"`
@@ -254,7 +256,7 @@ func (l *live) followSelection(track int) {
 	}
 }
 
-// slotOfRouting: output port "Schwung", channel "Ch. N" is slot N.
+// slotOfRouting: output port "Pung", channel "Ch. N" is slot N.
 func slotOfRouting(data json.RawMessage) int {
 	var r map[string]any
 	if json.Unmarshal(data, &r) != nil {
@@ -282,7 +284,7 @@ func slotOfRouting(data json.RawMessage) int {
 			r["output_channel"] = ch
 		}
 	}
-	if !strings.HasPrefix(strings.ToLower(outType), "schwung") {
+	if !strings.HasPrefix(strings.ToLower(outType), "pung") {
 		return -1
 	}
 	ch := find("output_channel", "output_routing_channel")
@@ -294,8 +296,8 @@ func slotOfRouting(data json.RawMessage) int {
 	return n - 1
 }
 
-// ensureTracks makes or finds Schwung track i's MIDI track in the Set: a
-// MIDI track that sends to port Schwung on channel i+1.
+// ensureTracks makes or finds Pung track i's MIDI track in the Set: a
+// MIDI track that sends to port Pung on channel i+1.
 //
 // It does NOT make the audio return. On 2026-11-14, Live 13.0b25 on the Push
 // crashed (SIGSEGV, "snd_pcm_wait error") within a second of the Remote
@@ -304,10 +306,10 @@ func slotOfRouting(data json.RawMessage) int {
 // quit). Until it is known whether the crash is the audio track or its
 // PushHack input, the user makes the audio return by hand.
 func ensureTracks(i int) (map[string]any, error) {
-	name := fmt.Sprintf("Schwung %d", i+1)
+	name := fmt.Sprintf("Pung %d", i+1)
 	args := map[string]any{
 		"kind": "midi", "name": name,
-		"output_type": "Schwung", "output_channel": []string{fmt.Sprintf("Ch. %d", i+1)},
+		"output_type": "Pung", "output_channel": []string{fmt.Sprintf("Ch. %d", i+1)},
 	}
 	midi, err := liveCall("track", "ensure", args)
 	var se *scriptError

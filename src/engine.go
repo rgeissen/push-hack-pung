@@ -25,6 +25,7 @@ import (
 	"log"
 	"math"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -37,7 +38,29 @@ const (
 	rtPriority  = 60
 	getBufFirst = 4 << 10 // a value; metadata grows into the next size
 	getBufMax   = 4 << 20
+	// getBufMeta: the first buffer for a module's metadata, the size Schwung's
+	// own host passes (chain_host.c, ui_hierarchy: 262144). Modules are
+	// written against it, and not all of them bound their writes: Osirus
+	// 0.6.6 appends ui_hierarchy with off += snprintf(...), which writes past
+	// a smaller buffer and corrupted the heap (Pung crashed probing it,
+	// 2026-11-15). A larger buffer is the reference host's contract, not a fix
+	// for that bug.
+	getBufMeta = 256 << 10
 )
+
+// metaKey: a key whose value is a module's metadata (large, and written
+// against the reference host's buffer).
+func metaKey(key string) bool {
+	k := key
+	if i := strings.LastIndexByte(k, ':'); i >= 0 {
+		k = k[i+1:]
+	}
+	switch k {
+	case "ui_hierarchy", "chain_params", "state", "patch_list", "preset_list", "presets":
+		return true
+	}
+	return false
+}
 
 func engineInit(chainDir string) error {
 	cs := C.CString(chainDir)
@@ -57,6 +80,9 @@ func cSlotCreate(i int) error {
 
 func cSlotDestroy(i int) { C.sb_slot_destroy(C.int(i)) }
 
+// cCloseInChildren: fd is closed in any process a module forks (bridge.c).
+func cCloseInChildren(fd int) { C.sb_close_in_children(C.int(fd)) }
+
 func cWarm(i, blocks int) { C.sb_warm(C.int(i), C.int(blocks)) }
 
 func cSetRealtime(prio int) int { return int(C.sb_set_realtime(C.int(prio))) }
@@ -74,7 +100,11 @@ func cSet(i int, key, val string) {
 func cGet(i int, key string) (string, bool) {
 	k := C.CString(key)
 	defer C.free(unsafe.Pointer(k))
-	for size := getBufFirst; size <= getBufMax; size *= 16 {
+	first := getBufFirst
+	if metaKey(key) {
+		first = getBufMeta
+	}
+	for size := first; size <= getBufMax; size *= 16 {
 		buf := C.malloc(C.size_t(size))
 		n := int(C.sb_get_param(C.int(i), k, (*C.char)(buf), C.int(size)))
 		if n < 0 {

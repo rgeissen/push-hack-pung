@@ -3,7 +3,7 @@
 # Push 3 (x86_64, glibc 2.35). Runs INSIDE the builder container
 # (docker/Dockerfile); `make modules` starts it.
 #
-#   /schwung  Schwung source (read only)
+#   /pung  Schwung source (read only)
 #   /modsrc   catalog module repos, one folder each (optional)
 #   /out      result: a Schwung module tree (chain/, sound_generators/, ...)
 #

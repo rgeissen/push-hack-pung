@@ -1,4 +1,4 @@
-# Schwung on Push 3: design record
+# Pung on Push 3: design record
 
 Decisions, why they were made, what was measured on a Push, and what comes next. Written 2026-11-14.
 
@@ -13,16 +13,16 @@ module, all on one parameter path:
 
 ## Decisions
 
-**One Schwung track = one chain = one Live track.** (Schwung's code calls a track's chain a "slot"; the
+**One Pung track = one chain = one Live track.** (Schwung's code calls a track's chain a "slot"; the
 code and the API keep that word, everything a user sees says "track".) A chain holds up to 8 MIDI FX, one
 instrument and up to 8 audio FX: the limits of Schwung's chain host (`MAX_MIDI_FX`, `MAX_AUDIO_FX`), kept
 so a chain saved on Push loads on Move. The Push's bottom row shows 8 of a chain's up to 17 positions and
-scrolls (D-pad, jog clicks). Move has 4 fixed tracks and Schwung binds slot N to track N implicitly. Live has any number of tracks, so the binding is a routing: a track whose MIDI goes to
-port Schwung, channel N, is slot N's track. The binding is saved with the Live Set and survives reordering
-and renaming. Each slot's audio is its own Link Audio channel (`Schwung N`), so Live's mixer, sends and
+scrolls (D-pad, jog clicks). Move has 4 fixed tracks and Pung binds slot N to track N implicitly. Live has any number of tracks, so the binding is a routing: a track whose MIDI goes to
+port Pung, channel N, is slot N's track. The binding is saved with the Live Set and survives reordering
+and renaming. Each slot's audio is its own Link Audio channel (`Pung N`), so Live's mixer, sends and
 master do what Schwung's shim does on Move. Master FX and send buses are therefore not ported.
 
-**One MIDI port, Schwung track = channel (so up to 16 Schwung tracks).** The first build had one port per slot. On the device, Live listed every
+**One MIDI port, Pung track = channel (so up to 16 Pung tracks).** The first build had one port per slot. On the device, Live listed every
 new port with Track off, and a track can only send to a port whose Track switch is on. One port is one
 switch. It is also Move's own model (slot N listens on channel N). A dedicated port per slot, for MPE
 controllers that need all 16 channels, is a later option.
@@ -62,14 +62,14 @@ answers the same messages as schwung-manager's `remote-ui.js`.
 - Push UI, checked by the panel's own mirror: banks from `ui_hierarchy`, enum stepping one option per step,
   the detail card, the module browser, add, bypass, pads, the Braids envelope override.
 
-## Live 13.0b25 crashed when Schwung made an audio track (2026-11-14)
+## Live 13.0b25 crashed when Pung made an audio track (2026-11-14)
 
 The first "New" made both tracks through the Remote Script (`track.ensure`). The MIDI track worked. Making
-the audio return (an audio track with the input PushHack, channel Schwung 1) crashed Live within a second:
+the audio return (an audio track with the input PushHack, channel Pung 1) crashed Live within a second:
 the system log has `Loading document ".../Default Audio Track.als"`, then `snd_pcm_wait error`, then
 `Live stopped running with exit code: -11`. Live had Link and Link Audio on. The same call works for Braids
 on Live 12.4. Live saves its settings only on a clean quit, so the user's new settings were lost (PushHack
-in a control-surface slot, Track and Sync for port Schwung, Link).
+in a control-surface slot, Track and Sync for port Pung, Link).
 
 Not yet known: whether making an audio track crashes Live 13.0b25 at all, or only giving it the PushHack
 input. "New" now makes the MIDI track only; the user makes the audio return by hand. Before automating it
@@ -79,11 +79,11 @@ with the PushHack input also crashes, it is a Live bug to report to Ableton.
 ## Next
 
 1. **Live set-up on the device.** Needs a person once: the PushHack Remote Script in a control-surface slot,
-   Track and Sync on for port Schwung, Link and Link Audio on. Then check: New makes the two tracks; the
-   routing names Live really uses (`Schwung` / `Ch. N`, `PushHack` / `Schwung N`); Live's selection follows
+   Track and Sync on for port Pung, Link and Link Audio on. Then check: New makes the two tracks; the
+   routing names Live really uses (`Pung` / `Ch. N`, `PushHack` / `Pung N`); Live's selection follows
    to the slot; the round-trip latency of Link Audio.
-2. **Pads to Live while Schwung shows.** Today Schwung plays the pads itself (chromatic). The better design
-   gives the encoders and buttons to Schwung and the pads to Live (Live's scales, layouts, Note Repeat).
+2. **Pads to Live while Pung shows.** Today Pung plays the pads itself (chromatic). The better design
+   gives the encoders and buttons to Pung and the pads to Live (Live's scales, layouts, Note Repeat).
    That needs a push-display hook mode that passes notes (the `midiflt` pass list covers CC 0-87 only) and a
    Push3 restart to load it.
 3. **One track per slot**, if Live's External Instrument can take a Link Audio return.

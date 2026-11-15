@@ -32,9 +32,11 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	rect(img, 0, 0, scrW, 2, sc)
 	p, cm, b := u.currentBank()
 
-	// top bar: banks over their buttons
+	// top bar: the track's devices (as on Push), or the banks
 	nb := 0
-	if cm != nil {
+	if u.liveActive() && !u.bankList {
+		nb = u.drawDeviceRow(img, sc)
+	} else if cm != nil {
 		for i := 0; i < 8 && u.bankOff+i < len(cm.Banks); i++ {
 			x := i * colW
 			name := fitLabel(cm.Banks[u.bankOff+i].Name, colW-20)
@@ -47,16 +49,39 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			nb++
 		}
 	}
-	if nb <= 6 { // slot identity and level where no bank needs the space
-		label(img, scrW-66, 17, fmt.Sprintf("TRACK %d", u.slot+1), cFg, 1)
+	if nb <= 6 { // where the row leaves room: what this is, and its level
+		if u.liveActive() { // the Live track, in its colour, and the bank
+			name, col := u.live.state().trackHeader()
+			tc := color.NRGBA{uint8(col >> 16), uint8(col >> 8), uint8(col), 255}
+			if col == 0 {
+				tc = cFg
+			}
+			bank := ""
+			if cm != nil && u.bank < len(cm.Banks) && !u.bankList {
+				bank = strings.ToUpper(cm.Banks[u.bank].Name)
+			}
+			// one line, as on Push: TRACK  BANK. A second line under it ran
+			// into the last column's name.
+			room := (8-nb)*colW - 90
+			x := scrW - 66
+			if bank != "" {
+				bank = fitLabel(bank, room/2)
+				label(img, x, 17, bank, cDim, 1)
+				x -= len(bank)*7 + 14
+				room -= len(bank)*7 + 14
+			}
+			label(img, x, 17, fitLabel(strings.ToUpper(name), room), tc, 1)
+		} else {
+			label(img, scrW-66, 17, fmt.Sprintf("TRACK %d", u.slot+1), cFg, 1)
+		}
 		hmeter(img, scrW-58, 10, 50, 7, dbFrac(peak), sc)
 	}
 
 	// cells
 	switch {
 	case p.Kind == "other":
-		label(img, scrW/2, 76, fitLabel(strings.ToUpper(p.Name)+" IS NOT A SCHWUNG DEVICE", 900), cDim, 0)
-		label(img, scrW/2, 96, "PUSH'S OWN VIEW SHOWS IT: SHIFT + HELP, HELP", cDim, 0)
+		label(img, scrW/2, 76, fitLabel(strings.ToUpper(p.Name)+" IS NOT A PUNG DEVICE", 900), cDim, 0)
+		label(img, scrW/2, 96, "PUSH'S OWN DEVICE VIEW SHOWS IT: PRESS DEVICE VIEW", cDim, 0)
 	case p.Kind == "add" || (p.Kind == "synth" && p.Module == ""):
 		msg := "PRESS ADD OR A + BUTTON TO PUT A MODULE HERE"
 		if p.Kind == "synth" {
@@ -118,8 +143,12 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		}
 	}
 
-	// chain row
+	// chain row, or Live's tracks while the view follows Live
 	y, h := botY+3, scrH-botY-6
+	if u.liveActive() {
+		u.drawTrackRow(img, y, h)
+		return
+	}
 	// a window of 8 positions; a marker at an edge says the chain goes on
 	if u.chainOff > 0 {
 		for k := 0; k < 5; k++ {
@@ -174,6 +203,62 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 				rect(img, cx-3+k, cy+4-k, 1, 1, cDim)
 			}
 		}
+	}
+}
+
+// drawDeviceRow: the selected track's devices over the upper buttons, as
+// Push's device view shows them; the one holding the selected device
+// filled. Pressing it again lists the banks (bankList). Returns how many.
+func (u *surface) drawDeviceRow(img *image.NRGBA, sc color.NRGBA) int {
+	devs, sel := u.live.state().deviceRow()
+	n := 0
+	for i, d := range devs {
+		if i >= 8 {
+			break
+		}
+		x := i * colW
+		name := fitLabel(strings.ToUpper(d.Name), colW-20)
+		if d.I == sel {
+			rect(img, x+8, 5, colW-16, 15, sc)
+			label(img, x+colW/2, 17, name, cBlack, 0)
+		} else {
+			label(img, x+colW/2, 17, name, cDim, 0)
+		}
+		n++
+	}
+	return n
+}
+
+// drawTrackRow: Live's tracks under the lower buttons, as Push's device view
+// shows them: the page of 8 holding the selected track, each in its colour,
+// the selected one filled. A marker at an edge says there are more.
+func (u *surface) drawTrackRow(img *image.NRGBA, y, h int) {
+	page, first, sel := u.trackPage()
+	tracks, _ := u.live.state().trackRow()
+	if first > 0 {
+		for k := 0; k < 5; k++ {
+			rect(img, 1+k, y+h/2-k, 1, 2*k+1, cFg)
+		}
+	}
+	if first+8 < len(tracks) {
+		for k := 0; k < 5; k++ {
+			rect(img, scrW-2-k, y+h/2-k, 1, 2*k+1, cFg)
+		}
+	}
+	for j, t := range page {
+		x, w := j*colW+7, colW-14
+		tc := color.NRGBA{uint8(t.Color >> 16), uint8(t.Color >> 8), uint8(t.Color), 255}
+		if t.Color == 0 {
+			tc = cDim
+		}
+		name := fitLabel(t.Name, w-12)
+		if first+j == sel {
+			rect(img, x, y, w, h, tc)
+			label(img, x+8, y+14, name, cBlack, -1)
+			continue
+		}
+		rect(img, x, y+h-2, w, 2, tc)
+		label(img, x+8, y+14, name, cFg, -1)
 	}
 }
 

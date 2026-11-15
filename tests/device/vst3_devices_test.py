@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""On-device test of the Schwung devices in Live (DESIGN-v2). Runs ON the Push.
+"""On-device test of the Pung devices in Live (DESIGN-v2). Runs ON the Push.
 
 What it proves, each step checked in Live (PushHack Remote Script, :7704) and
-in the Schwung service (/api/devices: what every device rendered, heard and
+in the Pung service (/api/devices: what every device rendered, heard and
 played):
 
   1. Live's last plugin scan lists every class in vst3-classes.json, and as
      what (instr / audiofx / midifx).
   2. Each browser entry loads from the User Library as the rack it should be:
      an Instrument Rack, a MIDI Effect Rack, an Audio Effect Rack.
-  3. A clip played into Schwung Braids sounds (Live's meter and the service).
+  3. A clip played into Braids sounds (Live's meter and the service).
   4. Braids' "MIDI FX" selector runs Chord in front of its synth.
-  5. Schwung Chord Track on a second MIDI track plays triads, and Braids'
+  5. Chord Track on a second MIDI track plays triads, and Braids'
      track hears them through Live's "MIDI From" routing.
      (Live 13.0b25 files a MIDI-in/MIDI-out plugin as an audio effect, so a
-     Schwung MIDI effect cannot sit in Live's MIDI-effect position.)
-  6. Schwung Freeverb after the instrument receives audio and returns it.
+     Pung MIDI effect cannot sit in Live's MIDI-effect position.)
+  6. Freeverb after the instrument receives audio and returns it.
 
 Works on ONE MIDI track (default: the first MIDI track with no devices, or
-one holding only Schwung devices). Leaves the chain built and the clip
+one holding only Pung devices). Leaves the chain built and the clip
 stopped, so the result can be heard by hand.
 
     python3 vst3_devices_test.py [track-index]
@@ -31,8 +31,8 @@ import sys
 import time
 import urllib.request
 
-SCHWUNG = "http://127.0.0.1:7720"
-CLASSES = "/data/push-hack/hacks/schwung/vst3-classes.json"
+PUNG = "http://127.0.0.1:7720"
+CLASSES = "/data/.vst3/Pung.vst3/Contents/Resources/classes.json"
 SCANLOG = "/data/.config/Ableton/Live 13.0b25/PluginScanner.txt"
 results = []
 
@@ -48,7 +48,7 @@ def live(ns, cmd, **args):
 
 
 def devices_svc():
-    with urllib.request.urlopen(SCHWUNG + "/api/devices", timeout=5) as r:
+    with urllib.request.urlopen(PUNG + "/api/devices", timeout=5) as r:
         return json.loads(r.read())["devices"]
 
 
@@ -77,20 +77,29 @@ def rack_inner(t, i):
 
 
 def scan_types():
-    """name -> device-class-id kind, from the last scan of Schwung.vst3."""
+    """name -> device-class-id kind, from the last scan of Pung.vst3."""
     try:
         text = open(SCANLOG, errors="replace").read()
     except OSError as e:
         return None, str(e)
-    blocks = text.split('check plugin at path: "/data/.vst3/Schwung.vst3"')
+    blocks = text.split('check plugin at path: "/data/.vst3/Pung.vst3"')
     if len(blocks) < 2:
-        return {}, "Schwung.vst3 never scanned"
+        return {}, "Pung.vst3 never scanned"
     last = blocks[-1].split("check plugin at path:")[0]
     out = {}
     for m in re.finditer(r"found: (.+?)\n(.*?)(?=found: |\Z)", last, re.S):
         k = re.search(r"device-class-id: device:vst3:(\w+):", m.group(2))
         out[m.group(1).strip()] = k.group(1) if k else "?"
     return out, None
+
+
+NAMES = set()  # the class names (main fills it)
+
+
+def pung_only(devs):
+    """Only Pung devices: by class name, or a rack from an older build
+    ("Braids")."""
+    return all(d["name"] in NAMES or d["name"].startswith("Pung ") for d in devs)
 
 
 def pick_track():
@@ -101,7 +110,7 @@ def pick_track():
         if t["kind"] != "midi":
             continue
         devs = track_devices(t["ref"])
-        if not devs or all(d["name"].startswith("Schwung") for d in devs):
+        if not devs or pung_only(devs):
             return t["ref"]
     return None
 
@@ -145,11 +154,12 @@ def wait_notes(module, kind=None, secs=4.0):
 def main():
     classes = json.load(open(CLASSES))["classes"]
     names = {c["name"]: c["kind"] for c in classes}
+    NAMES.update(names)
 
     # 1. the scan
     types, err = scan_types()
     if types is None or err:
-        check(False, "Live scanned Schwung.vst3 (%s)" % err)
+        check(False, "Live scanned Pung.vst3 (%s)" % err)
     else:
         missing = [n for n in names if n not in types]
         check(not missing, "Live's scan lists all %d classes%s" % (
@@ -160,14 +170,14 @@ def main():
 
     t = pick_track()
     if t is None:
-        check(False, "a MIDI track to test on (empty, or only Schwung devices)")
+        check(False, "a MIDI track to test on (empty, or only Pung devices)")
         return
     note("testing on track %d" % t)
-    for d in reversed(track_devices(t)):  # start clean: only Schwung devices are here
+    for d in reversed(track_devices(t)):  # start clean: only Pung devices are here
         live("device", "delete", track=t, device=d["i"])
 
     # 2 + 3. instrument, clip, sound
-    if load(t, "Schwung Braids", "InstrumentGroupDevice") is None:
+    if load(t, "Braids", "InstrumentGroupDevice") is None:
         return
     live("session", "delete_clip", track=t, scene=0)
     live("session", "create_clip", track=t, scene=0, length=4.0)
@@ -183,18 +193,18 @@ def main():
         peak = max(peak, max(m))
         time.sleep(0.1)
     b = svc("braids", "instrument")
-    check(peak > 0.01, "the clip sounds through Schwung Braids (Live meter %.3f)" % peak)
+    check(peak > 0.01, "the clip sounds through Braids (Live meter %.3f)" % peak)
     check(b and b["out_peak"] > 0.001 and b["notes_in"] > 0,
           "the service renders Braids (%s)" % (b and {k: b[k] for k in ("blocks", "notes_in", "out_peak")}))
 
     # 4. a MIDI effect inside the instrument: Braids' "MIDI FX" selector
-    bi = next((d["i"] for d in track_devices(t) if d["name"] == "Schwung Braids"), None)
+    bi = next((d["i"] for d in track_devices(t) if d["name"] == "Braids"), None)
     path = [bi, 0, 0]
     sel = None
     for p in live("device", "params", track=t, path=path).get("data", {}).get("params", []):
         if p["name"] == "MIDI FX":
             sel = p
-    opts = next((q.get("options", []) for c in classes if c["module"] == "braids" and c["kind"] == "instrument"
+    opts = next((q.get("options", []) for c in classes if c.get("ref") == "braids" and c["kind"] == "instrument"
                  for q in c["params"] if q.get("role") == "midifx"), [])
     if check(sel and "Chord" in opts, "Braids offers a MIDI FX selector (%s)" % opts):
         def pick(name):
@@ -216,11 +226,11 @@ def main():
     # 5. a MIDI effect on its own track, heard through Live's "MIDI From"
     tracks = live("track", "list")["data"]["tracks"]
     u = next((x["ref"] for x in tracks if x["kind"] == "midi" and x["ref"] != t and
-              all(d["name"].startswith("Schwung") for d in track_devices(x["ref"]))), None)
+              pung_only(track_devices(x["ref"]))), None)
     if check(u is not None, "a second MIDI track for the Chord Track (%s)" % u):
         for d in reversed(track_devices(u)):
             live("device", "delete", track=u, device=d["i"])
-        if load(u, "Schwung Chord Track", "InstrumentGroupDevice") is not None:
+        if load(u, "Chord Track", "InstrumentGroupDevice") is not None:
             live("clip", "stop", track=t, scene=0)
             live("session", "delete_clip", track=u, scene=0)
             live("session", "create_clip", track=u, scene=0, length=4.0)
@@ -235,9 +245,8 @@ def main():
             uname = next(x["name"] for x in live("track", "list")["data"]["tracks"] if x["ref"] == u)
             # Live names a plugin's MIDI output "<rack> | <device> | <plugin>"
             r = live("track", "set_routing", track=t, input_type=uname,
-                     input_channel=["Schwung Chord Track | Schwung Chord Track | Schwung Chord Track",
-                                    "Schwung Chord Track"])
-            ok = check(r.get("ok"), "Braids' track takes MIDI From %s / Schwung Chord Track" % uname)
+                     input_channel=["Chord Track | Chord Track | Chord Track", "Chord Track"])
+            ok = check(r.get("ok"), "Braids' track takes MIDI From %s / Chord Track" % uname)
             if not ok:
                 note(json.dumps(r)[:600])
                 note(json.dumps(live("track", "routing", track=t))[:900])
@@ -262,7 +271,7 @@ def main():
             time.sleep(1.5)
 
     # 6. an audio effect after the instrument
-    i = load(t, "Schwung Freeverb", "AudioEffectGroupDevice")
+    i = load(t, "Freeverb", "AudioEffectGroupDevice")
     if i is not None:
         time.sleep(2)
         f = svc("freeverb", "effect")

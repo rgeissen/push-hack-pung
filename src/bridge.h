@@ -1,5 +1,5 @@
 /*
- * bridge.h: the C side of the Schwung host for Push 3.
+ * bridge.h: the C side of the Pung host for Push 3.
  *
  * One dlopen of Schwung's chain host (chain/dsp.so) serves every slot: each
  * slot is one chain instance. The Go side guarantees that only one thread at
@@ -16,11 +16,13 @@
 
 #include <stdint.h>
 
-#define SB_MAX_SLOTS 64 /* chain instances: one per Schwung device in Live */
+#define SB_MAX_SLOTS 64 /* chain instances: one per Pung device in Live */
 #define SB_BLOCK 128 /* Schwung's block: MOVE_FRAMES_PER_BLOCK */
 
 /* Loads chain/dsp.so from chain_dir. 0 on success, else see sb_error(). */
 int sb_init(const char *chain_dir);
+/* fd: closed in any child process a module forks (Pung's listeners) */
+void sb_close_in_children(int fd);
 const char *sb_error(void);
 
 int sb_slot_create(int slot);  /* 0 on success */
@@ -52,7 +54,7 @@ void sb_set_clock(int status, double beat);
  * as 4-byte USB-MIDI packets. Returns the number of BYTES copied (a multiple
  * of 4). Byte 0 of each packet carries the route in its high nibble:
  * 0 internal, 2 external, 3 inject (a MIDI effect's output in "pre" mode,
- * which a Schwung MIDI-effect device sends on to Live). */
+ * which a Pung MIDI-effect device sends on to Live). */
 int sb_take_midi_out(int slot, uint8_t *buf, int max);
 
 /* SCHED_FIFO for the calling thread. 0 on success. */

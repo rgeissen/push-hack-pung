@@ -29,7 +29,7 @@ package main
 //
 // Where it comes from, first found wins: the module's own push_ui.js, then
 // <data>/overrides/<id>/push_ui.js (the user's), then
-// <hack>/overrides/<id>/push_ui.js (shipped with Schwung).
+// <hack>/overrides/<id>/push_ui.js (shipped with Pung).
 //
 // A script that throws, or a draw that takes more than 8 ms, is switched off
 // for the session and the native page comes back with a mark saying so.

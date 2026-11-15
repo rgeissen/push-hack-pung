@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	requestDir    = "/data/push-hack/data/schwung/requests"
+	requestDir    = "/data/push-hack/data/pung/requests"
 	liveConfigDir = "/data/.config/Ableton"
 	backupDir     = "/data/push-hack/backup"
 )
@@ -131,7 +131,7 @@ func setVst3Scan(want bool) error {
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return err
 	}
-	bak := filepath.Join(backupDir, "Preferences.cfg.schwung-"+time.Now().Format("20060102-150405"))
+	bak := filepath.Join(backupDir, "Preferences.cfg.pung-"+time.Now().Format("20060102-150405"))
 	if err := os.WriteFile(bak, d, 0o644); err != nil {
 		return fmt.Errorf("backup: %w", err)
 	}
@@ -141,7 +141,7 @@ func setVst3Scan(want bool) error {
 	} else {
 		out[off] = 0
 	}
-	tmp := path + ".schwung-tmp"
+	tmp := path + ".pung-tmp"
 	if err := os.WriteFile(tmp, out, st.Mode().Perm()); err != nil {
 		return err
 	}

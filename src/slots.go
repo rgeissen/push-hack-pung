@@ -1,13 +1,13 @@
 package main
 
-// slots.go: a slot is one Schwung chain, bound to one Live track.
+// slots.go: a slot is one Pung chain, bound to one Live track.
 //
 // On Move a slot is one of 4 fixed tracks and listens on MIDI channel N.
-// Push does the same over ONE port, "Schwung": slot N is channel N. One port
+// Push does the same over ONE port, "Pung": slot N is channel N. One port
 // because Live needs the Track switch (and Sync, for clock) turned on by hand
 // for every port a track may send to; one port is one switch. Each slot has
-// its own Link Audio channel (an audio bus client named "Schwung N"). A Live
-// track whose MIDI goes to port "Schwung", channel N, IS slot N's track: the
+// its own Link Audio channel (an audio bus client named "Pung N"). A Live
+// track whose MIDI goes to port "Pung", channel N, IS slot N's track: the
 // binding lives in Live's routing and is saved with the Set.
 
 import (
@@ -31,7 +31,7 @@ type midiMsg struct {
 
 type Slot struct {
 	Index int    // 0-based; the user sees Index+1
-	Name  string // "Schwung 1": the MIDI port and the Link channel
+	Name  string // "Pung 1": the MIDI port and the Link channel
 
 	own  sync.Mutex // held for each call into the chain; the engine only TRIES it
 	midi chan midiMsg
@@ -59,7 +59,14 @@ type Host struct {
 	slots  [maxSlots]*Slot
 	active atomic.Pointer[[]*Slot] // snapshot for the engine, never mutated in place
 
-	seq       *alsaseq.Client // the one MIDI port, "Schwung"
+	seq       *alsaseq.Client // the one MIDI port, "Pung"
+	prov      *provider       // Pung's devices in Live (devices.go)
+	live      *live           // the PushHack Remote Script session (live.go)
+	screened  map[string]bool // module id -> passed the crash screen (screen.go); set once at start
+
+	selMu  sync.Mutex
+	selKey string // Live's selection that selDev was worked out for
+	selDev int    // the chain slot of the device selected in Live, -1 none
 	probeMu    sync.Mutex
 	probeCache map[string]*compMeta // module id -> metadata, from a hidden chain instance
 
@@ -123,7 +130,7 @@ func (h *Host) openSlot(i int) (*Slot, error) {
 	if err := cSlotCreate(i); err != nil {
 		return nil, err
 	}
-	s := &Slot{Index: i, Name: fmt.Sprintf("Schwung %d", i+1), midi: make(chan midiMsg, 1024), seq: h.seq}
+	s := &Slot{Index: i, Name: fmt.Sprintf("Pung %d", i+1), midi: make(chan midiMsg, 1024), seq: h.seq}
 	s.bus = audiobus.OpenWithInputs(h.busSocket, s.Name, -1, []string{s.Name + " In"})
 	h.slots[i] = s
 	h.publish()
@@ -315,7 +322,7 @@ func usbMidiToRaw(p []byte) []byte {
 
 // ---- MIDI port -----------------------------------------------------------
 
-// hostReader dispatches what arrives on the "Schwung" port: a channel
+// hostReader dispatches what arrives on the "Pung" port: a channel
 // message goes to the slot of its channel, clock to the transport.
 type hostReader struct{ h *Host }
 
@@ -344,18 +351,18 @@ func (r hostReader) Fixed(evType uint8, src alsaseq.Addr, data []byte) {
 
 func (r hostReader) VarLen(evType uint8, src alsaseq.Addr, payload []byte) {}
 
-// openPort creates the "Schwung" port. Live lists it under MIDI ports at
+// openPort creates the "Pung" port. Live lists it under MIDI ports at
 // once; the user turns on Track (and Sync, for clock) for it once.
 func (h *Host) openPort() error {
 	c, err := alsaseq.Open()
 	if err != nil {
 		return err
 	}
-	if err := c.SetName("Schwung"); err != nil {
+	if err := c.SetName("Pung"); err != nil {
 		log.Printf("midi: set name: %v", err)
 	}
 	caps := alsaseq.CapRead | alsaseq.CapWrite | alsaseq.CapSubsRead | alsaseq.CapSubsWrite
-	if _, err := c.CreatePort("Schwung", caps, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
+	if _, err := c.CreatePort("Pung", caps, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
 		c.Close()
 		return err
 	}
@@ -369,7 +376,7 @@ func (h *Host) openPort() error {
 
 // ---- transport -----------------------------------------------------------
 
-// transport follows Live's MIDI clock (the "Schwung" port with Sync on) and
+// transport follows Live's MIDI clock (the "Pung" port with Sync on) and
 // fans it out to every slot, so each chain's arpeggiator and synced LFOs run.
 type transport struct {
 	h       *Host

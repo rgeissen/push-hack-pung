@@ -1,4 +1,4 @@
-# Builder for push-hack-schwung. Ubuntu 22.04 has glibc 2.35, the same as
+# Builder for push-hack-pung. Ubuntu 22.04 has glibc 2.35, the same as
 # AbletonOS on Push 3, so a binary or module built here runs on the device.
 FROM --platform=linux/amd64 ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive

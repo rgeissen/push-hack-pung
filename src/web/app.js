@@ -1,4 +1,4 @@
-/* Schwung on Push: the web page.
+/* Pung on Push: the web page.
  *
  * It is also the PARENT of a module's own web_ui.html: the iframe includes
  * /static/schwung-remote-api.js (schwung-manager's, unmodified) and talks
@@ -11,7 +11,10 @@
   const KIND = { midi: "MIDI FX", synth: "Synth", fx: "Audio FX" };
   const KCOL = { midi: "var(--midi)", synth: "var(--inst)", fx: "var(--afx)" };
 
-  let state = { slot: 1, comp: "synth", slots: [], info: null, values: {}, modules: [] };
+  // mode "devices": Pung's devices in Live (/api/pung-devices), the
+  // panel on /api/devices/<n>; mode "slots": version 1's Pung tracks.
+  let state = { slot: 1, comp: "synth", slots: [], info: null, values: {}, modules: [],
+                mode: "slots", base: "/api/slots/1", devices: [], dev: -1, follow: true };
   let frame = null, frameComp = null, frameSubscribed = false;
   let pickerMode = "add", pickerKind = "audio_fx";
 
@@ -25,8 +28,12 @@
   // ---- status, slots, chain ------------------------------------------------
   async function refreshStatus() {
     let st;
-    try { st = await api("/api/status"); } catch (e) { $("health").innerHTML = '<span class="bad">Schwung is not answering</span>'; return; }
+    try { st = await api("/api/status"); } catch (e) { $("health").innerHTML = '<span class="bad">Pung is not answering</span>'; return; }
     state.slots = st.slots || [];
+    let dv = { devices: [], selected: -1 };
+    try { dv = await api("/api/pung-devices"); } catch (e) { /* an older Pung */ }
+    state.devices = dv.devices || [];
+    if (state.devices.length || !state.slots.length) return refreshDevices(dv.selected);
     const e = st.engine, t = st.transport;
     const bus = state.slots.some((s) => s.bus);
     $("health").innerHTML = `${bus ? "audio bus on" : '<span class="bad">no audio bus</span>'} · ` +
@@ -35,6 +42,47 @@
     renderSlots();
     const cur = state.slots.find((s) => s.slot === state.slot);
     if (cur) renderChain(cur);
+  }
+
+  // ---- Pung's devices in Live ---------------------------------------------
+  function refreshDevices(selected) {
+    if (state.mode !== "devices") {
+      state.mode = "devices";
+      $("chain").parentElement.hidden = true;
+      $("howto").innerHTML = "<h2>Pung devices in your Live Set</h2><p>Select a Pung device in Live, " +
+        "or here. Changes here reach Live too: Push's device view, the Pung view, automation.</p>";
+    }
+    $("health").textContent = state.devices.length ? `${state.devices.length} Pung devices in Live` +
+      (state.follow ? " · following Live's selection" : "") : "No Pung device in your Live Set yet";
+    let want = state.dev;
+    if (state.follow && selected >= 0) want = selected;
+    if (!state.devices.some((d) => d.n === want)) want = state.devices.length ? state.devices[0].n : -1;
+    if (want !== state.dev) selectDevice(want, false);
+    renderDevices();
+  }
+
+  function renderDevices() {
+    const nav = $("slots");
+    nav.innerHTML = "";
+    state.devices.forEach((d) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "dev";
+      b.setAttribute("aria-current", d.n === state.dev ? "true" : "false");
+      b.innerHTML = `${esc(d.name)}${d.track ? `<span class="where">${esc(d.track)}</span>` : ""}`;
+      b.title = d.selected ? "Selected in Live" : "";
+      b.onclick = () => { state.follow = false; selectDevice(d.n, true); };
+      nav.appendChild(b);
+    });
+  }
+
+  function selectDevice(n, user) {
+    const d = state.devices.find((x) => x.n === n);
+    state.dev = n;
+    state.base = `/api/devices/${n}`;
+    state.comp = d ? d.component : "synth";
+    if (n >= 0) loadPanel();
+    if (user) renderDevices();
   }
 
   function renderSlots() {
@@ -98,6 +146,7 @@
 
   function selectSlot(n) {
     state.slot = n;
+    state.base = `/api/slots/${n}`;
     setSlotColor();
     state.comp = "synth";
     chainSig = "";
@@ -113,7 +162,7 @@
 
   // ---- the component panel ------------------------------------------------
   async function loadPanel() {
-    const r = await api(`/api/slots/${state.slot}/component/${state.comp}`);
+    const r = await api(`${state.base}/component/${state.comp}`);
     const info = (state.info = r.info || {});
     state.values = info.values || {};
     $("panel-title").textContent = info.module ? `${info.name || info.module}` : "Empty";
@@ -127,10 +176,17 @@
       tools.appendChild(toolButton("Choose", () => openPicker("swap", "sound_generator")));
       return;
     }
-    tools.appendChild(toolButton("Make Live MIDI track", makeTracks));
-    tools.appendChild(toolButton(info.bypassed ? "Turn on" : "Bypass", toggleBypass));
-    tools.appendChild(toolButton("Swap", () => openPicker("swap", info.type || "audio_fx")));
-    tools.appendChild(toolButton("Remove", removeComp, true));
+    if (state.mode === "devices") {
+      // a device in Live: Live adds, removes and bypasses it; here it is edited
+      tools.appendChild(toolButton(state.follow ? "Following Live" : "Follow Live", () => {
+        state.follow = true; refreshStatus();
+      }));
+    } else {
+      tools.appendChild(toolButton("Make Live MIDI track", makeTracks));
+      tools.appendChild(toolButton(info.bypassed ? "Turn on" : "Bypass", toggleBypass));
+      tools.appendChild(toolButton("Swap", () => openPicker("swap", info.type || "audio_fx")));
+      tools.appendChild(toolButton("Remove", removeComp, true));
+    }
     if (info.web_ui) {
       // the module's own page, unmodified, in a sandbox
       frame = document.createElement("iframe");
@@ -248,17 +304,17 @@
     sendTimer = null;
     const batch = pending;
     pending = {};
-    Object.entries(batch).forEach(([key, value]) => post(`/api/slots/${state.slot}/param`, { key, value }));
+    Object.entries(batch).forEach(([key, value]) => post(`${state.base}/param`, { key, value }));
   }
 
   async function makeTracks() {
     $("health").textContent = "asking Live...";
-    const r = await post(`/api/slots/${state.slot}/tracks`, {});
-    $("health").textContent = r.ok ? `MIDI track "Schwung ${state.slot}" is ready. Now make an audio track by hand: input PushHack, channel Schwung ${state.slot}, Monitor In.` : r.error;
+    const r = await post(`${state.base}/tracks`, {});
+    $("health").textContent = r.ok ? `MIDI track "Pung ${state.slot}" is ready. Now make an audio track by hand: input PushHack, channel Pung ${state.slot}, Monitor In.` : r.error;
   }
 
   async function toggleBypass() {
-    await post(`/api/slots/${state.slot}/param`, { key: `${state.comp}:bypassed`, value: state.info.bypassed ? "0" : "1" });
+    await post(`${state.base}/param`, { key: `${state.comp}:bypassed`, value: state.info.bypassed ? "0" : "1" });
     chainSig = "";
     await refreshStatus();
     loadPanel();
@@ -266,9 +322,9 @@
 
   async function removeComp() {
     const c = state.comp;
-    if (c === "synth") await post(`/api/slots/${state.slot}/param`, { key: "synth:module", value: "" });
-    else if (c.startsWith("midi_fx")) await post(`/api/slots/${state.slot}/param`, { key: "midi_fx:remove", value: c.slice(7) });
-    else await post(`/api/slots/${state.slot}/param`, { key: "fx:remove", value: c.slice(2) });
+    if (c === "synth") await post(`${state.base}/param`, { key: "synth:module", value: "" });
+    else if (c.startsWith("midi_fx")) await post(`${state.base}/param`, { key: "midi_fx:remove", value: c.slice(7) });
+    else await post(`${state.base}/param`, { key: "fx:remove", value: c.slice(2) });
     state.comp = "synth";
     chainSig = "";
     await refreshStatus();
@@ -279,7 +335,7 @@
   async function refreshValues() {
     if (!state.info || !state.info.module || document.hidden) return;
     let r;
-    try { r = await api(`/api/slots/${state.slot}/component/${state.comp}/values`); } catch (e) { return; }
+    try { r = await api(`${state.base}/component/${state.comp}/values`); } catch (e) { return; }
     const changed = {};
     Object.entries(r.values || {}).forEach(([k, v]) => {
       if (state.values[k] !== v && !(k in pending)) { state.values[k] = v; changed[k] = v; }
@@ -313,7 +369,7 @@
       case "getParam":
         if (!m.id || !m.key) return;
         if (m.key in state.values) toFrame({ type: "paramResult", id: m.id, value: state.values[m.key] });
-        else api(`/api/slots/${state.slot}/param?key=${encodeURIComponent(m.key)}`).then((r) => {
+        else api(`${state.base}/param?key=${encodeURIComponent(m.key)}`).then((r) => {
           if (r.value !== null && r.value !== undefined) state.values[m.key] = r.value;
           toFrame({ type: "paramResult", id: m.id, value: r.value ?? "" });
         });
@@ -332,7 +388,7 @@
         toFrame({ type: "chainParams", id: m.id || null, component: frameComp, data: info.chain_params || null });
         break;
       case "resubscribe":
-        api(`/api/slots/${state.slot}/component/${state.comp}/values`).then((r) => {
+        api(`${state.base}/component/${state.comp}/values`).then((r) => {
           Object.assign(state.values, r.values || {});
           toFrame({ type: "paramUpdate", params: r.values || {} });
         });
@@ -376,7 +432,7 @@
     else if (m.type === "audio_fx") { at = used(c.fx) + 1; key = `fx${at}:module`; comp = `fx${at}`; }
     else { at = used(c.midi_fx) + 1; key = `midi_fx${at}:module`; comp = `midi_fx${at}`; }
     if (at > 8) { alertBox("The chain is full."); return; }
-    await post(`/api/slots/${state.slot}/param`, { key, value: m.id });
+    await post(`${state.base}/param`, { key, value: m.id });
     $("picker").hidden = true;
     state.comp = comp;
     chainSig = "";

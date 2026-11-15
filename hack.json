@@ -1,18 +1,20 @@
 {
-  "id": "schwung",
-  "name": "Schwung",
+  "id": "pung",
+  "name": "Pung",
   "version": "0.1.0",
-  "description": "Runs Schwung modules (the module ecosystem of Ableton Move) on Push 3. Each Schwung track is one signal chain (up to 8 MIDI FX, one instrument, up to 8 audio FX) on its own Live track: the Live track sends MIDI to port Schwung on the channel of the Schwung track, and hears it back on the Link Audio channel Schwung N. Needs push-audio-loopback for audio, and push-manager and push-display for the Push screen.",
+  "description": "Pung runs Schwung modules (the module ecosystem of Ableton Move) on Push 3 as devices in Live: instruments, audio effects and MIDI effects in Push's browser and device view, with Pung's own view on the Push screen, on Push Hack's Live device layer (core/livedevice). Needs Push Manager's VST3 scan switched on.",
   "author": "rgeissen",
-  "binary": "schwung",
+  "binary": "pung",
   "port": 7720,
   "enabled": true,
+  "live_devices": "Pung",
   "web_ui": {
-    "label": "Schwung",
+    "label": "Pung",
     "path": "/"
   },
   "surface": {
-    "label": "SCHWUNG",
-    "color": "orange"
+    "label": "PUNG",
+    "color": "orange",
+    "device_view": true
   }
 }

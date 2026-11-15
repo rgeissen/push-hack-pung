@@ -1,30 +1,22 @@
 #!/bin/sh
-# Deploys Schwung to a Push by hand, the way push-catalog installs a hack:
-# files under /data/push-hack/hacks/schwung, and an init.d service generated
+# Deploys Pung to a Push by hand, the way push-catalog installs a hack:
+# files under /data/push-hack/hacks/pung, and an init.d service generated
 # from push-catalog's own template (plain nice-backgrounded, boot autostart).
 #   scripts/deploy.sh [host]
 set -eu
 HOST="${1:-push.local}"
 SSH="ssh -o BatchMode=yes -o HostKeyAlias=push.local"
-DIR=/data/push-hack/hacks/schwung
+DIR=/data/push-hack/hacks/pung
 cd "$(dirname "$0")/.."
 
-$SSH "root@$HOST" "mkdir -p $DIR /data/push-hack/logs /data/push-hack/data/schwung"
+$SSH "root@$HOST" "mkdir -p $DIR /data/push-hack/logs /data/push-hack/data/pung"
 rsync -a -e "$SSH" build/modules build/patches overrides "root@$HOST:$DIR/"
 # the binary is swapped by rename, so a running copy keeps its file
-rsync -a -e "$SSH" schwung "root@$HOST:$DIR/schwung.new"
+rsync -a -e "$SSH" pung "root@$HOST:$DIR/pung.new"
 
-# Schwung.vst3 (DESIGN-v2): Live has the plugin loaded, so the library is
-# swapped by rename; a moduleinfo.json would list no classes, so none ships.
-if [ -f build/vst3/VST3/Release/Schwung.vst3/Contents/x86_64-linux/Schwung.so ]; then
-  $SSH "root@$HOST" "mkdir -p /data/.vst3/Schwung.vst3/Contents/x86_64-linux && rm -f /data/.vst3/Schwung.vst3/Contents/Resources/moduleinfo.json"
-  rsync -a -e "$SSH" build/vst3/VST3/Release/Schwung.vst3/Contents/x86_64-linux/Schwung.so "root@$HOST:/data/.vst3/Schwung.vst3/Contents/x86_64-linux/Schwung.so.new"
-  $SSH "root@$HOST" "mv -f /data/.vst3/Schwung.vst3/Contents/x86_64-linux/Schwung.so.new /data/.vst3/Schwung.vst3/Contents/x86_64-linux/Schwung.so && chown -R ableton:users /data/.vst3"
-fi
-# Push browser entries (tools/make-presets.py), into the User Library
-if [ -d build/presets ]; then
-  ( cd build/presets && COPYFILE_DISABLE=1 tar cf - --no-mac-metadata * ) | $SSH "root@$HOST" 'cd "/data/Music/Ableton/User Library/Presets" && rm -rf "MIDI Effects/Schwung" Instruments/Schwung "Instruments/Schwung MIDI Effects" "Audio Effects/Schwung" && tar xf - --no-same-owner && chown -R ableton:users Instruments/Schwung* "Audio Effects/Schwung"'
-fi
+# the Live plugin (push-hack's core/livedevice): the service installs it as
+# /data/.vst3/Pung.vst3 and writes the browser entries itself, at every start
+rsync -a -e "$SSH" livedevice.so "root@$HOST:$DIR/livedevice.so"
 
 # hack.json: keep the port push-catalog assigned, if it did
 PORT=$($SSH "root@$HOST" "grep -o '\"port\": *[0-9]*' $DIR/hack.json 2>/dev/null | grep -o '[0-9]*$'" || true)
@@ -35,26 +27,26 @@ fi
 
 $SSH "root@$HOST" sh -s <<'REMOTE'
 set -e
-DIR=/data/push-hack/hacks/schwung
-SVC=push-hack-schwung
+DIR=/data/push-hack/hacks/pung
+SVC=push-hack-pung
 cat > /etc/init.d/$SVC <<'INIT'
 #!/bin/sh
 ### BEGIN INIT INFO
-# Provides:          push-hack-schwung
+# Provides:          push-hack-pung
 # Required-Start:    $local_fs $network
 # Required-Stop:     $local_fs
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: push-hack: schwung (via push-catalog)
+# Short-Description: push-hack: pung (via push-catalog)
 ### END INIT INFO
-BIN="/data/push-hack/hacks/schwung/schwung"; CFG="/data/push-hack/hacks/schwung/hack.json"; LOG="/data/push-hack/logs/schwung.log"; PIDF="${PIDF:-/var/run/push-hack-schwung.pid}"
-start() { echo "starting push-hack-schwung"; mkdir -p "$(dirname "$LOG")"
+BIN="/data/push-hack/hacks/pung/pung"; CFG="/data/push-hack/hacks/pung/hack.json"; LOG="/data/push-hack/logs/pung.log"; PIDF="${PIDF:-/var/run/push-hack-pung.pid}"
+start() { echo "starting push-hack-pung"; mkdir -p "$(dirname "$LOG")"
   # Live preference changes waiting for a moment when Live is not running
   # (this service starts at S20, Push3 at S21). Synchronous on purpose.
   "$BIN" -boot-requests >>"$LOG" 2>&1
   nice -n 19 "$BIN" -config "$CFG" >>"$LOG" 2>&1 &
   echo $! >"$PIDF"; }
-stop()  { echo "stopping push-hack-schwung"; [ -f "$PIDF" ] || return 0
+stop()  { echo "stopping push-hack-pung"; [ -f "$PIDF" ] || return 0
   p="$(cat "$PIDF")"; kill "$p" 2>/dev/null; i=0
   while kill -0 "$p" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done
   kill -0 "$p" 2>/dev/null && kill -9 "$p" 2>/dev/null
@@ -66,8 +58,8 @@ INIT
 chmod 755 /etc/init.d/$SVC
 command -v update-rc.d >/dev/null 2>&1 && update-rc.d $SVC defaults >/dev/null 2>&1 || true
 /etc/init.d/$SVC stop >/dev/null 2>&1 || true
-pkill -x schwung 2>/dev/null || true
-mv -f $DIR/schwung.new $DIR/schwung
+pkill -x pung 2>/dev/null || true
+mv -f $DIR/pung.new $DIR/pung
 /etc/init.d/$SVC start
 sleep 2
 /etc/init.d/$SVC status
