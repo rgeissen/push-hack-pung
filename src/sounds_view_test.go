@@ -166,3 +166,104 @@ func TestNameEditor(t *testing.T) {
 	apart(t, "name editor", boxes)
 	gallery(t, "sounds-name-editor", img)
 }
+
+// Push's own browser: press goes down (on a sound: loads), nudge left goes
+// back up, turning moves within the level; a source without banks has none
+func TestBankIndexByContainedName(t *testing.T) {
+	f := &factoryView{Bank: "Preset A", BankAt: -1, Banks: []bankRow{{0, "Factory (Preset A)"}, {1, "01 Pop"}}}
+	if bankIndex(f) != 0 {
+		t.Fatal("Mini-JV names its bank Preset A and lists it as Factory (Preset A)")
+	}
+}
+
+func TestSoundBrowserHierarchy(t *testing.T) {
+	initFaces()
+	u, sb := testBrowser()
+	sb.level, sb.source = lvSound, srcFactory
+	u.sbUp()
+	if sb.level != lvBank || sb.bankCur != 3 {
+		t.Fatalf("up from the sounds: the banks, on the current one; got level %d bank %d", sb.level, sb.bankCur)
+	}
+	u.sbTurn(1)
+	if sb.bankCur != 4 || sb.m.v.Factory.Bank != "03 Orchestral Expansion Card Number 3" {
+		t.Fatal("turning on the banks highlights one and applies nothing")
+	}
+	gallery(t, "sounds-level-bank", func() *image.NRGBA { img := newFrame(); u.drawSounds(img); return img }())
+	u.sbUp()
+	if sb.level != lvSource {
+		t.Fatal("up from the banks: the sources")
+	}
+	u.sbTurn(1)
+	if sb.source != srcUser {
+		t.Fatal("turning on the sources switches the source")
+	}
+	gallery(t, "sounds-level-source", func() *image.NRGBA { img := newFrame(); u.drawSounds(img); return img }())
+	u.sbDown()
+	if sb.level != lvSound {
+		t.Fatal("User has no banks: down goes to its sounds")
+	}
+	// down through the bank shown applies nothing (it would play its first sound)
+	sb.source, sb.level = srcFactory, lvSound
+	u.sbUp()
+	u.sbDown()
+	if sb.m.v.Factory.Bank != "03 Orchestral Expansion Card Number 3" || sb.level != lvSound {
+		t.Fatal("going down through the current bank must change nothing")
+	}
+	sb.source = srcUser
+	u.sbTurn(1)
+	if sb.cursor[srcUser] != 1 {
+		t.Fatal("turning on the sounds moves the cursor")
+	}
+	if sb.timer != nil {
+		sb.timer.Stop()
+	}
+	// a nudge right on a user sound: its menu, Delete asking first
+	u.sbOpenMenu()
+	m := sb.menu
+	var labels []string
+	for _, it := range m.items {
+		labels = append(labels, it.label)
+	}
+	got := strings.Join(labels, "|")
+	if !strings.Contains(got, "RENAME") || !strings.Contains(got, "DELETE") || !strings.Contains(got, "FAVOURITES") {
+		t.Fatalf("a user sound's menu: %s", got)
+	}
+	img := newFrame()
+	boxes := spy(func() { u.drawSounds(img) })
+	within(t, "context menu", boxes, image.Rect(0, 0, scrW, scrH))
+	gallery(t, "sounds-menu", img)
+	for i, it := range m.items {
+		if it.act == actDelete {
+			m.cur = i
+		}
+	}
+	u.sbMenuChoose()
+	if sb.menu == nil || sb.menu.items[sb.menu.cur].act != -1 {
+		t.Fatal("Delete asks first, with Keep it highlighted")
+	}
+	gallery(t, "sounds-menu-delete", func() *image.NRGBA { img := newFrame(); u.drawSounds(img); return img }())
+	u.sbMenuChoose()
+	if sb.menu != nil {
+		t.Fatal("Keep it closes the menu")
+	}
+}
+
+// the jog in the name editor, as Push's own text entry: turn the letter at
+// the cursor, nudge to move the cursor
+func TestNameEditorJog(t *testing.T) {
+	u, sb := testBrowser()
+	sb.ed = &nameEd{action: "saveas", r: []rune("Pad"), cur: 2}
+	u.edJog(1)
+	if string(sb.ed.r) != "Pae" {
+		t.Fatalf("got %q", string(sb.ed.r))
+	}
+	u.edCursor(1)
+	u.edJog(1)
+	if string(sb.ed.r) != "PaeA" {
+		t.Fatalf("one past the end, a turn adds a letter: %q", string(sb.ed.r))
+	}
+	u.edCursor(-9)
+	if sb.ed.cur != 0 || sb.ed.win != 0 {
+		t.Fatal("the cursor stops at the start, the window with it")
+	}
+}

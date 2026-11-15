@@ -27,6 +27,20 @@ const (
 
 var sourceNames = [4]string{"FACTORY", "USER", "FAVOURITES", "RECENT"}
 
+// The browser is a hierarchy, Source > Bank > Sound, driven the way Push's
+// own browser is (Push 3 manual, 4.1 and 5.3): turning moves within the level
+// the hands are on, pressing selects (goes down a level; on a sound, loads
+// it), nudging the jog left goes back up, and nudging it right on a sound
+// opens its context menu (Favourite, Save, Save As, Rename, Delete). On a
+// source or a bank, which have no menu, nudging right goes down too. A
+// source without banks has no bank level. The D-pad's left, right and centre
+// do what the nudges and the press do.
+const (
+	lvSource = iota
+	lvBank
+	lvSound
+)
+
 // browser actions on the lower row
 const (
 	actFav = iota
@@ -46,18 +60,22 @@ var actionNames = [8]string{"FAV", "SAVE", "SAVE AS", "RENAME", "DELETE", "COMPA
 const auditionAfter = 150 * time.Millisecond
 
 type sbState struct {
-	dev     *device
-	key     string // the selection it was opened for (liveKey)
-	source  int
-	cursor  [4]int
-	m       *sbModel // the last read; nil until the first arrives
-	reading bool
-	again   bool // a read was asked for while one ran
-	timer   *time.Timer
-	compare bool
-	confirm string    // DELETE pressed once on this sound: press again
-	confAt  time.Time // when
-	ed      *nameEd
+	dev       *device
+	key       string // the selection it was opened for (liveKey)
+	source    int
+	cursor    [4]int
+	level     int      // lvSource, lvBank or lvSound: where turning moves
+	bankCur   int      // the bank level's highlighted row (a bank is applied going down)
+	bankMoved bool     // the hands turned to another bank: going down applies it
+	menu      *sbMenu  // the highlighted sound's context menu, open
+	m         *sbModel // the last read; nil until the first arrives
+	reading   bool
+	again     bool // a read was asked for while one ran
+	timer     *time.Timer
+	compare   bool
+	confirm   string    // DELETE pressed once on this sound: press again
+	confAt    time.Time // when
+	ed        *nameEd
 	// rows() of a source, built once per model: a list of 4133 built for
 	// every row, button and light of every frame, under the surface's lock,
 	// made the hands wait (Mini-JV, 2026-11-15)
@@ -65,6 +83,21 @@ type sbState struct {
 	cacheSrc int
 	cache    []sbRow
 }
+
+// sbMenu: a sound's context menu (nudge right), as Push's: turn to
+// highlight, press to choose, nudge left to close.
+type sbMenu struct {
+	of    sbRow
+	items []sbItem
+	cur   int
+}
+
+type sbItem struct {
+	label string
+	act   int // an action (actFav...), or actConfirmDelete
+}
+
+const actConfirmDelete = 100
 
 type sbModel struct {
 	v      soundsView
@@ -103,7 +136,7 @@ func (u *surface) openSounds() {
 		u.say("SOUNDS ARE FOR PUNG DEVICES")
 		return
 	}
-	u.sb = &sbState{dev: d, key: u.liveKey, source: srcFactory}
+	u.sb = &sbState{dev: d, key: u.liveKey, source: srcFactory, level: lvSound}
 	u.view = "sounds"
 	lib := u.h.sounds
 	go func() {
@@ -489,6 +522,142 @@ func (sb *sbState) current() *soundRef {
 	return sb.m.v.Current
 }
 
+func (sb *sbState) hasBanks() bool {
+	return sb.source == srcFactory && sb.m != nil && sb.m.fvOK && sb.m.banksN > 0
+}
+
+// bankIndex: the row of the factory list's current bank (-1 none known).
+func bankIndex(f *factoryView) int {
+	at := -1
+	for i, b := range f.Banks {
+		if b.Name == f.Bank || (at < 0 && b.Index == f.BankAt && f.BankAt >= 0) {
+			at = i
+		}
+	}
+	// a module may name its bank one way and list it another (Mini-JV:
+	// "Preset A" in the list "Factory (Preset A)")
+	for i, b := range f.Banks {
+		if at < 0 && f.Bank != "" && strings.Contains(strings.ToLower(b.Name), strings.ToLower(f.Bank)) {
+			at = i
+		}
+	}
+	return at
+}
+
+// sbTurn: the jog turned, on the level the hands are on. Caller holds u.mu.
+func (u *surface) sbTurn(delta int) {
+	sb := u.sb
+	if m := sb.menu; m != nil {
+		m.cur = max(0, min(len(m.items)-1, m.cur+sign(delta)))
+		return
+	}
+	switch sb.level {
+	case lvSource: // a source is looked at, never played
+		sb.source, sb.confirm = max(0, min(3, sb.source+sign(delta))), ""
+	case lvBank: // highlighted only: going down applies it
+		if sb.hasBanks() {
+			sb.bankCur = max(0, min(sb.m.banksN-1, sb.bankCur+sign(delta)))
+			sb.bankMoved = true
+		}
+	default:
+		if u.shift {
+			delta = 10 * sign(delta)
+		} else {
+			delta = sign(delta)
+		}
+		u.sbMove(delta)
+	}
+}
+
+// sbDown: a level down (push right, jog press above the sounds). Caller holds u.mu.
+func (u *surface) sbDown() {
+	sb := u.sb
+	switch sb.level {
+	case lvSource:
+		if sb.hasBanks() {
+			sb.level, sb.bankCur, sb.bankMoved = lvBank, max(0, bankIndex(sb.m.v.Factory)), false
+			return
+		}
+		sb.level = lvSound
+	case lvBank:
+		sb.level = lvSound
+		// only a bank the hands turned to: going down through the one shown
+		// changes nothing you hear
+		if at := bankIndex(sb.m.v.Factory); sb.hasBanks() && sb.bankMoved && sb.bankCur != at {
+			u.sbBank(sb.bankCur - max(0, at)) // into the bank chosen: the list follows
+		}
+		sb.bankMoved = false
+	}
+}
+
+// sbUp: a level up (push left, Return). Caller holds u.mu.
+func (u *surface) sbUp() {
+	sb := u.sb
+	switch sb.level {
+	case lvSound:
+		if sb.hasBanks() {
+			sb.level, sb.bankCur, sb.bankMoved = lvBank, max(0, bankIndex(sb.m.v.Factory)), false
+			return
+		}
+		sb.level = lvSource
+	case lvBank:
+		sb.level = lvSource
+	}
+}
+
+// sbOpenMenu: the highlighted sound's context menu, with what can be done
+// to it now. Caller holds u.mu.
+func (u *surface) sbOpenMenu() {
+	sb := u.sb
+	row, ok := u.sbRow(sb)
+	if !ok {
+		return
+	}
+	m := &sbMenu{of: row}
+	fav := "ADD TO FAVOURITES"
+	if row.fav {
+		fav = "REMOVE FROM FAVOURITES"
+	}
+	m.items = append(m.items, sbItem{fav, actFav})
+	if u.sbActionOn(actSave) {
+		m.items = append(m.items, sbItem{"SAVE", actSave})
+	}
+	if u.sbActionOn(actSaveAs) {
+		m.items = append(m.items, sbItem{"SAVE AS...", actSaveAs})
+	}
+	if row.ref.Source == "user" {
+		m.items = append(m.items, sbItem{"RENAME...", actRename}, sbItem{"DELETE", actDelete})
+	}
+	sb.menu = m
+}
+
+// sbMenuChoose: the highlighted item of the menu. Delete asks first, as
+// Push does. Caller holds u.mu.
+func (u *surface) sbMenuChoose() {
+	sb := u.sb
+	m := sb.menu
+	if m == nil || m.cur >= len(m.items) {
+		return
+	}
+	it := m.items[m.cur]
+	switch it.act {
+	case actDelete:
+		m.items = []sbItem{{"DELETE " + strings.ToUpper(m.of.ref.Name), actConfirmDelete}, {"KEEP IT", -1}}
+		m.cur = 1 // the safe one first
+		return
+	case actConfirmDelete:
+		sb.menu = nil
+		sb.confirm, sb.confAt = m.of.ref.Name, time.Now() // the lower row's Delete, confirmed
+		u.sbAction(actDelete, true)
+		return
+	case -1:
+		sb.menu = nil
+		return
+	}
+	sb.menu = nil
+	u.sbAction(it.act, true)
+}
+
 // sbButton: the browser's buttons. Returns false for one it does not take.
 // Caller holds u.mu.
 func (u *surface) sbButton(n byte, press bool) bool {
@@ -499,21 +668,30 @@ func (u *surface) sbButton(n byte, press bool) bool {
 		return true
 	}
 	if !press {
-		return n >= 102 && n < 110 || n == 62 || n == 63 || n == 93 || n == 94 || n == 95 || n == 44 || n == 45
+		return n >= 102 && n < 110 || n == 62 || n == 63 || n == 93 || n == 94 || n == 95 || n == 44 || n == 45 || n == 91
 	}
 	switch {
-	case n >= 102 && n < 106: // the upper row: the sources
-		sb.source, sb.confirm = int(n-102), "" // a source is looked at, not played: the cursor plays
+	case n >= 102 && n < 106: // the upper row: straight to a source's sounds
+		sb.source, sb.confirm, sb.level = int(n-102), "", lvSound // looked at, not played: the cursor plays
 	case n >= 106 && n < 110:
-	case n == 94: // jog press: keep it
-		u.closeSounds(true)
-	case n == 93 || n == 44: // jog click left, D-pad left: the source before
-		if sb.source > 0 {
-			sb.source--
+	case sb.menu != nil && (n == 94 || n == 91): // the menu: choose
+		u.sbMenuChoose()
+	case sb.menu != nil && (n == 93 || n == 44): // the menu: close
+		sb.menu = nil
+	case sb.menu != nil:
+	case n == 94 || n == 91: // jog press, D-pad centre: down a level; on a sound, load it
+		if sb.level == lvSound {
+			u.closeSounds(true)
+		} else {
+			u.sbDown()
 		}
-	case n == 95 || n == 45:
-		if sb.source < 3 {
-			sb.source++
+	case n == 93 || n == 44: // jog nudged left, D-pad left: back up a level
+		u.sbUp()
+	case n == 95 || n == 45: // jog nudged right: a sound's context menu; else down a level
+		if sb.level == lvSound {
+			u.sbOpenMenu()
+		} else {
+			u.sbDown()
 		}
 	case n == 62 || n == 63: // Page: the bank, else a page of the list
 		d := map[bool]int{true: -1, false: 1}[n == 62]
@@ -532,8 +710,29 @@ func (u *surface) sbButton(n byte, press bool) bool {
 
 // edTurn: encoder i turns the letter over it. Caller holds u.mu.
 func (u *surface) edTurn(enc, delta int) {
+	u.edTurnAt(u.sb.ed.win+enc, delta)
+}
+
+// edJog: the jog turns the letter at the cursor, as Push's own text entry.
+func (u *surface) edJog(delta int) {
+	u.edTurnAt(u.sb.ed.cur, delta)
+}
+
+// edCursor: a nudge left or right moves the cursor (one past the end: a new
+// letter), the eight letters under the encoders following it.
+func (u *surface) edCursor(d int) {
 	ed := u.sb.ed
-	at := min(ed.win+enc, len(ed.r)) // past the end: the next letter, never a gap of spaces
+	ed.cur = max(0, min(len(ed.r), ed.cur+d))
+	if ed.cur < ed.win {
+		ed.win = ed.cur
+	} else if ed.cur > ed.win+7 {
+		ed.win = ed.cur - 7
+	}
+}
+
+func (u *surface) edTurnAt(at, delta int) {
+	ed := u.sb.ed
+	at = min(at, len(ed.r)) // past the end: the next letter, never a gap of spaces
 	if at == len(ed.r) {
 		ed.r = append(ed.r, 'A'-1) // a new letter starts before A
 		if delta < 0 {
@@ -594,12 +793,12 @@ func (u *surface) edButton(n byte, press bool) bool {
 		ed.cur, ed.win = max(0, len(ed.r)-1), max(0, len(ed.r)-7)
 	case 26: // CANCEL: back to the browser
 		u.sb.ed, u.view = nil, "sounds"
-	case 27, 94: // DONE, jog press
+	case 27, 94, 91: // DONE, the jog press, D-pad centre
 		u.edDone()
-	case 93, 44:
-		ed.win = max(0, ed.win-1)
+	case 93, 44: // jog nudged left: the cursor left
+		u.edCursor(-1)
 	case 95, 45:
-		ed.win = min(len(ed.r), ed.win+1)
+		u.edCursor(1)
 	default:
 		return n >= 20 && n < 28
 	}
@@ -663,10 +862,14 @@ func (u *surface) drawSounds(img *image.NRGBA) {
 	// the sources over the upper row
 	for i, s := range sourceNames {
 		x := i * colW
-		if i == sb.source {
+		switch {
+		case i == sb.source && sb.level == lvSource: // the hands are here
 			rect(img, x+8, 5, colW-16, 15, sc)
 			label(img, x+colW/2, 17, s, cBlack, 0)
-		} else {
+		case i == sb.source:
+			rect(img, x+8, 5, colW-16, 15, mixColor(sc, 0.28))
+			label(img, x+colW/2, 17, s, cFg, 0)
+		default:
 			label(img, x+colW/2, 17, s, cDim, 0)
 		}
 	}
@@ -707,6 +910,9 @@ func (u *surface) drawSounds(img *image.NRGBA) {
 	default:
 		u.drawSoundList(img, rows, cur, listX, sc)
 	}
+	if sb.menu != nil {
+		u.drawSoundMenu(img, sc)
+	}
 	// the actions over the lower row
 	for i, a := range actionNames {
 		x, w := i*colW+7, colW-14
@@ -728,6 +934,28 @@ func (u *surface) drawSounds(img *image.NRGBA) {
 		default:
 			label(img, x+w/2, botY+17, a, cFaint, 0)
 		}
+	}
+}
+
+// drawSoundMenu: the context menu over the list's right side, as a card.
+func (u *surface) drawSoundMenu(img *image.NRGBA, sc color.NRGBA) {
+	m := u.sb.menu
+	w := 360
+	h := 18 + len(m.items)*20
+	x, y := scrW-w-24, sbListTop+2
+	rect(img, x, y, w, h, rgb(14, 14, 13))
+	frameRect(img, x, y, w, h, sc)
+	label(img, x+12, y+14, fitLabel(strings.ToUpper(m.of.name), w-24), cDim, -1)
+	for i, it := range m.items {
+		iy := y + 18 + i*20
+		if i == m.cur {
+			rect(img, x+6, iy, w-12, 18, mixColor(sc, 0.35))
+		}
+		col := cFg
+		if it.act == actConfirmDelete {
+			col = cWarn
+		}
+		label(img, x+14, iy+13, fitLabel(it.label, w-28), col, -1)
 	}
 }
 
@@ -797,7 +1025,9 @@ func (u *surface) drawSoundList(img *image.NRGBA, rows []sbRow, cur, x0 int, sc 
 		on := first+i == cur
 		if on {
 			rect(img, x, y, w, sbRowH-2, mixColor(sc, 0.28))
-			frameRect(img, x, y, w, sbRowH-2, sc)
+			if sb.level == lvSound {
+				frameRect(img, x, y, w, sbRowH-2, sc) // the hands are here
+			}
 		}
 		base := y + 15
 		if r.num > 0 {
@@ -847,14 +1077,18 @@ func (u *surface) drawSoundList(img *image.NRGBA, rows []sbRow, cur, x0 int, sc 
 
 // drawBankPanel: the banks over encoders 1 and 2, the current one lit.
 func (u *surface) drawBankPanel(img *image.NRGBA, sc color.NRGBA) {
-	f := u.sb.m.v.Factory
-	at := -1
-	for i, b := range f.Banks {
-		if b.Name == f.Bank || (at < 0 && b.Index == f.BankAt) {
-			at = i
-		}
+	sb := u.sb
+	f := sb.m.v.Factory
+	at := bankIndex(f)
+	focused := sb.level == lvBank
+	if focused {
+		at = sb.bankCur
 	}
-	label(img, 12, 40, "BANK", cDim, -1)
+	hc := cDim
+	if focused {
+		hc = cFg
+	}
+	label(img, 12, 40, "BANK", hc, -1)
 	label(img, 2*colW-12, 40, "ENCODER 1", cFaint, 1)
 	first := max(0, min(at-1, len(f.Banks)-4))
 	for i := 0; i < 4 && first+i < len(f.Banks); i++ {
@@ -863,6 +1097,9 @@ func (u *surface) drawBankPanel(img *image.NRGBA, sc color.NRGBA) {
 		if first+i == at {
 			rect(img, 8, y, 2*colW-16, 19, mixColor(sc, 0.28))
 			rect(img, 8, y, 3, 19, sc)
+			if focused {
+				frameRect(img, 8, y, 2*colW-16, 19, sc) // the hands are here
+			}
 		}
 		col := cDim
 		if first+i == at {
@@ -881,7 +1118,7 @@ func (u *surface) drawNameEditor(img *image.NRGBA) {
 	if ed.action == "rename" {
 		title = "RENAME " + strings.ToUpper(ed.of)
 	}
-	label(img, 12, hdBase, fitLabel(title+" - ONE LETTER PER ENCODER, THE JOG MOVES ALONG", scrW-24), cFg, -1)
+	label(img, 12, hdBase, fitLabel(title+" - TURN: LETTER, NUDGE: CURSOR, PRESS: DONE (OR ONE LETTER PER ENCODER)", scrW-24), cFg, -1)
 	// the whole name, the eight letters under the hands framed
 	name := string(ed.r)
 	label(img, 12, 44, fitLabel("NAME", 60), cDim, -1)
@@ -986,8 +1223,8 @@ func (u *surface) paintSoundLEDs() {
 	banks := u.view == "sounds" && sb.source == srcFactory && sb.m != nil && sb.m.banksN > 0
 	u.led(false, 62, map[bool]uint8{true: 63, false: 0}[banks || u.view == "sounds"])
 	u.led(false, 63, map[bool]uint8{true: 63, false: 0}[banks || u.view == "sounds"])
-	u.led(false, 44, map[bool]uint8{true: 63, false: 0}[u.view == "sounds" && sb.source > 0])
-	u.led(false, 45, map[bool]uint8{true: 63, false: 0}[u.view == "sounds" && sb.source < 3])
+	u.led(false, 44, map[bool]uint8{true: 63, false: 0}[u.view == "sounds" && sb.level > lvSource])
+	u.led(false, 45, map[bool]uint8{true: 63, false: 0}[u.view == "sounds" && sb.level < lvSound])
 }
 
 // soundTitle: the selected Pung device's sound for the header ("" none),

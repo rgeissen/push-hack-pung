@@ -841,12 +841,9 @@ func (u *surface) cc(n, v byte) {
 		case n == push3.CCJogWheel:
 			d := push3.DecodeRel(v)
 			if u.view == "name" {
-				ed := u.sb.ed
-				ed.win = max(0, min(len(ed.r), ed.win+sign(d)))
-			} else if u.shift {
-				u.sbMove(10 * sign(d))
+				u.edJog(d) // the letter at the cursor, as Push's text entry
 			} else {
-				u.sbMove(sign(d))
+				u.sbTurn(d) // on the level the hands are on (Source > Bank > Sound)
 			}
 			return
 		}

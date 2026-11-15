@@ -199,6 +199,8 @@ Every module's sounds are browsed the same way (`docs/PRESETS.md`): the jog whee
 view, and a jog press opens the sound browser. Its rules, which any screen that changes a device's sound
 follows:
 
+- **The jog is Push's.** Turn moves, press selects, a nudge left goes back, a nudge right opens the
+  highlighted item's options, as in Push's own browser; a hand that knows Push knows Pung.
 - **Hearing is not choosing.** A sound plays where the cursor rests; it becomes the device's only on Load or
   a jog press. Every other way out puts back the sound from before, exactly.
 - **Looking is not hearing.** Switching a source, a tab or a page of the list changes nothing you hear;

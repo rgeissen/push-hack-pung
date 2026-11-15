@@ -137,17 +137,24 @@ Built in phase 2 and tested on the Push with Mini-JV (`src/sounds_view.go`; the 
   FAV    SAVE    SAVE AS    RENAME    DELETE    COMPARE    CANCEL    LOAD
 ```
 
+The jog works as it does in Push's own browser (Push 3 manual, 4.1 and 5.3): **turn** to move, **press** to
+select, **nudge left** to go back, **nudge right** for the highlighted item's options. The browser is a
+hierarchy, **Source > Bank > Sound**; it opens on the sounds, at the device's sound.
+
 | Control | In the browser |
 |---|---|
-| Jog turn | the next or previous sound; it plays once the hand rests on it (150 ms), so a spin plays only where it stops |
+| Jog turn | within the level the hands are on: a source (nothing plays), a bank (highlighted only), a sound (it plays once the hand rests on it, 150 ms, so a spin plays only where it stops) |
 | Shift + jog | ten sounds at a time |
-| Encoders 2 to 8 | the same as the jog |
-| Encoder 1 | the bank (a bank chooser changes the list; a category or expansion card jumps within it) |
-| Page < > | the previous or next bank; without banks, five sounds |
-| Upper row 1 to 4, jog click, D-pad left/right | the source: Factory, User, Favourites, Recent. A source is looked at, not played: only the cursor plays |
-| Jog press, Load | **keep** the sound and close the browser |
-| Cancel | close the browser, and the sound from before it comes back, exactly |
-| Lower row | Fav, Save, Save As, Rename, Delete, Compare (held), Cancel, Load. A button with nothing to do is dim |
+| Jog press, D-pad centre | down a level (into a source, into the bank highlighted); on a sound, **load** it and close |
+| Jog nudge left, D-pad left | back up a level |
+| Jog nudge right, D-pad right | on a sound, its **context menu**: Add to / Remove from favourites, Save, Save as..., Rename..., Delete (which asks first, Keep it highlighted); on a source or a bank, down a level |
+| Encoders 2 to 8 | the sounds, as the jog |
+| Encoder 1, Page < > | the bank directly (a bank chooser changes the list; a category or expansion card jumps within it) |
+| Upper row 1 to 4 | straight to a source's sounds |
+| Lower row | Fav, Save, Save As, Rename, Delete, Compare (held), Cancel, Load: the same, one press away; a button with nothing to do is dim |
+
+The level the hands are on wears the slot colour's frame; the others show their choice shaded. A bank is
+applied only when the hands turned to it: going down through the bank shown changes nothing you hear.
 
 - **Audition and undo.** Opening the browser takes the device's state; **Cancel**, and leaving the browser
   any way but Load (another device, another track, Push taking the screen), puts it back. Loads run off the
@@ -171,9 +178,11 @@ Save As proposes a name, so most saves are one press: the sound it came from plu
 2`), or the module's name and the date for a sound built from scratch. To change it, the panel becomes a
 name editor:
 
-- the eight encoders are eight letters of the name, each turning through a space, `A-Z a-z 0-9` and
-  `- _ . ' & ( ) + # !`; the jog moves the eight-letter window along the name, which is underlined in the
-  whole name above; turning past the end adds the next letter (never a gap);
+- as Push's own text entry, the jog **turns** the letter at the cursor and a **nudge** left or right moves
+  the cursor (one past the end adds a letter); **press** is Done;
+- and, faster, the eight encoders are eight letters of the name, each turning through a space, `A-Z a-z
+  0-9` and `- _ . ' & ( ) + # !`; the eight are underlined in the whole name above; turning past the end
+  adds the next letter (never a gap);
 - the lower row: Space (after the letter last turned), Delete (that letter), Caps (its other case), Clear,
   Suggest (the proposed name back), Cancel, Done; the jog press is Done too.
 
