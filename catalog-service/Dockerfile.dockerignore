@@ -1,0 +1,4 @@
+*
+!catalog-service
+!scripts
+catalog-service/*_test.go

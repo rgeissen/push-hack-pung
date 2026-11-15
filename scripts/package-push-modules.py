@@ -29,7 +29,7 @@ catalog, modsrc, out = sys.argv[1:4]
 tree, logs, dist = os.path.join(out, "modules"), os.path.join(out, "logs"), os.path.join(out, "dist")
 os.makedirs(dist, exist_ok=True)
 cat = {m["id"]: m for m in json.load(open(catalog))["modules"]}
-recipes = {r["id"]: r for r in json.load(open(os.path.join(os.path.dirname(__file__), "..", "build", "recipes", "index.json")))}
+recipes = {r["id"]: r for r in json.load(open(os.environ.get("PUNG_RECIPES_INDEX") or os.path.join(os.path.dirname(__file__), "..", "build", "recipes", "index.json")))}
 status = {}
 for line in open(os.path.join(logs, "status.tsv")):
     p = line.rstrip("\n").split("\t")
@@ -67,8 +67,22 @@ def commit(repo):
         return ""
 
 
+# PUNG_LOADTEST=static: check the entry point without running the module.
+# A build host whose CPU cannot run what it builds (the DiskStation's Atom has
+# no SSE4.2; the Push builds target x86-64-v2) would see dlopen's constructors
+# crash for no fault of the module. The Push runs the real test at install.
+STATIC = os.environ.get("PUNG_LOADTEST") == "static"
+ENTRIES = ("move_plugin_init_v2", "move_plugin_init_v1", "move_audio_fx_init_v2", "move_audio_fx_init_v1", "move_midi_fx_init")
 LOADTEST = "/tmp/pung-loadtest"
-subprocess.run(["gcc", "-O1", os.path.join(os.path.dirname(os.path.abspath(__file__)), "loadtest.c"), "-o", LOADTEST, "-ldl"], check=True)
+if not STATIC:
+    subprocess.run(["gcc", "-O1", os.path.join(os.path.dirname(os.path.abspath(__file__)), "loadtest.c"), "-o", LOADTEST, "-ldl"], check=True)
+
+
+def static_entry(path):
+    out = subprocess.run(["nm", "-D", "--defined-only", path], capture_output=True, text=True).stdout
+    names = {l.split()[-1] for l in out.splitlines() if l.strip()}
+    found = [e for e in ENTRIES if e in names]
+    return "OK " + found[0] if found else "no entry point (%s)" % ", ".join(ENTRIES)
 built, failed, skipped = [], [], []
 entries = []
 for mid, m in sorted(cat.items()):
@@ -104,8 +118,11 @@ for mid, m in sorted(cat.items()):
         if not os.path.exists(os.path.join(d, dsp)):
             bad.append("%s missing" % dsp)
         else:
-            r_ = subprocess.run([LOADTEST, os.path.join(d, dsp)], capture_output=True, text=True, timeout=30)
-            line = (r_.stdout.strip().splitlines() or ["CRASH (signal %d)" % -r_.returncode])[-1]
+            if STATIC:
+                line = static_entry(os.path.join(d, dsp))
+            else:
+                r_ = subprocess.run([LOADTEST, os.path.join(d, dsp)], capture_output=True, text=True, timeout=30)
+                line = (r_.stdout.strip().splitlines() or ["CRASH (signal %d)" % -r_.returncode])[-1]
             if not line.startswith("OK"):
                 bad.append("load test: " + line.replace(d + "/", ""))
     if bad:

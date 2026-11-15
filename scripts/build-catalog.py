@@ -44,15 +44,18 @@ import sys
 import tarfile
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SCHWUNG = os.path.abspath(os.path.join(ROOT, "..", "schwung"))
+# where things are: this checkout's build/ by default, the catalog service's
+# data folder on the DiskStation (catalog-service/)
+SCHWUNG = os.environ.get("PUNG_SCHWUNG") or os.path.abspath(os.path.join(ROOT, "..", "schwung"))
+WORK = os.environ.get("PUNG_WORK") or os.path.join(ROOT, "build")
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--base-url", default="https://<your-site>")
-ap.add_argument("--out", default=os.path.join(ROOT, "build", "catalog"))
+ap.add_argument("--out", default=os.path.join(WORK, "catalog"))
 ap.add_argument("ids", nargs="*")
 args = ap.parse_args()
 
-BUILD = os.path.join(ROOT, "build", "push-modules")
+BUILD = os.path.join(WORK, "push-modules")
 # what Schwung's own catalogue says about each module: its category and tags
 # (module-catalog.json, MIT), and its release history (schwung.dev's public
 # release metadata, cached in build/; optional)
@@ -64,7 +67,7 @@ try:
 except (OSError, ValueError, KeyError):
     pass
 RELEASES = {}
-_rel = os.path.join(ROOT, "build", "schwung-release-metadata.json")
+_rel = os.path.join(WORK, "schwung-release-metadata.json")
 try:
     if not os.path.exists(_rel) or os.path.getmtime(_rel) < datetime.datetime.now().timestamp() - 86400:
         import urllib.request
@@ -73,7 +76,7 @@ try:
     RELEASES = json.load(open(_rel))
 except Exception as e:  # noqa: BLE001 - dates are a nicety
     print(f"  (release dates unavailable: {e})")
-MODSRC = os.path.join(ROOT, "build", "modsrc")
+MODSRC = os.path.join(WORK, "modsrc")
 index = json.load(open(os.path.join(BUILD, "index.json")))
 policy = json.load(open(os.path.join(ROOT, "scripts", "catalog-policy.json")))
 out = args.out
@@ -250,7 +253,7 @@ class reproducible:
 def recipe_files(mid):
     """The build's own steps for this module: the recipe and its helpers."""
     out = []
-    for p in (os.path.join(ROOT, "build", "recipes", mid + ".sh"), os.path.join(ROOT, "scripts", "recipes", mid + ".sh")):
+    for p in (os.path.join(WORK, "recipes", mid + ".sh"), os.path.join(ROOT, "scripts", "recipes", mid + ".sh")):
         if os.path.exists(p):
             out.append(p)
     hand = os.path.join(ROOT, "scripts", "recipes", mid + ".sh")

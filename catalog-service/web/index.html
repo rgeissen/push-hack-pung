@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Pung · Catalog admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<header class="top">
+  <span class="brand"><span class="mark" aria-hidden="true"></span>Pung <span class="sub">Catalog admin</span></span>
+  <nav id="nav" hidden aria-label="Admin">
+    <a id="site-link" href="https://<your-site>/" target="_blank" rel="noopener">View site ↗</a>
+    <button type="button" class="link" id="open-settings">Settings</button>
+    <button type="button" class="link" id="sign-out">Sign out</button>
+  </nav>
+</header>
+
+<main id="gate" class="gate" hidden>
+  <form id="gate-form" class="panel narrow" autocomplete="on">
+    <h1 id="gate-title">Sign in</h1>
+    <p id="gate-intro" class="muted"></p>
+    <label id="code-row" hidden>Setup code<input id="code" name="code" autocomplete="one-time-code" spellcheck="false"></label>
+    <label>User name<input id="user" name="username" autocomplete="username" required></label>
+    <label>Password<input id="pass" name="password" type="password" required></label>
+    <label id="pass2-row" hidden>Password, again<input id="pass2" type="password" autocomplete="new-password"></label>
+    <p class="err" id="gate-err" role="alert" hidden></p>
+    <button class="primary" type="submit" id="gate-go">Sign in</button>
+  </form>
+</main>
+
+<main id="app" hidden>
+  <section class="tiles" aria-label="Overview">
+    <div class="tile"><span class="k">Live on the site</span><b id="t-live">–</b><span class="s" id="t-live-s"></span></div>
+    <div class="tile"><span class="k">Schwung</span><b id="t-up">–</b><span class="s" id="t-up-s"></span>
+      <button type="button" class="ghost" id="check">Check now</button></div>
+    <div class="tile"><span class="k">To build</span><b id="t-todo">–</b><span class="s" id="t-todo-s"></span>
+      <button type="button" class="ghost" id="build-changes">Build all</button></div>
+    <div class="tile hot"><span class="k">Ready to publish</span><b id="t-pub">–</b><span class="s" id="t-pub-s"></span>
+      <a class="ghost" href="#publish">Review</a></div>
+  </section>
+
+  <section class="panel" id="building-panel" aria-labelledby="building-h" hidden>
+    <h2 id="building-h">Building</h2>
+    <div id="building"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="mods-h">
+    <div class="phead">
+      <h2 id="mods-h">Modules from Schwung</h2>
+      <div class="chips" id="filters" role="group" aria-label="Show"></div>
+      <input type="search" id="q" placeholder="Search" aria-label="Search modules">
+    </div>
+    <div class="bulk" id="bulk" hidden><span id="bulk-n"></span><button type="button" class="primary" id="build-selected">Build selected</button></div>
+    <div class="tablewrap"><table class="mods">
+      <thead><tr><th><input type="checkbox" id="all" aria-label="Select all shown"></th><th>Module</th><th>Kind</th>
+        <th>Live</th><th>Schwung</th><th>Status</th><th>Licence</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel" id="publish" aria-labelledby="pub-h">
+    <div class="phead"><h2 id="pub-h">Ready to publish</h2>
+      <span class="grow"></span>
+      <button type="button" class="ghost" id="discard">Discard</button>
+      <button type="button" class="primary" id="do-publish">Publish to the site</button></div>
+    <div id="diff"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="hist-h">
+    <h2 id="hist-h">Published</h2>
+    <p class="muted">Each publish keeps the catalog it replaced. Restoring one makes it the site's catalog again.</p>
+    <ul class="hist" id="history"></ul>
+  </section>
+</main>
+
+<dialog id="log-dlg" class="sheet" aria-labelledby="log-title">
+  <div class="phead"><h2 id="log-title">Log</h2><span class="grow"></span>
+    <div class="chips" role="group"><button type="button" data-log="job" aria-pressed="true">Steps</button><button type="button" data-log="build" aria-pressed="false">Compiler</button></div>
+    <button type="button" class="ghost" id="log-close" aria-label="Close">✕</button></div>
+  <pre id="log-body"></pre>
+</dialog>
+
+<dialog id="settings-dlg" class="sheet" aria-labelledby="set-title">
+  <div class="phead"><h2 id="set-title">Settings</h2><span class="grow"></span><button type="button" class="ghost" id="set-close" aria-label="Close">✕</button></div>
+  <h3>Nightly check</h3>
+  <p class="muted">Every night Pung's builder reads Schwung's catalogue and builds what is new or updated into staging. Nothing is published without you.</p>
+  <label class="inline">At <select id="nightly"></select></label>
+  <h3>Sources</h3>
+  <p class="muted">Build a module from another repository than Schwung's catalogue names (a fork with work not upstream yet).</p>
+  <table class="ovr"><thead><tr><th>Module</th><th>Repository (owner/name)</th><th>Branch</th><th></th></tr></thead><tbody id="ovr"></tbody></table>
+  <button type="button" class="ghost" id="ovr-add">Add a source</button>
+  <div class="row-end"><button type="button" class="primary" id="set-save">Save</button></div>
+  <h3>Password</h3>
+  <form id="pw-form" class="pw">
+    <input type="text" autocomplete="username" hidden>
+    <label>Current<input type="password" id="pw-old" autocomplete="current-password" required></label>
+    <label>New (12 characters or more)<input type="password" id="pw-new" autocomplete="new-password" required minlength="12"></label>
+    <button class="ghost" type="submit">Change password</button>
+    <p class="err" id="pw-err" role="alert" hidden></p>
+  </form>
+</dialog>
+<script src="admin.js"></script>
+</body>
+</html>

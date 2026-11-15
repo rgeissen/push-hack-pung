@@ -2,7 +2,7 @@
 # Runs every module recipe, in the builder container (no network).
 #   /recipes  generated recipes (build/recipes), /hand  hand-written ones (scripts/recipes)
 #   /modsrc   the sources (read only), /out  the module tree, /logs  one log per module
-# Hand-written recipes win. A recipe gets 30 minutes. Prints one status line per
+# Hand-written recipes win. A recipe gets 30 minutes (RECIPE_TIMEOUT, in seconds). Prints one status line per
 # module and writes /logs/status.tsv: id, ok|FAILED, seconds.
 #   build-all.sh [id ...]   (none: all)
 set -uo pipefail
@@ -15,7 +15,7 @@ one() {
     local id=$1 r=/recipes/$1.sh t0 rc
     [ -f "/hand/$id.sh" ] && r=/hand/$id.sh
     t0=$(date +%s)
-    timeout 1800 bash "$r" >"/logs/$id.log" 2>&1; rc=$?
+    timeout "${RECIPE_TIMEOUT:-1800}" bash "$r" >"/logs/$id.log" 2>&1; rc=$?
     # executables: the Push's loader path (scripts/fix-interp.py)
     [ $rc -eq 0 ] && for d in /out/*/"$id"; do [ -d "$d" ] && python3 /s/fix-interp.py "$d" >>"/logs/$id.log"; done
     local s=ok; [ $rc -eq 0 ] || s=FAILED
