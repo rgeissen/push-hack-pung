@@ -30,8 +30,11 @@ func kindColor(kind string) color.NRGBA {
 // drawChain: banks on top, 8 parameter cells, the chain row at the bottom.
 func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	sc := slotColor(u.slot)
-	rect(img, 0, 0, scrW, 2, sc)
 	p, cm, b := u.currentBank()
+	if u.drawTakeover(img, p, cm, b, sc) {
+		return
+	}
+	rect(img, 0, 0, scrW, 2, sc)
 
 	// top bar: the track's devices (as on Push), or the banks
 	nb := 0
@@ -510,13 +513,22 @@ func (u *surface) drawBrowser(img *image.NRGBA) {
 
 // ovValues: what a module's drawing gets for its keys (override.go, v).
 func (u *surface) ovValues(p position, cm *compMeta, keys []string) map[string]ovValue {
+	return ovValuesOf(cm, keys, func(k string) (string, bool) {
+		raw, ok := u.vals[u.valKey(p, k)]
+		return raw, ok
+	})
+}
+
+// ovValuesOf: what a widget or screen is given for keys, from any source
+// of raw values (the surface's, or a device's for the web page).
+func ovValuesOf(cm *compMeta, keys []string, get func(string) (string, bool)) map[string]ovValue {
 	vals := map[string]ovValue{}
 	for _, k := range keys {
 		if k == "" {
 			continue
 		}
 		m := cm.Params[k]
-		raw, ok := u.vals[u.valKey(p, k)]
+		raw, ok := get(k)
 		e := ovValue{Value: raw, Name: k, Known: ok}
 		if m != nil {
 			e.Name = m.Name
@@ -526,4 +538,54 @@ func (u *surface) ovValues(p position, cm *compMeta, keys []string) map[string]o
 		vals[k] = e
 	}
 	return vals
+}
+
+// drawTakeover: a compartment whose screen takes the whole panel draws it,
+// and Pung draws none of its own elements (UX-GUIDELINES.md, 5). The bank
+// list, a failed or switched-off screen, or no screen: false, and the
+// default view draws instead. Notices still draw on top (render).
+func (u *surface) drawTakeover(img *image.NRGBA, p position, cm *compMeta, b *bank, sc color.NRGBA) bool {
+	if cm == nil || b == nil || u.bankList || p.Module == "" {
+		return false
+	}
+	set := u.ov.get(u.h.modulesDir, p.Module)
+	comp := set.compartment(b.Compartment)
+	if comp == nil || !comp.takeover || set.failed != "" || set.off {
+		return false
+	}
+	touched := ""
+	if u.touched >= 0 && u.touched < len(b.Keys) {
+		touched = b.Keys[u.touched]
+	}
+	info := u.takeoverInfo(p, cm, b, comp)
+	pl := placement{w: &ovWidget{keys: comp.screenKeys(), draw: comp.screen}, full: true, info: info}
+	if !set.render(img, pl, u.ovValues(p, cm, comp.screenKeys()), touched, sc) {
+		u.say("MODULE UI OFF: " + set.failed)
+		return false
+	}
+	return true
+}
+
+// takeoverInfo: what a takeover screen needs that Pung's own elements would
+// otherwise show: the page and its siblings, which keys the encoders turn,
+// the device and the track.
+func (u *surface) takeoverInfo(p position, cm *compMeta, b *bank, comp *ovCompartment) map[string]any {
+	var pages []string
+	page := 0
+	for i := range cm.Banks {
+		if cm.Banks[i].Compartment != comp.id {
+			continue
+		}
+		if &cm.Banks[i] == b {
+			page = len(pages)
+		}
+		pages = append(pages, cm.Banks[i].Name)
+	}
+	knobs := make([]string, 8)
+	copy(knobs, b.Keys)
+	track := ""
+	if u.liveActive() {
+		track, _ = u.live.state().trackHeader()
+	}
+	return map[string]any{"$page": page, "$pages": pages, "$knobs": knobs, "$name": p.Name, "$track": track}
 }

@@ -13,6 +13,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"io"
 	"io/fs"
 	"net/http"
@@ -200,6 +201,24 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 			comps = []compartmentInfo{}
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "compartments": comps, "shown": shown})
+	})
+	// a compartment's custom screen, as the Push draws it, from this device's values
+	mux.HandleFunc("GET /api/devices/{n}/compartments/{id}/screen.png", func(w http.ResponseWriter, r *http.Request) {
+		d, ok := h.deviceFromPath(w, r)
+		if !ok || h.ui == nil {
+			return
+		}
+		comp := d.c.component()
+		img, err := h.ui.compartmentScreen(d.c.module, r.PathValue("id"), func(k string) (string, bool) {
+			return d.s.Get(comp + ":" + k)
+		})
+		if err != nil {
+			fail(w, 404, "%s", err)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-store")
+		png.Encode(w, img) //nolint:errcheck
 	})
 	// the web page picked a compartment: the Push turns to it, if it shows this device's module
 	mux.HandleFunc("POST /api/devices/{n}/compartment", func(w http.ResponseWriter, r *http.Request) {

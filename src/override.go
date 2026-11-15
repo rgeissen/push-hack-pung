@@ -75,6 +75,17 @@ type ovCompartment struct {
 	keys      []string // all of them, in order (what a screen gets)
 	pages     []ovPage // the encoder pages; from keys, 8 at a time, when none are given
 	screen    goja.Callable
+	// takeover: the screen draws all of the panel (960 x 160), Pung none of
+	// its own elements; only its notices and errors (UX-GUIDELINES.md, 5)
+	takeover bool
+	// extraKeys: values the screen shows that no encoder edits (a patch
+	// name, a mode); read with the compartment's keys
+	extraKeys []string
+}
+
+// screenKeys: every key a compartment's screen is given.
+func (c *ovCompartment) screenKeys() []string {
+	return append(append([]string{}, c.keys...), c.extraKeys...)
 }
 
 // ovPage: one encoder page of a compartment (a card of its web section).
@@ -183,6 +194,15 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 			}
 			c.screen = fn
 		}
+		if kv := spec.Get("extra_keys"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
+			vm.ExportTo(kv, &c.extraKeys) //nolint:errcheck
+		}
+		if v := spec.Get("takeover"); v != nil && !goja.IsUndefined(v) {
+			c.takeover = v.ToBoolean()
+		}
+		if c.takeover && c.screen == nil {
+			panic(vm.NewTypeError("push.compartment: takeover needs a screen"))
+		}
 		if c.id == "" || c.id == "undefined" || len(c.keys) == 0 {
 			panic(vm.NewTypeError("push.compartment needs an id and keys"))
 		}
@@ -216,6 +236,8 @@ func firstLine(s string) string {
 type placement struct {
 	w         *ovWidget
 	col, span int
+	full      bool           // a takeover: the whole panel, from 0,0
+	info      map[string]any // more for v: $page, $pages, $knobs... (takeover)
 }
 
 // place finds the widgets whose keys a bank shows side by side, in order.
@@ -256,6 +278,9 @@ type ovValue struct {
 // frame) and copies that into the screen. false: it failed and is now off.
 func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovValue, touched string, sc color.NRGBA) bool {
 	w, h := p.span*colW-8, ovHeight
+	if p.full {
+		w, h = scrW, scrH
+	}
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	vm := s.vm
 	g := vm.NewObject()
@@ -356,6 +381,9 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		v.Set(k, o)
 	}
 	v.Set("$touched", touched)
+	for k, x := range p.info {
+		v.Set(k, x)
+	}
 	t := float64(time.Now().UnixNano()%1e12) / 1e9
 
 	// The budget is 8 ms a frame, kept over time: one slow frame (curves
@@ -378,8 +406,11 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		log.Printf("override %s: %s; the native page is back for this session", s.source, s.failed)
 		return false
 	}
-	x := p.col*colW + 4
-	draw.Draw(dst, image.Rect(x, ovTop, x+w, ovTop+h), img, image.Point{}, draw.Over)
+	x, y := p.col*colW+4, ovTop
+	if p.full {
+		x, y = 0, 0
+	}
+	draw.Draw(dst, image.Rect(x, y, x+w, y+h), img, image.Point{}, draw.Over)
 	return true
 }
 

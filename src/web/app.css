@@ -110,3 +110,8 @@ main { padding: 16px max(16px, env(safe-area-inset-left)) 48px; max-width: 1180p
 .env.unknown .fill { fill: #262624; }
 .env.unknown .seg, .env.unknown .handle { stroke: var(--muted); fill: var(--muted); }
 .env.unknown .seg { fill: none; }
+
+/* a compartment's own Push screen, drawn by the same code (screen.png) */
+.screen { display: block; width: 100%; max-width: 960px; height: auto; border: 1px solid var(--line);
+  border-radius: 6px; background: #000; cursor: pointer; }
+.bank.shown .screen { border-color: var(--slot); }

@@ -133,15 +133,55 @@ func buildMeta(module string, get func(string) (string, bool)) *compMeta {
 	if raw, ok := get("ui_hierarchy"); ok && raw != "" {
 		var hier struct {
 			Levels map[string]map[string]any `json:"levels"`
+			Modes  []string                  `json:"modes"`
 		}
 		if json.Unmarshal([]byte(raw), &hier) == nil && hier.Levels != nil {
-			cm.planFromHierarchy(hier.Levels)
+			cm.planFromHierarchy(hier.Levels, hier.Modes)
 		}
 	}
 	if len(cm.Banks) == 0 {
 		cm.planFromOrder()
+	} else {
+		cm.planLeftovers()
 	}
 	return cm
+}
+
+// planLeftovers: every parameter has a page. A hierarchy's sections need
+// not name them all (JE-8086's arpeggiator lives in its Performance mode,
+// Mini-JV's tones in levels of their own); the rest follow its sections,
+// grouped by name (names.go), as the web page's "More" does.
+func (cm *compMeta) planLeftovers() {
+	seen := map[string]bool{}
+	for _, b := range cm.Banks {
+		for _, k := range b.Keys {
+			seen[k] = true
+		}
+	}
+	var rest []string
+	for _, k := range cm.Order {
+		if !seen[k] {
+			rest = append(rest, k)
+		}
+	}
+	if len(rest) == 0 {
+		return
+	}
+	taken := map[string]bool{}
+	for _, b := range cm.Banks {
+		taken[b.Name] = true
+	}
+	more := 0
+	for _, b := range planByNames(rest) {
+		switch {
+		case b.Name == "":
+			more++
+			b.Name = "MORE " + itoa(more)
+		case taken[b.Name]: // a section's own page has this name: these are its others
+			b.Name += " MORE"
+		}
+		cm.Banks = append(cm.Banks, b)
+	}
 }
 
 // keysOf reads a level's knob list: "knobs", else the keys of "params".
@@ -199,14 +239,18 @@ func (cm *compMeta) addBanks(name string, keys []string) {
 	}
 }
 
-func (cm *compMeta) planFromHierarchy(levels map[string]map[string]any) {
+func (cm *compMeta) planFromHierarchy(levels map[string]map[string]any, modes []string) {
 	root := levels["root"]
+	browser := root
+	if root == nil {
+		root, browser = editLevel(levels, modes)
+	}
 	if root == nil {
 		return
 	}
-	cm.Presets.List = str(root["list_param"])
-	cm.Presets.Count = str(root["count_param"])
-	cm.Presets.Name = str(root["name_param"])
+	cm.Presets.List = str(browser["list_param"])
+	cm.Presets.Count = str(browser["count_param"])
+	cm.Presets.Name = str(browser["name_param"])
 	// root's own knobs first (the module's "main" page)
 	if k, ok := root["knobs"]; ok && k != nil {
 		cm.addBanks("MAIN", cm.keysOf(map[string]any{"knobs": k}))
@@ -237,12 +281,47 @@ func (cm *compMeta) planFromHierarchy(levels map[string]map[string]any) {
 	}
 }
 
-func (cm *compMeta) planFromOrder() {
-	cm.addBanks("PARAMS", cm.Order)
-	if len(cm.Banks) > 1 {
-		for i := range cm.Banks {
-			cm.Banks[i].Name = fmt.Sprintf("PAGE %d", i+1)
+// planFromOrder: a module with no sections. One page is PARAMS; more are
+// grouped by what the keys' names say (names.go).
+// editLevel: for a hierarchy with modes and no root (JE-8086, Mini-JV:
+// patch -> its banks -> its patches -> the patch's editor), the level where
+// the first mode is edited, and the list just above it (its patches). The
+// path follows "children" from the mode, the way Move's browser walks it.
+func editLevel(levels map[string]map[string]any, modes []string) (edit, browser map[string]any) {
+	if len(modes) == 0 {
+		return nil, nil
+	}
+	lv := levels[modes[0]]
+	for i := 0; lv != nil && i < 8; i++ {
+		_, hasKnobs := lv["knobs"]
+		params, _ := lv["params"].([]any)
+		if (hasKnobs || len(params) > 0) && i > 0 {
+			return lv, browser
 		}
+		if str(lv["list_param"]) != "" {
+			browser = lv
+		}
+		lv = levels[str(lv["children"])]
+	}
+	return nil, nil
+}
+
+func (cm *compMeta) planFromOrder() {
+	if len(cm.Order) <= 8 {
+		cm.addBanks("PARAMS", cm.Order)
+		return
+	}
+	more := 0
+	for i, b := range planByNames(cm.Order) {
+		if b.Name == "" {
+			if i == 0 {
+				b.Name = "MAIN"
+			} else {
+				more++
+				b.Name = fmt.Sprintf("MORE %d", more)
+			}
+		}
+		cm.Banks = append(cm.Banks, b)
 	}
 }
 

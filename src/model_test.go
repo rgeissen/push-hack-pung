@@ -31,8 +31,12 @@ func TestBanksFollowTheModulesHierarchy(t *testing.T) {
 	for _, b := range cm.Banks {
 		names = append(names, b.Name)
 	}
-	if want := []string{"MAIN", "OSCILLATOR", "AMP ENVELOPE"}; !reflect.DeepEqual(names, want) {
+	// octave_transpose is in no section: it still gets a page (planLeftovers)
+	if want := []string{"MAIN", "OSCILLATOR", "AMP ENVELOPE", "MORE 1"}; !reflect.DeepEqual(names, want) {
 		t.Fatalf("banks %v, want %v", names, want)
+	}
+	if want := []string{"octave_transpose"}; !reflect.DeepEqual(cm.Banks[3].Keys, want) {
+		t.Fatalf("leftover keys %v", cm.Banks[3].Keys)
 	}
 	if want := []string{"engine", "timbre", "cutoff", "attack"}; !reflect.DeepEqual(cm.Banks[0].Keys, want) {
 		t.Fatalf("main keys %v", cm.Banks[0].Keys)
@@ -52,7 +56,7 @@ func TestNoHierarchyPagesChainParamsByEight(t *testing.T) {
 	if len(cm.Banks) != 2 || len(cm.Banks[0].Keys) != 8 || len(cm.Banks[1].Keys) != 3 {
 		t.Fatalf("banks %+v", cm.Banks)
 	}
-	if cm.Banks[0].Name != "PAGE 1" {
+	if cm.Banks[0].Name != "MAIN" || cm.Banks[1].Name != "MORE 1" { // names say nothing: MAIN, then MORE
 		t.Fatalf("name %q", cm.Banks[0].Name)
 	}
 }

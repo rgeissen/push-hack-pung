@@ -297,7 +297,7 @@
     let { banks, byKey } = banksOf(info);
     if (state.comps && state.comps.length) {
       // the module's compartments, as the Push shows them
-      banks = state.comps.map((c) => ({ name: c.label, keys: c.keys, id: c.id, custom: c.custom }));
+      banks = state.comps.map((c) => ({ name: c.label, keys: c.keys, id: c.id, custom: c.custom, takeover: c.takeover }));
       const seen = new Set(banks.flatMap((b) => b.keys));
       const rest = (info.chain_params || []).map((p) => p.key).filter((k) => !seen.has(k));
       if (rest.length) banks.push({ name: "More", keys: rest });
@@ -324,6 +324,18 @@
       } else {
         sec.innerHTML = `<h3>${esc(b.name)}</h3>`;
       }
+      // a compartment with its own screen on the Push: the same screen here,
+      // drawn by the same code from this device's values (UX-GUIDELINES 1.2)
+      if (b.id && b.custom) {
+        const img = document.createElement("img");
+        img.className = "screen" + (b.takeover ? " takeover" : "");
+        img.alt = `${b.name}, as the Push shows it`;
+        img.title = "Show on the Push";
+        img.dataset.compartment = b.id;
+        img.src = screenURL(b.id);
+        img.onclick = () => showOnPush(b.id);
+        sec.appendChild(img);
+      }
       const grid = document.createElement("div");
       grid.className = "grid";
       // an envelope among the keys is drawn over its own controls, as on
@@ -343,6 +355,19 @@
     });
     setTimeout(markShown, 0);
     return wrap;
+  }
+
+  function screenURL(id) { return `${state.base}/compartments/${encodeURIComponent(id)}/screen.png?t=${Date.now()}`; }
+  // the screens follow the values; one request at a time per screen
+  function refreshScreens() {
+    document.querySelectorAll("img.screen").forEach((img) => {
+      if (img.dataset.loading) return;
+      img.dataset.loading = "1";
+      const next = new Image();
+      next.onload = () => { img.src = next.src; delete img.dataset.loading; };
+      next.onerror = () => { delete img.dataset.loading; };
+      next.src = screenURL(img.dataset.compartment);
+    });
   }
 
   // an envelope and its controls, one card spanning the row
@@ -438,7 +463,7 @@
     sendTimer = null;
     const batch = pending;
     pending = {};
-    Object.entries(batch).forEach(([key, value]) => post(`${state.base}/param`, { key, value }));
+    Promise.all(Object.entries(batch).map(([key, value]) => post(`${state.base}/param`, { key, value }))).then(refreshScreens);
   }
 
   async function makeTracks() {
@@ -478,6 +503,7 @@
     if (frame && frameSubscribed) toFrame({ type: "paramUpdate", params: changed });
     Object.entries(changed).forEach(([k, v]) => syncControl(k, v, false));
     if (window.PungVisuals) PungVisuals.redrawAll();
+    refreshScreens();
   }
 
   // ---- the module page bridge (schwung-manager's protocol) ----------------

@@ -635,10 +635,11 @@ func withCompartments(cm *compMeta, comps []*ovCompartment) *compMeta {
 
 // compartmentInfo is a compartment as the web page sees it.
 type compartmentInfo struct {
-	ID     string   `json:"id"`
-	Label  string   `json:"label"`
-	Keys   []string `json:"keys"`
-	Custom bool     `json:"custom"` // it has its own screen on the Push
+	ID       string   `json:"id"`
+	Label    string   `json:"label"`
+	Keys     []string `json:"keys"`
+	Custom   bool     `json:"custom"`   // it has its own screen on the Push
+	Takeover bool     `json:"takeover"` // ... and that screen is all of the panel
 }
 
 // compartmentsOf: a module's compartments, declared ones else its banks (a
@@ -650,7 +651,7 @@ func (u *surface) compartmentsOf(module string) ([]compartmentInfo, string) {
 	var out []compartmentInfo
 	if set := u.ov.get(u.h.modulesDir, module); set != nil && set.failed == "" && len(set.compartments) > 0 {
 		for _, c := range set.compartments {
-			out = append(out, compartmentInfo{ID: c.id, Label: c.label, Keys: c.keys, Custom: c.screen != nil})
+			out = append(out, compartmentInfo{ID: c.id, Label: c.label, Keys: c.keys, Custom: c.screen != nil, Takeover: c.takeover})
 		}
 	} else if m, ok := findModule(u.h.modulesDir, module); ok {
 		if cm, _ := u.h.probeMeta(m); cm != nil {
@@ -1581,14 +1582,18 @@ func (u *surface) refreshLive() {
 	if d, prefix := u.pungDevice(); d != nil {
 		u.fallbackDev = d.s.Index
 		need := []string{}
+		free := map[string]bool{} // a screen's extra keys: values with no metadata (a patch name)
 		if _, _, b := u.currentBank(); b != nil {
 			need = append(need, b.Keys...)
 			if c := u.ov.get(u.h.modulesDir, sel.Module).compartment(b.Compartment); c != nil {
-				need = append(need, c.keys...)
+				need = append(need, c.screenKeys()...)
+				for _, k := range c.extraKeys {
+					free[k] = true
+				}
 			}
 		}
 		for _, key := range need {
-			if _, live := u.lvIdx[key]; key == "" || live || cm.Params[key] == nil {
+			if _, live := u.lvIdx[key]; key == "" || live || (cm.Params[key] == nil && !free[key]) {
 				continue
 			}
 			if v, ok := d.s.Get(prefix + ":" + key); ok {
@@ -1638,4 +1643,53 @@ func (u *surface) padToLive(pad, vel byte, on bool) {
 		delete(u.held, pad)
 		u.h.seq.SendMIDI(alsaseq.Subscribers, []byte{0x80, note, 0})
 	}
+}
+
+// compartmentScreen renders a compartment's custom screen as the Push shows
+// it, from a device's own values: the web page shows the same picture
+// (UX-GUIDELINES.md, 1.2). A takeover is the whole panel, a band screen its
+// band. The same overlay as the Push's draws it, so it is drawn under u.mu.
+func (u *surface) compartmentScreen(module, id string, get func(string) (string, bool)) (*image.NRGBA, error) {
+	m, ok := findModule(u.h.modulesDir, module)
+	if !ok {
+		return nil, fmt.Errorf("no module %s", module)
+	}
+	set := u.ov.get(u.h.modulesDir, module)
+	comp := set.compartment(id)
+	if comp == nil || comp.screen == nil {
+		return nil, fmt.Errorf("%s has no screen %q", module, id)
+	}
+	cm, _ := u.h.probeMeta(m)
+	if cm == nil {
+		return nil, fmt.Errorf("no metadata for %s", module)
+	}
+	cm = withCompartments(liveBanks(cm), set.compartments)
+	// values first, without the lock: a read is a call into the chain
+	vals := ovValuesOf(cm, comp.screenKeys(), get)
+
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if set.failed != "" {
+		return nil, fmt.Errorf("the screen is off: %s", set.failed)
+	}
+	img := newFrame()
+	sc := slotColor(u.slot)
+	var b *bank
+	for i := range cm.Banks {
+		if cm.Banks[i].Compartment == comp.id {
+			b = &cm.Banks[i]
+			break
+		}
+	}
+	pl := placement{w: &ovWidget{keys: comp.screenKeys(), draw: comp.screen}, span: 8, full: comp.takeover}
+	if b != nil {
+		pl.info = u.takeoverInfo(position{Module: module, Name: m.Name}, cm, b, comp)
+	}
+	if !set.render(img, pl, vals, "", sc) {
+		return nil, fmt.Errorf("the screen failed: %s", set.failed)
+	}
+	if !comp.takeover {
+		return img.SubImage(image.Rect(4, ovTop, scrW-4, ovTop+ovHeight)).(*image.NRGBA), nil
+	}
+	return img, nil
 }
