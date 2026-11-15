@@ -141,6 +141,7 @@ func banksFor(params []vstParam, cm *compMeta, prefix string) [][]int {
 
 // finish turns a built parameter list into a Pung class.
 func finish(name, kind, category, module, folder string, ps []vstParam, banks [][]int, midiFX []string) *sclass {
+	ps, banks = fitLive(ps, banks)
 	c := &livedevice.Class{UID: livedevice.ClassUID(uidNamespace, kind, module), Name: name, Kind: kind,
 		Category: category, Ref: module, Folder: folder, Banks: banks}
 	sc := &sclass{Class: c, module: module, midiFX: midiFX}
@@ -150,9 +151,22 @@ func finish(name, kind, category, module, folder string, ps []vstParam, banks []
 		sc.role = append(sc.role, p.Role)
 		sc.gateIdx = append(sc.gateIdx, p.gateIdx)
 	}
-	livedevice.PadBanks(c) // Push's Bank N is the module's bank N
-	if len(c.Params) > livedevice.MaxParams {
+	livedevice.PadBanks(c)                    // Push's Bank N is the module's bank N
+	if len(c.Params) > livedevice.MaxParams { // fitLive leaves nothing to cut; never let a bank point past Live's list
 		c.Params = c.Params[:livedevice.MaxParams]
+		var banks [][]int
+		for _, b := range c.Banks {
+			var keep []int
+			for _, i := range b {
+				if i < livedevice.MaxParams {
+					keep = append(keep, i)
+				}
+			}
+			if len(keep) > 0 {
+				banks = append(banks, keep)
+			}
+		}
+		c.Banks = banks
 	}
 	sc.keyIdx = map[string]int{}
 	for i, p := range c.Params {
@@ -170,6 +184,91 @@ func finish(name, kind, category, module, folder string, ps []vstParam, banks []
 		}
 	}
 	return sc
+}
+
+// fitLive keeps a class within Live's parameter list (livedevice.MaxParams,
+// placeholders included). A class that fits is returned as it is: its
+// parameter IDs are list positions, and a Set saved with it must find them
+// where they were. One that does not (Mini-JV: ~470 after padding) used to
+// lose its tail by position, which cut through its banks: Push's pages
+// pointed at parameters Live did not have, every page after the first such
+// gap was shifted, and the MIDI FX selector was gone. It is laid out in its
+// banks' order instead, whole banks only: the module's pages from the first
+// while they fit, then the MIDI FX pages (the selector must be Live's, or no
+// MIDI effect can be picked), and the module's later pages and unbanked keys
+// are left out. Pung's view reaches those directly (SetOutside).
+func fitLive(ps []vstParam, banks [][]int) ([]vstParam, [][]int) {
+	// the banks as PadBanks will see them: each parameter in its first bank
+	seen := map[int]bool{}
+	var clean [][]int
+	for _, b := range banks {
+		var keep []int
+		for _, i := range b {
+			if i >= 0 && i < len(ps) && !seen[i] {
+				seen[i] = true
+				keep = append(keep, i)
+			}
+		}
+		if len(keep) > 0 {
+			clean = append(clean, keep)
+		}
+	}
+	page := func(n int) int { return (n + 7) / 8 * 8 }
+	// what Live would get, measured by laying it out (PadBanks pads; the
+	// placeholders count)
+	trial := &livedevice.Class{Banks: banks}
+	for _, p := range ps {
+		trial.Params = append(trial.Params, p.Param)
+	}
+	livedevice.PadBanks(trial)
+	if len(trial.Params) <= livedevice.MaxParams {
+		return ps, banks
+	}
+	isFX := func(b []int) bool {
+		for _, i := range b {
+			if ps[i].Role == "midifx" || ps[i].gateIdx != 0 {
+				return true
+			}
+		}
+		return false
+	}
+	var mod, fx [][]int
+	fxSlots := 0
+	for _, b := range clean {
+		if isFX(b) {
+			fx = append(fx, b)
+			fxSlots += page(len(b))
+		} else {
+			mod = append(mod, b)
+		}
+	}
+	var kept [][]int
+	used := 0
+	for _, b := range mod {
+		if used+page(len(b)) > livedevice.MaxParams-fxSlots {
+			break
+		}
+		kept = append(kept, b)
+		used += page(len(b))
+	}
+	for _, b := range fx {
+		if used+page(len(b)) > livedevice.MaxParams {
+			break
+		}
+		kept = append(kept, b)
+		used += page(len(b))
+	}
+	var out []vstParam
+	var outBanks [][]int
+	for _, b := range kept {
+		var row []int
+		for _, i := range b {
+			row = append(row, len(out))
+			out = append(out, ps[i])
+		}
+		outBanks = append(outBanks, row)
+	}
+	return out, outBanks
 }
 
 // buildClasses makes one class per installed module.
