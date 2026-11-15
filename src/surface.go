@@ -108,12 +108,15 @@ type surface struct {
 	// when, and what is known of it; a frame is drawn only for a selection
 	// that is ready (holdFrame), and a knob writes only to the device its
 	// parameter indexes were read from
-	liveKey                         string
-	liveSince                       time.Time
+	liveKey                           string
+	liveSince                         time.Time
 	liveReady, liveResolved, livePung bool
-	liveWritable                      bool // the device is confirmed (liveView.writable)
-	bankMem                         map[string][2]int // a device's page, kept while others are shown (as Push does)
-	focusAt                         time.Time         // when the surface came, for the first frame's latency
+	liveWritable                      bool              // the device is confirmed (liveView.writable)
+	bankMem                           map[string][2]int // a device's page, kept while others are shown (as Push does)
+	// live mode: the jog's preset, stepped on the input thread and loaded
+	// off it (a preset load blocks in the module's set_param), latest wins
+	pj      presetJog
+	focusAt time.Time // when the surface came, for the first frame's latency
 }
 
 func newSurface(h *Host) *surface {
@@ -1144,6 +1147,10 @@ func (u *surface) jog(delta int) {
 		return
 	}
 	p, cm, _ := u.currentBank()
+	if u.liveActive() {
+		u.jogLivePreset(delta, cm)
+		return
+	}
 	s := u.cur()
 	if cm == nil || s == nil || cm.Presets.List == "" {
 		return
@@ -1171,6 +1178,90 @@ func (u *surface) jog(delta int) {
 	u.refreshValues()
 	u.say(fmt.Sprintf("%d/%d %s", n+1, count, name))
 	u.h.notify(s.Index, p.Prefix+":"+cm.Presets.List, strconv.Itoa(n))
+}
+
+// presetJog: where the jog has taken the selected device's preset (key: the
+// selection, liveKey), and what has been loaded of it.
+type presetJog struct {
+	key                    string
+	gen                    int // one per device: a load in flight for another leaves this one alone
+	count, target, applied int
+	busy                   bool
+	at                     time.Time // the last step: after a pause the preset is read again (it may have moved elsewhere)
+}
+
+// jogLivePreset steps the preset of the Pung device the view shows. Only a
+// device the view is confirmed for (as a knob turn): a step must never land
+// on the device Live is only about to select. Caller holds u.mu.
+func (u *surface) jogLivePreset(delta int, cm *compMeta) {
+	if cm == nil || cm.Presets.List == "" || !u.liveReady || !u.liveWritable {
+		return
+	}
+	d, prefix := u.pungDevice()
+	if d == nil {
+		return
+	}
+	pr := cm.Presets
+	if u.pj.key != u.liveKey || u.pj.count <= 0 || (!u.pj.busy && time.Since(u.pj.at) > 2*time.Second) {
+		// first step on this device, or after a pause: where it is now
+		// (Push's own device view or the web page may have moved it)
+		count, cur := 0, 0
+		if v, ok := d.s.Get(prefix + ":" + pr.Count); ok {
+			count, _ = strconv.Atoi(strings.TrimSpace(v))
+		}
+		if v, ok := d.s.Get(prefix + ":" + pr.List); ok {
+			cur, _ = strconv.Atoi(strings.TrimSpace(v))
+		}
+		if count <= 0 {
+			return
+		}
+		u.pj = presetJog{key: u.liveKey, gen: u.pj.gen + 1, count: count, target: cur, applied: cur}
+	}
+	n := u.pj.target + sign(delta)
+	if n < 0 || n >= u.pj.count || n == u.pj.target {
+		return
+	}
+	u.pj.target, u.pj.at = n, time.Now()
+	u.say(fmt.Sprintf("%d/%d", n+1, u.pj.count))
+	if !u.pj.busy {
+		u.pj.busy = true
+		go u.loadLivePreset(d, prefix, pr.List, pr.Name, u.pj.gen)
+	}
+}
+
+// loadLivePreset loads the jog's target until it stops moving: one load at a
+// time, the latest target next, so a fast spin loads where it ends rather
+// than every preset on the way. SetOutside tells Live (the preset is one of
+// its parameters, so Push's device view and undo follow) and reads the rest
+// of the device back once the loads stop.
+func (u *surface) loadLivePreset(d *device, prefix, listKey, nameKey string, gen int) {
+	for {
+		u.mu.Lock()
+		if u.pj.gen != gen { // another device now: its own load runs
+			u.mu.Unlock()
+			return
+		}
+		n := u.pj.target
+		if n == u.pj.applied {
+			u.pj.busy = false
+			u.mu.Unlock()
+			return
+		}
+		u.mu.Unlock()
+		d.SetOutside(prefix+":"+listKey, strconv.Itoa(n))
+		name := ""
+		if nameKey != "" {
+			name, _ = d.s.Get(prefix + ":" + nameKey)
+		}
+		u.mu.Lock()
+		if u.pj.gen == gen {
+			u.pj.applied = n
+			if u.pj.target == n {
+				u.say(strings.TrimSpace(fmt.Sprintf("%d/%d %s", n+1, u.pj.count, strings.TrimSpace(name))))
+			}
+		}
+		u.mu.Unlock()
+	}
 }
 
 // ---- browser ------------------------------------------------------------------
