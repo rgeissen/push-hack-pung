@@ -241,3 +241,55 @@ main { padding: 16px max(16px, env(safe-area-inset-left)) 48px; max-width: 1180p
 .mod .by .ver { font-family: var(--mono); flex: none; }
 .mod .date { color: var(--muted); font-size: 12px; }
 .mod .desc { -webkit-line-clamp: 3; }
+
+/* ---- Sounds (sounds.js) ---- */
+.sounds { display: flex; flex-direction: column; gap: 10px; background: var(--raise); border: 1px solid var(--line);
+  border-radius: 8px; padding: 12px 14px; }
+.snd-head, .snd-tools, .snd-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.snd-head .grow, .snd-foot .snd-status { flex: 1 1 auto; }
+.snd-cur { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.snd-cur .edited { color: var(--slot); }
+.snd-cur .muted, .snd-status { color: var(--muted); font-weight: 400; font-size: 13px; }
+a.tool { text-decoration: none; color: inherit; display: inline-block; }
+.tool:disabled { opacity: .4; cursor: default; }
+.tool.file { position: relative; cursor: pointer; }
+.tool.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.tool.file:focus-within { outline: 2px solid var(--slot); outline-offset: 2px; }
+#snd-compare[aria-pressed="true"] { background: var(--slot); color: #000; border-color: var(--slot); }
+#snd-bank { background: var(--ink); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit;
+  font-size: 13.5px; max-width: 100%; }
+#snd-search { flex: 1 1 200px; min-width: 0; background: var(--ink); border: 1px solid var(--line); border-radius: 6px; color: var(--fg);
+  padding: 6px 10px; font: inherit; font-size: 14px; }
+.snd-list { position: relative; height: min(360px, 50vh); overflow-y: auto; background: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; outline: none; }
+.snd-list:focus-visible { border-color: var(--slot); box-shadow: 0 0 0 1px var(--slot); }
+.snd-inner { position: relative; }
+.snd-row { position: absolute; left: 0; right: 0; height: 32px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 0;
+  cursor: pointer; border-bottom: 1px solid #1d1c19; }
+.snd-row:hover { background: var(--raise); }
+.snd-row.on { background: color-mix(in srgb, var(--slot) 28%, #000); }
+.snd-list:focus .snd-row.on { box-shadow: inset 0 0 0 1px var(--slot); }
+.snd-row .num { width: 56px; flex: none; text-align: right; font: 12px var(--mono); color: var(--muted); }
+.snd-row .nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.snd-row .nm.unknown { color: var(--muted); font-weight: 400; }
+.snd-row .tg { font: 11px var(--mono); color: var(--muted); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.snd-row .st { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--slot); }
+.snd-row .ico { background: none; border: 0; padding: 2px 5px; color: var(--muted); font-size: 15px; line-height: 1; border-radius: 4px; }
+.snd-row .ico:hover { color: var(--fg); background: var(--raise2); }
+.snd-row .star[aria-pressed="true"] { color: var(--slot); }
+.snd-empty { color: var(--muted); padding: 18px; }
+@media (max-width: 640px) { .snd-row .tg { display: none; } .snd-row .num { width: 40px; } }
+
+/* the view switch (modules.js): the other view's sections go, theirs stay as they are */
+body[data-view="modules"] [data-view-of="devices"] { display: none !important; }
+.snd-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; background: var(--ink);
+  border: 1px solid var(--slot); border-radius: 6px; }
+.snd-form label { color: var(--muted); font-size: 13px; }
+.snd-form input { flex: 1 1 220px; min-width: 0; background: var(--raise); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--fg); padding: 6px 10px; font: inherit; }
+.snd-row .ask { color: var(--warn); font-size: 13px; }
+.snd-row .ico.yes { color: var(--warn); }
+
+/* the compartments stay in reach while the page scrolls to one */
+.compartments { position: sticky; top: var(--top-h, 52px); z-index: 4; background: var(--ink); padding: 8px 0; margin-top: -8px; }
+.frame { scroll-margin-top: calc(var(--top-h, 52px) + 56px); }

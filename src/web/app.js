@@ -81,6 +81,8 @@
     state.dev = n;
     state.base = `/api/devices/${n}`;
     state.comp = d ? d.component : "synth";
+    // the Sounds section (sounds.js) follows the device shown
+    window.dispatchEvent(new CustomEvent("pung:device", { detail: { n, mode: state.mode } }));
     if (n >= 0) loadPanel();
     if (user) renderDevices();
   }
@@ -266,9 +268,25 @@
     markShown();
     return nav;
   }
+  // showOnPush: a compartment chosen here. The page goes there whatever the
+  // Push shows (the module's own page is told, Pung's sections scroll), and
+  // the Push follows when it shows this device. It used to do only the
+  // second: with another device on the Push the tabs did nothing at all.
   async function showOnPush(id) {
-    const r = await post(`${state.base}/compartment`, { id });
-    if (r && r.shown) { state.shown = id; markShown(); }
+    state.shown = id;
+    markShown();
+    showHere(id);
+    try { await post(`${state.base}/compartment`, { id }); } catch (e) { /* the page went there anyway */ }
+  }
+  function showHere(id) {
+    const sec = document.querySelector(`.bank[data-compartment="${CSS.escape(id)}"]`);
+    if (sec) sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const comp = (state.comps || []).find((x) => x.id === id);
+    if (frame && comp) {
+      // the module's page scrolls within itself; here the panel comes to just below the pills
+      frame.scrollIntoView({ block: "start", behavior: "smooth" });
+      toFrame({ type: "compartment", id: comp.id, label: comp.label, keys: comp.keys });
+    }
   }
   function markShown() {
     document.querySelectorAll("[data-compartment]").forEach((el) => {
@@ -283,13 +301,12 @@
     if (state.mode !== "devices" || !state.comps || document.hidden) return;
     let c;
     try { c = await api(`${state.base}/compartments`); } catch (e) { return; }
-    if ((c.shown || "") === state.shown) return;
-    state.shown = c.shown || "";
+    // the Push shows no compartment of this device (another device is on
+    // it): the page keeps the one chosen here
+    if (!c.shown || c.shown === state.shown) return;
+    state.shown = c.shown;
     markShown();
-    const sec = document.querySelector(`.bank[data-compartment="${CSS.escape(state.shown)}"]`);
-    if (sec) sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    const comp = state.comps.find((x) => x.id === state.shown);
-    if (frame && comp) toFrame({ type: "compartment", id: comp.id, label: comp.label, keys: comp.keys });
+    showHere(state.shown);
   }
 
   function buildControls(info) {
@@ -617,6 +634,11 @@
 
   async function boot() {
     setSlotColor();
+    // the sticky compartment strip sits under the header, whatever its height
+    const top = document.querySelector(".top");
+    const fit = () => document.documentElement.style.setProperty("--top-h", top.offsetHeight + "px");
+    fit();
+    window.addEventListener("resize", fit);
     loadPrefs();
     try { state.modules = (await api("/api/modules")).modules || []; } catch (e) { /* the status line says why */ }
     await refreshStatus();

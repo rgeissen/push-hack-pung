@@ -1,6 +1,6 @@
 # Sounds: one preset system for every Pung module
 
-Status: 2026-11-15. Phases 1 (the library) and 2 (the Push) are built and tested on the device; 3 and 4 are next. The facts below come from reading Schwung
+Status: 2026-11-15. Phases 1 (the library), 2 (the Push) and 3 (the web page: the Sound section, import and export) are built and tested on the device; the Library page and phase 4 are next. The facts below come from reading Schwung
 (`src/shadow/shadow_ui_presets.mjs`, `src/shared/param_pages/`) and every chain module in the catalog (110:
 55 instruments, 41 audio effects, 14 MIDI effects).
 
@@ -189,6 +189,21 @@ name editor:
 The web page has a real keyboard for long names, and renames anything at any time.
 
 ## On the web page
+
+Built (src/web/sounds.js), above the device's panel, and tested in a browser against the Push:
+
+- the device's sound (with `*` when edited); Factory, User, Favourites, Recent; the bank; a search over
+  every name (`organ`: 12 of 4133, each at its own number);
+- a list drawn as a window of rows, so 4133 is as quick as 4: click or arrows audition (150 ms), Enter or
+  a double click keeps, Escape puts back the sound from before; a star, rename and delete (which asks in
+  the row) on each; Compare held; Save; Save As with the name in place, suggested as on the Push;
+- Export (a zip of Move's own preset files) and Import (a zip or .json files: from an export, or from a
+  Move's `presets/<module>/`; never overwriting, another module's sounds left out);
+- it follows the Push: what the Push auditions shows as playing here.
+
+Still to come: a **Library** page over every module.
+
+Planned when this was written:
 
 A **Sounds** section for the selected device, and a **Library** page for all modules:
 

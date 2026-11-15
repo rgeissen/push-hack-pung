@@ -10,11 +10,14 @@ package main
 // off the caller, and the latest request wins.
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -541,6 +544,96 @@ func (lib *soundLib) Compare(d *device, before bool) {
 	}
 }
 
+// SetBank picks a factory list's bank (a row of its bank chooser).
+func (lib *soundLib) SetBank(d *device, index int) error {
+	pl, ok := lib.activeList(d, lib.meta(d))
+	if !ok || pl.BankSelect == "" {
+		return errors.New("this module's sounds have no banks")
+	}
+	d.SetOutside(d.c.component()+":"+pl.BankSelect, fmt.Sprint(index))
+	return nil
+}
+
+// Export: a module's user sounds as a zip of Schwung's preset files, the
+// folder Move keeps (and so importable on a Move as it is).
+func (lib *soundLib) Export(module string) ([]byte, int, error) {
+	list, err := lib.store.List(module)
+	if err != nil {
+		return nil, 0, err
+	}
+	dir, _ := lib.store.dir(module)
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	for _, s := range list {
+		raw, err := os.ReadFile(filepath.Join(dir, s.File))
+		if err != nil {
+			continue
+		}
+		w, err := z.Create(module + "/" + s.File)
+		if err != nil {
+			return nil, 0, err
+		}
+		w.Write(raw) //nolint:errcheck // a bytes.Buffer
+	}
+	if err := z.Close(); err != nil {
+		return nil, 0, err
+	}
+	return b.Bytes(), len(list), nil
+}
+
+// Import adds sounds from Schwung preset files: one .json, or a zip of them
+// (an export, or a Move's presets folder). A sound for another module is
+// left out, and a name already taken gets a number: nothing is overwritten.
+func (lib *soundLib) Import(module string, data []byte) (added []string, skipped []string, err error) {
+	one := func(name string, raw []byte) {
+		var doc struct {
+			Name   string          `json:"name"`
+			Module string          `json:"module"`
+			State  json.RawMessage `json:"state"`
+			Pung   *pungMeta       `json:"pung"`
+		}
+		if json.Unmarshal(raw, &doc) != nil || doc.State == nil {
+			skipped = append(skipped, name+": not a preset file")
+			return
+		}
+		if doc.Module != "" && doc.Module != module {
+			skipped = append(skipped, name+": a sound for "+doc.Module)
+			return
+		}
+		n := doc.Name
+		if n == "" {
+			n = strings.TrimSuffix(filepath.Base(name), ".json")
+		}
+		got, err := lib.store.SaveAs(module, n, stateFromFile(doc.State), doc.Pung)
+		if err != nil {
+			skipped = append(skipped, name+": "+err.Error())
+			return
+		}
+		added = append(added, got)
+	}
+	if zr, zerr := zip.NewReader(bytes.NewReader(data), int64(len(data))); zerr == nil {
+		for _, f := range zr.File {
+			base := filepath.Base(f.Name)
+			if f.FileInfo().IsDir() || !strings.HasSuffix(base, ".json") || strings.HasPrefix(base, ".") || f.UncompressedSize64 > 16<<20 {
+				continue
+			}
+			rc, err := f.Open()
+			if err != nil {
+				continue
+			}
+			raw, _ := io.ReadAll(io.LimitReader(rc, 16<<20))
+			rc.Close()
+			one(f.Name, raw)
+		}
+		return added, skipped, nil
+	}
+	if !json.Valid(data) {
+		return nil, nil, errors.New("not a preset file or a zip of them")
+	}
+	one("preset.json", data)
+	return added, skipped, nil
+}
+
 // ---- the web API ------------------------------------------------------------
 
 type soundsView struct {
@@ -548,6 +641,7 @@ type soundsView struct {
 	Current    *soundRef    `json:"current"`
 	Edited     bool         `json:"edited"`
 	Browsing   bool         `json:"browsing"`
+	Applied    *soundRef    `json:"applied,omitempty"` // the sound auditioned, while browsing
 	Loading    bool         `json:"loading"`
 	Error      string       `json:"error,omitempty"`
 	HasState   bool         `json:"has_state"` // user sounds are possible
@@ -585,6 +679,9 @@ func (lib *soundLib) View(d *device) soundsView {
 	v.Edited = lib.Edited(d)
 	d.snd.mu.Lock()
 	v.Current, v.Browsing, v.Loading, v.Error = d.snd.current, d.snd.browsing, d.snd.busy, d.snd.lastErr
+	if d.snd.browsing {
+		v.Applied = d.snd.applied
+	}
 	d.snd.mu.Unlock()
 	return v
 }
@@ -693,6 +790,65 @@ func (lib *soundLib) routes(mux *http.ServeMux) {
 		}
 		_, err := lib.Rename(d, b.Name, b.To)
 		done(w, d, err)
+	})
+	mux.HandleFunc("POST /api/devices/{n}/sounds/bank", func(w http.ResponseWriter, r *http.Request) {
+		d, ok := dev(w, r)
+		if !ok {
+			return
+		}
+		var b struct {
+			Index int `json:"index"`
+		}
+		if body(r, &b) != nil {
+			fail(w, 400, `body must be {"index":...}`)
+			return
+		}
+		done(w, d, lib.SetBank(d, b.Index))
+	})
+	mux.HandleFunc("POST /api/devices/{n}/sounds/compare", func(w http.ResponseWriter, r *http.Request) {
+		d, ok := dev(w, r)
+		if !ok {
+			return
+		}
+		var b struct {
+			Before bool `json:"before"`
+		}
+		body(r, &b) //nolint:errcheck
+		lib.Compare(d, b.Before)
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	// a module's user sounds as a zip, and sounds added from one (or a .json)
+	mux.HandleFunc("GET /api/sounds/{module}/export", func(w http.ResponseWriter, r *http.Request) {
+		m := r.PathValue("module")
+		data, n, err := lib.Export(m)
+		if err != nil {
+			fail(w, 400, "%v", err)
+			return
+		}
+		if n == 0 {
+			fail(w, 404, "no sounds of yours for %s yet", m)
+			return
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-sounds.zip"`, m))
+		w.Write(data) //nolint:errcheck
+	})
+	mux.HandleFunc("POST /api/sounds/{module}/import", func(w http.ResponseWriter, r *http.Request) {
+		m := r.PathValue("module")
+		data, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
+		if err != nil {
+			fail(w, 400, "%v", err)
+			return
+		}
+		added, skipped, err := lib.Import(m, data)
+		if err != nil {
+			fail(w, 400, "%v", err)
+			return
+		}
+		if added == nil {
+			added = []string{}
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "added": added, "skipped": skipped})
 	})
 	mux.HandleFunc("POST /api/devices/{n}/sounds/delete", func(w http.ResponseWriter, r *http.Request) {
 		d, ok := dev(w, r)

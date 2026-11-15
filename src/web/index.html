@@ -35,6 +35,38 @@
     <div class="cards" id="picker-cards"></div>
   </section>
 
+  <section class="sounds" id="sounds" hidden data-view-of="devices" aria-labelledby="snd-title">
+    <div class="snd-head">
+      <h2 id="snd-title">Sound</h2>
+      <span class="snd-cur" id="snd-cur" aria-live="polite"></span>
+      <span class="grow"></span>
+      <button type="button" class="tool" id="snd-save" title="Write the device's sound over the user sound it is">Save</button>
+      <button type="button" class="tool" id="snd-saveas">Save As…</button>
+      <a class="tool" id="snd-export" download hidden>Export</a>
+      <label class="tool file">Import…<input type="file" id="snd-import" accept=".zip,.json,application/zip,application/json" multiple></label>
+    </div>
+    <form class="snd-form" id="snd-form" hidden>
+      <label for="snd-name" id="snd-form-label">Save as</label>
+      <input type="text" id="snd-name" autocomplete="off" maxlength="64" required>
+      <button type="submit" class="primary" id="snd-form-ok">Save</button>
+      <button type="button" class="tool" id="snd-form-cancel">Cancel</button>
+    </form>
+    <div class="snd-tools">
+      <div class="seg" id="snd-sources" role="group" aria-label="Source"></div>
+      <select id="snd-bank" aria-label="Bank" hidden></select>
+      <input type="search" id="snd-search" placeholder="Search sounds" aria-label="Search sounds" autocomplete="off">
+    </div>
+    <div class="snd-list" id="snd-list" role="listbox" tabindex="0" aria-label="Sounds: arrows play, Enter keeps, Escape puts back the sound from before">
+      <div class="snd-inner" id="snd-inner"></div>
+    </div>
+    <div class="snd-foot">
+      <span class="snd-status" id="snd-status" aria-live="polite"></span>
+      <button type="button" class="tool" id="snd-compare" aria-pressed="false" title="Hold: the sound from before">Compare</button>
+      <button type="button" class="tool" id="snd-cancel">Cancel</button>
+      <button type="button" class="primary" id="snd-load">Load</button>
+    </div>
+  </section>
+
   <section class="panel" id="panel" aria-live="polite" data-view-of="devices">
     <div class="panel-head">
       <h2 id="panel-title"></h2>
@@ -94,6 +126,7 @@
 </dialog>
 <script src="/visuals.js"></script>
 <script src="/app.js"></script>
+<script src="/sounds.js"></script>
 <script src="/modules.js"></script>
 </body>
 </html>

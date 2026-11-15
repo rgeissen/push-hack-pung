@@ -371,7 +371,10 @@
   // ---- the view switch ---------------------------------------------------------------
   function show(view) {
     const mods = view === "modules";
-    document.querySelectorAll("[data-view-of=devices]").forEach((el) => (el.hidden = mods));
+    // the view as a class on the page, never each section's own hidden: that
+    // un-hid what the devices view keeps hidden (the module picker, a sound
+    // browser with no device) on every switch back
+    document.body.dataset.view = view;
     $("modules-view").hidden = !mods;
     document.querySelectorAll(".views button").forEach((b) => b.setAttribute("aria-current", b.dataset.view === view ? "page" : "false"));
     if (!(mods && location.hash.startsWith("#modules")) && !(!mods && !location.hash)) history.replaceState(null, "", mods ? "#modules" : location.pathname);

@@ -154,3 +154,42 @@ func TestIndex(t *testing.T) {
 		t.Fatalf("%+v", list)
 	}
 }
+
+// A module's sounds leave as a zip of Move's own files and come back
+// (another Push, a Move): nothing is overwritten, another module's sound is
+// left out, one .json is a sound too.
+func TestExportImport(t *testing.T) {
+	a := &soundLib{store: &soundStore{root: t.TempDir()}}
+	a.store.SaveAs("obxd", "Fat Brass", `{"cutoff":1}`, &pungMeta{Tags: []string{"brass"}})
+	a.store.SaveAs("obxd", "Pad", "x=1;", nil)
+	zip, n, err := a.Export("obxd")
+	if err != nil || n != 2 {
+		t.Fatal(n, err)
+	}
+	b := &soundLib{store: &soundStore{root: t.TempDir()}}
+	added, skipped, err := b.Import("obxd", zip)
+	if err != nil || len(added) != 2 || len(skipped) != 0 {
+		t.Fatalf("added %v skipped %v %v", added, skipped, err)
+	}
+	if s, meta, _ := b.store.Read("obxd", "Fat Brass"); s != `{"cutoff":1}` || meta == nil || meta.Tags[0] != "brass" {
+		t.Fatalf("a sound and Pung's notes come back as they left: %q %+v", s, meta)
+	}
+	if s, _, _ := b.store.Read("obxd", "Pad"); s != "x=1;" {
+		t.Fatalf("a state that is not JSON comes back as its text: %q", s)
+	}
+	added, _, _ = b.Import("obxd", zip)
+	if len(added) != 2 || added[0] == "Fat Brass" && added[1] == "Pad" {
+		t.Fatalf("an import never overwrites: %v", added)
+	}
+	_, skipped, _ = b.Import("dexed", zip)
+	if len(skipped) != 2 {
+		t.Fatalf("another module's sounds are left out: %v", skipped)
+	}
+	added, _, err = b.Import("obxd", []byte(`{"name":"From Move","module":"obxd","version":1,"state":{"cutoff":0.5}}`))
+	if err != nil || len(added) != 1 || added[0] != "From Move" {
+		t.Fatalf("one Move preset file: %v %v", added, err)
+	}
+	if _, _, err := b.Import("obxd", []byte("not a preset")); err == nil {
+		t.Fatal("something that is neither is refused")
+	}
+}
