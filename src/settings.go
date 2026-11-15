@@ -19,6 +19,9 @@ type settings struct {
 	// touched one shows the range, the neighbouring options and the fine
 	// mode in place (view.go, drawCell). Off unless asked for.
 	TouchCard bool `json:"touch_card"`
+	// CatalogURL: where the Modules page reads the module catalog; empty:
+	// the published one (modmgr.go, defaultCatalogURL)
+	CatalogURL string `json:"catalog_url,omitempty"`
 }
 
 type settingsStore struct {

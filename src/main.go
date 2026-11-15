@@ -84,6 +84,10 @@ func main() {
 		probeModuleMain(h, *probeModule, *probeOut)
 		return
 	}
+	// modules from the catalog: their links in place before anything reads
+	// the module tree (modmgr.go)
+	h.mods = newModMgr(h)
+	h.mods.linkModules()
 	if *writeClassesTo != "" {
 		classes := coreClasses(h.buildClasses())
 		if _, err := livedevice.WriteClasses(*writeClassesTo, "", classes); err != nil {
@@ -98,6 +102,7 @@ func main() {
 	h.routes(mux)
 	h.webRoutes(mux)
 	h.settingsRoutes(mux)
+	h.mods.routes(mux)
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
@@ -148,7 +153,8 @@ func main() {
 		log.Printf("devices: plugin: %v (Live keeps the one it has)", err)
 		bcfg.Classes = livedevice.ClassesPath(*vst3, "Pung")
 	}
-	if _, err := livedevice.WriteClasses(bcfg.Classes, so, classes); err != nil {
+	// a removed module's class stays known to Live (modroutes.go, withRetired)
+	if _, err := livedevice.WriteClasses(bcfg.Classes, so, withRetired(*data, classes)); err != nil {
 		log.Printf("devices: %v", err)
 	}
 	if *presets != "" {
@@ -164,6 +170,7 @@ func main() {
 	if err := devs.Listen(); err != nil {
 		log.Printf("devices: %v (Pung devices in Live stay silent)", err)
 	}
+	h.mods.afterStart(base) // an Apply that started this Pung: Live next
 
 	stop := make(chan struct{})
 	go runEngine(h, stop)
@@ -197,7 +204,12 @@ func main() {
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
-	<-sig
+	restart := false
+	select {
+	case <-sig:
+	case <-restartCh: // Apply (modroutes.go): stop, and start again as the same process
+		restart = true
+	}
 	log.Printf("stopping")
 	close(stop)
 	select {
@@ -214,4 +226,11 @@ func main() {
 	}
 	srv.Close()
 	killGroup() // what a module forked and did not end
+	if restart {
+		// the same pid (the service's pid file stays true), new classes
+		log.Printf("starting again")
+		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+			log.Fatalf("starting again: %v", err)
+		}
+	}
 }

@@ -65,6 +65,7 @@ type Host struct {
 	screened map[string]bool // module id -> passed the crash screen (screen.go); set once at start
 	ui       *surface        // the Pung view on the Push (surface.go); nil without one
 	settings *settingsStore  // Pung's own settings (settings.go)
+	mods     *modMgr         // modules from the catalog (modmgr.go)
 
 	selMu      sync.Mutex
 	selKey     string // Live's selection that selDev was worked out for

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pung · Module Catalog</title>
+<meta name="description" content="Schwung modules built for Ableton Push 3 Standalone: synths, effects and MIDI effects you install on the Push with Pung.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#" aria-label="Pung"><span class="mark" aria-hidden="true"></span>Pung</a>
+  <nav aria-label="Site">
+    <a href="#" aria-current="page">Modules</a>
+    <a href="#install">Install</a>
+    <a href="#licences">Licences &amp; source</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>Module Catalog</h1>
+    <p>Schwung modules, built for Ableton Push 3 Standalone. Every one of them plays as a device in Live on the Push:
+      install it from the <b>Modules</b> page of Pung.</p>
+  </section>
+
+  <section class="tools" aria-label="Find modules">
+    <div class="row">
+      <div class="chips" id="types" role="group" aria-label="Kind"></div>
+      <div class="right">
+        <input type="search" id="q" placeholder="Search" aria-label="Search modules" autocomplete="off">
+        <label class="sort">Sort:
+          <select id="sort">
+            <option value="updated">Recently updated</option>
+            <option value="released">Newest</option>
+            <option value="name">Name</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="chips sub" id="subs" role="group" aria-label="Category"></div>
+    <p class="count" id="count" aria-live="polite"></p>
+  </section>
+
+  <section class="grid" id="grid" aria-label="Modules"></section>
+
+  <section class="notes" id="install">
+    <h2>Install</h2>
+    <ol>
+      <li>Pung runs on your Push 3 Standalone (a <a href="https://github.com/federico-pepe/ableton-push-hack">Push Hack</a>). Open its web page: <span class="mono">http://&lt;your push&gt;:7720</span>.</li>
+      <li>Go to <b>Modules</b>, pick one, press <b>Install</b>. Pung checks the download and tests the module on the Push before it keeps it.</li>
+      <li>Press <b>Restart Live now</b>: Live opens your Set again, and the module is in its browser under <b>Pung</b>.</li>
+      <li>A module marked <span class="pill">needs files</span> (a ROM, a firmware dump) asks for them on its page in Pung. They are yours to add: no package here contains any.</li>
+    </ol>
+  </section>
+
+  <section class="notes" id="licences">
+    <h2>Licences &amp; source</h2>
+    <p>Each module keeps its own licence. Every package carries its licence texts and a record of how it was built;
+      the complete source of each build is published beside it (<span class="mono">Source</span> on its card): for
+      GPL-licensed modules this is the Corresponding Source. Modules marked <span class="pill">non-commercial</span> may not be sold
+      or used commercially. Modules whose code names no licence are not published.</p>
+    <p class="muted" id="generated"></p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Pung · Schwung modules on Push.</span>
+  <span>Built from <a href="https://schwung.dev/catalog.html">Schwung</a>'s modules by their authors.</span>
+  <a href="catalog.json" class="mono">catalog.json</a>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>

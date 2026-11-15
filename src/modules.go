@@ -37,10 +37,11 @@ func scanModules(root string) []ModuleInfo {
 	for cat, typ := range moduleCategories {
 		entries, _ := os.ReadDir(filepath.Join(root, cat))
 		for _, e := range entries {
-			if !e.IsDir() {
+			dir := filepath.Join(root, cat, e.Name())
+			// a module from the catalog is a link into Pung's data (modmgr.go)
+			if fi, err := os.Stat(dir); err != nil || !fi.IsDir() || strings.HasPrefix(e.Name(), ".") {
 				continue
 			}
-			dir := filepath.Join(root, cat, e.Name())
 			raw, err := os.ReadFile(filepath.Join(dir, "module.json"))
 			if err != nil {
 				continue

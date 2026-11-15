@@ -545,3 +545,16 @@ func padNoteInKey(col, row, octave int, sc liveScale) (byte, bool) {
 	}
 	return byte(n), true
 }
+
+// forgetProbe: a module was installed, updated or removed: its metadata is
+// read again (modmgr.go).
+func (h *Host) forgetProbe(id string) {
+	h.probeMu.Lock()
+	delete(h.probeCache, id)
+	h.probeMu.Unlock()
+	if h.ui != nil {
+		h.ui.mu.Lock()
+		h.ui.forgetMeta()
+		h.ui.mu.Unlock()
+	}
+}

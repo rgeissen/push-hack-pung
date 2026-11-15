@@ -29,7 +29,8 @@ image:
 # livedevice.so, from the core this build uses)
 build:
 	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go build -trimpath -ldflags '$(LDFLAGS)' -o ../pung . && \
-	  cp \$$(go list -m -f '{{.Dir}}' github.com/federico-pepe/ableton-push-hack/core)/livedevice/vst3/livedevice.so ../livedevice.so"
+	  cp \$$(go list -m -f '{{.Dir}}' github.com/federico-pepe/ableton-push-hack/core)/livedevice/vst3/livedevice.so ../livedevice.so && \
+	  cp \$$(go list -m -f '{{.Dir}}' github.com/federico-pepe/ableton-push-hack/core)/livedevice/tools/restart-live.sh ../restart-live.sh"
 
 test:
 	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go test ./..."

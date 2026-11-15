@@ -1,0 +1,11 @@
+{
+  "_doc": "What build-catalog.py may publish, and the licence facts it cannot read from the source. A module publishes when its licence is known: a licence file, the module.json \"license\" field, a README licence section, or an entry in \"licence\" below. A module whose code names no licence is all rights reserved and is withheld; an entry in \"publish\" (with the permission it rests on) publishes it anyway.",
+  "licence": {
+    "jp8000": {
+      "spdx": "GPL-3.0-or-later",
+      "note": "The repository names no licence of its own; the emulator it is built on (gearmulator, libs/gearmulator) is GPL-3.0, so the whole is distributed under the GPL-3.0."
+    }
+  },
+  "publish": {},
+  "withhold": {}
+}

@@ -19,6 +19,8 @@ rsync -a -e "$SSH" pung "root@$HOST:$DIR/pung.new"
 # the Live plugin (push-hack's core/livedevice): the service installs it as
 # /data/.vst3/Pung.vst3 and writes the browser entries itself, at every start
 rsync -a -e "$SSH" livedevice.so "root@$HOST:$DIR/livedevice.so"
+# Apply on the Modules page restarts Live with it (modroutes.go)
+rsync -a -e "$SSH" restart-live.sh "root@$HOST:$DIR/restart-live.sh"
 
 # hack.json: keep the port push-catalog assigned, if it did
 PORT=$($SSH "root@$HOST" "grep -o '\"port\": *[0-9]*' $DIR/hack.json 2>/dev/null | grep -o '[0-9]*$'" || true)

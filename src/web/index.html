@@ -9,16 +9,20 @@
 <body>
 <header class="top">
   <div class="brand">Pung <span class="sub">Schwung modules on Push</span></div>
-  <nav class="slots" id="slots" aria-label="Pung tracks"></nav>
+  <nav class="views" aria-label="Pung">
+    <button type="button" data-view="devices" aria-current="page">Devices</button>
+    <button type="button" data-view="modules" aria-current="false">Modules <span class="count" id="view-modules-badge" hidden title="Updates"></span></button>
+  </nav>
+  <nav class="slots" id="slots" aria-label="Pung tracks" data-view-of="devices"></nav>
   <div class="health" id="health" aria-live="polite"></div>
 </header>
 
 <main>
-  <section class="chain" aria-label="Signal chain">
+  <section class="chain" aria-label="Signal chain" data-view-of="devices">
     <div class="chain-row" id="chain"></div>
   </section>
 
-  <section class="picker" id="picker" hidden>
+  <section class="picker" id="picker" hidden data-view-of="devices">
     <div class="picker-head">
       <h2 id="picker-title">Add a module</h2>
       <div class="kinds" role="tablist">
@@ -31,7 +35,7 @@
     <div class="cards" id="picker-cards"></div>
   </section>
 
-  <section class="panel" id="panel" aria-live="polite">
+  <section class="panel" id="panel" aria-live="polite" data-view-of="devices">
     <div class="panel-head">
       <h2 id="panel-title"></h2>
       <div class="panel-tools" id="panel-tools"></div>
@@ -39,7 +43,7 @@
     <div id="panel-body"></div>
   </section>
 
-  <section class="prefs" aria-labelledby="prefs-title">
+  <section class="prefs" aria-labelledby="prefs-title" data-view-of="devices">
     <h2 id="prefs-title">Push display</h2>
     <label class="pref">
       <input type="checkbox" role="switch" id="pref-touch-card">
@@ -50,7 +54,7 @@
     </label>
   </section>
 
-  <section class="howto" id="howto">
+  <section class="howto" id="howto" data-view-of="devices">
     <h2>Play a Pung track from Live</h2>
     <ol>
       <li>In Live's settings on the Push, MIDI: turn on <b>Track</b> (and <b>Sync</b>, for arpeggiators) for the output port <b>Pung</b>.</li>
@@ -60,8 +64,36 @@
     </ol>
     <p>On the Push itself: Shift + Help opens Home, then <b>Pung</b>.</p>
   </section>
+  <section class="modules" id="modules-view" hidden aria-labelledby="mod-title">
+    <div class="mod-head">
+      <h2 id="mod-title">Modules</h2>
+      <span class="mod-status" id="mod-status" aria-live="polite"></span>
+      <button type="button" class="ghost" id="mod-refresh">Check for updates</button>
+    </div>
+    <div class="mod-banner" id="mod-banner" hidden aria-live="polite"></div>
+    <div class="mod-tools">
+      <input type="search" id="mod-search" placeholder="Search modules" aria-label="Search modules" autocomplete="off">
+      <div class="seg" id="mod-types" role="group" aria-label="Kind">
+        <button type="button" data-type="all" aria-pressed="true">All</button>
+        <button type="button" data-type="sound_generator" aria-pressed="false">Instruments</button>
+        <button type="button" data-type="audio_fx" aria-pressed="false">Audio effects</button>
+        <button type="button" data-type="midi_fx" aria-pressed="false">MIDI effects</button>
+      </div>
+      <div class="seg" id="mod-shows" role="group" aria-label="Show">
+        <button type="button" data-show="installed" aria-pressed="false">Installed <span class="count" id="mod-count-installed"></span></button>
+        <button type="button" data-show="updates" aria-pressed="false">Updates <span class="count" id="mod-count-updates"></span></button>
+      </div>
+    </div>
+    <div class="mod-grid" id="mod-grid" aria-live="polite"></div>
+    <p class="mod-foot" id="mod-foot"></p>
+  </section>
 </main>
+<dialog class="mod-sheet" id="mod-sheet" aria-labelledby="mod-sheet-title">
+  <button type="button" class="ghost close" id="mod-sheet-close" aria-label="Close">✕</button>
+  <div id="mod-sheet-body"></div>
+</dialog>
 <script src="/visuals.js"></script>
 <script src="/app.js"></script>
+<script src="/modules.js"></script>
 </body>
 </html>
