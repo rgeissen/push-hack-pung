@@ -289,6 +289,17 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 		shown := h.ui != nil && h.ui.showCompartment(d.c.module, body.ID)
 		writeJSON(w, 200, map[string]any{"ok": true, "shown": shown})
 	})
+	// the device's sound as it plays, frame by frame (livehub.go)
+	mux.HandleFunc("GET /api/devices/{n}/live", func(w http.ResponseWriter, r *http.Request) {
+		if d, ok := h.deviceFromPath(w, r); ok {
+			h.serveLive(w, r, d.s)
+		}
+	})
+	mux.HandleFunc("GET /api/slots/{n}/live", func(w http.ResponseWriter, r *http.Request) {
+		if s, ok := h.slotFromPath(w, r); ok {
+			h.serveLive(w, r, s)
+		}
+	})
 	// a note played into a device as if Live sent it: for testing what the
 	// sound does (the live pictures) without a hand on the pads
 	mux.HandleFunc("POST /api/devices/{n}/note", func(w http.ResponseWriter, r *http.Request) {

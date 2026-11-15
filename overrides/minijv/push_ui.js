@@ -78,6 +78,20 @@ function jvEnvelope(g, v, t, sec, x0, x1, top, base, small) {
     g.dot(b[0], b[1], hot ? 5 : 3, hot ? ACCENT : col);
     g.text(stageX(i) + 8, top - 10, String(i + 1), hot ? ACCENT : "dim", -1);
   }
+  // each voice, live, where it is in this tone's envelope (trackVoices)
+  if (sec === "Amp" && !small) {
+    var vst = trackVoices(v);
+    if (vst) for (var sl in vst) {
+      var q = vst[sl];
+      if (q.tone !== t || q.p === undefined) continue;
+      var a0 = pts[q.stage === 0 ? 0 : 2 * q.stage], b0 = pts[2 * q.stage + 1];
+      if (!a0 || !b0) continue;
+      var dx = a0[0] + (b0[0] - a0[0]) * q.p, dy = a0[1] + (b0[1] - a0[1]) * q.p;
+      g.line(a0[0], a0[1], dx, dy, 3.4, "mod");
+      g.dot(dx, dy, 7, "black");
+      g.dot(dx, dy, 4.6, "mod");
+    }
+  }
   // the notes, live (v.$live): held, the stages up to key off light along
   // the base; let go and still sounding, the fourth
   var lv = v.$live;
@@ -105,13 +119,86 @@ function envScreen(t, sec) {
 
 function voices(v) {
   if (!known(v, "live_voices")) return null;
-  var s = String(v.live_voices.value);
-  if (s.indexOf("v1 ") !== 0) return null;
-  var out = [];
-  for (var i = 3; i + 11 <= s.length; i += 11) {
-    out.push({ amp: parseInt(s.substr(i, 4), 16) / 65535, cut: parseInt(s.substr(i + 4, 4), 16), pan: parseInt(s.substr(i + 8, 2), 16) / 255, keyed: s.charAt(i + 10) === "1" });
+  var s = String(v.live_voices.value), out = [], i;
+  if (s.indexOf("v2 ") === 0) {
+    for (i = 3; i + 15 <= s.length; i += 15) {
+      out.push({ slot: out.length, amp: parseInt(s.substr(i, 4), 16) / 65535, env: parseInt(s.substr(i + 4, 4), 16) / 0x7f80,
+        cut: parseInt(s.substr(i + 8, 4), 16), pan: parseInt(s.substr(i + 12, 2), 16) / 255, keyed: s.charAt(i + 14) === "1" });
+    }
+    return out;
   }
-  return out;
+  if (s.indexOf("v1 ") === 0) {
+    for (i = 3; i + 11 <= s.length; i += 11) {
+      out.push({ slot: out.length, amp: parseInt(s.substr(i, 4), 16) / 65535, env: -1, cut: parseInt(s.substr(i + 4, 4), 16), pan: parseInt(s.substr(i + 8, 2), 16) / 255, keyed: parseInt(s.substr(i, 4), 16) > 0 });
+    }
+    return out;
+  }
+  return null;
+}
+
+// ---- where each voice is in its tone's amp envelope, live -----------------------------
+// Each voice's TVA envelope comes from the chip on the scale of the patch's
+// own levels (live_voices: L 127 = 1), so a voice's stage is read from its
+// level against its tone's L1..L3, and how far through it from how far the
+// level has gone. Which tone a voice plays is not in the chip; a voice is
+// matched to the switched-on tone whose levels its path fits (the peak of
+// its first stage against each L1). Two tones with one shape cannot be told
+// apart, and need not be: the dot lands on the same curve either way.
+var VS = {}, vsAt = -1;
+function ampLevels(v, t) {
+  return [fr(v, tk(t, "tvaenvlevel1"), 1), fr(v, tk(t, "tvaenvlevel2"), 1), fr(v, tk(t, "tvaenvlevel3"), 1)];
+}
+function tonesOn(v) {
+  var on = [];
+  for (var t = 0; t < 4; t++) if (fr(v, tk(t, "toneswitch"), 1) > 0.5) on.push(t);
+  return on;
+}
+function trackVoices(v) {
+  var lv = v.$live, vs = voices(v);
+  if (!vs || !lv || !lv.known || vs[0].env < 0) return null;
+  if (lv.t === vsAt) return VS;
+  vsAt = lv.t;
+  var on = tonesOn(v);
+  for (var i = 0; i < vs.length; i++) {
+    var e = vs[i].env, st = VS[i];
+    if (e <= 0.002) { // silent: the voice is over
+      if (st && ++st.zero > 3) delete VS[i];
+      continue;
+    }
+    if (!st || (st.stage >= 1 && e > st.last + 0.25)) { // a new note on this slot
+      st = VS[i] = { stage: 0, peak: e, last: e, from: 0, rel: 0, tone: -1, zero: 0, born: lv.notes };
+    }
+    st.zero = 0;
+    if (st.stage === 0) st.peak = Math.max(st.peak, e); // the first stage's reach: L1
+    // its tone: the one switched on whose first level its first stage
+    // reached; decided while that stage runs, then kept
+    if (on.length === 1) st.tone = on[0];
+    else if (on.length > 1 && (st.stage === 0 || st.tone < 0)) {
+      var best = -1, d = 9;
+      for (var k = 0; k < on.length; k++) {
+        var l1 = ampLevels(v, on[k])[0], dd = Math.abs(l1 - st.peak) + (st.stage === 0 && l1 < e - 0.03 ? 1 : 0);
+        if (dd < d) { d = dd; best = on[k]; }
+      }
+      st.tone = best;
+    }
+    var L = st.tone >= 0 ? ampLevels(v, st.tone) : [1, 1, 1];
+    var target = st.stage < 3 ? L[st.stage] : 0;
+    // the stage: done when the level has reached its target, or turned away
+    var toward = target - st.from, moved = e - st.from;
+    var p = Math.abs(toward) < 0.02 ? 1 : moved / toward;
+    var turned = st.stage < 3 && Math.abs(toward) >= 0.02 && (toward > 0 ? e < st.last - 0.01 : e > st.last + 0.01) && p > 0.2;
+    if (st.stage < 2 && (p >= 0.97 || turned)) { st.from = L[st.stage]; st.stage++; p = 0; }
+    else if (st.stage === 2 && (p >= 0.97 || turned)) { st.stage = 2; p = 1; st.held = true; }
+    // let go: every key up (or below its sustain while others are held)
+    if (st.stage < 3 && ((lv.held === 0 && lv.since_off >= 0) || (st.held && L[2] > 0.04 && e < L[2] - 0.04))) {
+      st.stage = 3; st.rel = e; p = 0;
+    }
+    if (st.stage === 3) p = 1 - e / Math.max(st.rel, 1e-4);
+    st.p = Math.max(0, Math.min(1, st.stage === st.lastStage ? Math.max(p, st.p || 0) : p)); // never backwards in a stage
+    st.lastStage = st.stage;
+    st.last = e;
+  }
+  return VS;
 }
 
 // amplitude in the LCD: one bar per voice, dB scaled; a keyed voice in ink,
@@ -289,6 +376,11 @@ function tonePages(t) {
   return out;
 }
 
+// what matching a voice to its tone needs, on every tone's pages
+var ampMatchKeys = [];
+for (var mt = 0; mt < 4; mt++) ["toneswitch", "tvaenvlevel1", "tvaenvlevel2", "tvaenvlevel3"].forEach(function (k) { ampMatchKeys.push(tk(mt, k)); });
+
 for (var tn = 0; tn < 4; tn++) {
-  push.compartment({ id: "tone" + (tn + 1), label: "Tone " + (tn + 1), pages: tonePages(tn) });
+  push.compartment({ id: "tone" + (tn + 1), label: "Tone " + (tn + 1), pages: tonePages(tn),
+    extra_keys: ampMatchKeys, live_keys: ["live_voices"] });
 }

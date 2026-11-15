@@ -105,8 +105,10 @@
     };
     const isHot = (role) => hot && (hot === role || (role === "slope" && hot === "sustain"));
 
+    let lastL = null, lastLive = null;
     function draw() {
       const e = shape(), L = layout(e, x0, x1, top, base), pts = L.pts;
+      lastL = L;
       svg.classList.toggle("unknown", !e.Known);
       let h = "";
       const poly = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
@@ -130,9 +132,70 @@
         h += `<circle class="handle${big ? " hot" : ""}" data-role="${p.role}" cx="${p.x}" cy="${y}" r="${big ? 6 : 4.5}"/>`;
         h += `<circle class="grab" data-role="${p.role}" cx="${p.x}" cy="${y}" r="14"/>`;
       }
+      h += `<g class="live"></g>`;
       svg.innerHTML = h;
       svg.setAttribute("aria-label", "Envelope: " + Object.entries(g.keys).map(([, k]) => io.label(k)).join(", "));
+      if (lastLive) liveEnv(lastLive);
       return L;
+    }
+
+    // the sound in it, as the Push draws it (visuals.go): the notes' gate
+    // along the base, the stage lit as far as it has gone with a playhead
+    // and a trail, or a mark per voice; the start flashes as a note begins
+    function liveEnv(d) {
+      lastLive = d;
+      const lay = svg.querySelector("g.live");
+      if (!lay || !lastL) return;
+      if (!d || svg.classList.contains("unknown")) { lay.innerHTML = ""; return; }
+      const pts = lastL.pts, e = shape();
+      const seg = (stage) => {
+        if (stage === "sustain" && e.HasSlope) stage = "slope";
+        return pts.findIndex((p, i) => i > 0 && p.role === stage);
+      };
+      const at = (stage, prog) => {
+        const i = seg(stage);
+        if (i < 1) return null;
+        const a = pts[i - 1], b = pts[i], t = Math.max(0, Math.min(1, prog));
+        return [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, i];
+      };
+      let h = "";
+      const rel = seg("release");
+      if (d.h) h += `<rect class="gate" x="${x0}" y="${base - 1.5}" width="${(rel > 0 ? pts[rel - 1].x : pts[pts.length - 1].x) - x0}" height="3"/>`;
+      else if (d.r && rel > 0) h += `<rect class="gate ringing" x="${pts[rel - 1].x}" y="${base - 1.5}" width="${pts[rel].x - pts[rel - 1].x}" height="3"/>`;
+      if (d.rt) h += `<line class="retrig" x1="${x0}" y1="${top}" x2="${x0}" y2="${base}" style="opacity:${d.rt}"/>`;
+      const lit = new Set();
+      if (d.m === "measured") {
+        (d.tr || []).slice(0, -1).forEach(([st, pr], i, arr) => {
+          const q = at(st, pr);
+          if (!q) return;
+          const k = (i + 1) / (arr.length + 1);
+          h += `<circle class="trail" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${(1.6 + 1.8 * k).toFixed(1)}" style="opacity:${(0.15 + 0.5 * k).toFixed(2)}"/>`;
+        });
+        if (d.s) {
+          const q = at(d.s, d.p);
+          if (q) {
+            const a = pts[q[2] - 1];
+            h += `<line class="lit" x1="${a.x}" y1="${a.y}" x2="${q[0].toFixed(1)}" y2="${q[1].toFixed(1)}"/>`;
+            h += `<line class="hair" x1="${q[0].toFixed(1)}" y1="${(q[1] + 7).toFixed(1)}" x2="${q[0].toFixed(1)}" y2="${base - 2}"/>`;
+            h += `<circle class="ring" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="7.5"/><circle class="dot" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="5.2"/>`;
+            lit.add(d.s === "sustain" && e.HasSlope ? "slope" : d.s);
+          }
+        }
+      } else if (d.m === "timed") {
+        (d.v || []).forEach(([st, pr, vel]) => {
+          const q = at(st, pr);
+          if (!q) return;
+          h += `<circle class="ring" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="7"/><circle class="dot" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${(3 + 2 * vel).toFixed(1)}"/>`;
+          lit.add(st === "sustain" && e.HasSlope ? "slope" : st);
+        });
+      } else {
+        pts.forEach((p, i) => { if (i > 0 && (p.role === "release" ? d.r : d.h)) lit.add(p.role); });
+      }
+      for (let i = 1; i < pts.length; i++) {
+        if (!lit.has(pts[i].role)) continue;
+        h += `<text class="letter live" x="${(pts[i - 1].x + pts[i].x) / 2}" y="${base + 18}">${LETTER[pts[i].role]}</text>`;
+      }
+      lay.innerHTML = h;
     }
 
     // dragging: a handle moves the knobs that place it
@@ -186,6 +249,7 @@
         const role = Object.keys(g.keys).find((r) => g.keys[r] === key) || "";
         if (!drag && role !== hot) { hot = role; draw(); }
       },
+      live(f) { if (fig.key) liveEnv(f && f.envs ? f.envs[fig.key] : null); },
       alive() { return svg.isConnected; },
     };
     figures.add(fig);
@@ -248,6 +312,7 @@
   }
 
   const FLT_DECADES = 3, FLT_DB_TOP = 21, FLT_DB_BOT = -39;
+  const SPEC_TOP = -6, SPEC_BOT = -84; // the spectrum's scale (visuals_shapes.go specTopDB, specBotDB)
   const filterQ = (f) => (f.HasRes ? 0.707 * Math.pow(10, f.Res * 1.15) : 0.707);
   function filterDB(f, u) {
     const w = Math.pow(10, FLT_DECADES * (u - f.Cutoff)), q = filterQ(f), w2 = w * w;
@@ -398,6 +463,7 @@
       const xc = x0 + (x1 - x0) * f.Cutoff;
       geo = { x0, x1, top, base };
       if (f.Kind === "?" || f.Kind === "off") {
+        h += `<g class="spec"></g>`;
         if (f.Kind === "off") h += `<line class="seg" x1="${x0}" y1="${yOf(0)}" x2="${x1}" y2="${yOf(0)}"/>`;
         h += `<line class="guide" x1="${xc}" y1="${top}" x2="${xc}" y2="${base}"/>`;
         const t = f.Kind === "off" ? "OFF" : /^[\d.\- ]*$/.test(name) ? "" : name.toUpperCase();
@@ -407,6 +473,7 @@
       const curve = [];
       for (let x = x0; x <= x1; x += 2) curve.push([x, yOf(filterDB(f, (x - x0) / (x1 - x0)))]);
       h += `<polygon class="fill" points="${x0},${base} ${pts(curve)} ${curve[curve.length - 1][0]},${base}"/>`;
+      h += `<g class="spec"></g>`; // the sound itself, behind the curve that shapes it (live)
       h += `<polyline class="seg${hot === "resonance" || hot === "type" ? " hot" : ""}" fill="none" points="${pts(curve)}"/>`;
       const yc = yOf(filterDB(f, f.Cutoff));
       if (hot === "cutoff") h += `<line class="guide hot" x1="${xc}" y1="${yc + 6}" x2="${xc}" y2="${base}"/>`;
@@ -424,7 +491,8 @@
       for (let x = x0; x <= x1; x += 1) curve.push([x, mid - lfoValue(wave, n * Math.min((x - x0) / (x1 - x0), 0.9999)) * amp]);
       h += `<polygon class="fill" points="${x0},${mid} ${pts(curve)} ${x1},${mid}"/>`;
       h += `<polyline class="seg${hot ? " hot" : ""}" fill="none" points="${pts(curve)}"/>`;
-      return h;
+      geo = { x0, x1, top, base, mid, amp, n, wave };
+      return h + `<g class="live"></g>`;
     }
     function drawMix(k) {
       const n = g.end - g.start, levels = [];
@@ -452,12 +520,54 @@
       });
       return h;
     }
+    let lastLive = null;
     function draw() {
       const k = known();
       svg.classList.toggle("unknown", !k);
       svg.innerHTML = g.kind === "filter" ? drawFilter(k) : g.kind === "lfo" ? drawLFO(k) : drawMix(k);
       const what = { filter: "Filter", lfo: "LFO", mix: "Mix" }[g.kind];
-      svg.setAttribute("aria-label", `${what}: ` + Object.values(g.keys).map((key) => io.label(key)).join(", "));
+      svg.setAttribute("aria-label", `${what}: ` + Object.values(g.keys).filter((key) => io.meta(key)).map((key) => io.label(key)).join(", "));
+      if (lastLive) live(lastLive);
+    }
+    // the sound, as the Push draws it (visuals_shapes.go): the spectrum
+    // behind a filter, an LFO's playhead where its phase is known
+    function live(f) {
+      lastLive = f;
+      if (g.kind === "filter") {
+        const lay = svg.querySelector("g.spec");
+        if (!lay) return;
+        const sp = f && f.spec;
+        if (!sp || !sp.length || svg.classList.contains("unknown") || geo.x0 === undefined) { lay.innerHTML = ""; return; }
+        const n = sp.length, line = [];
+        for (let i = 0; i < n; i++) {
+          const t = Math.max(0, Math.min(1, (sp[i] - SPEC_BOT) / (SPEC_TOP - SPEC_BOT)));
+          line.push([geo.x0 + (geo.x1 - geo.x0) * i / (n - 1), geo.base - t * (geo.base - geo.top)]);
+        }
+        lay.innerHTML = `<polygon class="specfill" points="${geo.x0},${geo.base} ${pts(line)} ${geo.x1},${geo.base}"/><polyline class="specline" fill="none" points="${pts(line)}"/>`;
+        return;
+      }
+      if (g.kind !== "lfo") return;
+      const lay = svg.querySelector("g.live");
+      const d = f && f.lfos && fig.key ? f.lfos[fig.key] : null;
+      if (!lay) return;
+      if (!d || svg.classList.contains("unknown") || !geo.wave) { lay.innerHTML = ""; return; }
+      let h = "";
+      if (d.rs) h += `<line class="retrig" x1="${geo.x0}" y1="${geo.top}" x2="${geo.x0}" y2="${geo.base}" style="opacity:${d.rs}"/>`;
+      if (d.ph >= 0) {
+        const pos = (ph) => {
+          let u = (ph % geo.n) / geo.n;
+          if (u < 0) u += 1;
+          return [geo.x0 + (geo.x1 - geo.x0) * u, geo.mid - lfoValue(geo.wave, geo.n * Math.min(u, 0.9999)) * geo.amp];
+        };
+        (d.tr || []).slice(0, -1).forEach((ph, i, arr) => {
+          const q = pos(ph), k = (i + 1) / (arr.length + 1);
+          h += `<circle class="trail" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${(1.6 + 1.8 * k).toFixed(1)}" style="opacity:${(0.15 + 0.5 * k).toFixed(2)}"/>`;
+        });
+        const q = pos(d.ph);
+        h += `<line class="hair" x1="${q[0].toFixed(1)}" y1="${geo.top}" x2="${q[0].toFixed(1)}" y2="${geo.base}"/>`;
+        h += `<circle class="ring" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="7.5"/><circle class="dot" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="5.2"/>`;
+      }
+      lay.innerHTML = h;
     }
     // dragging: the cutoff's handle sideways (and up and down for the
     // resonance), a fader up and down
@@ -488,6 +598,7 @@
       el: svg,
       draw,
       touch(key) { const r = roleOf(key); if (!drag && r !== hot) { hot = r; draw(); } },
+      live,
       alive() { return svg.isConnected; },
     };
     figures.add(fig);
@@ -499,9 +610,14 @@
   // figure: the picture for any recognized group
   function figure(g, io) { return !g.kind || g.kind === "env" ? envFigure(g, io) : shapeFigure(g, io); }
 
+  // live: one frame of the sound (GET .../live), to every figure on the page
+  function live(f) {
+    figures.forEach((fig) => (fig.alive() ? fig.live && fig.live(f) : figures.delete(fig)));
+  }
+
   function redrawAll() {
     figures.forEach((f) => (f.alive() ? f.draw() : figures.delete(f)));
   }
 
-  window.PungVisuals = { envelopeGroups, pictureGroups, filterKind, filterDB, lfoWave, layout, figure, redrawAll };
+  window.PungVisuals = { envelopeGroups, pictureGroups, filterKind, filterDB, lfoWave, layout, figure, redrawAll, live };
 })();

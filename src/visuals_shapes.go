@@ -206,15 +206,26 @@ func drawSpectrum(img *image.NRGBA, cols []float64, x0, x1, top, base float64) {
 	if n < 2 {
 		return
 	}
+	// the columns are the analyzer's (liveSpecCols), the pixels the picture's:
+	// each pixel between the two nearest columns
+	at := func(u float64) float64 {
+		c := u * float64(n-1)
+		i := int(c)
+		if i >= n-1 {
+			return cols[n-1]
+		}
+		t := c - float64(i)
+		return cols[i]*(1-t) + cols[i+1]*t
+	}
 	var prev [2]float64
-	for i, db := range cols {
-		x := x0 + (x1-x0)*float64(i)/float64(n-1)
+	for x := x0; x <= x1; x++ {
+		db := at((x - x0) / math.Max(1, x1-x0))
 		t := math.Max(0, math.Min(1, (db-specBotDB)/(specTopDB-specBotDB)))
 		y := base - t*(base-top)
 		for py := int(y); py < int(base); py++ {
 			lighten(img, int(x), py, cSpecFill)
 		}
-		if i > 0 {
+		if x > x0 {
 			aaLine(img, prev[0], prev[1], x, y, 1.2, cSpecLine)
 		}
 		prev = [2]float64{x, y}
@@ -488,6 +499,29 @@ func lfoGroups(keys []string) []picGroup {
 		out = append(out, g)
 	}
 	return out
+}
+
+// lfoGroupsLoose: the keys among all of a module's parameters that say how
+// the LFO whose wave is shapeKey runs (sync, trig, div), by the same names
+// lfoGroups reads on a page.
+func lfoGroupsLoose(all []string, shapeKey string) []map[string]string {
+	m := lfoShapeRole.FindStringSubmatch(strings.ToLower(shapeKey))
+	if m == nil {
+		return nil
+	}
+	prefix := strings.TrimSuffix(m[1], "_")
+	out := map[string]string{}
+	for _, k := range all {
+		lk := strings.ToLower(k)
+		for role, re := range map[string]*regexp.Regexp{"sync": lfoSyncRole, "trig": lfoTrigRole, "div": lfoDivRole} {
+			if mm := re.FindStringSubmatch(lk); mm != nil && strings.TrimSuffix(mm[1], "_") == prefix {
+				if old, ok := out[role]; !ok || k < old { // the same answer every time
+					out[role] = k
+				}
+			}
+		}
+	}
+	return []map[string]string{out}
 }
 
 // lfoShape is an LFO to draw.
@@ -825,30 +859,28 @@ func drawMix(img *image.NRGBA, r image.Rectangle, m mixShape, sc color.NRGBA) {
 // drawPicture draws one recognized structure from its values; with fx, as
 // the sound is moving it (key names the picture across frames).
 func drawPicture(img *image.NRGBA, r image.Rectangle, g picGroup, vals map[string]ovValue, touchedKey string, sc color.NRGBA) {
-	drawPictureLive(img, r, g, vals, touchedKey, sc, nil, "")
+	drawPictureLive(img, r, g, vals, touchedKey, sc, nil, liveOut{}, "")
 }
 
-func drawPictureLive(img *image.NRGBA, r image.Rectangle, g picGroup, vals map[string]ovValue, touchedKey string, sc color.NRGBA, fx *liveFX, key string) {
+// drawPictureLive: with a live session, the picture is registered with it
+// (its live state is worked out every tick, livehub.go) and drawn with the
+// session's latest frame.
+func drawPictureLive(img *image.NRGBA, r image.Rectangle, g picGroup, vals map[string]ovValue, touchedKey string, sc color.NRGBA, ls *liveSession, out liveOut, key string) {
+	if ls != nil {
+		ls.want(key, g, vals)
+	}
 	switch g.kind {
 	case "env":
 		e := envShapeOf(envGroup{keys: g.keys, start: g.start, end: g.end}, vals, touchedKey)
-		if fx != nil {
-			e.Live = fx.envelope(key, g, e, vals)
-		}
+		e.Live = out.Envs[key]
 		drawEnvelope(img, r, e, sc)
 	case "filter":
 		f := filterShapeOf(g, vals, touchedKey)
-		if fx != nil && fx.slot != nil {
-			fx.used = true
-			fx.spec.update(fx.slot, fx.frame)
-			f.Spectrum = fx.spec.columns(r.Dx() - 12)
-		}
+		f.Spectrum = out.Spec
 		drawFilter(img, r, f, sc)
 	case "lfo":
 		l := lfoShapeOf(g, vals, touchedKey)
-		if fx != nil {
-			l.Live = fx.lfo(key, g, vals)
-		}
+		l.Live = out.LFOs[key]
 		drawLFO(img, r, l, sc)
 	case "mix":
 		drawMix(img, r, mixShapeOf(g, vals, touchedKey), sc)

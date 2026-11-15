@@ -58,9 +58,9 @@ type browser struct {
 }
 
 type surface struct {
-	fx         liveFX // the shown device's sound, for the live pictures (livefx.go); under mu
-	fxUsed     bool   // the last frame drew something live
-	fxSynced   bool   // ... and a picture whose motion follows Live's transport
+	liveOut    liveOut // the shown sound's live frame, as this frame draws it (livehub.go); under mu
+	liveDrew   bool    // this frame drew something live
+	fxUsed     bool    // the last frame drew something live
 	frameStats frameStats
 
 	h    *Host
@@ -684,8 +684,9 @@ type compartmentInfo struct {
 	ID       string   `json:"id"`
 	Label    string   `json:"label"`
 	Keys     []string `json:"keys"`
-	Custom   bool     `json:"custom"`   // it has its own screen on the Push
-	Takeover bool     `json:"takeover"` // ... and that screen is all of the panel
+	Custom   bool     `json:"custom"`              // it has its own screen on the Push
+	Takeover bool     `json:"takeover"`            // ... and that screen is all of the panel
+	LiveKeys []string `json:"live_keys,omitempty"` // values the module drives, for live pictures
 }
 
 // compartmentsOf: a module's compartments, declared ones else its banks (a
@@ -697,7 +698,7 @@ func (u *surface) compartmentsOf(module string) ([]compartmentInfo, string) {
 	var out []compartmentInfo
 	if set := u.ov.get(u.h.modulesDir, module); set != nil && set.failed == "" && len(set.compartments) > 0 {
 		for _, c := range set.compartments {
-			out = append(out, compartmentInfo{ID: c.id, Label: c.label, Keys: c.keys, Custom: c.screen != nil, Takeover: c.takeover})
+			out = append(out, compartmentInfo{ID: c.id, Label: c.label, Keys: c.keys, Custom: c.screen != nil, Takeover: c.takeover, LiveKeys: c.liveKeys})
 			// (a page's own screen does not make the compartment's web section a screen)
 		}
 	} else if m, ok := findModule(u.h.modulesDir, module); ok {
@@ -1883,13 +1884,15 @@ func (u *surface) refreshLive() {
 		return
 	}
 	for _, lp := range dev.Params {
-		for key, m := range cm.Params {
-			if m.Name != lp.Name || lp.Max <= lp.Min {
-				continue
-			}
-			u.lvIdx[key] = lp.I
-			u.vals[u.valKey(sel, key)] = m.fromNorm((lp.V - lp.Min) / (lp.Max - lp.Min))
+		if lp.Max <= lp.Min {
+			continue
 		}
+		key := u.liveParamKey(sel, cm, lp)
+		if key == "" {
+			continue
+		}
+		u.lvIdx[key] = lp.I
+		u.vals[u.valKey(sel, key)] = cm.Params[key].fromNorm((lp.V - lp.Min) / (lp.Max - lp.Min))
 	}
 	// What Live does not list (the Remote Script reads 128 parameters of a
 	// device; Osirus has 156, the JV-880 419): read from Pung's own device
@@ -1918,6 +1921,38 @@ func (u *surface) refreshLive() {
 			}
 		}
 	}
+}
+
+// liveParamKey: which of the module's keys a parameter in Live's list of
+// the device is. By POSITION first: Live lists a Pung device's parameters
+// in the rack's own order after "Device On" (sclass.order), so position
+// i is order[i-1], accepted when its name agrees. By name only when the
+// name is the module's once. Names alone are not enough: the JV-880's four
+// tones share theirs ("A.Env L2"), and matching on them gave 97 of Live's
+// indexes to several keys at once, so a tone page showed, and wrote,
+// another tone's value (and a tone's cutoff wrote the macro cutoff;
+// measured on the device, 2026-11-15).
+func (u *surface) liveParamKey(sel position, cm *compMeta, lp liveParam) string {
+	if d, prefix := u.pungDevice(); d != nil && d.c.module == sel.Module && lp.I >= 1 && lp.I-1 < len(d.c.order) {
+		if pi := d.c.order[lp.I-1]; pi < len(d.c.Params) {
+			if k, ok := strings.CutPrefix(d.c.Params[pi].Key, prefix+":"); ok {
+				if m := cm.Params[k]; m != nil && m.Name == lp.Name {
+					return k
+				}
+			}
+		}
+	}
+	found := ""
+	for key, m := range cm.Params {
+		if m.Name != lp.Name {
+			continue
+		}
+		if found != "" {
+			return "" // the name is several keys': none of them, rather than the wrong one
+		}
+		found = key
+	}
+	return found
 }
 
 // pungDevice: Pung's device for the device selected in Live, and the chain

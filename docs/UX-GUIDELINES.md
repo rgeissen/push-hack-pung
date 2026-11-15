@@ -304,7 +304,7 @@ time), the loudest sample of each block, the last 4096 samples of the output, an
 
 | Picture | What moves | From |
 |---|---|---|
-| **Envelope** (the amplitude's: no prefix, `amp`, `vca`, `tva`, `aeg`...) | a playhead on the shape, the stage lit as far as it has gone, a short trail | measured: the notes say which stage (a note began: attack; all let go: release), the output's level says how far through it (attack: level over the loudest of the last seconds; decay: the fall toward the sustain the knob sets; release: the fall from where it was let go) |
+| **Envelope** (the amplitude's: no prefix, `amp`, `vca`, `tva`, `aeg`...) | a playhead running along the shape, the stage lit as far as it has gone, a short trail; it only moves forward within a stage, and rests at the sustain point while the key is held | measured: the notes say which stage (a note began: attack; all let go: release), the output's level says how far through it (attack: level over the loudest of the last seconds; decay: the fall toward the sustain the knob sets; release: the fall from where it was let go) |
 | **Envelope** whose stage times state a unit (`250 ms`, `1.2 s`) | one mark per voice, sized by velocity | exact: each note's own time since it went down or was let go |
 | **Envelope** (any other: a filter's, a pitch envelope) | the notes' gate along the base: held, every stage up to the release; let go and still sounding, the release | the notes only; where in a filter envelope a note is cannot be heard in the output |
 | every envelope | its start flashes as a note begins it again | the notes |
@@ -314,6 +314,27 @@ time), the loudest sample of each block, the last 4096 samples of the output, an
 | **LFO** restarted by notes (`trig`, `retrig`, `keytrig`, `synchro`...), any rate | its start flashes as a note restarts it | the notes |
 | **LFO** free running, or a rate with no unit | still | its phase cannot be known |
 | a module's screen | whatever it draws from `v.$live` and its `live_keys` (overrides.md) | the module |
+
+**Where it runs**: one live session per sound (`src/livehub.go`), shared by the Push view and every web
+page watching it: it is the only reader of the sound's state, so the two can never tell two stories. It
+ticks at 30 frames a second while someone watches and stops when no one does.
+
+**On the web page**: `GET /api/devices/<n>/live` (or `/api/slots/<n>/live`) streams the session's frames
+as Server-Sent Events (`?comp=synth&pics=<json of the page's pictures>&keys=<the module's live keys>`).
+The page asks only for the pictures of the sections it shows, only while it is visible, and draws the same
+live layers as the Push (`web/visuals.js`: `PungVisuals.live(frame)`); a frame the page is too slow for is
+dropped, never queued. A module's own page (an iframe) gets every frame as `{type: "live", frame}`
+(overrides.md). Measured: about 2 frames a second at rest, 30 while the sound moves, each a few hundred
+bytes plus 240 spectrum values.
+
+**An instrument's own state, per voice**: Mini-JV publishes its PCM chip's voices (`live_voices`, v2):
+each voice's TVA envelope on the scale of the patch's own levels (`ram2[10]`; L 127 = 0x7f80), its
+amplitude, its TVF coefficient and pan. Its Amp Env pages draw a dot per voice running along the JV's
+4-stage envelope in real time: the stage from the level against the tone's L1-L3, how far through from how
+far the level has gone. The chip does not say which tone a voice plays; a voice is matched to the
+switched-on tone whose L1 its first stage reached (two tones with one shape need no telling apart: the dot
+lands on the same curve). Its Macros screen and its own web page show every voice's level and filter
+cutoff live.
 
 **The look**: live marks are in the modulation colour (`mod`), so they never read as a touch (slot
 colour) or as the patch (fg). A playhead is a mod dot ringed in black with a dashed hairline to the base;

@@ -167,7 +167,42 @@
   // the status poll) each cleared the panel, waited, then appended: the page
   // showed the module twice.
   let panelGen = 0;
+  // ---- the sound, live: one stream per open panel (GET <base>/live) ----------
+  // Frames arrive about 30 times a second while the sound moves and now and
+  // then while it rests; the server drops a frame the page is too slow for.
+  // Only the pictures of the sections shown are asked for, only while the
+  // page is visible; a module's own page gets each frame as {type:"live"}.
+  let liveES = null, liveURL = "";
+  function liveConnect() {
+    const info = state.info || {};
+    let url = "";
+    if (!document.hidden && info.module && state.base) {
+      const pics = {};
+      Object.entries(state.pics || {}).forEach(([k, p]) => {
+        if (!p.section || !state.enabled || state.enabled.has(p.section)) pics[k] = { kind: p.kind, keys: p.keys };
+      });
+      const keys = frame ? [...new Set((state.comps || []).flatMap((c) => c.live_keys || []))] : [];
+      if (Object.keys(pics).length || keys.length) {
+        url = `${state.base}/live?comp=${encodeURIComponent(state.comp)}&pics=${encodeURIComponent(JSON.stringify(pics))}&keys=${encodeURIComponent(keys.join(","))}`;
+      }
+    }
+    if (url === liveURL && liveES) return;
+    if (liveES) { liveES.close(); liveES = null; }
+    liveURL = url;
+    if (!url) return;
+    liveES = new EventSource(url);
+    liveES.onmessage = (e) => {
+      let f;
+      try { f = JSON.parse(e.data); } catch (err) { return; }
+      if (window.PungVisuals) PungVisuals.live(f);
+      if (frame && frameSubscribed) toFrame({ type: "live", frame: f });
+    };
+  }
+  document.addEventListener("visibilitychange", liveConnect);
+
   async function loadPanel() {
+    state.pics = {};
+    liveConnect(); // the last panel's stream ends
     const gen = ++panelGen;
     const r = await api(`${state.base}/component/${state.comp}`);
     if (gen !== panelGen) return;
@@ -222,6 +257,7 @@
     }
     applyEnabled();
     markShown();
+    liveConnect();
   }
 
   function toolButton(text, fn, danger) {
@@ -324,6 +360,7 @@
       sec.hidden = id ? !state.enabled.has(id) : !allOn;
     });
     if (frame) toFrame({ type: "compartments", enabled: [...state.enabled] });
+    liveConnect();
     if (window.PungVisuals) PungVisuals.redrawAll();
   }
   // showOnPush: a section's title or its screen clicked: the Push turns to
@@ -378,7 +415,8 @@
       wrap.innerHTML = `<div class="empty">This module publishes no parameters.</div>`;
       return wrap;
     }
-    banks.forEach((b) => {
+    state.pics = {};
+    banks.forEach((b, bi) => {
       const sec = document.createElement("div");
       sec.className = "bank";
       if (b.id) {
@@ -419,7 +457,10 @@
           if (byKey[b.keys[i]]) grid.appendChild(control(byKey[b.keys[i]]));
           continue;
         }
-        grid.appendChild(envelopeCard(g, b.keys.slice(g.start, g.end), byKey));
+        // its live state comes over the page's stream (liveConnect), under this key
+        const key = `w/${bi}/${g.kind}/${g.start}`;
+        state.pics[key] = { kind: g.kind, keys: g.keys, section: b.id || "" };
+        grid.appendChild(envelopeCard(g, b.keys.slice(g.start, g.end), byKey, key));
         i = g.end - 1;
       }
       sec.appendChild(grid);
@@ -443,7 +484,7 @@
   }
 
   // an envelope and its controls, one card spanning the row
-  function envelopeCard(g, keys, byKey) {
+  function envelopeCard(g, keys, byKey, liveKey) {
     const card = document.createElement("div");
     card.className = "envcard";
     const full = (k) => `${state.comp}:${k}`;
@@ -454,6 +495,7 @@
       label: (k) => `${(byKey[k] && (byKey[k].name || k)) || k} ${byKey[k] ? fmt(byKey[k], state.values[full(k)]) : ""}`,
       text: (k) => (byKey[k] ? fmt(byKey[k], state.values[full(k)]) : String(state.values[full(k)] ?? "")),
     });
+    fig.key = liveKey;
     card.appendChild(fig.el);
     const row = document.createElement("div");
     row.className = "envrow";
@@ -606,6 +648,7 @@
         break;
       case "subscribe":
         frameSubscribed = true;
+        liveConnect();
         toFrame({ type: "paramUpdate", params: Object.assign({}, state.values) });
         if (state.enabled) toFrame({ type: "compartments", enabled: [...state.enabled] });
         break;

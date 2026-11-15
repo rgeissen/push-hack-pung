@@ -234,6 +234,7 @@ type envTrack struct {
 	notes         uint64
 	held          int
 	prev          float64
+	prog          float64 // how far through its stage last frame
 	steady        int
 	trail         []envPoint
 }
@@ -359,7 +360,7 @@ func (f *liveFX) envelope(key string, g picGroup, e envShape, vals map[string]ov
 			}
 		}
 	case "hold":
-		prog = 0.5
+		prog = 0.5 // a hold has no level to measure: half way
 		if lvl < t.peak*0.9 {
 			t.stage = "decay"
 		}
@@ -381,7 +382,7 @@ func (f *liveFX) envelope(key string, g picGroup, e envShape, vals map[string]ov
 			t.stage = ""
 		}
 	case "sustain":
-		prog = 0.5
+		prog = 0 // it rests at the sustain point while the key is held
 		if !e.HasS {
 			t.stage = "release"
 		}
@@ -394,11 +395,14 @@ func (f *liveFX) envelope(key string, g picGroup, e envShape, vals map[string]ov
 	t.prev = lvl
 	if t.stage != before { // a stage just began: it starts at its start
 		prog = 0
-		if t.stage == "sustain" || t.stage == "hold" {
+		if t.stage == "hold" {
 			prog = 0.5
 		}
+	} else if prog < t.prog && t.stage != "sustain" {
+		prog = t.prog // within a stage the playhead only goes forward: the level's ripples are not the envelope going back
 	}
 	prog = math.Max(0, math.Min(1, prog))
+	t.prog = prog
 	if t.stage != "" {
 		t.trail = append(t.trail, envPoint{Stage: t.stage, Progress: prog})
 	} else if len(t.trail) > 0 {
@@ -575,26 +579,59 @@ func (u *surface) liveSlot() *Slot {
 	return u.cur()
 }
 
+// liveSess: the live session of the shown sound, kept ticking while the
+// Push view draws it (nil: none).
+func (u *surface) liveSess() *liveSession {
+	ls := u.h.liveSession(u.liveSlot())
+	if ls != nil {
+		ls.watchPush()
+	}
+	return ls
+}
+
 // liveWanted: the last frame drew something live and the sound is moving
-// (or a synced picture runs with Live's transport): draw the next one.
+// (or a picture follows Live's beat while it plays): draw the next one.
 func (u *surface) liveWanted() bool {
 	if !u.fxUsed {
 		return false
 	}
-	s := u.liveSlot()
-	if s == nil {
+	ls := u.liveSess()
+	return ls != nil && ls.frame().Active
+}
+
+// readLiveKeys: the values the shown compartment's screen says its module
+// drives (live_keys), as the session read them this tick. true: there are some.
+func (u *surface) readLiveKeys(ls *liveSession, out liveOut, p position, b *bank) bool {
+	if ls == nil || b == nil || p.Module == "" {
 		return false
 	}
-	t := &s.live
-	now := liveNow()
-	if t.held.Load() > 0 || now-time.Duration(t.lastOn.Load()) < liveLinger || now-time.Duration(t.lastOff.Load()) < liveLinger {
-		return true
+	c := u.ov.get(u.h.modulesDir, p.Module).compartment(b.Compartment)
+	if c == nil || len(c.liveKeys) == 0 {
+		return false
 	}
-	if peakDB(s.peak()) > liveSilentDB {
-		return true
+	prefix := p.Prefix
+	if u.liveActive() {
+		_, prefix = u.pungDevice()
 	}
-	_, _, playing := transportNow()
-	return playing && u.fxSynced // only a picture that moves with the beat moves without a sound
+	full := make([]string, len(c.liveKeys))
+	for i, k := range c.liveKeys {
+		full[i] = prefix + ":" + k
+		if v, ok := out.Keys[full[i]]; ok {
+			u.vals[u.valKey(p, k)] = v
+		}
+	}
+	ls.wantKeys(full)
+	return true
+}
+
+// liveInfo: what a module's screen or widget is told of the sound (v.$live,
+// docs/overrides.md).
+func (u *surface) liveInfo() map[string]any {
+	u.liveDrew = true
+	if u.liveOut.Info == nil {
+		return map[string]any{"known": false}
+	}
+	return u.liveOut.Info
 }
 
 // frameStats: what a frame costs (GET /api/surface/state: frame_draw_us,
@@ -616,61 +653,3 @@ func ewma(a *atomic.Int64, d time.Duration) {
 
 func (f *frameStats) draw(d time.Duration) { ewma(&f.drawUS, d); f.n.Add(1) }
 func (f *frameStats) push(d time.Duration) { ewma(&f.pushUS, d) }
-
-// readLiveKeys reads, every frame, the values the shown compartment's screen
-// says its module drives (live_keys). true: there were some.
-func (u *surface) readLiveKeys(p position, b *bank) bool {
-	if b == nil || p.Module == "" {
-		return false
-	}
-	c := u.ov.get(u.h.modulesDir, p.Module).compartment(b.Compartment)
-	if c == nil || len(c.liveKeys) == 0 {
-		return false
-	}
-	s := u.liveSlot()
-	if s == nil {
-		return false
-	}
-	prefix := p.Prefix
-	if u.liveActive() {
-		_, prefix = u.pungDevice()
-	}
-	for _, k := range c.liveKeys {
-		if v, ok := s.Get(prefix + ":" + k); ok {
-			u.vals[u.valKey(p, k)] = v
-		}
-	}
-	return true
-}
-
-// liveInfo: what a module's screen or widget is told of the sound (v.$live,
-// docs/overrides.md).
-func (u *surface) liveInfo() map[string]any {
-	f := &u.fx
-	if f.slot == nil {
-		return map[string]any{"known": false}
-	}
-	f.used = true
-	voices := []any{}
-	for _, v := range f.snap.Voices {
-		age := (f.snap.Now - v.On).Seconds()
-		rel := -1.0
-		if v.Off > 0 {
-			rel = (f.snap.Now - v.Off).Seconds()
-		}
-		voices = append(voices, map[string]any{"note": v.Note, "vel": v.Vel, "held": v.Off == 0, "age": age, "released": rel})
-	}
-	since := func(t time.Duration) float64 {
-		if t == 0 {
-			return -1
-		}
-		return (f.snap.Now - t).Seconds()
-	}
-	level := 0.0
-	if f.ref > 0 {
-		level = math.Min(1, f.lvl/f.ref)
-	}
-	return map[string]any{"known": true, "level": level, "db": dbOf(f.lvl), "held": f.snap.Held, "notes": f.snap.Notes,
-		"since_on": since(f.snap.LastOn), "since_off": since(f.snap.LastOff), "voices": voices,
-		"playing": f.playing, "beat": f.beat, "bpm": f.bpm, "t": f.snap.Now.Seconds()}
-}

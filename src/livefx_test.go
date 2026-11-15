@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/png"
@@ -189,7 +190,7 @@ func TestLFOPhase(t *testing.T) {
 func TestDrawLivePictures(t *testing.T) {
 	dir := os.Getenv("PUNG_SHOTS")
 	s := &Slot{}
-	var fx liveFX
+	ls := &liveSession{slot: s, pics: map[string]*livePic{}, subs: map[chan []byte]bool{}}
 	sc := slotColor(0)
 	env := picGroup{kind: "env", keys: map[string]string{"attack": "attack", "decay": "decay", "sustain": "sustain", "release": "release"}, start: 0, end: 4}
 	flt := picGroup{kind: "filter", keys: map[string]string{"cutoff": "cutoff", "resonance": "resonance"}, start: 4, end: 6}
@@ -216,11 +217,15 @@ func TestDrawLivePictures(t *testing.T) {
 			}
 		}
 		s.live.feedAudio(buf)
-		fx.look(s)
+		for _, g := range []picGroup{env, flt, lfo} {
+			ls.want(g.kind, g, vals)
+		}
+		ls.tick()
+		out := ls.frame()
 		img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
 		for _, g := range []picGroup{env, flt, lfo} {
 			r := image.Rect(g.start*colW+4, ovTop, g.end*colW-4, ovTop+ovHeight)
-			drawPictureLive(img, r, g, vals, "", sc, &fx, g.kind)
+			drawPictureLive(img, r, g, vals, "", sc, ls, out, g.kind)
 			for y := 0; y < scrH; y++ {
 				for x := 0; x < scrW; x++ {
 					if img.NRGBAAt(x, y).A != 0 && !(image.Point{x, y}.In(r)) && !inAny(x, y, env, flt, lfo) {
@@ -229,8 +234,8 @@ func TestDrawLivePictures(t *testing.T) {
 				}
 			}
 		}
-		if !fx.used {
-			t.Fatal("the live pictures did not say they were live")
+		if out.Envs["env"] == nil || out.LFOs["lfo"] == nil || (i > 2 && out.Spec == nil) {
+			t.Fatalf("frame %d: the session left a picture out: %+v", i, out)
 		}
 		if dir != "" {
 			f, _ := os.Create(filepath.Join(dir, fmt.Sprintf("live-%02d.png", i)))
@@ -248,4 +253,73 @@ func inAny(x, y int, gs ...picGroup) bool {
 		}
 	}
 	return false
+}
+
+// A session sends a page each frame while the sound moves, one as it comes
+// to rest, then only now and then; a page that is behind loses frames, it
+// never holds the session up.
+func TestSessionStreams(t *testing.T) {
+	s := &Slot{}
+	ls := &liveSession{slot: s, pics: map[string]*livePic{}, subs: map[chan []byte]bool{}}
+	ch := make(chan []byte, 2)
+	ls.subs[ch] = true
+	ls.want("e", picGroup{kind: "env", keys: map[string]string{"attack": "attack", "decay": "decay"}}, map[string]ovValue{})
+	drain := func() int {
+		n := 0
+		for {
+			select {
+			case <-ch:
+				n++
+			default:
+				return n
+			}
+		}
+	}
+	ph := 0.0
+	s.live.trackMidi([]byte{0x90, 60, 100})
+	got := 0
+	for i := 0; i < 10; i++ {
+		s.live.feedAudio(block(0.5, 220, 1470, &ph))
+		ls.tick()
+		got += drain()
+	}
+	if got != 10 {
+		t.Fatalf("moving: %d frames of 10", got)
+	}
+	for i := 0; i < 5; i++ { // a page that does not read: two frames wait, the rest are dropped
+		ls.tick()
+	}
+	if n := drain(); n != 2 {
+		t.Fatalf("a full page holds %d", n)
+	}
+	s.live.trackMidi([]byte{0x80, 60, 0})
+	for i := 0; i < 15; i++ { // the level falls to silence
+		ls.tick()
+	}
+	time.Sleep(liveLinger + 50*time.Millisecond) // and the linger runs out
+	for i := 0; i < 3; i++ {
+		ls.tick()
+	}
+	drain()
+	quiet := 0
+	for i := 0; i < liveHeartbeat*2; i++ {
+		ls.tick()
+		quiet += drain()
+	}
+	if quiet < 1 || quiet > 3 {
+		t.Fatalf("at rest: %d frames in %d ticks", quiet, liveHeartbeat*2)
+	}
+	var doc map[string]any
+	ls.tick()
+	if err := json.Unmarshal(webFrame(ls.frame()), &doc); err != nil || doc["envs"] == nil || doc["info"] == nil {
+		t.Fatalf("frame %v %v", doc, err)
+	}
+}
+
+func TestLFOExtrasFromTheModule(t *testing.T) {
+	all := []string{"lfo1_shape", "lfo1_rate", "lfo1_sync", "lfo1_keytrig", "lfo2_sync", "lfo1_rate_div", "cutoff"}
+	got := lfoGroupsLoose(all, "lfo1_shape")[0]
+	if got["sync"] != "lfo1_sync" || got["trig"] != "lfo1_keytrig" || got["div"] != "lfo1_rate_div" {
+		t.Fatal(got)
+	}
 }

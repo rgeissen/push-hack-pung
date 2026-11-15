@@ -408,7 +408,29 @@ func newProvider(h *Host, classes []*sclass) *provider {
 	for _, c := range classes {
 		p.classes[c.UID] = c
 	}
+	go p.keepLiveInSync()
 	return p
+}
+
+// liveResyncEvery: how often every device's values are read back and the
+// ones Live has wrong are reported. A module applies a patch in its own
+// time: Mini-JV boots a ROM and loads a patch through its emulated firmware
+// after the reads at 0.5 s and 3 s (loadState) and after the read 150 ms
+// after a change (SetOutside) have happened, and Live kept the old values;
+// on the Push, Tone 1 read as switched on with Mini-JV's A.Piano 2, where
+// only Tone 2 is (2026-11-15). Only what moved is reported.
+const liveResyncEvery = 3 * time.Second
+
+func (p *provider) keepLiveInSync() {
+	t := time.NewTicker(liveResyncEvery)
+	defer t.Stop()
+	for range t.C {
+		for _, d := range p.list() {
+			if !d.loading.Load() {
+				d.reportValues(false)
+			}
+		}
+	}
 }
 
 func (p *provider) freeSlot() int {

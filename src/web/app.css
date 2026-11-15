@@ -3,6 +3,7 @@
   --ink: #111110; --raise: #1a1a17; --raise2: #22211d; --line: #34332e;
   --fg: #ecebe5; --muted: #a3a198; --slot: #ff8a1f;
   --midi: #a48cff; --inst: #ff8a1f; --afx: #3fc9a2; --warn: #ff5a4e;
+  --mod: #3cc8e6; /* the sound as it plays: live marks (the Push's modulation colour) */
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: dark;
 }
@@ -341,3 +342,16 @@ body[data-view="library"] [data-view-of="devices"] { display: none !important; }
 .lib-sounds .ask { color: var(--warn); font-size: 13px; }
 .lib-sounds .rename { flex: 1 1 auto; min-width: 0; background: var(--ink); border: 1px solid var(--slot); border-radius: 6px; color: var(--fg); padding: 4px 8px; font: inherit; }
 .lib-empty { color: var(--muted); padding: 18px; border: 1px dashed var(--line); border-radius: 8px; }
+
+/* the sound, live (visuals.js live layers; the Push draws the same) */
+.env .live .gate { fill: var(--mod); }
+.env .live .gate.ringing { fill: color-mix(in srgb, var(--mod) 55%, #000); }
+.env .live .retrig { stroke: var(--mod); stroke-width: 2.4; }
+.env .live .lit { stroke: var(--mod); stroke-width: 3.4; stroke-linecap: round; }
+.env .live .hair { stroke: color-mix(in srgb, var(--mod) 60%, #000); stroke-width: 1; stroke-dasharray: 2 3; }
+.env .live .ring { fill: #000; }
+.env .live .dot { fill: var(--mod); }
+.env .live .trail { fill: var(--mod); }
+.env .live .letter.live { fill: var(--mod); }
+.env .spec .specfill { fill: #24262a; mix-blend-mode: lighten; }
+.env .spec .specline { stroke: #686c70; stroke-width: 1.2; }

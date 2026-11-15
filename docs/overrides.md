@@ -125,6 +125,12 @@ names keys of the module's own state (a voice's level, an LFO's phase) that Pung
 while that compartment shows, and gives in `v` like any other. Keep the module's `get_param` for them
 cheap and lock-free: it is asked 30 times a second.
 
+**A module's own web page, live**: while it is shown, Pung's page streams the sound and posts every frame
+to it as `{type: "live", frame}`: `frame.info` is `v.$live` above, `frame.keys` the module's `live_keys`
+(as `"synth:<key>"`), `frame.envs` / `frame.lfos` / `frame.spec` what Pung's own pictures show, `active`
+whether the sound moves. Frames come 30 times a second while it moves and now and then at rest; none come
+while the page is hidden. Mini-JV's page draws its chip's voices from `frame.keys["synth:live_voices"]`.
+
 ## Rules
 
 - **Earn the pixels.** A picture must be substantially better than the native page and reflect the nature

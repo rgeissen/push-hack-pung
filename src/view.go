@@ -33,10 +33,14 @@ func kindColor(kind string) color.NRGBA {
 func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	sc := slotColor(u.slot)
 	p, cm, b := u.currentBank()
-	// the sound as it is now, for the live pictures (livefx.go)
-	u.fx.look(u.liveSlot())
-	liveKeys := u.readLiveKeys(p, b)
-	defer func() { u.fxUsed, u.fxSynced = u.fx.used || liveKeys, u.fx.synced }()
+	// the sound as it is now, for the live pictures (livehub.go)
+	ls := u.liveSess()
+	u.liveOut, u.liveDrew = liveOut{}, false
+	if ls != nil {
+		u.liveOut = ls.frame()
+	}
+	liveKeys := u.readLiveKeys(ls, u.liveOut, p, b)
+	defer func() { u.fxUsed = u.liveDrew || liveKeys }()
 	if u.drawTakeover(img, p, cm, b, sc) {
 		return
 	}
@@ -148,8 +152,14 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 				continue
 			}
 			r := image.Rect(g.start*colW+4, ovTop, g.end*colW-4, ovTop+ovHeight)
-			key := fmt.Sprintf("%s/%s/%s/%d", p.Module, b.Name, g.kind, g.start)
-			drawPictureLive(img, r, g, u.ovValues(p, cm, g.keyList()), touchedKey, sc, &u.fx, key)
+			key := fmt.Sprintf("push/%s/%s/%s/%d", p.Module, b.Name, g.kind, g.start)
+			if g.kind == "lfo" {
+				g = withLFOExtras(g, cm)
+			}
+			if ls != nil {
+				u.liveDrew = true
+			}
+			drawPictureLive(img, r, g, u.ovValues(p, cm, g.keyList()), touchedKey, sc, ls, u.liveOut, key)
 			for c := g.start; c < g.end; c++ {
 				covered[c] = true
 			}

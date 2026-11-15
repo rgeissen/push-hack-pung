@@ -77,6 +77,7 @@ type Host struct {
 	probeMu    sync.Mutex
 	probeCache map[string]*compMeta // module id -> metadata, from a hidden chain instance
 
+	lives     liveHub // the live sessions: one per sound being watched (livehub.go)
 	stats     renderStats
 	transport transport
 	tempo     atomic.Uint64 // float64 bits, from Live (Remote Script) when known
