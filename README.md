@@ -123,7 +123,7 @@ layout, with the module catalog inside it: `catalog/catalog.json` and every pack
 102 modules). The Modules page installs from that copy, from the Push's own disk: nothing is downloaded
 from anywhere, and a new Pung release brings the new module versions. Firmware for JV-880 and Osirus is
 never in it: you add it yourself on the Modules page, as before. A catalog address set in Pung's settings
-(`catalog_url`, for instance `https://<your-site>/catalog.json`) still wins over the bundled one.
+(`catalog_url`) still wins over the bundled one; without either, Pung reads no catalog from the web.
 
 The modules' sources are this repository's `sources` release, one archive per build, and each module's
 entry in the catalog links its own. `scripts/release.sh --publish` uploads the sources it does not find

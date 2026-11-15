@@ -38,10 +38,7 @@ import (
 	"time"
 )
 
-const (
-	defaultCatalogURL = "https://<your-site>/catalog.json"
-	catalogTTL        = 10 * time.Minute
-)
+const catalogTTL = 10 * time.Minute
 
 // bundledCatalog: the catalog that came with Pung (catalog/ beside the
 // binary: catalog.json and its packages, release.sh puts them there), or ""
@@ -183,10 +180,9 @@ func (mm *modMgr) catalogURL() string {
 	if u := mm.h.settings.get().CatalogURL; u != "" {
 		return u
 	}
-	if u := bundledCatalog(); u != "" {
-		return u
-	}
-	return defaultCatalogURL
+	// no catalog on the web by default: one comes with Pung's release, and
+	// another is only ever read when a setting names it
+	return bundledCatalog()
 }
 
 // ---- the catalog ------------------------------------------------------------------
@@ -195,6 +191,12 @@ func (mm *modMgr) catalogURL() string {
 // Offline, the last copy, marked so.
 func (mm *modMgr) catalog(force bool) {
 	url := mm.catalogURL()
+	if url == "" {
+		mm.mu.Lock()
+		mm.catOffline, mm.catErr = true, "no module catalog: Pung's release carries one (catalog/ beside the binary), or name one in the settings"
+		mm.mu.Unlock()
+		return
+	}
 	mm.mu.Lock()
 	fresh := mm.cat != nil && !mm.catOffline && mm.catURL == url && time.Since(mm.catFetched) < catalogTTL
 	mm.mu.Unlock()

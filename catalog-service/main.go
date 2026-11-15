@@ -1,4 +1,4 @@
-// pung-catalog: the service behind https://<your-site>. It runs on the
+// pung-catalog: the service behind a Pung module site. It runs on the
 // DiskStation, in Docker, beside the web share it publishes to.
 //
 // It watches Schwung's catalogue for new modules and new releases, builds
@@ -51,9 +51,12 @@ func main() {
 	flag.StringVar(&c.SchwungCatalog, "schwung-catalog", envOr("PUNG_SCHWUNG_CATALOG",
 		"https://raw.githubusercontent.com/charlesvestal/schwung/main/module-catalog.json"), "Schwung's catalogue")
 	flag.StringVar(&c.SchwungRepo, "schwung-repo", envOr("PUNG_SCHWUNG_REPO", "https://github.com/charlesvestal/schwung.git"), "Schwung's repository")
-	flag.StringVar(&c.BaseURL, "base-url", envOr("PUNG_BASE_URL", "https://<your-site>"), "the public address of the site")
+	flag.StringVar(&c.BaseURL, "base-url", envOr("PUNG_BASE_URL", ""), "the public address of the site (required)")
 	flag.IntVar(&c.BuildJobs, "build-jobs", envInt("PUNG_BUILD_JOBS", 2), "compiles at once in a build")
 	flag.Parse()
+	if c.BaseURL == "" {
+		log.Fatal("pung-catalog: set PUNG_BASE_URL (or -base-url): the public address of the site it publishes")
+	}
 	if c.BuildJobs < 1 {
 		c.BuildJobs = 1
 	}

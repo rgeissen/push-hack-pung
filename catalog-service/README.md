@@ -1,6 +1,6 @@
 # pung-catalog: the catalog service on the DiskStation
 
-Keeps https://<your-site> current. It reads Schwung's catalogue, builds new modules and new releases for
+Keeps a Pung module site current (`PUNG_BASE_URL`, its public address: required). It reads Schwung's catalogue, builds new modules and new releases for
 the Push (natively: the DiskStation is x86_64 like the Push), puts them in a staging catalog, and publishes
 what the admin approves. The admin page is https://admin.<your-domain>.
 
@@ -39,7 +39,7 @@ The image and its data are already on the DiskStation:
 | Volume | `/volume2/docker/pung-catalog/data` → `/data` |
 | Volume | `/volume2/web/pung` → `/site` |
 | Restart policy | Unless stopped |
-| Environment | `TZ=Europe/Berlin` (the nightly check runs at 03:00 local time) |
+| Environment | `TZ=Europe/Berlin` (the nightly check runs at 03:00 local time), `PUNG_BASE_URL=https://<your-site>` |
 
 **3. The address.** DSM *Control Panel › Application Portal › Reverse Proxy › Create*:
 
@@ -50,7 +50,7 @@ The image and its data are already on the DiskStation:
 | Port | 443 | 8780 |
 
 On its *Custom Header* tab add `X-Forwarded-Proto` = `$scheme` (the session cookie is then marked Secure).
-The name needs a DNS record like `<your-site>`'s, and a certificate (*Control Panel › Security ›
+The name needs a DNS record like the site's, and a certificate (*Control Panel › Security ›
 Certificate*: add `admin.<your-domain>` to the Let's Encrypt one, or a new one).
 
 **4. The admin.** Open https://admin.<your-domain>. It asks for a setup code: it is in the container's

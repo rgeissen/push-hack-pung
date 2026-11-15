@@ -163,6 +163,14 @@ func main() {
 		} else if n > 0 {
 			log.Printf("devices: %d browser entries written", n)
 		}
+		// and their tags in Live's browser (abletontags.go); the catalog
+		// first, for a module the tag table does not name
+		h.mods.catalog(false)
+		if n, err := writeAbletonTags(*presets, "Pung", classes, h.tagsForClass); err != nil {
+			log.Printf("devices: browser tags: %v", err)
+		} else if n > 0 {
+			log.Printf("devices: browser tags written in %d folders", n)
+		}
 	}
 	h.prov = newProvider(h, sclasses)
 	devs := livedevice.NewServer(livedevice.Config{Name: "pung", Socket: *socket}, h.prov, classes)

@@ -50,7 +50,7 @@ SCHWUNG = os.environ.get("PUNG_SCHWUNG") or os.path.abspath(os.path.join(ROOT, "
 WORK = os.environ.get("PUNG_WORK") or os.path.join(ROOT, "build")
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--base-url", default="https://<your-site>")
+ap.add_argument("--base-url", required=True, help="the public address the catalog is served from")
 ap.add_argument("--out", default=os.path.join(WORK, "catalog"))
 ap.add_argument("ids", nargs="*")
 args = ap.parse_args()

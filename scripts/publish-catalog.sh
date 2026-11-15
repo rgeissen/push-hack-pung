@@ -1,6 +1,6 @@
 #!/bin/sh
 # Publishes the module catalog (scripts/build-catalog.py) to the DiskStation's
-# web share, where it is public: https://<your-site>/ (a virtual host on
+# web share, where it is public (a virtual host on
 # /volume2/web/pung)
 #
 #   scripts/publish-catalog.sh [--prune]
@@ -48,4 +48,4 @@ for e in c["modules"]: print(e["asset"]); print(e["source"]["archive"])' "$SRC/c
   printf '%s\n' "$keep" | $SSH "$HOST" "cd $DEST && sort > .keep && (ls modules/* source/* 2>/dev/null | sort | comm -23 - .keep | while read -r f; do rm -f -- \"\$f\" && echo \"pruned \$f\"; done); rm -f .keep"
 fi
 n=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["modules"]))' "$SRC/catalog.json")
-echo "published $n modules: https://<your-site>/"
+echo "published $n modules"
