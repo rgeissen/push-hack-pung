@@ -1,2 +1,7 @@
 contracts.json: the ui_hierarchy and chain_params of ten modules, as Schwung captured them
 (schwung/tests/fixtures/module-contracts.json). sounds_source_test.go reads their preset lists from it.
+
+fleet-contracts.json.gz: ui_hierarchy and chain_params of the 100 modules in
+Schwung's tests/fixtures/module-contracts.json (captured 2026-08-28), for
+TestFleetPictures. fleet-pictures.txt is what that test expects Pung to draw
+on every page of them (PUNG_UPDATE=1 rewrites it).

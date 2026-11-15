@@ -44,6 +44,9 @@ The frame starts at the widget's top left. Nothing you draw can leave it.
 | `g.poly(points, width, color)` | a curve through `[[x, y], ...]` (or `[x0, y0, x1, y1, ...]`) in one call |
 | `g.area(points, baseY, color)` | the area between such a curve and the line `y = baseY`, filled |
 | `g.envelope(x, y, w, h, {attack, decay, hold, sustain, slope, release, labels})` | Pung's envelope, the one the default view and the web page draw. Each stage is a key (its value and touch are read for you) or a number 0..1; a stage left out is not drawn; `slope` is a Virus-style sustain slope; `labels: true` adds the stage letters |
+| `g.filter(x, y, w, h, {cutoff, resonance, type})` | Pung's filter response. `cutoff` and `resonance` are keys or numbers 0..1; `type` is a key or a name (`"LP 24 dB"`, `"HP"`, `"BandPass"`); without a type, a lowpass |
+| `g.lfo(x, y, w, h, {shape, rate})` | Pung's LFO: `shape` a key or a name (`"Sine"`, `"Saw Up"`, `"S&H"`), `rate` a key or a number 0..1 (1 to 5 cycles) |
+| `g.mix(x, y, w, h, [levels])` | Pung's mixer: a fader per level (a key or a number 0..1), and each one's share of the whole across the top |
 | `g.text(x, y, s, color, align[, maxWidth])` | small capitals (the label face); `y` is the baseline; align -1 left, 0 center, 1 right; with `maxWidth`, cut to fit it (ending in `.`) |
 | `g.value(x, y, s, color, align[, maxWidth])` | the larger value face; with `maxWidth`, a smaller face before a cut, and a number is never cut (`-24000` becomes `-24K`) |
 | `g.measure(s[, "value"])` | the width of `s` in pixels, in the label face or the value face |

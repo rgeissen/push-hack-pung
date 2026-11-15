@@ -412,7 +412,7 @@
       grid.className = "grid";
       // an envelope among the keys is drawn over its own controls, as on
       // the Push (visuals.js); the rest are plain controls, in order
-      const groups = window.PungVisuals ? PungVisuals.envelopeGroups(b.keys) : [];
+      const groups = window.PungVisuals ? PungVisuals.pictureGroups(b.keys) : [];
       for (let i = 0; i < b.keys.length; i++) {
         const g = groups.find((x) => x.start === i);
         if (!g) {
@@ -452,6 +452,7 @@
       value: (k) => state.values[full(k)],
       set: (k, v) => { setParam(full(k), v); syncControl(full(k), v, true); },
       label: (k) => `${(byKey[k] && (byKey[k].name || k)) || k} ${byKey[k] ? fmt(byKey[k], state.values[full(k)]) : ""}`,
+      text: (k) => (byKey[k] ? fmt(byKey[k], state.values[full(k)]) : String(state.values[full(k)] ?? "")),
     });
     card.appendChild(fig.el);
     const row = document.createElement("div");

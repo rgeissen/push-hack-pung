@@ -1,0 +1,136 @@
+# What Pung draws on every page of the fleet (TestFleetPictures; PUNG_UPDATE=1 rewrites)
+303 / MAIN: filter cutoff resonance
+6w6 / BD: env bd_decay bd_attack
+8w8 / BD: env bd_attack bd_decay
+8w8 / MA: env ma_attack ma_decay
+9w9 / BD: C 1/2: env bd_c_attack bd_c_decay
+9w9 / SD: C 1/2: env sd_c_attack sd_c_decay
+9w9 / LT: C 1/2: env lt_c_attack lt_c_decay
+9w9 / MT: C 1/2: env mt_c_attack mt_c_decay
+9w9 / HT: C 1/2: env ht_c_attack ht_c_decay
+aphex / MIXER: mix mix_esp mix_sub mix_noise mix_fb
+braids / MAIN: env attack decay sustain release
+braids / AMP ENVELOPE: env attack decay sustain release
+braids / FILTER: env f_attack f_decay f_sustain f_release
+braids / FILTER: filter cutoff resonance
+chiptune / MAIN: env env_attack env_decay env_sustain env_release
+chordism / MAIN: filter filter_cutoff filter_resonance
+chordism / FILTER: filter filter_cutoff filter_resonance filter_mode
+chordism / FILTER: env filter_env_attack filter_env_decay
+chordism / MODULATION: lfo lfo_shape lfo_rate
+chordism / MIXER: mix mix_1 mix_2 mix_3 mix_4
+denis / CONTROL: filter filter_cutoff filter_q
+denis / CONTROL: env attack decay sustain release
+dragonfly-hall / MAIN: mix dry_level early_level late_level
+ducker / MAIN: env attack hold release
+filter / MAIN: filter cutoff resonance
+fizzik / MAIN: filter cutoff resonance ftype
+fizzik / PATCH: filter cutoff resonance ftype
+fizzik / EXCITER: env exc_attack exc_decay
+forge / MIX: mix v1_lvl v2_lvl v3_lvl v4_lvl v5_lvl v6_lvl v7_lvl v8_lvl
+freak / FILTER: filter filter_mode filter_cutoff filter_resonance
+freak / LFO: lfo lfo_shape lfo_rate
+gate / MAIN: env attack hold release
+helm / MAIN: filter cutoff resonance
+helm / MAIN: env amp_attack amp_decay amp_sustain amp_release
+helm / DISTORTION / FIL: env fil_attack fil_decay fil_release fil_sustain
+helm / MOD 1/3: env mod_attack mod_decay mod_release mod_sustain
+hera / MAIN: filter vcf_cutoff vcf_resonance
+hera / MAIN: env attack decay sustain
+hera / DCO: mix saw_level pulse_level sub_level noise_level
+hera / VCF: filter vcf_cutoff vcf_resonance
+hera / ENVELOPE: env attack decay sustain release
+hush1 / MAIN: filter cutoff resonance
+hush1 / MAIN: env attack decay sustain release
+hush1 / FILTER: filter cutoff resonance
+hush1 / AMP ENVELOPE: env attack decay sustain release
+hush1 / FILTER ENVELOPE: env f_attack f_decay f_sustain f_release
+krautdrums / MAIN: mix lvl_bass lvl_conga lvl_tom1 lvl_tom2 lvl_claves lvl_snare lvl_cowbell lvl_cymbals
+krautdrums / KRAUT: mix lvl_bass lvl_conga lvl_tom1 lvl_tom2 lvl_claves lvl_snare lvl_cowbell lvl_cymbals
+minijv / MAIN: env macro_attack macro_decay macro_sustain macro_release
+minijv / TONE 0 2/12: filter nvram_tone_0_cutofffrequency nvram_tone_0_resonance nvram_tone_0_filtermode
+minijv / TONE 0 3/12: lfo nvram_tone_0_lfo1form nvram_tone_0_lfo1rate
+minijv / TONE 0 4/12: lfo nvram_tone_0_lfo2form nvram_tone_0_lfo2rate
+minijv / TONE 1 2/12: filter nvram_tone_1_cutofffrequency nvram_tone_1_resonance nvram_tone_1_filtermode
+minijv / TONE 1 3/12: lfo nvram_tone_1_lfo1form nvram_tone_1_lfo1rate
+minijv / TONE 1 4/12: lfo nvram_tone_1_lfo2form nvram_tone_1_lfo2rate
+minijv / TONE 2 2/12: filter nvram_tone_2_cutofffrequency nvram_tone_2_resonance nvram_tone_2_filtermode
+minijv / TONE 2 3/12: lfo nvram_tone_2_lfo1form nvram_tone_2_lfo1rate
+minijv / TONE 2 4/12: lfo nvram_tone_2_lfo2form nvram_tone_2_lfo2rate
+minijv / TONE 3 2/12: filter nvram_tone_3_cutofffrequency nvram_tone_3_resonance nvram_tone_3_filtermode
+minijv / TONE 3 3/12: lfo nvram_tone_3_lfo1form nvram_tone_3_lfo1rate
+minijv / TONE 3 4/12: lfo nvram_tone_3_lfo2form nvram_tone_3_lfo2rate
+moog / MAIN: filter cutoff resonance
+moog / MAIN: env attack decay sustain release
+moog / NOISE / F +: env f_attack f_decay f_sustain f_release
+mrsample / MAIN: filter filter_cutoff filter_res
+mrsample / FILTER: filter filter_type filter_cutoff filter_res
+noisemaker / MAIN: filter cutoff resonance
+noisemaker / MACROS: filter cutoff resonance
+noisemaker / OSCILLATORS: mix osc1_vol osc2_vol osc3_vol
+noisemaker / FILTER: filter filter_type cutoff resonance
+noisemaker / FILTER ENV: filter cutoff resonance
+noisemaker / LFO 1: lfo lfo1_wave lfo1_rate
+noisemaker / LFO 2: lfo lfo2_wave lfo2_rate
+noisemaker / ENV 3 (FREE): filter cutoff resonance
+noisemaker / ENV DRAW: filter cutoff resonance
+nusaw / MAIN: filter cutoff resonance
+nusaw / MAIN: env attack decay sustain release
+nusaw / F: env f_attack f_decay f_sustain f_release
+obxd / MAIN: filter cutoff resonance
+obxd / MAIN: env attack decay sustain release
+obxd / FILTER: filter cutoff resonance
+obxd / FILTER ENV: env f_attack f_decay f_sustain f_release
+obxd / AMP ENV: env attack decay sustain release
+osirus / MAIN: env flt_attack flt_decay flt_sustain flt_release
+osirus / FILTER ENV: env flt_attack flt_decay flt_sustain flt_release
+osirus / AMP ENV: env amp_attack amp_decay amp_sustain amp_release
+osirus / LFO 1: lfo lfo1_rate lfo1_shape
+osirus / LFO 2: lfo lfo2_rate lfo2_shape
+osirus / LFO 3: lfo lfo3_rate lfo3_shape
+pushnpull / FILTER: filter cutoff resonance
+rex / MAIN: env attack decay sustain release
+sfz / MORE 1: env attack decay sustain release
+sfz / FILTER: filter cutoff reso
+signal / MIX: mix v1_level v2_level v3_level v4_level
+slicer / GLOBAL: env global_attack global_decay
+slicer / SLICE: env slice_attack slice_decay
+surge / MAIN: filter filter1_cutoff filter1_resonance
+surge / MAIN: env env1_attack env1_decay env1_sustain env1_release
+surge / LFO 0: DELAY: lfo lfo0_shape lfo0_rate
+surge / LFO 0: env lfo0_attack lfo0_hold lfo0_decay lfo0_sustain lfo0_release
+surge / LFO 1: DELAY: lfo lfo1_shape lfo1_rate
+surge / LFO 1: env lfo1_attack lfo1_hold lfo1_decay lfo1_sustain lfo1_release
+surge / LFO 2: DELAY: lfo lfo2_shape lfo2_rate
+surge / LFO 2: env lfo2_attack lfo2_hold lfo2_decay lfo2_sustain lfo2_release
+surge / LFO 3: DELAY: lfo lfo3_shape lfo3_rate
+surge / LFO 3: env lfo3_attack lfo3_hold lfo3_decay lfo3_sustain lfo3_release
+surge / LFO 4: DELAY: lfo lfo4_shape lfo4_rate
+surge / LFO 4: env lfo4_attack lfo4_hold lfo4_decay lfo4_sustain lfo4_release
+surge / LFO 5: DELAY: lfo lfo5_shape lfo5_rate
+surge / LFO 5: env lfo5_attack lfo5_hold lfo5_decay lfo5_sustain lfo5_release
+surge / LFO 6: DELAY: lfo lfo6_shape lfo6_rate
+surge / LFO 6: env lfo6_attack lfo6_hold lfo6_decay lfo6_sustain lfo6_release
+surge / LFO 7: DELAY: lfo lfo7_shape lfo7_rate
+surge / LFO 7: env lfo7_attack lfo7_hold lfo7_decay lfo7_sustain lfo7_release
+surge / LFO 8: DELAY: lfo lfo8_shape lfo8_rate
+surge / LFO 8: env lfo8_attack lfo8_hold lfo8_decay lfo8_sustain lfo8_release
+surge / LFO 9: DELAY: lfo lfo9_shape lfo9_rate
+surge / LFO 9: env lfo9_attack lfo9_hold lfo9_decay lfo9_sustain lfo9_release
+surge / LFO 10: DELAY: lfo lfo10_shape lfo10_rate
+surge / LFO 10: env lfo10_attack lfo10_hold lfo10_decay lfo10_sustain lfo10_release
+surge / LFO 11: DELAY: lfo lfo11_shape lfo11_rate
+surge / LFO 11: env lfo11_attack lfo11_hold lfo11_decay lfo11_sustain lfo11_release
+tablor / FILTER: filter flt_freq flt_res flt_type
+tablor / LFO 1: lfo lfo1_shape lfo1_rate
+tablor / LFO 2: lfo lfo2_shape lfo2_rate
+weird-dreams / V 1 / V 2 + 1/2: mix v1_vol v2_vol v3_vol v4_vol v5_vol v6_vol v7_vol v8_vol
+weird-dreams / V 1 2/3: env v1_nattack v1_ndecay
+weird-dreams / V 2 2/3: env v2_nattack v2_ndecay
+weird-dreams / V 3 2/3: env v3_nattack v3_ndecay
+weird-dreams / V 4 2/3: env v4_nattack v4_ndecay
+weird-dreams / V 5 2/3: env v5_nattack v5_ndecay
+weird-dreams / V 6 2/3: env v6_nattack v6_ndecay
+weird-dreams / V 7 2/3: env v7_nattack v7_ndecay
+weird-dreams / V 8 2/3: env v8_nattack v8_ndecay
+wurl / MAIN: env attack decay

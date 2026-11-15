@@ -107,6 +107,18 @@ main { padding: 16px max(16px, env(safe-area-inset-left)) 48px; max-width: 1180p
 .env .grab:active { cursor: grabbing; }
 .env .letter { fill: var(--muted); font: 600 10px var(--mono); text-anchor: middle; }
 .env .letter.hot { fill: var(--slot); }
+.env .grid { stroke: #232320; stroke-width: 1; }
+.env .guide.hot { stroke: var(--slot); stroke-width: 1.5; }
+.env.pic-filter .seg, .env.pic-lfo .seg { stroke-linejoin: round; }
+.env.pic-filter .seg.hot, .env.pic-lfo .seg.hot { stroke-width: 3.4; }
+.env .track { fill: var(--line); }
+.env .bar { fill: color-mix(in srgb, var(--slot) 45%, #000); }
+.env .cap { fill: var(--fg); }
+.env .share.s0 { fill: color-mix(in srgb, var(--fg) 75%, #000); }
+.env .share.s1 { fill: color-mix(in srgb, var(--fg) 50%, #000); }
+.env .share.none { fill: none; stroke: var(--line); }
+.env .bar.hot, .env .cap.hot, .env .share.hot { fill: var(--slot); }
+.env.unknown .cap, .env.unknown .share, .env.unknown .bar { fill: var(--muted); }
 .env.unknown .fill { fill: #262624; }
 .env.unknown .seg, .env.unknown .handle { stroke: var(--muted); fill: var(--muted); }
 .env.unknown .seg { fill: none; }

@@ -382,6 +382,87 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		drawEnvelope(img, image.Rect(int(x), int(y), int(x+ww), int(y+hh)), e, sc)
 		return goja.Undefined()
 	})
+	// Pung's filter, LFO and mix (visuals_shapes.go), as the default view
+	// and the web page draw them. A part is a KEY (value and touch read for
+	// you) or a number 0..1; a filter's type and an LFO's shape may also be
+	// a name ("LP 24 dB", "Saw Up").
+	part := func(o map[string]any, role string, touch *string) (ovValue, bool) {
+		switch v := o[role].(type) {
+		case string:
+			if ov, ok := vals[v]; ok {
+				if v == touched {
+					*touch = role
+				}
+				return ov, true
+			}
+			if role == "type" || role == "shape" {
+				return ovValue{Display: v, Known: true}, true // a name
+			}
+			return ovValue{}, true // a key this screen was not given: unknown
+		case int64:
+			return ovValue{Frac: float64(v), Known: true}, true
+		case float64:
+			return ovValue{Frac: v, Known: true}, true
+		}
+		return ovValue{}, false
+	}
+	rectOf := func(call goja.FunctionCall) image.Rectangle {
+		x, y := call.Argument(0).ToFloat(), call.Argument(1).ToFloat()
+		return image.Rect(int(x), int(y), int(x+call.Argument(2).ToFloat()), int(y+call.Argument(3).ToFloat()))
+	}
+	g.Set("filter", func(call goja.FunctionCall) goja.Value {
+		f := filterShape{Known: true, Kind: "lp", Poles: 2}
+		if o, ok := call.Argument(4).Export().(map[string]any); ok {
+			if v, ok := part(o, "cutoff", &f.Touched); ok {
+				f.Cutoff, f.Known = v.Frac, f.Known && v.Known
+			}
+			if v, ok := part(o, "resonance", &f.Touched); ok {
+				f.Res, f.HasRes, f.Known = v.Frac, true, f.Known && v.Known
+			}
+			if v, ok := part(o, "type", &f.Touched); ok {
+				f.TypeName = v.Display
+				if f.TypeName == "" {
+					f.TypeName = v.Value
+				}
+				f.Kind, f.Poles = filterKind(f.TypeName)
+				f.Known = f.Known && v.Known
+			}
+		}
+		drawFilter(img, rectOf(call), f, sc)
+		return goja.Undefined()
+	})
+	g.Set("lfo", func(call goja.FunctionCall) goja.Value {
+		l := lfoShape{Known: true}
+		if o, ok := call.Argument(4).Export().(map[string]any); ok {
+			if v, ok := part(o, "shape", &l.Touched); ok {
+				l.WaveName = v.Display
+				if l.WaveName == "" {
+					l.WaveName = v.Value
+				}
+				l.Wave, l.Known = lfoWave(l.WaveName), l.Known && v.Known
+			}
+			if v, ok := part(o, "rate", &l.Touched); ok {
+				l.Rate, l.Known = v.Frac, l.Known && v.Known
+			}
+		}
+		drawLFO(img, rectOf(call), l, sc)
+		return goja.Undefined()
+	})
+	g.Set("mix", func(call goja.FunctionCall) goja.Value {
+		m := mixShape{Known: true, Touched: -1}
+		if list, ok := call.Argument(4).Export().([]any); ok {
+			for i, it := range list {
+				t := ""
+				v, _ := part(map[string]any{"x": it}, "x", &t)
+				if t != "" {
+					m.Touched = i
+				}
+				m.Levels, m.Known = append(m.Levels, v.Frac), m.Known && v.Known
+			}
+		}
+		drawMix(img, rectOf(call), m, sc)
+		return goja.Undefined()
+	})
 	// g.text / g.value (x, y, s, colour, align[, maxWidth]): with a width,
 	// the text is fitted to it as Pung fits its own (draw.go): a label cut,
 	// a value in a smaller face before it is cut, a number never cut

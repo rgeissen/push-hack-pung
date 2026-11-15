@@ -21,8 +21,9 @@ The Push and the web page are two views of that one structure, and each one does
 1. **Same names, same order.** A compartment, page or parameter has one name, used on both surfaces. The
    Push writes it in capitals; that is the only difference. Never rename on one surface only.
 2. **Same pictures.** A structure Pung recognizes (§4) is drawn from one rule set, in Go for the Push
-   (`src/visuals.go`) and in JavaScript for the web (`src/web/visuals.js`). The two files carry the same
-   constants. A change to one is a change to both, in the same commit.
+   (`src/visuals.go`, `src/visuals_shapes.go`) and in JavaScript for the web (`src/web/visuals.js`). The
+   files carry the same constants. A change to one is a change to both, in the same commit;
+   `make test-visuals` checks them against each other on every page of the fleet.
 3. **Same state.** A value turned on the Push moves on the page within half a second, and the other way
    round. The compartment the Push shows is marked on the page, and clicking a section's title turns the
    Push to it.
@@ -142,6 +143,9 @@ Where a page's keys describe a structure Pung knows, Pung draws it over those kn
 | Structure | Recognized when | Drawn as |
 |---|---|---|
 | **Envelope** | adjacent keys ending in `attack`, `decay`, `hold`, `sustain`, `release` with one shared prefix (`amp_`, `f_`, `filter_`, `macro_`...), in any order; `sustain_time` beside a sustain is a sustain slope | the envelope, filled; handles where stages meet; the sustain level as a guide; stage letters under the segments |
+| **Filter** | a cutoff (`cutoff`, `cutofffrequency`, or `freq` after a filter's name: `flt_freq`) beside its resonance (`resonance`, `reso`, `res`, `q`) or its type, the same filter named (`filter1_cutoff`, `filter1_resonance`). A type on the page that names a filter (`filter_type`, `filter1_mode`, `ftype`) gives the response, and joins the picture when it sits beside it; without one the filter is a 12 dB lowpass. A `macro_cutoff` is not a filter | the response over three decades, filled; the cutoff a handle on the curve; 0 dB dashed. The type's slope is read from its name (`LP 24 dB`, `LP12`, `Analog 4P`, `Ladder`). A type Pung cannot read (`Comb`) draws no curve, only its name |
+| **LFO** | a wave (`shape`, `wave`, `waveform`) beside its rate (`rate`, `speed`, `freq`), sharing a prefix that names an LFO (`lfo1_`, `lfo_`) | the wave around a centre line, filled toward it, 1 to 5 cycles as the rate knob goes. A wave Pung does not know exactly (`Skewed Sine`, `Wave 3`) is drawn as its name |
+| **Mix** | three or more adjacent levels of different sources, named alike (`saw_level`, `pulse_level`, `sub_level`; `level_o1`, `level_o2`, `level_noise`; `mix_1`...). Not an envelope's levels, an FM operator's (a modulator's level is a depth), or effects' | a fader over each source's knob, and across the top each source's share of the whole |
 
 The rules for a recognized structure:
 
@@ -153,8 +157,9 @@ The rules for a recognized structure:
   milliseconds: the shape is what the hand turns, and a 10-second release would squeeze everything else
   to a line. Without a sustain, stages are drawn against their longest, so short means short.
 - **A module's own widget wins** over Pung's picture for the same columns.
-- Structures to add next, under the same rules: a filter response (cutoff, resonance, type), an LFO
-  shape (wave, rate), a mix of sources (levels side by side).
+- **What the fleet gets**: `src/testdata/fleet-pictures.txt` lists every picture Pung draws on every
+  page of the 100 modules Schwung captured (`TestFleetPictures`), so a rule's change shows module by
+  module. `make test-visuals` checks that the web page finds the same pictures on all of them.
 
 ### States
 
@@ -233,7 +238,8 @@ If it only restyles the default page, it does not ship.
 
 ### Rules
 
-1. **Reuse Pung's pictures** for the structures Pung knows: `g.envelope`, not a hand-drawn envelope. The
+1. **Reuse Pung's pictures** for the structures Pung knows: `g.envelope`, `g.filter`, `g.lfo`, `g.mix`,
+   not hand-drawn ones. The
    user has learned the picture on every other module, and it is the picture the web page draws.
 2. **Respect the bands.** Draw in your band (952 x 86). The header and the name and value row belong to
    Pung.
@@ -264,7 +270,7 @@ If it only restyles the default page, it does not ship.
 | Dexed | Operator 1-6 EG and Key Scale, Pitch EG | page screens | 4-rate/4-level envelopes over their knobs; keyboard level scaling over a keyboard |
 | Osirus | Filters, Envelopes | band screens | the filter routing as a signal path with both responses; both envelopes with the sustain slope in words |
 | OB-Xd, Braids | (pages) | default + widgets | their own widgets over their knobs |
-| Hera and every other module | (pages) | default | Pung's envelope wherever one is recognized; pages from the module's sections or names |
+| Hera and every other module | (pages) | default | Pung's envelope, filter, LFO and mix wherever one is recognized; pages from the module's sections or names |
 
 ## 6. The web page
 

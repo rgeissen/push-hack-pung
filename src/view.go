@@ -138,16 +138,12 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		// Pung's own pictures, for structures it recognizes, over columns no
 		// module widget took (visuals.go)
 		starts := make([]bool, 9)
-		for _, g := range envelopeGroups(b.Keys) {
+		for _, g := range pictureGroups(b.Keys) {
 			if slices.Contains(covered[g.start:g.end], true) {
 				continue
 			}
-			keys := make([]string, 0, len(g.keys))
-			for _, k := range g.keys {
-				keys = append(keys, k)
-			}
 			r := image.Rect(g.start*colW+4, ovTop, g.end*colW-4, ovTop+ovHeight)
-			drawEnvelope(img, r, envShapeOf(g, u.ovValues(p, cm, keys), touchedKey), sc)
+			drawPicture(img, r, g, u.ovValues(p, cm, g.keyList()), touchedKey, sc)
 			for c := g.start; c < g.end; c++ {
 				covered[c] = true
 			}

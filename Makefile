@@ -15,7 +15,7 @@ DOCKER  := docker run --rm --platform linux/amd64 \
 LDFLAGS := -s -w -X main.buildVersion=$(VERSION) -linkmode external \
 	-extldflags -Wl,--dynamic-linker=/lib/ld-linux-x86-64.so.2
 
-.PHONY: all image build modules catalog-modules test vet deploy clean
+.PHONY: all image build modules catalog-modules test test-visuals vet deploy clean
 
 all: build
 
@@ -31,6 +31,12 @@ build:
 
 test:
 	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go test ./..."
+
+# web/visuals.js against visuals_shapes.go, on every page of the fleet (needs node)
+test-visuals:
+	mkdir -p build
+	$(DOCKER) -w /w/src $(IMAGE) sh -c "PUNG_FLEET_PAGES=/w/build CGO_ENABLED=1 go test -run FleetPictures ."
+	node scripts/visuals-parity.js src/web/visuals.js build/fleet-pages.json
 
 vet:
 	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go vet ./..."
