@@ -102,6 +102,25 @@ func TestShippedOverlaysDraw(t *testing.T) {
 				}
 			}
 		}
+		// a page's own screen, as the default view draws it (a band)
+		for _, c := range set.compartments {
+			for pi, pg := range c.pages {
+				if pg.screen == nil {
+					continue
+				}
+				scr, keys := c.pageScreen(pi)
+				img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+				pl := placement{w: &ovWidget{keys: keys, draw: scr}, col: 0, span: 8, info: map[string]any{"$knobs": pg.keys, "$page": pi}}
+				if !set.render(img, pl, vals(keys), pg.keys[0], slotColor(0)) {
+					t.Errorf("%s/%s page %s: %s", e.Name(), c.id, pg.label, set.failed)
+				}
+				if dir := os.Getenv("PUNG_SHOTS"); dir != "" && pi < 12 {
+					f, _ := os.Create(filepath.Join(dir, fmt.Sprintf("%s-%s-page%d.png", e.Name(), c.id, pi)))
+					png.Encode(f, img)
+					f.Close()
+				}
+			}
+		}
 		for _, w := range set.widgets {
 			pl := placement{w: w, col: 0, span: len(w.keys)}
 			if !set.render(img, pl, vals(w.keys), w.keys[0], cFg) {

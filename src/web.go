@@ -130,7 +130,7 @@ func (h *Host) selectedDevice() (int, string) {
 		}
 	}
 	h.selMu.Lock()
-	h.selKey, h.selDev = key, n
+	h.selKey, h.selDev, h.selName = key, n, name
 	h.selMu.Unlock()
 	return n, trackName
 }
@@ -166,7 +166,10 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 				out = append(out, e)
 			}
 		}
-		writeJSON(w, 200, map[string]any{"ok": true, "devices": out, "selected": sel})
+		h.selMu.Lock()
+		why := map[string]any{"key": h.selKey, "name": h.selName}
+		h.selMu.Unlock()
+		writeJSON(w, 200, map[string]any{"ok": true, "devices": out, "selected": sel, "resolved": why})
 	})
 	mux.HandleFunc("GET /api/devices/{n}/component/{comp}", func(w http.ResponseWriter, r *http.Request) {
 		if d, ok := h.deviceFromPath(w, r); ok {

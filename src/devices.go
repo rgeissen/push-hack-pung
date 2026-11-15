@@ -564,6 +564,11 @@ func (d *device) resyncLive() {
 		return
 	}
 	for idx, m := range d.c.meta {
+		// Live's list is capped (livedevice: 256); a module can have more
+		// (Mini-JV: 433). Only what Live has can be reported.
+		if idx >= len(d.c.Params) || idx >= len(d.norms) {
+			break
+		}
 		if m == nil || d.c.role[idx] != "" || d.c.gateIdx[idx] != 0 {
 			continue // selectors, and a switchable MIDI effect's (its key was reported)
 		}

@@ -314,8 +314,9 @@ func (u *surface) routes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "focused": u.focused.Load(), "view": u.view, "slot": u.slot + 1,
 			"device_row": row, "device_row_selected": rowSel, "bank_list": u.bankList,
-			"fallback": map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
-			"position": p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
+			"fallback":          map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
+			"module_ui_draw_us": u.overlayDrawUS(p.Module),
+			"position":          p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
 			"octave": u.octave, "toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,
 			"live_path": func() []int {
 				if u.live == nil {
@@ -595,7 +596,7 @@ func withCompartments(cm *compMeta, comps []*ovCompartment) *compMeta {
 			pages = []ovPage{{keys: c.keys}}
 		}
 		n := len(out.Banks)
-		for _, pg := range pages {
+		for pi, pg := range pages {
 			var keys []string
 			for _, k := range pg.keys {
 				if cm.Params[k] != nil {
@@ -611,7 +612,7 @@ func withCompartments(cm *compMeta, comps []*ovCompartment) *compMeta {
 				if i > 0 {
 					name = fmt.Sprintf("%s %d", name, i/8+1)
 				}
-				out.Banks = append(out.Banks, bank{Name: name, Keys: keys[i:min(i+8, len(keys))], Compartment: c.id, CompLabel: c.label})
+				out.Banks = append(out.Banks, bank{Name: name, Keys: keys[i:min(i+8, len(keys))], Compartment: c.id, CompLabel: c.label, Page: pi})
 			}
 		}
 		if len(out.Banks) == n && c.screen != nil {
@@ -652,6 +653,7 @@ func (u *surface) compartmentsOf(module string) ([]compartmentInfo, string) {
 	if set := u.ov.get(u.h.modulesDir, module); set != nil && set.failed == "" && len(set.compartments) > 0 {
 		for _, c := range set.compartments {
 			out = append(out, compartmentInfo{ID: c.id, Label: c.label, Keys: c.keys, Custom: c.screen != nil, Takeover: c.takeover})
+			// (a page's own screen does not make the compartment's web section a screen)
 		}
 	} else if m, ok := findModule(u.h.modulesDir, module); ok {
 		if cm, _ := u.h.probeMeta(m); cm != nil {
@@ -1681,7 +1683,7 @@ func (u *surface) compartmentScreen(module, id string, get func(string) (string,
 			break
 		}
 	}
-	pl := placement{w: &ovWidget{keys: comp.screenKeys(), draw: comp.screen}, span: 8, full: comp.takeover}
+	pl := placement{w: &ovWidget{keys: comp.screenKeys(), draw: comp.screen}, span: 8, full: comp.takeover, offline: true}
 	if b != nil {
 		pl.info = u.takeoverInfo(position{Module: module, Name: m.Name}, cm, b, comp)
 	}
@@ -1692,4 +1694,12 @@ func (u *surface) compartmentScreen(module, id string, get func(string) (string,
 		return img.SubImage(image.Rect(4, ovTop, scrW-4, ovTop+ovHeight)).(*image.NRGBA), nil
 	}
 	return img, nil
+}
+
+// overlayDrawUS: how long the module's picture took to draw last time.
+func (u *surface) overlayDrawUS(module string) int64 {
+	if set := u.ov.get(u.h.modulesDir, module); set != nil {
+		return set.lastDrawUS
+	}
+	return 0
 }

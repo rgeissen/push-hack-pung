@@ -38,6 +38,7 @@ type bank struct {
 	Keys        []string // up to 8; "" is an empty column
 	Compartment string   // the module's compartment this page belongs to ("": a generic bank)
 	CompLabel   string   // that compartment's label
+	Page        int      // the compartment's page it comes from (pages[Page])
 }
 
 type compMeta struct {

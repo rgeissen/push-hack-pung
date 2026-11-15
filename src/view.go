@@ -106,12 +106,14 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		if u.touched >= 0 && u.touched < len(b.Keys) {
 			touchedKey = b.Keys[u.touched]
 		}
-		if comp := set.compartment(b.Compartment); comp != nil && comp.screen != nil && set.failed == "" && !set.off {
-			// a custom screen: the compartment draws the whole band, with
-			// every one of its keys' values; the encoders' names and values
-			// stay under it
-			pl := placement{w: &ovWidget{keys: comp.keys, draw: comp.screen}, col: 0, span: 8}
-			if set.render(img, pl, u.ovValues(p, cm, comp.keys), touchedKey, sc) {
+		comp := set.compartment(b.Compartment)
+		screen, skeys := comp.pageScreen(b.Page)
+		if screen != nil && set.failed == "" && !set.off {
+			// a custom screen: the compartment (or this page of it) draws the
+			// whole band, with every one of its keys' values; the encoders'
+			// names and values stay under it
+			pl := placement{w: &ovWidget{keys: skeys, draw: screen}, col: 0, span: 8, info: u.takeoverInfo(p, cm, b, comp)}
+			if set.render(img, pl, u.ovValues(p, cm, skeys), touchedKey, sc) {
 				for c := range covered {
 					covered[c] = true
 				}

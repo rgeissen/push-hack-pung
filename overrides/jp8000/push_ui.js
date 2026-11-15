@@ -27,6 +27,13 @@ function pre(p, list) { return list.map(function (k) { return p + k; }); }
 function known(v, k) { return v[k] && v[k].known; }
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : "--"; }
 function fr(v, k, d) { return known(v, k) ? v[k].frac : d; }
+// the mode, as an index, whether the module says 1 or "Performance"
+function modeIndex(v) {
+  if (!known(v, "mode")) return -1;
+  var s = String(v.mode.value).toLowerCase(), n = parseInt(s, 10);
+  if (!isNaN(n)) return n;
+  return s.indexOf("perf") === 0 ? 1 : s.indexOf("patch") === 0 ? 0 : s.indexOf("sys") === 0 ? 2 : -1;
+}
 
 // the hardware's patch number: bank letter, group 1-8, number 1-8
 function patchNumber(v) {
@@ -41,7 +48,7 @@ function lcd(g, v) {
   var x = 8, y = 6, w = 444, h = 70;
   g.fill(x - 1, y - 1, w + 2, h + 2, LCD_EDGE);
   g.fill(x, y, w, h, LCD_BG);
-  var perf = known(v, "mode") && parseInt(v.mode.value, 10) === 1;
+  var perf = modeIndex(v) === 1;
   var name = perf ? disp(v, "performance_name") : disp(v, "patch_name");
   var num = perf ? "PERF" : patchNumber(v);
   g.value(x + 14, y + 30, num, AMBER, -1);
@@ -67,7 +74,7 @@ function chip(g, x, y, s, on) {
 }
 
 function modeRow(g, v) {
-  var m = known(v, "mode") ? parseInt(v.mode.value, 10) : -1;
+  var m = modeIndex(v);
   var x = chip(g, 8, 84, "PATCH", m === 0);
   x = chip(g, x, 84, "PERFORM", m === 1);
   x += 10;

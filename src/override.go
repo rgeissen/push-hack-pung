@@ -54,11 +54,13 @@ import (
 )
 
 const (
-	ovTop        = 26
-	ovHeight     = 86
-	ovBudget     = 8 * time.Millisecond  // a frame's draw, held over time (ovOverruns)
-	ovHardBudget = 40 * time.Millisecond // a draw is stopped here, once is enough
-	ovOverruns   = 3
+	ovTop    = 26
+	ovHeight = 86
+	ovBudget = 8 * time.Millisecond // a frame's draw, held over time (ovOverruns)
+	// a takeover draws what Pung's own elements would have drawn as well
+	ovTakeoverBudget = 14 * time.Millisecond
+	ovHardBudget     = 40 * time.Millisecond // a draw is stopped here, once is enough
+	ovOverruns       = 3
 )
 
 type ovWidget struct {
@@ -83,6 +85,18 @@ type ovCompartment struct {
 	extraKeys []string
 }
 
+// pageScreen: the band screen for a compartment's page: the page's own,
+// else the compartment's; with the keys it is given.
+func (c *ovCompartment) pageScreen(page int) (goja.Callable, []string) {
+	if c == nil {
+		return nil, nil
+	}
+	if page >= 0 && page < len(c.pages) && c.pages[page].screen != nil {
+		return c.pages[page].screen, append(append([]string{}, c.pages[page].keys...), c.extraKeys...)
+	}
+	return c.screen, c.screenKeys()
+}
+
 // screenKeys: every key a compartment's screen is given.
 func (c *ovCompartment) screenKeys() []string {
 	return append(append([]string{}, c.keys...), c.extraKeys...)
@@ -90,8 +104,9 @@ func (c *ovCompartment) screenKeys() []string {
 
 // ovPage: one encoder page of a compartment (a card of its web section).
 type ovPage struct {
-	label string
-	keys  []string
+	label  string
+	keys   []string
+	screen goja.Callable // this page's own band screen (else the compartment's, else the default view)
 }
 
 type overrideSet struct {
@@ -102,6 +117,7 @@ type overrideSet struct {
 	compartments []*ovCompartment // in the order declared
 	failed       string           // why it is off; "" while it works
 	overruns     int              // frames in a row over ovBudget
+	lastDrawUS   int64            // the last Push draw, in microseconds (/api/surface/state)
 	off          bool             // the user chose the native UI
 }
 
@@ -183,6 +199,13 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 				if kv := o.Get("keys"); kv != nil && !goja.IsUndefined(kv) {
 					vm.ExportTo(kv, &pg.keys) //nolint:errcheck
 				}
+				if sv := o.Get("screen"); sv != nil && !goja.IsUndefined(sv) {
+					fn, ok := goja.AssertFunction(sv)
+					if !ok {
+						panic(vm.NewTypeError("push.compartment: a page's screen must be a function"))
+					}
+					pg.screen = fn
+				}
 				c.pages = append(c.pages, pg)
 				c.keys = append(c.keys, pg.keys...)
 			}
@@ -237,6 +260,7 @@ type placement struct {
 	w         *ovWidget
 	col, span int
 	full      bool           // a takeover: the whole panel, from 0,0
+	offline   bool           // for the web page: its time does not count against the Push's budget
 	info      map[string]any // more for v: $page, $pages, $knobs... (takeover)
 }
 
@@ -394,9 +418,20 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	_, err := p.w.draw(goja.Undefined(), g, v, vm.ToValue(t))
 	timer.Stop()
 	vm.ClearInterrupt()
-	if took := time.Since(start); err == nil && took > ovBudget {
+	if !p.offline {
+		s.lastDrawUS = time.Since(start).Microseconds()
+	}
+	budget := ovBudget
+	if p.full {
+		budget = ovTakeoverBudget
+	}
+	if took := time.Since(start); p.offline && err == nil {
+		// a web render runs beside the Push's, on a busy device: it is
+		// stopped at ovHardBudget like any draw, but never switches the
+		// Push's picture off for being slow
+	} else if err == nil && took > budget {
 		if s.overruns++; s.overruns >= ovOverruns {
-			err = fmt.Errorf("draw took %v, %d frames in a row over 8 ms", took.Round(time.Millisecond), s.overruns)
+			err = fmt.Errorf("draw took %v, %d frames in a row over %v", took.Round(time.Millisecond), s.overruns, budget)
 		}
 	} else if err == nil {
 		s.overruns = 0

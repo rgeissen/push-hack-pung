@@ -68,6 +68,7 @@ type Host struct {
 	selMu      sync.Mutex
 	selKey     string // Live's selection that selDev was worked out for
 	selDev     int    // the chain slot of the device selected in Live, -1 none
+	selName    string // the plugin name the selection resolved to (diagnostic)
 	probeMu    sync.Mutex
 	probeCache map[string]*compMeta // module id -> metadata, from a hidden chain instance
 
