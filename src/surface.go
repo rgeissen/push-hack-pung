@@ -103,6 +103,17 @@ type surface struct {
 	// what the last Live refresh read from Pung's own device (state: "fallback")
 	fallbackDev, fallbackRead int
 	lvIdx                     map[string]int // live mode: module key -> Live parameter index
+
+	// live mode: the selection the view is built for (liveView.key), since
+	// when, and what is known of it; a frame is drawn only for a selection
+	// that is ready (holdFrame), and a knob writes only to the device its
+	// parameter indexes were read from
+	liveKey                         string
+	liveSince                       time.Time
+	liveReady, liveResolved, livePung bool
+	liveWritable                      bool // the device is confirmed (liveView.writable)
+	bankMem                         map[string][2]int // a device's page, kept while others are shown (as Push does)
+	focusAt                         time.Time         // when the surface came, for the first frame's latency
 }
 
 func newSurface(h *Host) *surface {
@@ -146,10 +157,15 @@ func (u *surface) run(done <-chan struct{}) {
 				if u.live != nil {
 					u.live.state().active.Store(true)
 				}
+				at := time.Now() // before the lock: a wait for it is part of the latency
 				u.mu.Lock()
+				u.focusAt = at
 				u.leds = map[uint16]uint8{} // repaint everything
 				u.refreshPositions(true)
 				u.refreshValues()
+				if !u.liveReady {
+					u.liveSince = time.Now() // the hold counts from here (holdFrame)
+				}
 				u.mu.Unlock()
 				u.dirty.Store(true)
 			},
@@ -898,6 +914,14 @@ func (u *surface) cc(n, v byte) {
 func (u *surface) followLive(i int) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	// Following Live's devices, the view follows the selected device (the
+	// device topic, refreshLive), and the pads and parameters go through
+	// Live: a slot means nothing there. Moving it reset the page and lost
+	// the values for a frame, as the track changed under a device still
+	// shown (measured 2026-11-15).
+	if u.liveActive() {
+		return
+	}
 	if i != u.slot && u.h.slot(i) != nil {
 		u.selectSlot(i)
 		u.dirty.Store(true)
@@ -1078,6 +1102,11 @@ func (u *surface) turn(enc, delta int) {
 		}
 		u.lastEnum[enc] = time.Now()
 	}
+	if u.liveActive() && (!u.liveReady || !u.liveWritable) {
+		// the device shown is not the selected one yet, or only remembered:
+		// a turn would land on the wrong one
+		return
+	}
 	vk := u.valKey(p, key)
 	cur, ok := u.vals[vk]
 	if !ok {
@@ -1090,8 +1119,9 @@ func (u *surface) turn(enc, delta int) {
 	u.vals[vk] = nv
 	if u.liveActive() { // through Live: undo and automation recording work
 		if idx, ok := u.lvIdx[key]; ok {
-			v := u.live.state().view()
-			if len(v.path) > 0 {
+			// the index was read from the device the view is built for:
+			// written only while that is still the selected one
+			if v := u.live.state().view(); len(v.path) > 0 && v.writable && v.key == u.liveKey {
 				u.live.state().write(paramWrite{track: v.dev.Track, path: v.path, index: idx, norm: m.toNormValue(nv)})
 			}
 		} else if d, prefix := u.pungDevice(); d != nil {
@@ -1339,7 +1369,9 @@ func pIdx(name string) uint8 {
 var slotLED = []string{"orange", "sky", "pink_hot", "mint", "yellow", "violet", "cyan_lt", "red"}
 
 func (u *surface) led(pad bool, n, v uint8) {
-	if u.c == nil {
+	// the lights are Live's again the moment the surface goes: a light
+	// written after that stays wrong (Live repaints only what changes)
+	if u.c == nil || !u.focused.Load() {
 		return
 	}
 	k := uint16(n)
@@ -1421,9 +1453,13 @@ func (u *surface) paintLEDs() {
 	}
 	// the scene column (repeat rates) and the pads are Live's (liveButtons, Pads)
 	// white buttons this app answers to
-	for _, b := range []uint8{push3.CCAdd, push3.CCSwap, 62, 63, 92} { // Live lights its own (liveButtons)
+	for _, b := range []uint8{push3.CCAdd, push3.CCSwap, 92} { // Live lights its own (liveButtons)
 		u.led(false, b, 63)
 	}
+	// Page < >: lit where they go somewhere, as the header's arrows show
+	pl, pr := u.pageSteps()
+	u.led(false, 62, map[bool]uint8{true: 63, false: 0}[pl])
+	u.led(false, 63, map[bool]uint8{true: 63, false: 0}[pr])
 	// D-pad left/right: lit when the chain goes on in that direction
 	lr := func(on bool) uint8 {
 		if on {
@@ -1456,10 +1492,11 @@ func (u *surface) frames(done <-chan struct{}) {
 			u.refreshValues()
 			u.dirty.Store(true)
 		}
-		peak := -120.0
-		if s := u.cur(); s != nil {
-			peak = peakDB(s.peak())
+		if u.holdFrame() { // the last coherent frame stays; dirty stays set
+			u.mu.Unlock()
+			continue
 		}
+		peak := u.level()
 		animating := math.Abs(peak-lastPeak) > 0.5 || time.Now().Before(u.peekUntil.Add(50*time.Millisecond)) ||
 			(u.toast != "" && time.Since(u.toastAt) < 2600*time.Millisecond)
 		if !u.dirty.Swap(false) && !animating {
@@ -1469,11 +1506,98 @@ func (u *surface) frames(done <-chan struct{}) {
 		lastPeak = peak
 		img := u.render(peak)
 		u.paintLEDs()
+		first := !u.focusAt.IsZero()
+		since := time.Since(u.focusAt)
+		u.focusAt = time.Time{}
 		u.mu.Unlock()
 		if err := u.pm.PushFrame(img); err != nil {
+			// not on the screen (push-manager not yet handing it over, or
+			// already taking it back): again next tick, never left stale
+			u.dirty.Store(true)
 			log.Printf("surface: frame: %v", err)
+		} else if first {
+			log.Printf("surface: first frame %d ms after the focus", since.Milliseconds())
 		}
 	}
+}
+
+// Holding a frame: how long the view waits for a selected device before it
+// draws what it has.
+const (
+	holdForDevice = 700 * time.Millisecond  // a Pung device being found and read
+	holdForPush   = 1500 * time.Millisecond // not a Pung device: push-manager gives the screen back to Push
+)
+
+// holdFrame: no frame now, the last one stays. Following Live, a device is
+// drawn only once it is resolved and its own parameters are read: a frame
+// built halfway showed the new track over the last device's parameters,
+// and one device's values on another's dials (measured on the device,
+// 2026-11-15). A selection that is not a Pung device, while Pung stands in
+// for Push's device view, is about to go back to Push: nothing is drawn
+// or lit for it. Each hold ends, and draws what there is, if the answer
+// does not come. Caller holds u.mu.
+func (u *surface) holdFrame() bool {
+	if !u.liveActive() || u.view == "browse" || u.liveReady {
+		return false
+	}
+	age := time.Since(u.liveSince)
+	if !u.liveResolved || u.livePung {
+		return age < holdForDevice
+	}
+	return u.standIn.Load() && age < holdForPush
+}
+
+// enterSelection: Live selected another device (or resolved the selected
+// one). What was built for the last one goes: its values, its parameter
+// indexes, its card, its bank list; its page is kept for when it comes
+// back, and this one's page comes back. Caller holds u.mu.
+func (u *surface) enterSelection(v liveView) {
+	if u.bankMem == nil {
+		u.bankMem = map[string][2]int{}
+	}
+	if u.liveKey != "" && u.liveReady {
+		u.bankMem[u.liveKey] = [2]int{u.bank, u.bankOff}
+	}
+	u.liveKey, u.liveSince = v.key, time.Now()
+	u.liveReady = false
+	u.vals = map[string]string{}
+	u.lvIdx = map[string]int{}
+	u.bankList = false
+	u.peekUntil = time.Time{}
+	m := u.bankMem[v.key]
+	u.bank, u.bankOff = m[0], m[1]
+}
+
+// level: the shown device's output level (dBFS). Following Live, that is
+// the Pung device selected there: the surface's own slot is not the one
+// rendering then, and the meter read it, so it never moved.
+func (u *surface) level() float64 {
+	if u.liveActive() {
+		if d, _ := u.pungDevice(); d != nil {
+			return peakDB(d.s.peak())
+		}
+		return -120
+	}
+	if s := u.cur(); s != nil {
+		return peakDB(s.peak())
+	}
+	return -120
+}
+
+// pageSteps: whether Page < and Page > go anywhere now (what they do:
+// buttons()).
+func (u *surface) pageSteps() (left, right bool) {
+	if u.view == "browse" {
+		return u.br.cursor >= 8, u.br.cursor/8 < (len(u.br.items)-1)/8
+	}
+	_, cm, _ := u.currentBank()
+	if cm == nil {
+		return false, false
+	}
+	if u.liveActive() {
+		return u.bank > 0, u.bank < len(cm.Banks)-1
+	}
+	return u.bankOff > 0, u.bankOff+8 < len(cm.Banks)
 }
 
 // render draws the current view. Caller holds u.mu.
@@ -1530,6 +1654,10 @@ func (u *surface) liveActive() bool { return u.live != nil && u.live.connected.L
 // values from Live's parameters. Caller holds u.mu.
 func (u *surface) refreshLive() {
 	v := u.live.state().view()
+	if v.key != u.liveKey {
+		u.enterSelection(v)
+	}
+	u.liveResolved, u.livePung, u.liveWritable = v.resolved, v.path != nil, v.writable
 	dev, devs := v.dev, v.devs
 	selIdx := -1
 	if len(v.path) > 0 {
@@ -1563,10 +1691,12 @@ func (u *surface) refreshLive() {
 	}
 	u.keepVisible()
 	u.lvIdx = map[string]int{}
+	u.liveReady = false
 	sel, ok := u.selected()
-	if !ok || sel.Kind == "other" || sel.N != selIdx {
-		return
+	if !v.ready || !ok || sel.Kind == "other" || sel.N != selIdx {
+		return // nothing of another device's: the frame holds (holdFrame)
 	}
+	u.liveReady = true
 	cm := u.metaFor(sel)
 	if cm == nil {
 		return

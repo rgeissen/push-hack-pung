@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-const liveAddr = "127.0.0.1:7704"
+var liveAddr = "127.0.0.1:7704" // a var for the tests
 
 type live struct {
 	h         *Host

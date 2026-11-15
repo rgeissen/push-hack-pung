@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/image/font"
 )
 
 func rgb(r, g, b uint8) color.NRGBA { return color.NRGBA{r, g, b, 255} }
@@ -43,7 +45,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	} else if cm != nil {
 		for i := 0; i < 8 && u.bankOff+i < len(cm.Banks); i++ {
 			x := i * colW
-			name := fitLabel(cm.Banks[u.bankOff+i].Name, colW-20)
+			name := fitLabel(strings.ToUpper(cm.Banks[u.bankOff+i].Name), colW-20)
 			if u.bankOff+i == u.bank {
 				rect(img, x+8, 5, colW-16, 15, sc)
 				label(img, x+colW/2, 17, name, cBlack, 0)
@@ -53,36 +55,31 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			nb++
 		}
 	}
-	if nb <= 6 { // where the row leaves room: what this is, and its level
-		if u.liveActive() { // the Live track, in its colour, and the bank
-			name, col := u.live.state().trackHeader()
-			tc := color.NRGBA{uint8(col >> 16), uint8(col >> 8), uint8(col), 255}
-			if col == 0 {
-				tc = cFg
-			}
-			bank := ""
-			if cm != nil && u.bank < len(cm.Banks) && !u.bankList {
-				bank = strings.ToUpper(cm.Banks[u.bank].Name)
-				if cl := cm.Banks[u.bank].CompLabel; cl != "" && !strings.EqualFold(cl, cm.Banks[u.bank].Name) {
-					bank = strings.ToUpper(cl) + " / " + bank // the compartment, then its page
-				}
-			}
-			// one line, as on Push: TRACK  BANK. A second line under it ran
-			// into the last column's name.
-			room := (8-nb)*colW - 90
-			x := scrW - 66
-			if bank != "" {
-				bank = fitLabel(bank, room/2)
-				label(img, x, 17, bank, cDim, 1)
-				x -= len(bank)*7 + 14
-				room -= len(bank)*7 + 14
-			}
-			label(img, x, 17, fitLabel(strings.ToUpper(name), room), tc, 1)
-		} else {
-			label(img, scrW-66, 17, fmt.Sprintf("TRACK %d", u.slot+1), cFg, 1)
-		}
-		hmeter(img, scrW-58, 10, 50, 7, dbFrac(peak), sc)
+	hd := header{page: u.bank, meter: true, peak: peak}
+	if cm != nil {
+		hd.pages = len(cm.Banks)
 	}
+	if u.liveActive() { // the Live track, in its colour, and the bank
+		name, col := u.live.state().trackHeader()
+		hd.track, hd.trackCol = strings.ToUpper(name), color.NRGBA{uint8(col >> 16), uint8(col >> 8), uint8(col), 255}
+		if col == 0 {
+			hd.trackCol = cFg
+		}
+		if cm != nil && u.bank < len(cm.Banks) && !u.bankList {
+			hd.bank = strings.ToUpper(cm.Banks[u.bank].Name)
+			if cl := cm.Banks[u.bank].CompLabel; cl != "" && !strings.EqualFold(cl, cm.Banks[u.bank].Name) {
+				hd.bank = strings.ToUpper(cl) + " / " + hd.bank // the compartment, then its page
+			}
+		}
+		// the level is the Pung device's: another device has none here
+		hd.meter = p.Kind != "other" && p.Kind != "add"
+	} else {
+		hd.track, hd.trackCol = fmt.Sprintf("TRACK %d", u.slot+1), cFg
+	}
+	if set := u.ov.get(u.h.modulesDir, p.Module); set != nil && set.failed != "" && cm != nil && b != nil {
+		hd.warn = "MODULE UI OFF"
+	}
+	drawHeader(img, nb*colW+4, hd, sc)
 
 	// cells
 	switch {
@@ -96,7 +93,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		}
 		label(img, scrW/2, 84, msg, cDim, 0)
 	case cm == nil || b == nil:
-		label(img, scrW/2, 84, strings.ToUpper(p.Name)+" HAS NO PARAMETERS", cDim, 0)
+		label(img, scrW/2, 84, fitLabel(strings.ToUpper(p.Name)+" HAS NO PARAMETERS", 900), cDim, 0)
 	default:
 		// a module's own widgets first; the columns they cover show only
 		// their names and values, under the widget
@@ -168,9 +165,6 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 				u.drawCell(img, i, p, cm.Params[key], key, sc)
 			}
 		}
-		if set != nil && set.failed != "" && nb <= 6 {
-			label(img, scrW/2, 17, "MODULE UI OFF", cWarn, 0) // the top bar's middle: the header is on the right
-		}
 		// the detail card, only when asked for (settings.go: on the Push the
 		// touched cell shows it in place), and never over a picture: the
 		// picture shows the touch itself, and a card would hide it
@@ -185,7 +179,12 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		u.drawTrackRow(img, y, h)
 		return
 	}
-	// a window of 8 positions; a marker at an edge says the chain goes on
+	u.drawChainRow(img, y, h)
+}
+
+// drawChainRow: the chain's positions under the lower buttons: a window of
+// 8; a marker at an edge says the chain goes on.
+func (u *surface) drawChainRow(img *image.NRGBA, y, h int) {
 	if u.chainOff > 0 {
 		for k := 0; k < 5; k++ {
 			rect(img, 1+k, y+h/2-k, 1, 2*k+1, cFg)
@@ -215,7 +214,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			continue
 		}
 		kc := kindColor(q.Kind)
-		name := fitLabel(q.Name, w-24)
+		name := fitLabel(strings.ToUpper(q.Name), w-24)
 		switch {
 		case i == u.pos:
 			rect(img, x, y, w, h, kc)
@@ -230,7 +229,11 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			label(img, x+10, y+14, name, cFg, -1)
 		}
 		if q.Bypassed {
-			label(img, x+w-6, y+14, "B", cWarn, 1)
+			bc := cWarn
+			if i == u.pos {
+				bc = cBlack // on the selection's fill, as its name
+			}
+			label(img, x+w-6, y+14, "B", bc, 1)
 		}
 		if i < len(u.positions)-1 && j < 7 {
 			cx, cy := (j+1)*colW, y+h/2
@@ -239,6 +242,90 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 				rect(img, cx-3+k, cy+4-k, 1, 1, cDim)
 			}
 		}
+	}
+}
+
+// valueBaseline: where a value in face sits so its capitals centre on cy.
+func valueBaseline(cy int, face font.Face) int {
+	if face == nil {
+		return cy + 5 // Tamzen: capitals 9 px
+	}
+	return cy + face.Metrics().CapHeight.Ceil()/2
+}
+
+// header: what the top bar's right side says.
+type header struct {
+	track       string
+	trackCol    color.NRGBA
+	bank        string // COMPARTMENT / PAGE
+	warn        string // a module's UI switched off
+	page, pages int    // the bank, of how many (one or none: no indicator)
+	meter       bool   // a level to show
+	peak        float64
+}
+
+// header layout, in pixels
+const (
+	hdBase   = 17 // the text baseline, as the device row's
+	hdMeterW = 50
+	hdGap    = 14
+)
+
+// drawHeader draws the top bar's right side in x0..the screen's edge (the
+// device or bank row ends at x0), laid out from the right: the page
+// indicator first, because Page < > is how a module's banks are reached and
+// it must always show where they are; then the level meter; then the
+// warning, the page's name and the track, each cut to the room left and
+// left out below three letters. Nothing crosses x0.
+func drawHeader(img *image.NRGBA, x0 int, hd header, sc color.NRGBA) {
+	xr := scrW - 8
+	room := func() int { return xr - x0 }
+	if hd.pages > 1 {
+		if w := pageIndicatorWidth(hd.page, hd.pages); w <= room() {
+			drawPageIndicator(img, xr-w, hd.page, hd.pages)
+			xr -= w + hdGap
+		}
+	}
+	if hd.meter && hdMeterW <= room() {
+		hmeter(img, xr-hdMeterW, 10, hdMeterW, 7, dbFrac(hd.peak), sc)
+		xr -= hdMeterW + hdGap
+	}
+	for _, t := range []struct {
+		s     string
+		c     color.NRGBA
+		whole bool // a warning is read whole or not at all
+	}{{hd.warn, cWarn, true}, {hd.bank, cDim, false}, {hd.track, hd.trackCol, false}} {
+		if t.s == "" || room() < 3*7 || (t.whole && textWidth(t.s, nil) > room()) {
+			continue
+		}
+		s := fitLabel(t.s, room())
+		label(img, xr, hdBase, s, t.c, 1)
+		xr -= textWidth(s, nil) + hdGap
+	}
+}
+
+func pageIndicatorWidth(page, pages int) int {
+	return 6 + 6 + textWidth(fmt.Sprintf("%d/%d", page+1, pages), nil) + 6 + 6
+}
+
+// drawPageIndicator: < 3/12 >, at x. An arrow is bright where Page < or >
+// goes somewhere (its button is lit then too, surface.go), faint where not.
+func drawPageIndicator(img *image.NRGBA, x, page, pages int) {
+	s := fmt.Sprintf("%d/%d", page+1, pages)
+	cy := hdBase - 5
+	on := func(b bool) color.NRGBA {
+		if b {
+			return cFg
+		}
+		return cFaint
+	}
+	for k := 0; k < 5; k++ { // left: the point at x
+		rect(img, x+k, cy-k, 1, 2*k+1, on(page > 0))
+	}
+	label(img, x+12, hdBase, s, cDim, -1)
+	xr := x + pageIndicatorWidth(page, pages) - 1
+	for k := 0; k < 5; k++ {
+		rect(img, xr-k, cy-k, 1, 2*k+1, on(page < pages-1))
 	}
 }
 
@@ -271,12 +358,17 @@ func (u *surface) drawDeviceRow(img *image.NRGBA, sc color.NRGBA) int {
 func (u *surface) drawTrackRow(img *image.NRGBA, y, h int) {
 	page, first, sel := u.trackPage()
 	tracks, _ := u.live.state().trackRow()
+	drawTrackCells(img, y, h, page, first, sel, len(tracks))
+}
+
+// drawTrackCells: page (the tracks first.. of total), sel the selected one.
+func drawTrackCells(img *image.NRGBA, y, h int, page []liveTrack, first, sel, total int) {
 	if first > 0 {
 		for k := 0; k < 5; k++ {
 			rect(img, 1+k, y+h/2-k, 1, 2*k+1, cFg)
 		}
 	}
-	if first+8 < len(tracks) {
+	if first+8 < total {
 		for k := 0; k < 5; k++ {
 			rect(img, scrW-2-k, y+h/2-k, 1, 2*k+1, cFg)
 		}
@@ -287,7 +379,7 @@ func (u *surface) drawTrackRow(img *image.NRGBA, y, h int) {
 		if t.Color == 0 {
 			tc = cDim
 		}
-		name := fitLabel(t.Name, w-12)
+		name := fitLabel(strings.ToUpper(t.Name), w-12)
 		if first+j == sel {
 			rect(img, x, y, w, h, tc)
 			label(img, x+8, y+14, name, cBlack, -1)
@@ -322,7 +414,8 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 			box = sc
 		}
 		frameRect(img, cx-44, 64, 88, 28, box)
-		styled(img, cx, 84, fitLabel(val, 80), cFg, faceValue, 0)
+		ev, ef := fitValue(val, 80)
+		styled(img, cx, valueBaseline(78, ef), ev, cFg, ef, 0)
 		if n := len(m.Options); touched && n > 1 && ok {
 			// where a turn goes next, either way
 			i, _ := m.enumIndex(v)
@@ -348,7 +441,8 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 			label(img, cx, 106, fmt.Sprintf("%d/%d", i+1, n), cDim, 0)
 		}
 	case m.Type == "string":
-		styled(img, cx, 84, fitLabel(val, colW-10), cFg, faceValue, 0)
+		sv, sf := fitValue(val, colW-10)
+		styled(img, cx, valueBaseline(78, sf), sv, cFg, sf, 0)
 		return
 	default:
 		gauge(img, cx, knobCY, m.frac(v), m.Bipolar, sc, m.ReadOnly, touched)
@@ -356,27 +450,39 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 			// the range, at the ends of the arc
 			lo, _ := m.display(strconv.FormatFloat(m.Min, 'f', -1, 64), true)
 			hi, _ := m.display(strconv.FormatFloat(m.Max, 'f', -1, 64), true)
-			label(img, cx-52, 107, fitLabel(lo, 40), cDim, -1)
-			label(img, cx+52, 107, fitLabel(hi, 40), cDim, 1)
-			// fine adjustment: what Shift does here, and that it is on
+			// numbers never cut: -24000 is -24K, or not shown
+			lo, hi = fitRange(lo, hi, 40)
+			label(img, cx-52, 107, lo, cDim, -1)
+			label(img, cx+52, 107, hi, cDim, 1)
+			// fine adjustment, beside the dial: there while Shift would
+			// give it, lit while Shift is held
 			if m.fineApplies() {
 				if u.shift {
-					rect(img, cx+22, 45, 34, 13, sc)
-					label(img, cx+39, 55, "FINE", cBlack, 0)
+					rect(img, cx+29, knobCY-6, 30, 13, sc)
+					label(img, cx+44, knobCY+4, "FINE", cBlack, 0)
 				} else {
-					label(img, cx+56, 55, "SHIFT:FINE", cLine, 1)
+					label(img, cx+44, knobCY+4, "FINE", cLine, 0)
 				}
 			}
 		}
 	}
 	if m.Type != "enum" {
-		w := styled(img, 0, -100, val, cFg, faceValue, -1) // measure
+		// the value and its unit, inside the column: the value keeps its
+		// room first, and the unit goes before the value is cut
+		const room = colW - 14 // a margin each side: neighbours never meet
 		uw := 0
 		if unit != "" {
-			uw = len(unit)*7 + 3
+			uw = textWidth(unit, nil) + 3
 		}
+		v, f := fitValue(val, room-uw)
+		if unit != "" && v != val {
+			if v2, f2 := fitValue(val, room); v2 == val {
+				v, f, unit, uw = v2, f2, "", 0
+			}
+		}
+		w := textWidth(v, f)
 		x := cx - (w+uw)/2
-		styled(img, x, 127, val, cFg, faceValue, -1)
+		styled(img, x, 127, v, cFg, f, -1)
 		if unit != "" {
 			label(img, x+w+3, 127, unit, cDim, -1)
 		}
@@ -408,11 +514,13 @@ func (u *surface) drawUnderWidget(img *image.NRGBA, col int, p position, m *para
 	if unit != "" {
 		val += " " + unit
 	}
-	// the value is what the hand is after: the name gives way, never it
-	val = fitLabel(strings.ToUpper(val), colW-8)
-	vw := len(val) * 7 // Tamzen: 7 px a character
-	if room := colW - 8 - vw - 7; room >= 3*7 {
-		val = fitLabel(strings.ToUpper(m.Name), room) + " " + val
+	// the value is what the hand is after: the name gives way, never it,
+	// and goes altogether where less than four letters of it would show;
+	// 16 px between neighbours, so a row of them reads as columns
+	const room = colW - 16
+	val = fitLabel(strings.ToUpper(val), room)
+	if left := room - textWidth(val, nil) - 7; left >= 5*7 {
+		val = fitLabel(strings.ToUpper(m.Name), left) + " " + val
 	}
 	label(img, cx, 122, val, nameCol, 0)
 	if u.touched == col {
@@ -434,15 +542,30 @@ func (u *surface) drawPeek(img *image.NRGBA, enc int, p position, m *paramMeta, 
 	frameRect(img, x, y, w, h, sc)
 	v, ok := u.vals[u.valKey(p, key)]
 	val, unit := m.display(v, ok)
-	label(img, x+12, y+18, fitLabel(strings.ToUpper(m.Name), w/2), cFg, -1)
-	label(img, x+w-12, y+18, fitLabel(strings.ToUpper(p.Name), w/2-20), cDim, 1)
-	vw := styled(img, x+12, y+56, val, cFg, faceBig, -1)
+	label(img, x+12, y+18, fitLabel(strings.ToUpper(m.Name), w/2-12), cFg, -1)
+	label(img, x+w-12, y+18, fitLabel(strings.ToUpper(p.Name), w/2-24), cDim, 1)
+	// the value, big, in the room the unit and the position leave it
+	vroom := w - 24
+	count := ""
+	if m.Type == "enum" && len(m.Options) > 0 {
+		i, _ := m.enumIndex(v)
+		count = fmt.Sprintf("%d OF %d", i+1, len(m.Options))
+		vroom -= textWidth(count, nil) + 16
+	}
+	if unit != "" {
+		vroom -= textWidth(unit, nil) + 4
+	}
+	vv, vf := val, faceBig
+	if textWidth(val, faceBig) > vroom {
+		vv, vf = fitValue(val, vroom)
+	}
+	vw := styled(img, x+12, y+56, vv, cFg, vf, -1)
 	if unit != "" {
 		label(img, x+16+vw, y+56, unit, cDim, -1)
 	}
 	if m.Type == "enum" && len(m.Options) > 0 {
 		i, _ := m.enumIndex(v)
-		label(img, x+w-12, y+56, fmt.Sprintf("%d OF %d", i+1, len(m.Options)), cDim, 1)
+		label(img, x+w-12, y+56, count, cDim, 1)
 		// neighbours, so a spin shows where it is going
 		if i > 0 {
 			label(img, x+12, y+82, "< "+fitLabel(m.Options[i-1], w/2-30), cDim, -1)
@@ -451,7 +574,7 @@ func (u *surface) drawPeek(img *image.NRGBA, enc int, p position, m *paramMeta, 
 			label(img, x+w-12, y+82, fitLabel(m.Options[i+1], w/2-30)+" >", cDim, 1)
 		}
 	} else if m.Type == "float" || m.Type == "int" {
-		rx, rw, ry := x+12, w-24, y+80
+		rx, rw, ry := x+12, w-24, y+74
 		rect(img, rx, ry, rw, 1, cLine)
 		f := math.Max(0, math.Min(1, m.frac(v)))
 		if m.Default != nil && m.Max > m.Min {
@@ -472,14 +595,16 @@ func (u *surface) drawPeek(img *image.NRGBA, enc int, p position, m *paramMeta, 
 		disc(img, float64(mx), float64(ry), 4, cFg)
 		lo, _ := m.display(strconv.FormatFloat(m.Min, 'f', -1, 64), true)
 		hi, _ := m.display(strconv.FormatFloat(m.Max, 'f', -1, 64), true)
-		label(img, rx, ry+16, lo, cDim, -1)
-		label(img, rx+rw, ry+16, hi, cDim, 1)
+		lo, hi = fitRange(lo, hi, rw/2-8)
+		label(img, rx, ry+18, lo, cDim, -1)
+		label(img, rx+rw, ry+18, hi, cDim, 1)
 	}
-	hint := "SHIFT: FINE"
-	if m.ReadOnly {
-		hint = "READ ONLY"
+	switch {
+	case m.ReadOnly:
+		label(img, x+12, y+h-6, "READ ONLY", cDim, -1)
+	case m.fineApplies():
+		label(img, x+12, y+h-6, "SHIFT: FINE", cDim, -1)
 	}
-	label(img, x+12, y+h-6, hint, cDim, -1)
 }
 
 // drawBrowser: modules as cards in 8 columns; top row picks, jog moves.
@@ -490,12 +615,15 @@ func (u *surface) drawBrowser(img *image.NRGBA) {
 	if u.br.mode == "swap" {
 		verb = "REPLACE " + strings.ToUpper(u.br.target.Name)
 	}
-	label(img, 12, 17, fitLabel(verb+" - PICK WITH THE BUTTON ABOVE, OR JOG AND PRESS", 700), cFg, -1)
 	page := u.br.cursor / 8 * 8
 	pages := (len(u.br.items) + 7) / 8
+	troom := scrW - 24
 	if pages > 1 {
-		label(img, scrW-12, 17, fmt.Sprintf("PAGE %d/%d", page/8+1, pages), cDim, 1)
+		pw := pageIndicatorWidth(page/8, pages)
+		drawPageIndicator(img, scrW-8-pw, page/8, pages)
+		troom -= pw + hdGap
 	}
+	label(img, 12, 17, fitLabel(verb+" - PICK WITH THE BUTTON ABOVE, OR JOG AND PRESS", troom), cFg, -1)
 	kc := colAfx
 	switch u.br.kind {
 	case "sound_generator":
@@ -526,8 +654,8 @@ func (u *surface) drawBrowser(img *image.NRGBA) {
 		if len(name) > 13 && m.Abbrev != "" {
 			name = m.Abbrev
 		}
-		styled(img, x+8, y+64, fitLabel(name, w-12), cFg, faceName, -1)
-		label(img, x+8, y+80, fitLabel(m.Author, w-12), cDim, -1)
+		styled(img, x+8, y+64, fitText(name, w-12, faceName), cFg, faceName, -1)
+		label(img, x+8, y+80, fitLabel(strings.ToUpper(m.Author), w-12), cDim, -1)
 		label(img, x+8, y+96, fitLabel(m.Version, w-12), cDim, -1)
 		if m.ID == u.br.target.Module {
 			label(img, x+18, y+30, "LOADED", sc, -1)

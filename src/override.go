@@ -382,15 +382,33 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		drawEnvelope(img, image.Rect(int(x), int(y), int(x+ww), int(y+hh)), e, sc)
 		return goja.Undefined()
 	})
+	// g.text / g.value (x, y, s, colour, align[, maxWidth]): with a width,
+	// the text is fitted to it as Pung fits its own (draw.go): a label cut,
+	// a value in a smaller face before it is cut, a number never cut
 	g.Set("text", func(call goja.FunctionCall) goja.Value {
-		label(img, int(call.Argument(0).ToFloat()), int(call.Argument(1).ToFloat()), call.Argument(2).String(),
+		s := call.Argument(2).String()
+		if mw := int(call.Argument(5).ToInteger()); mw > 0 {
+			s = fitLabel(s, mw)
+		}
+		label(img, int(call.Argument(0).ToFloat()), int(call.Argument(1).ToFloat()), s,
 			col(call.Argument(3)), int(call.Argument(4).ToInteger()))
 		return goja.Undefined()
 	})
 	g.Set("value", func(call goja.FunctionCall) goja.Value {
-		styled(img, int(call.Argument(0).ToFloat()), int(call.Argument(1).ToFloat()), call.Argument(2).String(),
-			col(call.Argument(3)), faceValue, int(call.Argument(4).ToInteger()))
+		s, f := call.Argument(2).String(), faceValue
+		if mw := int(call.Argument(5).ToInteger()); mw > 0 {
+			s, f = fitValue(s, mw)
+		}
+		styled(img, int(call.Argument(0).ToFloat()), int(call.Argument(1).ToFloat()), s,
+			col(call.Argument(3)), f, int(call.Argument(4).ToInteger()))
 		return goja.Undefined()
+	})
+	// g.measure(s[, "value"]): its width in pixels, to lay out by
+	g.Set("measure", func(s string, kind goja.Value) int {
+		if kind != nil && kind.String() == "value" {
+			return textWidth(s, faceValue)
+		}
+		return textWidth(s, nil)
 	})
 	v := vm.NewObject()
 	for _, k := range p.w.keys {

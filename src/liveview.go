@@ -103,6 +103,46 @@ type liveState struct {
 	// it; for a moment after a write our value wins, or the next encoder
 	// click steps from Live's older value and the click is lost.
 	wrote map[int]time.Time
+
+	// which selection (selID) the path was looked for, and whose
+	// parameters dev.Params holds: the view draws a device only when both
+	// are the selected one's, so a frame never mixes two devices
+	resolved, paramsKey string
+	// cached: the selection was drawn from known, not yet confirmed by a
+	// lookup; known: what each device seen this session resolved to and
+	// its last values, so coming back draws at once (a lookup in Live
+	// takes 300 ms and more) while the lookup confirms it
+	cached string
+	known  map[string]knownSel
+}
+
+// knownSel: a selection as last resolved and read.
+type knownSel struct {
+	path, cont []int
+	chain      int
+	devs       []liveDevSummary
+	devsKey    string
+	params     []liveParam
+	trackDevs  []liveDevSummary
+	selTop     int
+}
+
+// remember keeps the current selection's resolution and values. s.mu held.
+func (s *liveState) remember() {
+	id := s.selID()
+	if s.path == nil || s.paramsKey != id || s.resolved != id {
+		return
+	}
+	if s.known == nil {
+		s.known = map[string]knownSel{}
+	}
+	s.known[id] = knownSel{path: s.path, cont: s.cont, chain: s.chain, devs: s.devs, devsKey: s.devsKey,
+		params: append([]liveParam(nil), s.dev.Params...), trackDevs: s.trackDevs, selTop: s.selTop}
+}
+
+// selID names the selection the topic reported. s.mu held.
+func (s *liveState) selID() string {
+	return fmt.Sprintf("%s/%d/%s", s.dev.Track, s.dev.Device, s.dev.Name)
 }
 
 type paramWrite struct {
@@ -187,6 +227,14 @@ func (s *liveState) setDevice(raw json.RawMessage) {
 	}
 	s.mu.Lock()
 	same := string(d.Track) == string(s.dev.Track) && d.Name == s.dev.Name && d.Device == s.dev.Device
+	if !same {
+		// another selection: nothing of the last one carries over, not its
+		// path (a knob would write to it), its rack, its values or its
+		// writes; until it is resolved and read, the view holds
+		s.remember()
+		s.path, s.cont, s.chain, s.devs, s.devsKey = nil, nil, 0, nil, ""
+		s.wrote, s.resolved, s.paramsKey, s.cached = nil, "", "", ""
+	}
 	if d.Device < 0 && same {
 		d.Params = s.dev.Params // nested: the topic has none, keep the ones read directly
 	}
@@ -196,9 +244,20 @@ func (s *liveState) setDevice(raw json.RawMessage) {
 		d.Params = s.dev.Params
 	}
 	s.dev = d
-	resolve := d.Name != "" && (!same || s.path == nil)
+	if k, ok := s.known[s.selID()]; ok && !same && d.Name != "" {
+		// seen before: drawn as it was left, at once; the lookup below
+		// confirms it, and nothing is written to it until then
+		s.path, s.cont, s.chain, s.devs, s.devsKey = k.path, k.cont, k.chain, k.devs, k.devsKey
+		s.trackDevs, s.selTop = k.trackDevs, k.selTop
+		if len(k.path) > 1 || k.path[0] != d.Device { // nested: the topic's values are the rack's
+			s.dev.Params = k.params
+		}
+		s.cached, s.paramsKey = s.selID(), s.selID()
+	}
+	resolve := d.Name != "" && (!same || s.path == nil || s.cached == s.selID())
 	if d.Name == "" {
 		s.path = nil
+		s.resolved = s.selID() // nothing selected: nothing to look for
 	}
 	s.mu.Unlock()
 	if resolve {
@@ -235,11 +294,15 @@ func listDevices(track json.RawMessage, cont []int, chain int) ([]liveDevSummary
 // user ("My Lead"), not after the
 // plugin in it.
 func (s *liveState) resolve(track json.RawMessage, name string, hint int) {
+	var top []liveDevSummary // the track's own devices: the first list the walk reads
 	var walk func(cont []int, chain int, depth int, loose bool) ([]int, []int, int, []liveDevSummary, bool)
 	walk = func(cont []int, chain int, depth int, loose bool) ([]int, []int, int, []liveDevSummary, bool) {
 		devs, err := listDevices(track, cont, chain)
 		if err != nil {
 			return nil, nil, 0, nil, false
+		}
+		if cont == nil {
+			top = devs
 		}
 		base := append(append([]int(nil), cont...), chain)
 		if cont == nil {
@@ -268,7 +331,6 @@ func (s *liveState) resolve(track json.RawMessage, name string, hint int) {
 		return nil, nil, 0, nil, false
 	}
 	path, cont, chain, devs, ok := walk(nil, 0, 2, false)
-	top, _ := listDevices(track, nil, 0)
 	s.mu.Lock()
 	if string(s.dev.Track) == string(track) {
 		s.trackDevs, s.selTop = top, hint
@@ -276,15 +338,23 @@ func (s *liveState) resolve(track json.RawMessage, name string, hint int) {
 			s.selTop = path[0]
 		}
 	}
-	if !ok {
+	// only for the selection it was asked for: an older resolve finishing
+	// late (the selection moved on meanwhile) must not touch the new one's
+	current := s.dev.Name == name && string(s.dev.Track) == string(track) && s.dev.Device == hint
+	if current && !ok {
 		s.path, s.cont, s.devs = nil, nil, nil
+		delete(s.known, s.selID())
+		s.cached = ""
 	}
-	if ok && s.dev.Name == name && string(s.dev.Track) == string(track) {
+	if current && ok {
 		if fmt.Sprint(s.path) != fmt.Sprint(path) {
 			s.wrote = nil // another device: no write of ours is pending on it
 		}
 		s.path, s.cont, s.chain = path, cont, chain
 		s.devs, s.devsKey = devs, listKey(track, cont, chain)
+	}
+	if current {
+		s.resolved = s.selID() // confirmed: writable now
 	}
 	s.mu.Unlock()
 	if ok {
@@ -337,6 +407,8 @@ func (s *liveState) readParams() {
 			}
 		}
 		s.dev.Params = r.Params
+		s.paramsKey = s.selID()
+		s.remember()
 	}
 	s.mu.Unlock()
 	s.changed()
@@ -350,8 +422,9 @@ func (s *liveState) poller() {
 		}
 		s.mu.Lock()
 		nested := len(s.path) > 1 || (len(s.path) == 1 && s.path[0] != s.dev.Device)
+		unread := s.path != nil && s.paramsKey != s.selID() // a first read that failed: again
 		s.mu.Unlock()
-		if nested {
+		if nested || unread {
 			s.readParams()
 		}
 	}
@@ -375,13 +448,23 @@ type liveView struct {
 	chain int
 	devs  []liveDevSummary
 	scale liveScale
+	// key: the selection and the device it resolved to; resolved: the
+	// search for it has finished (path nil then: not one of Pung's);
+	// ready: its own parameters are read
+	key             string
+	resolved, ready bool
+	writable        bool // confirmed by a lookup, not only remembered
 }
 
 func (s *liveState) view() liveView {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	id := s.selID()
 	return liveView{dev: s.dev, path: append([]int(nil), s.path...), cont: append([]int(nil), s.cont...),
-		chain: s.chain, devs: append([]liveDevSummary(nil), s.devs...), scale: s.scale}
+		chain: s.chain, devs: append([]liveDevSummary(nil), s.devs...), scale: s.scale,
+		key: fmt.Sprintf("%s|%v", id, s.path), resolved: s.resolved == id || s.cached == id,
+		ready:    (s.resolved == id || s.cached == id) && s.path != nil && s.paramsKey == id,
+		writable: s.resolved == id && s.path != nil}
 }
 
 func (s *liveState) snapshot() (liveDevice, []liveDevSummary, liveScale) {

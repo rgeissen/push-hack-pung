@@ -8,6 +8,8 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"strconv"
+	"strings"
 
 	"github.com/federico-pepe/ableton-push-hack/core/gfx"
 	"github.com/federico-pepe/ableton-push-hack/core/gfx/text"
@@ -55,14 +57,35 @@ func slotColor(i int) color.NRGBA { return slotColors[i%len(slotColors)] }
 
 var (
 	faceValue font.Face
+	faceSmall font.Face // a value that does not fit faceValue, before it is cut
 	faceBig   font.Face
 	faceName  font.Face
 )
 
 func initFaces() {
 	faceValue, _ = text.NewFace(text.Regular, 16)
+	faceSmall, _ = text.NewFace(text.Regular, 13)
 	faceBig, _ = text.NewFace(text.Regular, 28)
 	faceName, _ = text.NewFace(text.Bold, 15)
+}
+
+// textSpy, when set (tests), is told the box of every text drawn: what
+// view_test.go checks against the element the text belongs to.
+var textSpy func(box image.Rectangle, s string)
+
+func spyText(x, baseline, w int, face font.Face, s string) {
+	if textSpy == nil || s == "" {
+		return
+	}
+	asc, desc := 10, 0 // Tamzen 7x13: capitals stand on the baseline
+	if strings.ContainsAny(s, "gjpqy,;_()[]{}|$@") {
+		desc = 3
+	}
+	if face != nil {
+		m := face.Metrics()
+		asc, desc = m.Ascent.Ceil(), m.Descent.Ceil()
+	}
+	textSpy(image.Rect(x, baseline-asc, x+w, baseline+desc), s)
 }
 
 func newFrame() *image.NRGBA {
@@ -81,6 +104,7 @@ func label(img *image.NRGBA, x, baseline int, s string, col color.NRGBA, align i
 	case 1:
 		x -= w
 	}
+	spyText(x, baseline, w, nil, s)
 	text.Draw(img, x, baseline, s, col)
 }
 
@@ -98,21 +122,107 @@ func styled(img *image.NRGBA, x, baseline int, s string, col color.NRGBA, face f
 	case 1:
 		x -= w
 	}
+	spyText(x, baseline, w, face, s)
 	text.DrawWith(img, x, baseline, s, col, face)
 	return w
 }
 
-// fitLabel cuts s so it draws within w pixels in the label face.
-func fitLabel(s string, w int) string {
+// textWidth: s's width in face (nil: the label face).
+func textWidth(s string, face font.Face) int {
 	s = asciiOnly(s)
-	max := w / 7
-	if len(s) <= max {
+	if face == nil {
+		return text.Width(s)
+	}
+	return text.WidthWith(s, face)
+}
+
+// fitLabel cuts s so it draws within w pixels in the label face.
+func fitLabel(s string, w int) string { return fitText(s, w, nil) }
+
+// fitText cuts s so it draws within w pixels in face (nil: the label face),
+// measured, never counted: the value faces are proportional. A cut ends in
+// "." so it reads as one.
+func fitText(s string, w int, face font.Face) string {
+	s = asciiOnly(s)
+	if w <= 0 {
+		return ""
+	}
+	if textWidth(s, face) <= w {
 		return s
 	}
-	if max < 2 {
-		return s[:max]
+	for n := len(s) - 1; n > 0; n-- {
+		c := strings.TrimRight(s[:n], " ") + "."
+		if textWidth(c, face) <= w {
+			return c
+		}
 	}
-	return s[:max-1] + "."
+	return ""
+}
+
+// fitValue: a value in the largest value face it fits w in, the value
+// face, then a smaller one, cut in that one only where neither holds it (a
+// value is what the hand is after: the name gives way, never it). A number
+// is never cut, a cut number reads as another number: -24000 is -24K.
+func fitValue(s string, w int) (string, font.Face) {
+	s = asciiOnly(s)
+	for _, f := range []font.Face{faceValue, faceSmall} {
+		if f != nil && textWidth(s, f) <= w {
+			return s, f
+		}
+	}
+	if n := fitNumber(s, w, faceSmall); n != "" {
+		return n, faceSmall
+	}
+	if _, err := strconv.ParseFloat(strings.TrimSpace(s), 64); err == nil {
+		return "", faceSmall
+	}
+	return fitText(s, w, faceSmall), faceSmall
+}
+
+// fitRange: a range's two ends in w each, in one form: when one end must be
+// shortened (-24K), the other is too (24K, not 24000).
+func fitRange(lo, hi string, w int) (string, string) {
+	l, h := fitNumber(lo, w, nil), fitNumber(hi, w, nil)
+	if l != lo || h != hi {
+		if l2 := fitNumber(lo, textWidth(lo, nil)-1, nil); l == lo && l2 != "" {
+			l = l2
+		}
+		if h2 := fitNumber(hi, textWidth(hi, nil)-1, nil); h == hi && h2 != "" {
+			h = h2
+		}
+	}
+	return l, h
+}
+
+// fitNumber: s if it fits w in face; a number too wide in thousands or
+// millions (-24000: -24K, 1500000: 1.5M); else "" (shown nowhere, rather
+// than as a different number). Text too wide: "" too (fitText cuts text).
+func fitNumber(s string, w int, face font.Face) string {
+	if textWidth(s, face) <= w {
+		return s
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return ""
+	}
+	for _, u := range []struct {
+		div float64
+		suf string
+	}{{1e3, "K"}, {1e6, "M"}} {
+		if math.Abs(f) < u.div {
+			continue
+		}
+		for _, prec := range []int{1, 0} {
+			c := strconv.FormatFloat(f/u.div, 'f', prec, 64)
+			if strings.Contains(c, ".") {
+				c = strings.TrimRight(strings.TrimRight(c, "0"), ".")
+			}
+			if c += u.suf; textWidth(c, face) <= w {
+				return c
+			}
+		}
+	}
+	return ""
 }
 
 func asciiOnly(s string) string {
@@ -235,13 +345,16 @@ func dim(c color.NRGBA, k float64) color.NRGBA {
 func hmeter(img *image.NRGBA, x, y, w, h int, v float64, col color.NRGBA) {
 	const n = 10
 	sw := (w - (n - 1)) / n
+	// at rest a floor, not ten dim blocks: those read as an indicator that
+	// does not work, where this is a meter waiting for sound
+	rect(img, x, y+h-1, n*(sw+1)-1, 1, cLine)
 	for i := 0; i < n; i++ {
-		c := cFaint
-		if (float64(i)+0.5)/n < v {
-			c = col
-			if i >= 8 {
-				c = cWarn
-			}
+		if (float64(i)+0.5)/n >= v {
+			continue
+		}
+		c := col
+		if i >= 8 {
+			c = cWarn
 		}
 		rect(img, x+i*(sw+1), y, sw, h, c)
 	}

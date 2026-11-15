@@ -54,7 +54,7 @@ what nearly every module will show.
 
 | Band | y | Holds |
 |---|---|---|
-| Header | 0 to 22 | the device's name box (left), the track and `COMPARTMENT / PAGE` (right), the level meter |
+| Header | 0 to 22 | the device's name box (left); on the right the track, `COMPARTMENT / PAGE`, the level meter and the page indicator `< 4/34 >` |
 | Picture band | 26 to 112 | knob cells, widgets, Pung's pictures, a custom screen (952 x 86 at x 4) |
 | Name and value row | about 112 to 128 | under a picture: each encoder's name and value |
 | Bottom row | 138 to 160 | the chain or Live's tracks |
@@ -89,6 +89,25 @@ selection, and for fills at 28% toward black. Never use it for decoration.
 - Fills: flat, under their line, the slot colour mixed toward black.
 - Guides (a level, a centre line): 1 px, dashed or dim.
 - Text is ASCII. Room is short: **truncate a name, never a value**.
+- **Text is fitted by measuring it, never by counting letters.** The value faces are proportional; a
+  count of 7 px a letter let `Bank Sel +.` cross its box. Pung's helpers (`draw.go`) and a widget's
+  `g.text`/`g.value` with a `maxWidth` do it:
+  - a label is cut, ending in `.`;
+  - a value goes to a smaller value face first, and is cut only where that does not hold it either;
+  - **a number is never cut** (`-240.` reads as another number): it is shortened, `-24000` to `-24K`,
+    or not shown. A range's two ends are shortened together (`-24K` and `24K`, not `-24K` and `24000`).
+- Neighbouring columns keep 16 px between their texts, so a row of values reads as columns.
+
+### The header
+
+Laid out from the right, each part only where it fits whole, never crossing the device or bank row:
+
+1. **The page indicator**, `< 4/34 >`: where Page < and Page > go. An arrow is bright where its button goes
+   somewhere (the button is lit then too), faint where not. It always gets its room first.
+2. **The level meter**: the device's own output. At rest a floor line, not ten dim blocks (those read as
+   an indicator that does not work).
+3. A warning (`MODULE UI OFF`), whole or not at all; then `COMPARTMENT / PAGE`; then the track, each cut
+   to what is left.
 
 ## 4. Pung default
 
@@ -148,13 +167,31 @@ neighbouring knobs. The touched cell instead shows:
 - the **range** at the ends of the gauge's arc (`0` and `127`, `-50` and `+50`);
 - for a list, its box outlined in slot colour and the **neighbouring options** (`<BPF`, `SAW>`): where a
   turn goes next, either way;
-- **fine adjustment** where Shift changes the step: a `SHIFT:FINE` hint, and a lit `FINE` badge while
+- **fine adjustment** where Shift changes the step: `FINE` beside the dial, lit in slot colour while
   Shift is held.
 
 The card stays available as a setting (web page, **Push display > Detail card on touch**; `touch_card` in
 `settings.json`), off by default, and never opens over a picture. Turning a page shows no notice either:
 the header names the page (a takeover draws its own indicator), and a box over the knobs hid two of them
 for 2.5 s on every page turn. Notices are for what the screen does not already say.
+
+### Moving between devices
+
+Live decides which device is shown; Pung and Push hand the screen to each other as the selection moves.
+What the user sees must always be one device, whole:
+
+- **A frame never mixes two devices.** A device is drawn once Live has resolved it and its own parameters
+  are read; until then the last frame stays (at most 0.7 s, then what there is). Measured before this
+  rule: the new track's name over the last device's parameters, and one device's values on another's dials.
+- **A device seen before is drawn at once**, from what it was left as, and its lookup confirms it behind
+  the frame (a lookup in Live takes 300 ms and more).
+- **A knob writes only to the device shown**, and only once Live has confirmed it: a turn during a switch is
+  dropped, never sent with the last device's parameter index to the new one.
+- **Each device keeps its page**, as on Push: back on JE-8086, its page 11 is there again.
+- **Leaving for a device that is not Pung's, Pung goes quiet at once**: no frame, no light, until Push has
+  the screen back. A light written after the hand-over stays wrong (Live repaints only what changes).
+- Push itself takes about 0.3 s to report a new device, and shows its own view meanwhile; Pung's first
+  frame comes 40 to 60 ms after it gets the surface.
 
 ## 5. Custom screens
 
@@ -242,6 +279,9 @@ Before a screen, widget or web section ships:
 - [ ] Every value is readable as text somewhere on the screen (the row under a picture counts).
 - [ ] Nothing covers a knob that is not being turned: no card, no notice the header already gives.
 - [ ] Nothing is drawn outside its band; the header and the name and value row are untouched.
+- [ ] Every text is fitted to its room by measuring (`g.text`/`g.value` with a width); no number is cut.
+      `TestCellsKeepTheirText` and its siblings check Pung's own elements this way (`PUNG_GALLERY=dir`
+      writes the frames).
 - [ ] It stays under 8 ms a frame on the device (`TestShippedOverlaysDraw` renders it; screenshots with
       `PUNG_SHOTS=dir go test`).
 - [ ] For a custom screen: one sentence saying what it shows that the default cannot. If there is no such

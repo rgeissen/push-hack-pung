@@ -466,7 +466,7 @@ func (d *device) Process(b *livedevice.Block) {
 	}
 	if n > 0 {
 		o := d.out[:n*2]
-		cRender(d.s.Index, o, input)
+		d.s.setPeak(cRender(d.s.Index, o, input)) // the meter (surface.level)
 		for i := 0; i < n; i++ {
 			b.Out[0][i], b.Out[1][i] = o[i*2], o[i*2+1]
 		}
@@ -805,7 +805,7 @@ func (d *device) Stats() map[string]any {
 		e := d.recentMidi[(n-1-i)%16]
 		recent = append(recent, fmt.Sprintf("% X", e[:e[3]]))
 	}
-	return map[string]any{"module": d.c.module, "midi_fx": fx, "midi_recent": recent}
+	return map[string]any{"module": d.c.module, "midi_fx": fx, "midi_recent": recent, "peak_db": peakDB(d.s.peak())}
 }
 
 // sinkMIDI makes a chain's MIDI FX output the device's MIDI out: the

@@ -269,7 +269,7 @@ func (r *renderStats) observe(d time.Duration, period, rate int) {
 }
 
 func peakDB(p float32) float64 {
-	if p <= 0 {
+	if p <= 1e-6 { // -120 dB: a decaying meter runs into denormals (-881 dB) otherwise
 		return -120
 	}
 	return 20 * math.Log10(float64(p))
