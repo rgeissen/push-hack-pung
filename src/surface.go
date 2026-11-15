@@ -115,8 +115,14 @@ type surface struct {
 	bankMem                           map[string][2]int // a device's page, kept while others are shown (as Push does)
 	// live mode: the jog's preset, stepped on the input thread and loaded
 	// off it (a preset load blocks in the module's set_param), latest wins
-	pj      presetJog
-	focusAt time.Time // when the surface came, for the first frame's latency
+	pj presetJog
+	sb *sbState // the sound browser (sounds_view.go); nil when closed
+	// the header's sound: whether the device's state is still the sound it
+	// became (read off the frame, every few seconds)
+	soundEdited bool
+	editedAt    time.Time
+	editedBusy  bool
+	focusAt     time.Time // when the surface came, for the first frame's latency
 }
 
 func newSurface(h *Host) *surface {
@@ -177,6 +183,9 @@ func (u *surface) run(done <-chan struct{}) {
 				u.dirty.Store(true)
 			},
 			OnBlur: func() {
+				u.mu.Lock()
+				u.closeSounds(false) // Push took the screen: the sound from before the browser
+				u.mu.Unlock()
 				u.focused.Store(false)
 				u.standIn.Store(false)
 				if u.live != nil {
@@ -805,6 +814,38 @@ func (u *surface) cc(n, v byte) {
 	case push3.CCDelete, push3.CCMute:
 		return // Live's (liveButtons)
 	}
+	if u.sb != nil && (u.view == "sounds" || u.view == "name") {
+		switch {
+		case n >= push3.CCEncoder1 && n < push3.CCEncoder1+8:
+			enc, delta := int(n-push3.CCEncoder1), push3.DecodeRel(v)
+			switch {
+			case u.view == "name":
+				u.edTurn(enc, delta)
+			case enc == 0:
+				u.sbBank(sign(delta))
+			default:
+				u.sbMove(sign(delta))
+			}
+			return
+		case n == push3.CCJogWheel:
+			d := push3.DecodeRel(v)
+			if u.view == "name" {
+				ed := u.sb.ed
+				ed.win = max(0, min(len(ed.r), ed.win+sign(d)))
+			} else if u.shift {
+				u.sbMove(10 * sign(d))
+			} else {
+				u.sbMove(sign(d))
+			}
+			return
+		}
+		if u.view == "name" && u.edButton(n, press) {
+			return
+		}
+		if u.view == "sounds" && u.sbButton(n, press) {
+			return
+		}
+	}
 	if n >= push3.CCEncoder1 && n < push3.CCEncoder1+8 {
 		u.turn(int(n-push3.CCEncoder1), push3.DecodeRel(v))
 		return
@@ -883,6 +924,8 @@ func (u *surface) cc(n, v byte) {
 	case n == push3.CCJogPress:
 		if u.view == "browse" {
 			u.choose(u.br.cursor)
+		} else if u.liveActive() {
+			u.openSounds() // the sound browser (sounds_view.go)
 		}
 	case n == 55: // octave up
 		if u.octave < 4 {
@@ -1188,6 +1231,7 @@ type presetJog struct {
 	count, target, applied int
 	busy                   bool
 	at                     time.Time // the last step: after a pause the preset is read again (it may have moved elsewhere)
+	name                   string    // the name the last load answered
 }
 
 // jogLivePreset steps the preset of the Pung device the view shows. Only a
@@ -1244,7 +1288,11 @@ func (u *surface) loadLivePreset(d *device, prefix, listKey, nameKey string, gen
 		n := u.pj.target
 		if n == u.pj.applied {
 			u.pj.busy = false
+			name := u.pj.name
 			u.mu.Unlock()
+			if u.h.sounds != nil { // the device's sound now, and a recent one
+				u.h.sounds.Settled(d, soundRef{Source: "factory", Index: n, Name: name})
+			}
 			return
 		}
 		u.mu.Unlock()
@@ -1255,7 +1303,7 @@ func (u *surface) loadLivePreset(d *device, prefix, listKey, nameKey string, gen
 		}
 		u.mu.Lock()
 		if u.pj.gen == gen {
-			u.pj.applied = n
+			u.pj.applied, u.pj.name = n, strings.TrimSpace(name)
 			if u.pj.target == n {
 				u.say(strings.TrimSpace(fmt.Sprintf("%d/%d %s", n+1, u.pj.count, strings.TrimSpace(name))))
 			}
@@ -1482,6 +1530,10 @@ func (u *surface) led(pad bool, n, v uint8) {
 
 // paintLEDs lights what has a meaning now and switches off the rest. Caller holds u.mu.
 func (u *surface) paintLEDs() {
+	if u.sb != nil && (u.view == "sounds" || u.view == "name") {
+		u.paintSoundLEDs()
+		return
+	}
 	sc := pIdx(slotLED[u.slot%len(slotLED)])
 	white, dimw := pIdx("white"), pIdx("dgray")
 	// top row: banks, or the browser's cards
@@ -1628,7 +1680,7 @@ const (
 // or lit for it. Each hold ends, and draws what there is, if the answer
 // does not come. Caller holds u.mu.
 func (u *surface) holdFrame() bool {
-	if !u.liveActive() || u.view == "browse" || u.liveReady {
+	if !u.liveActive() || u.view == "browse" || u.view == "sounds" || u.view == "name" || u.liveReady {
 		return false
 	}
 	age := time.Since(u.liveSince)
@@ -1649,6 +1701,10 @@ func (u *surface) enterSelection(v liveView) {
 	if u.liveKey != "" && u.liveReady {
 		u.bankMem[u.liveKey] = [2]int{u.bank, u.bankOff}
 	}
+	if u.sb != nil && v.key != u.sb.key {
+		u.closeSounds(false) // another device: the one browsed gets its sound back
+	}
+	u.soundEdited, u.editedAt = false, time.Time{} // the header's "*" was the last device's
 	u.liveKey, u.liveSince = v.key, time.Now()
 	u.liveReady = false
 	u.vals = map[string]string{}
@@ -1702,9 +1758,14 @@ func (u *surface) render(peak float64) *image.NRGBA {
 		label(img, scrW/2, 108, "SHIFT + HELP, HELP GOES BACK TO PUSH", cDim, 0)
 		return img
 	}
-	if u.view == "browse" {
+	switch {
+	case u.view == "browse":
 		u.drawBrowser(img)
-	} else {
+	case u.view == "sounds" && u.sb != nil:
+		u.drawSounds(img)
+	case u.view == "name" && u.sb != nil && u.sb.ed != nil:
+		u.drawNameEditor(img)
+	default:
 		u.drawChain(img, peak)
 	}
 	if u.toast != "" && time.Since(u.toastAt) < 2500*time.Millisecond {

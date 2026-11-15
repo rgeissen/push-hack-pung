@@ -1,6 +1,6 @@
 # Sounds: one preset system for every Pung module
 
-Status: design, 2026-11-15. Phase 1 is being built (see Phases). The facts below come from reading Schwung
+Status: 2026-11-15. Phases 1 (the library) and 2 (the Push) are built and tested on the device; 3 and 4 are next. The facts below come from reading Schwung
 (`src/shadow/shadow_ui_presets.mjs`, `src/shared/param_pages/`) and every chain module in the catalog (110:
 55 instruments, 41 audio effects, 14 MIDI effects).
 
@@ -124,39 +124,46 @@ sound was loaded; a later state that differs marks the sound **edited** (`* Fat 
 
 ### The browser (press the jog wheel)
 
+Built in phase 2 and tested on the Push with Mini-JV (`src/sounds_view.go`; the frames are in
+`TestSoundBrowserKeepsItsText`, `PUNG_GALLERY=dir` writes them).
+
 ```
- MINI-JV  > FACTORY > PRESET A                                  6 / 128   < 1/2 >
- ----------------------------------------------------------------------------------
-  FACTORY   USER   FAVOURITES   RECENT  |      4  Rhodes Mk1
-  PRESET A                              |      5  Pop Piano 2
-  PRESET B                              |  >   6  Pop Piano 3            *  (playing)
-  INTERNAL                              |      7  Stage EP
-  CARD: POP                             |      8  #8
- ----------------------------------------------------------------------------------
-  FAV      SAVE     SAVE AS   RENAME    DELETE   COMPARE    CANCEL     LOAD
+ FACTORY  USER  FAVOURITES  RECENT           MINI-JV  /  02 ORCHESTRAL - CS 0X3F0E09E2   343 / 4133
+ BANK            ENCODER 1 |   341  Vl Sect mono
+   01 POP - CS 0X3F1CF705  |   342  Arco Violins
+ > 02 ORCHESTRAL - CS ...  | > 343  Marcato Vls1            02 ORCHESTRAL - CS 0X3F0.  PLAYING
+   03 PIANO - CS 0X3F8D... |   344  -
+   04 VINTAGE SYNTH - ...  |   345  -
+  FAV    SAVE    SAVE AS    RENAME    DELETE    COMPARE    CANCEL    LOAD
 ```
 
 | Control | In the browser |
 |---|---|
-| Jog turn | the next or previous sound; it plays (audition) after a short pause |
-| Jog press | **keep it** and close the browser |
-| Upper row | the source: Factory, User, Favourites, Recent |
-| Encoder 1 | the bank (or category, or mode) |
-| Encoder 2 | scroll fast, a page at a time |
-| Encoder 8 | a tag filter (User and Favourites) |
-| Lower row | Fav (star the highlighted sound), Save, Save As, Rename, Delete, Compare, Cancel, Load |
-| Page < > | the previous or next bank |
+| Jog turn | the next or previous sound; it plays once the hand rests on it (150 ms), so a spin plays only where it stops |
 | Shift + jog | ten sounds at a time |
+| Encoders 2 to 8 | the same as the jog |
+| Encoder 1 | the bank (a bank chooser changes the list; a category or expansion card jumps within it) |
+| Page < > | the previous or next bank; without banks, five sounds |
+| Upper row 1 to 4, jog click, D-pad left/right | the source: Factory, User, Favourites, Recent. A source is looked at, not played: only the cursor plays |
+| Jog press, Load | **keep** the sound and close the browser |
+| Cancel | close the browser, and the sound from before it comes back, exactly |
+| Lower row | Fav, Save, Save As, Rename, Delete, Compare (held), Cancel, Load. A button with nothing to do is dim |
 
-- **Audition and undo.** Opening the browser takes a snapshot of the device (`<prefix>:state`). Scrolling
-  plays each sound you stop on (after ~150 ms; a spin plays only where it stops). **Cancel** (or leaving
-  the browser any other way) puts the snapshot back, exactly. **Load** or jog press keeps the sound. (How Live's undo history sees
-  auditions is measured in phase 2: the goal is one undo step per sound kept.)
-- **Compare** (held): the sound from before the browser while held, the highlighted one when released.
-  Outside the browser, Compare toggles between the current sound and the last one kept.
-- **Favourites** are a star on any row (`*` in slot colour), and a source of their own, across banks.
-- **Edited** sounds show `*`; Save overwrites the user sound they came from (only a user sound), Save As
-  makes a new one.
+- **Audition and undo.** Opening the browser takes the device's state; **Cancel**, and leaving the browser
+  any way but Load (another device, another track, Push taking the screen), puts it back. Loads run off the
+  input thread, one at a time, latest first.
+- **Compare**, held: the sound from before the browser; released: the auditioned one again (measured: 342,
+  341 while held, 342).
+- **Save** writes the device's state over the user sound it is. It is off while another sound is
+  auditioned (it would write the audition over yours); **Save As** always works and lands you on the new
+  sound in User.
+- **Delete** asks for a second press within 3 s. A deleted sound leaves Favourites and Recent, and is no
+  longer the device's.
+- A sound whose name was never heard shows a dash beside its number: no name is guessed.
+- The header of the Pung view names the device's sound beside the page, with `*` once it is edited
+  (checked every 2 s). A quick jog step outside the browser makes the sound it lands on the device's sound,
+  and a recent one.
+- Still to measure: how Live's undo history sees auditions (the goal: one step per sound kept).
 
 ### Naming without a keyboard
 
@@ -164,10 +171,11 @@ Save As proposes a name, so most saves are one press: the sound it came from plu
 2`), or the module's name and the date for a sound built from scratch. To change it, the panel becomes a
 name editor:
 
-- the eight encoders are eight letters of the name, each turning through `A-Z a-z 0-9 space - .`;
-  the jog moves the eight-letter window along the name;
-- the lower row: Space, Delete, Caps, Clear, a few suggested words (the module's categories, the factory
-  name), Cancel, Done.
+- the eight encoders are eight letters of the name, each turning through a space, `A-Z a-z 0-9` and
+  `- _ . ' & ( ) + # !`; the jog moves the eight-letter window along the name, which is underlined in the
+  whole name above; turning past the end adds the next letter (never a gap);
+- the lower row: Space (after the letter last turned), Delete (that letter), Caps (its other case), Clear,
+  Suggest (the proposed name back), Cancel, Done; the jog press is Done too.
 
 The web page has a real keyboard for long names, and renames anything at any time.
 

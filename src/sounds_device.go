@@ -405,6 +405,62 @@ func (lib *soundLib) Edited(d *device) bool {
 	return err == nil && stateHash(st) != h
 }
 
+// Rename gives a user sound another name; the index and the device follow.
+func (lib *soundLib) Rename(d *device, name, to string) (string, error) {
+	got, err := lib.store.Rename(d.c.module, name, to)
+	if err != nil {
+		return "", err
+	}
+	lib.store.Update(d.c.module, func(ix *soundIndex) { ix.renameUser(name, got) }) //nolint:errcheck
+	d.snd.mu.Lock()
+	if c := d.snd.current; c != nil && c.Source == "user" && c.Name == name {
+		c.Name = got
+	}
+	d.snd.mu.Unlock()
+	return got, nil
+}
+
+// Delete removes a user sound; as on Move, it is no longer the device's.
+func (lib *soundLib) Delete(d *device, name string) error {
+	if err := lib.store.Delete(d.c.module, name); err != nil {
+		return err
+	}
+	lib.store.Update(d.c.module, func(ix *soundIndex) { ix.forgetUser(name) }) //nolint:errcheck
+	d.snd.mu.Lock()
+	if c := d.snd.current; c != nil && c.Source == "user" && c.Name == name {
+		d.snd.current, d.snd.hash = nil, ""
+	}
+	d.snd.mu.Unlock()
+	return nil
+}
+
+// Settled: a sound chosen outside the browser (the jog wheel's quick step)
+// is the device's sound now, once its loads stopped.
+func (lib *soundLib) Settled(d *device, r soundRef) {
+	lib.becomes(d, r)
+	lib.store.Update(d.c.module, func(ix *soundIndex) { ix.addRecent(r) }) //nolint:errcheck
+}
+
+// Compare loads the sound from before the browser (a) or the auditioned one
+// again (b).
+func (lib *soundLib) Compare(d *device, before bool) {
+	d.snd.mu.Lock()
+	snap, target := d.snd.snapshot, d.snd.target
+	if !before {
+		d.snd.applied = nil // the audition is loaded again, though it was the last one
+	}
+	d.snd.mu.Unlock()
+	if before {
+		if snap != "" {
+			d.SetOutside(d.c.component()+":state", snap)
+		}
+		return
+	}
+	if target != nil {
+		lib.Try(d, *target)
+	}
+}
+
 // ---- the web API ------------------------------------------------------------
 
 type soundsView struct {
@@ -555,15 +611,7 @@ func (lib *soundLib) routes(mux *http.ServeMux) {
 			fail(w, 400, `body must be {"name":...,"to":...}`)
 			return
 		}
-		got, err := lib.store.Rename(d.c.module, b.Name, b.To)
-		if err == nil {
-			lib.store.Update(d.c.module, func(ix *soundIndex) { ix.renameUser(b.Name, got) }) //nolint:errcheck
-			d.snd.mu.Lock()
-			if c := d.snd.current; c != nil && c.Source == "user" && c.Name == b.Name {
-				c.Name = got
-			}
-			d.snd.mu.Unlock()
-		}
+		_, err := lib.Rename(d, b.Name, b.To)
 		done(w, d, err)
 	})
 	mux.HandleFunc("POST /api/devices/{n}/sounds/delete", func(w http.ResponseWriter, r *http.Request) {
@@ -576,15 +624,7 @@ func (lib *soundLib) routes(mux *http.ServeMux) {
 			fail(w, 400, `body must be {"name":...}`)
 			return
 		}
-		err := lib.store.Delete(d.c.module, b.Name)
-		if err == nil {
-			lib.store.Update(d.c.module, func(ix *soundIndex) { ix.forgetUser(b.Name) }) //nolint:errcheck
-			d.snd.mu.Lock()
-			if c := d.snd.current; c != nil && c.Source == "user" && c.Name == b.Name {
-				d.snd.current, d.snd.hash = nil, "" // as Schwung: a deleted sound is no longer the device's
-			}
-			d.snd.mu.Unlock()
-		}
+		err := lib.Delete(d, b.Name)
 		done(w, d, err)
 	})
 }

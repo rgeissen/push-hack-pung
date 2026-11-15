@@ -193,6 +193,21 @@ What the user sees must always be one device, whole:
 - Push itself takes about 0.3 s to report a new device, and shows its own view meanwhile; Pung's first
   frame comes 40 to 60 ms after it gets the surface.
 
+### Sounds
+
+Every module's sounds are browsed the same way (`docs/PRESETS.md`): the jog wheel steps them in the Pung
+view, and a jog press opens the sound browser. Its rules, which any screen that changes a device's sound
+follows:
+
+- **Hearing is not choosing.** A sound plays where the cursor rests; it becomes the device's only on Load or
+  a jog press. Every other way out puts back the sound from before, exactly.
+- **Looking is not hearing.** Switching a source, a tab or a page of the list changes nothing you hear;
+  only the cursor does.
+- **Nothing can be overwritten by accident.** Save is off while another sound is auditioned, Save As never
+  overwrites, Delete asks twice.
+- **Never a guessed name.** A sound not heard yet is its number and a dash.
+- **A button with nothing to do is dim** and says why when pressed.
+
 ## 5. Custom screens
 
 ### The bar

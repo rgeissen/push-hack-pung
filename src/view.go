@@ -73,6 +73,9 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		}
 		// the level is the Pung device's: another device has none here
 		hd.meter = p.Kind != "other" && p.Kind != "add"
+		if hd.meter {
+			hd.sound = u.soundTitle()
+		}
 	} else {
 		hd.track, hd.trackCol = fmt.Sprintf("TRACK %d", u.slot+1), cFg
 	}
@@ -258,6 +261,7 @@ type header struct {
 	track       string
 	trackCol    color.NRGBA
 	bank        string // COMPARTMENT / PAGE
+	sound       string // the device's sound (docs/PRESETS.md), "*" first when edited
 	warn        string // a module's UI switched off
 	page, pages int    // the bank, of how many (one or none: no indicator)
 	meter       bool   // a level to show
@@ -294,7 +298,7 @@ func drawHeader(img *image.NRGBA, x0 int, hd header, sc color.NRGBA) {
 		s     string
 		c     color.NRGBA
 		whole bool // a warning is read whole or not at all
-	}{{hd.warn, cWarn, true}, {hd.bank, cDim, false}, {hd.track, hd.trackCol, false}} {
+	}{{hd.warn, cWarn, true}, {hd.sound, cFg, false}, {hd.bank, cDim, false}, {hd.track, hd.trackCol, false}} {
 		if t.s == "" || room() < 3*7 || (t.whole && textWidth(t.s, nil) > room()) {
 			continue
 		}
