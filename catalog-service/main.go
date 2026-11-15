@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 	_ "time/tzdata" // TZ works in a container with no zone files: the nightly check is at 03:00 local
@@ -38,6 +39,7 @@ type config struct {
 	SchwungCatalog  string // Schwung's module-catalog.json
 	SchwungRepo     string // its repository: the host headers modules compile against
 	BaseURL         string // where /site is served
+	BuildJobs       int    // compiles at once in a build (the DiskStation is shared)
 }
 
 func main() {
@@ -50,7 +52,11 @@ func main() {
 		"https://raw.githubusercontent.com/charlesvestal/schwung/main/module-catalog.json"), "Schwung's catalogue")
 	flag.StringVar(&c.SchwungRepo, "schwung-repo", envOr("PUNG_SCHWUNG_REPO", "https://github.com/charlesvestal/schwung.git"), "Schwung's repository")
 	flag.StringVar(&c.BaseURL, "base-url", envOr("PUNG_BASE_URL", "https://<your-site>"), "the public address of the site")
+	flag.IntVar(&c.BuildJobs, "build-jobs", envInt("PUNG_BUILD_JOBS", 2), "compiles at once in a build")
 	flag.Parse()
+	if c.BuildJobs < 1 {
+		c.BuildJobs = 1
+	}
 	log.SetFlags(log.LstdFlags)
 	for _, d := range []string{c.Data, filepath.Join(c.Data, "work"), filepath.Join(c.Data, "history")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -80,6 +86,13 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx) //nolint:errcheck
+}
+
+func envInt(k string, d int) int {
+	if n, err := strconv.Atoi(os.Getenv(k)); err == nil {
+		return n
+	}
+	return d
 }
 
 func envOr(k, d string) string {

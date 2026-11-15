@@ -14,6 +14,9 @@ what the admin approves. The admin page is https://admin.<your-domain>.
   glibc ≤ 2.35, its entry point; the Push runs the real load test at install), the package with its
   licence texts and build notes, the source archive, the staging catalog. The release's version is stamped
   into `module.json`, as the author's release does.
+- **Gently**: the DiskStation runs other services, so every build step runs at the lowest CPU priority
+  (`nice 19`) in the idle I/O class, with at most 2 compiles at once (`PUNG_BUILD_JOBS` in the container's
+  environment changes it). A big emulator then takes longer, overnight, and nothing else notices.
 - **Publish** (only by the admin): packages and sources onto the site, each checked against the catalog,
   then `catalog.json`. The catalog it replaces is kept: *Restore* puts it back.
 

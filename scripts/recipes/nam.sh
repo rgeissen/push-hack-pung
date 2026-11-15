@@ -11,7 +11,7 @@ cp -a "$R/deps/NeuralAudio" "$T/na"
 cmake -S "$T/na" -B "$T/build" -G Ninja -DCMAKE_CXX_STANDARD=20 -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS="-Ofast $A -DNDEBUG -fno-gnu-unique" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DBUILD_UTILS=OFF -DBUILD_NAMCORE=OFF -DBUILD_STATIC_RTNEURAL=OFF -DWAVENET_FRAMES=128 -DBUFFER_PADDING=8
-cmake --build "$T/build" -j4
+cmake --build "$T/build" -j"${BUILD_JOBS:-4}"
 NA_LIB=$(find "$T/build" -name libNeuralAudio.a | head -1); RT_LIB=$(find "$T/build" -name libRTNeural.a | head -1)
 gcc -O2 -fPIC $A -c "$R/src/dsp/pffft/pffft.c" -o "$T/pffft.o"
 N=$R/deps/NeuralAudio

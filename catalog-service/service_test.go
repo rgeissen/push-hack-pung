@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -146,5 +147,31 @@ func TestStampVersion(t *testing.T) {
 	raw, _ := os.ReadFile(filepath.Join(tree, "audio_fx", "x", "module.json"))
 	if err != nil || old != "1.4.3" || !strings.Contains(string(raw), `"1.4.5"`) || !strings.Contains(string(raw), `"name": "X"`) {
 		t.Fatalf("%q %v %s", old, err, raw)
+	}
+}
+
+// A build shares the DiskStation: lowest CPU priority, idle I/O, and the job
+// count in every variable a recipe, make or CMake reads.
+func TestGentleBuildStep(t *testing.T) {
+	b := &builder{s: &server{cfg: config{BuildJobs: 2}}}
+	cmd := b.gentle(t.Context(), []string{"X=1"}, "true", "a")
+	want := []string{"true", "a"}
+	if p, err := exec.LookPath("ionice"); err == nil {
+		want = append([]string{p, "-c3"}, want...)
+	}
+	if p, err := exec.LookPath("nice"); err == nil {
+		want = append([]string{p, "-n", "19"}, want...)
+	}
+	if strings.Join(cmd.Args, " ") != strings.Join(want, " ") {
+		t.Fatalf("args %q, want %q", cmd.Args, want)
+	}
+	env := strings.Join(cmd.Env, "\n")
+	for _, kv := range []string{"BUILD_JOBS=2", "MAKEFLAGS=-j2", "CMAKE_BUILD_PARALLEL_LEVEL=2", "X=1"} {
+		if !strings.Contains(env, "\n"+kv+"\n") && !strings.HasSuffix(env, "\n"+kv) {
+			t.Fatalf("%s missing from the environment", kv)
+		}
+	}
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("the wrapped step does not run: %v", err)
 	}
 }

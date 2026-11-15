@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -169,8 +170,7 @@ func (b *builder) build(id string) buildResult {
 		say("%s: %s %s", step, name, strings.Join(args, " "))
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, name, args...)
-		cmd.Env = append(os.Environ(), env...)
+		cmd := b.gentle(ctx, env, name, args...)
 		cmd.Stdout, cmd.Stderr = jl, jl
 		return cmd.Run()
 	}
@@ -252,9 +252,9 @@ func (b *builder) build(id string) buildResult {
 	b.s.seedStaging()
 	out := &bytes.Buffer{}
 	b.setStep("staging")
-	cmd := exec.Command("python3", filepath.Join(b.s.cfg.App, "scripts", "build-catalog.py"),
+	cmd := b.gentle(context.Background(), []string{"PUNG_WORK=" + b.path(), "PUNG_SCHWUNG=" + schwung},
+		"python3", filepath.Join(b.s.cfg.App, "scripts", "build-catalog.py"),
 		"--out", filepath.Dir(b.s.stagingCatalog()), "--base-url", b.s.cfg.BaseURL, id)
-	cmd.Env = append(os.Environ(), "PUNG_WORK="+b.path(), "PUNG_SCHWUNG="+schwung)
 	cmd.Stdout, cmd.Stderr = io.MultiWriter(jl, out), io.MultiWriter(jl, out)
 	if err := cmd.Run(); err != nil {
 		return buildResult{Why: "staging: " + err.Error()}
@@ -266,6 +266,27 @@ func (b *builder) build(id string) buildResult {
 	b.s.setWithheld(id, "")
 	staged := catalogEntries(b.s.stagingCatalog())
 	return buildResult{OK: true, Version: staged[id][0]}
+}
+
+// gentle: a build step as the DiskStation's last priority. It shares the box
+// with Home Assistant and the rest, and a build is never in a hurry: the
+// lowest CPU priority, the idle I/O class, and at most BuildJobs compiles at
+// once (the recipes read BUILD_JOBS; make and CMake read their own
+// variables). Unthrottled, the Osirus build held the load average near 15 on
+// four threads.
+func (b *builder) gentle(ctx context.Context, env []string, name string, args ...string) *exec.Cmd {
+	jobs := strconv.Itoa(b.s.cfg.BuildJobs)
+	env = append([]string{"BUILD_JOBS=" + jobs, "MAKEFLAGS=-j" + jobs, "CMAKE_BUILD_PARALLEL_LEVEL=" + jobs}, env...)
+	argv := append([]string{name}, args...)
+	if p, err := exec.LookPath("ionice"); err == nil {
+		argv = append([]string{p, "-c3"}, argv...)
+	}
+	if p, err := exec.LookPath("nice"); err == nil {
+		argv = append([]string{p, "-n", "19"}, argv...)
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Env = append(os.Environ(), env...)
+	return cmd
 }
 
 func (b *builder) builtOK(id string) bool {

@@ -333,7 +333,7 @@ def gen(m):
                  '-DCMAKE_C_FLAGS="-march=x86-64-v2 -mtune=generic -I/schwung/src -I/schwung/src/host" '
                  '-DCMAKE_CXX_FLAGS="-march=x86-64-v2 -mtune=generic -fno-gnu-unique -I/schwung/src -I/schwung/src/host" '
                  '-DCMAKE_POSITION_INDEPENDENT_CODE=ON')
-        L.append('cmake --build "$T"/build --target %s -j4' % " ".join(q(t) for t in tg))
+        L.append('cmake --build "$T"/build --target %s -j"${BUILD_JOBS:-4}"' % " ".join(q(t) for t in tg))
         L.append('mkdir -p "$(dirname "$D"/%s)"' % q(dsp_name))
         L.append('so=$(find "$T"/build -name %s -type f | head -1); [ -n "$so" ] || so=$(find "$T"/build -maxdepth 2 -name "*.so" -type f | head -1)'
                  % q(os.path.basename(dsp_name)))
