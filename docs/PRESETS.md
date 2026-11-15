@@ -1,6 +1,6 @@
 # Sounds: one preset system for every Pung module
 
-Status: 2026-11-15. Phases 1 (the library), 2 (the Push) and 3 (the web page: the Sound section, the Sounds library, import and export) are built and tested on the device; phase 4 is next. The facts below come from reading Schwung
+Status: 2026-11-15. All four phases are built and tested on the device: the library, the Push, the web page (the Sound section, the Sounds library, import and export) and Push's own browser. The facts below come from reading Schwung
 (`src/shadow/shadow_ui_presets.mjs`, `src/shared/param_pages/`) and every chain module in the catalog (110:
 55 instruments, 41 audio effects, 14 MIDI effects).
 
@@ -223,9 +223,15 @@ A **Sounds** section for the selected device, and a **Library** page for all mod
 
 - The device's **Preset** parameter (a Live parameter where the module has a factory list) can be
   automated and is on Push's own Bank pages, as now.
-- Phase 4: each user sound also as a rack in the User Library next to the module (`Pung/Mini-JV/Fat
-  Brass.adg`), so Push's own browser finds and loads it. The rack carries the device's state in Live's
-  `ProcessorState`; that encoding is confirmed on the device first.
+- **Every user sound is a rack in Push's own browser** (phase 4, `src/sounds_racks.go`): User Library ›
+  Presets › Instruments › Pung › *Module* › *Sound*, beside the module's own rack. Loading it brings the
+  device with that sound, and the device knows it (its header, its browser). The rack is the module's
+  rack with the device state in `<ProcessorState>`, upper-case hex, 40 bytes a line, a little-endian
+  length first: measured on a rack Push saved. Saving, renaming, deleting and importing keep the racks
+  in step; Pung replaces or removes only the racks it wrote (`.pung-racks` lists them).
+- A rack Push's own Save puts into Pung's folder (beside the rack it came from) is the user's: core
+  v0.6.0's `WritePresets` removes every non-class rack there, so Pung keeps them across it
+  (`keepForeignRacks`) until core removes only what it wrote.
 
 ## Phases
 

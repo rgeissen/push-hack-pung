@@ -34,6 +34,8 @@ type soundLib struct {
 	named   map[string]bool // a list whose names were asked of the module (module|list|count)
 	// onNames: a list's names arrived (read in the background)
 	onNames func(d *device)
+	// racks: user sounds as racks in Push's browser (sounds_racks.go); nil: none
+	racks *soundRacks
 }
 
 func newSoundLib(h *Host, presetsDir string, quirkDirs ...string) *soundLib {
@@ -441,6 +443,7 @@ func (lib *soundLib) SaveAs(d *device, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	go lib.SyncRacks(d.c.module)
 	r := soundRef{Source: "user", Name: got}
 	lib.becomes(d, r)
 	lib.store.Update(d.c.module, func(ix *soundIndex) { ix.addRecent(r) }) //nolint:errcheck
@@ -472,6 +475,7 @@ func (lib *soundLib) Save(d *device) error {
 	if err := lib.store.Save(d.c.module, cur.Name, st, meta); err != nil {
 		return err
 	}
+	go lib.SyncRacks(d.c.module)
 	lib.becomes(d, *cur)
 	return nil
 }
@@ -495,6 +499,7 @@ func (lib *soundLib) Rename(d *device, name, to string) (string, error) {
 		return "", err
 	}
 	lib.store.Update(d.c.module, func(ix *soundIndex) { ix.renameUser(name, got) }) //nolint:errcheck
+	go lib.SyncRacks(d.c.module)
 	d.snd.mu.Lock()
 	if c := d.snd.current; c != nil && c.Source == "user" && c.Name == name {
 		c.Name = got
@@ -509,6 +514,7 @@ func (lib *soundLib) Delete(d *device, name string) error {
 		return err
 	}
 	lib.store.Update(d.c.module, func(ix *soundIndex) { ix.forgetUser(name) }) //nolint:errcheck
+	go lib.SyncRacks(d.c.module)
 	d.snd.mu.Lock()
 	if c := d.snd.current; c != nil && c.Source == "user" && c.Name == name {
 		d.snd.current, d.snd.hash = nil, ""
@@ -625,12 +631,18 @@ func (lib *soundLib) Import(module string, data []byte) (added []string, skipped
 			rc.Close()
 			one(f.Name, raw)
 		}
+		if len(added) > 0 {
+			go lib.SyncRacks(module)
+		}
 		return added, skipped, nil
 	}
 	if !json.Valid(data) {
 		return nil, nil, errors.New("not a preset file or a zip of them")
 	}
 	one("preset.json", data)
+	if len(added) > 0 {
+		go lib.SyncRacks(module)
+	}
 	return added, skipped, nil
 }
 

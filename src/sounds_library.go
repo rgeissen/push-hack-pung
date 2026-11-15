@@ -85,6 +85,7 @@ func (lib *soundLib) renameAll(module, name, to string) (string, error) {
 		return "", err
 	}
 	lib.store.Update(module, func(ix *soundIndex) { ix.renameUser(name, got) }) //nolint:errcheck
+	go lib.SyncRacks(module)
 	lib.eachDevice(module, func(d *device) {
 		if c := d.snd.current; c != nil && c.Source == "user" && c.Name == name {
 			c.Name = got
@@ -98,6 +99,7 @@ func (lib *soundLib) deleteAll(module, name string) error {
 		return err
 	}
 	lib.store.Update(module, func(ix *soundIndex) { ix.forgetUser(name) }) //nolint:errcheck
+	go lib.SyncRacks(module)
 	lib.eachDevice(module, func(d *device) {
 		if c := d.snd.current; c != nil && c.Source == "user" && c.Name == name {
 			d.snd.current, d.snd.hash = nil, ""

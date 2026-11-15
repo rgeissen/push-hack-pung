@@ -166,7 +166,12 @@ func main() {
 		log.Printf("devices: %v", err)
 	}
 	if *presets != "" {
-		if n, err := livedevice.WritePresets(*presets, "Pung", classes); err != nil {
+		// WritePresets removes every rack in Pung's folders that is not a
+		// class's: one Live saved there is given back (sounds_racks.go)
+		giveBack := keepForeignRacks(*presets, classes)
+		n, err := livedevice.WritePresets(*presets, "Pung", classes)
+		giveBack()
+		if err != nil {
 			log.Printf("devices: browser entries: %v", err)
 		} else if n > 0 {
 			log.Printf("devices: %d browser entries written", n)
@@ -179,6 +184,11 @@ func main() {
 		} else if n > 0 {
 			log.Printf("devices: browser tags written in %d folders", n)
 		}
+	}
+	// every user sound as a rack beside its module's (sounds_racks.go)
+	if *presets != "" {
+		h.sounds.racks = &soundRacks{presets: *presets, classes: sclasses}
+		go h.sounds.SyncAllRacks()
 	}
 	h.prov = newProvider(h, sclasses)
 	devs := livedevice.NewServer(livedevice.Config{Name: "pung", Socket: *socket}, h.prov, classes)

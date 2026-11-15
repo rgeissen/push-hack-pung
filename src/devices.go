@@ -814,6 +814,19 @@ func (d *device) loadState(seq uint64, chain json.RawMessage) {
 	if seq == d.stateSeq.Load() {
 		d.loading.Store(false)
 	}
+	// a sound loaded from its rack names itself but carries no hash (the
+	// module may store its state otherwise once loaded): taken now, so a
+	// later change shows as edited
+	d.snd.mu.Lock()
+	needHash := d.snd.current != nil && d.snd.hash == ""
+	d.snd.mu.Unlock()
+	if needHash {
+		if v, ok := d.s.Get(d.c.component() + ":state"); ok {
+			d.snd.mu.Lock()
+			d.snd.hash = stateHash(v)
+			d.snd.mu.Unlock()
+		}
+	}
 	// Live hears the loaded values: Push reads Live's, and showed the old
 	// ones beside a module that had another state (Edit Part Lower beside
 	// Upper, 2026-11-15). Later, and again, for a module that boots a ROM.
