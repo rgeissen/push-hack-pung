@@ -68,6 +68,7 @@ type sbState struct {
 	bankCur   int      // the bank level's highlighted row (a bank is applied going down)
 	bankMoved bool     // the hands turned to another bank: going down applies it
 	menu      *sbMenu  // the highlighted sound's context menu, open
+	fromSave  bool     // opened by the Save button: the editor\'s Done or Cancel goes back to the Pung view
 	m         *sbModel // the last read; nil until the first arrives
 	reading   bool
 	again     bool // a read was asked for while one ran
@@ -706,6 +707,36 @@ func (u *surface) sbButton(n byte, press bool) bool {
 	return true
 }
 
+// saveButton: Push's Save in the Pung view saves the device's sound: the
+// name editor at once, the sound and its rack in Push's browser on Done,
+// back to the Pung view on Done or Cancel. (The Set is saved in Push's own
+// view: Push's Save dialog would be under the Pung view.) Caller holds u.mu.
+func (u *surface) saveButton() {
+	if u.view == "name" || u.h.sounds == nil {
+		return
+	}
+	if u.sb == nil {
+		u.openSounds()
+		if u.sb == nil {
+			return
+		}
+		u.sb.fromSave = true
+	}
+	d := u.sb.dev
+	d.snd.mu.Lock()
+	var cur *soundRef
+	if d.snd.current != nil {
+		c := *d.snd.current
+		cur = &c
+	}
+	d.snd.mu.Unlock()
+	name := u.h.sounds.suggestName(d, cur)
+	u.sb.ed = &nameEd{action: "saveas", r: []rune(name), suggest: name}
+	u.sb.ed.cur = max(0, len(u.sb.ed.r)-1)
+	u.sb.ed.win = max(0, len(u.sb.ed.r)-7)
+	u.view = "name"
+}
+
 // ---- the name editor ------------------------------------------------------
 
 // edTurn: encoder i turns the letter over it. Caller holds u.mu.
@@ -791,8 +822,11 @@ func (u *surface) edButton(n byte, press bool) bool {
 	case 24: // the suggested name back
 		ed.r = []rune(ed.suggest)
 		ed.cur, ed.win = max(0, len(ed.r)-1), max(0, len(ed.r)-7)
-	case 26: // CANCEL: back to the browser
+	case 26: // CANCEL: back to the browser (or to the Pung view, for the Save button)
 		u.sb.ed, u.view = nil, "sounds"
+		if u.sb.fromSave {
+			u.closeSounds(false)
+		}
 	case 27, 94, 91: // DONE, the jog press, D-pad centre
 		u.edDone()
 	case 93, 44: // jog nudged left: the cursor left
@@ -815,6 +849,9 @@ func (u *surface) edDone() {
 	}
 	sb.ed, u.view = nil, "sounds"
 	d, lib := sb.dev, u.h.sounds
+	if sb.fromSave {
+		u.closeSounds(false) // nothing auditioned: nothing comes back; the save below names the sound
+	}
 	go func() {
 		var got string
 		var err error

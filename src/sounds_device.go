@@ -414,10 +414,13 @@ func (lib *soundLib) becomes(d *device, r soundRef) {
 func (lib *soundLib) Cancel(d *device) {
 	d.snd.mu.Lock()
 	snap, was := d.snd.snapshot, d.snd.browsing
+	// nothing auditioned: nothing to put back (a reload of the same state
+	// is a whole sound load: Mini-JV, JE-8086)
+	tried := d.snd.target != nil || d.snd.applied != nil
 	d.snd.browsing, d.snd.snapshot, d.snd.target, d.snd.applied = false, "", nil, nil
 	d.snd.gen++
 	d.snd.mu.Unlock()
-	if was && snap != "" {
+	if was && tried && snap != "" {
 		d.SetOutside(d.c.component()+":state", snap)
 	}
 }

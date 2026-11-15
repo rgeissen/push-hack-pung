@@ -170,6 +170,9 @@ applied only when the hands turned to it: going down through the bank shown chan
 - The header of the Pung view names the device's sound beside the page, with `*` once it is edited
   (checked every 2 s). A quick jog step outside the browser makes the sound it lands on the device's sound,
   and a recent one.
+- **Save** (Push's button) in the Pung view saves the device's sound: the name editor at once, the sound
+  and its rack in Push's browser on Done, back to the Pung view on Done or Cancel. The Set is saved in
+  Push's own view (Device, then Save): Push's Save dialog would be under the Pung view.
 - Still to measure: how Live's undo history sees auditions (the goal: one step per sound kept).
 
 ### Naming without a keyboard

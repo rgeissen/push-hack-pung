@@ -872,6 +872,8 @@ func (u *surface) cc(n, v byte) {
 		return // push-manager closes the view and passes it on to Push
 	}
 	switch {
+	case n == push3.CCSave && u.liveActive():
+		u.saveButton() // the device's sound (sounds_view.go)
 	case n >= push3.CCScreenTop1 && n < push3.CCScreenTop1+8:
 		u.top(int(n - push3.CCScreenTop1))
 	case n >= push3.CCScreenBot1 && n < push3.CCScreenBot1+8:
@@ -1607,6 +1609,14 @@ func (u *surface) paintLEDs() {
 	for _, b := range []uint8{push3.CCAdd, push3.CCSwap, 92} { // Live lights its own (liveButtons)
 		u.led(false, b, 63)
 	}
+	// Save: the device's sound, where there is a Pung device to save
+	save := uint8(0)
+	if u.liveActive() {
+		if d, _ := u.pungDevice(); d != nil {
+			save = 63
+		}
+	}
+	u.led(false, push3.CCSave, save)
 	// Page < >: lit where they go somewhere, as the header's arrows show
 	pl, pr := u.pageSteps()
 	u.led(false, 62, map[bool]uint8{true: 63, false: 0}[pl])
