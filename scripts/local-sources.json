@@ -1,6 +1,7 @@
 {
  "schwung-je8086": {
   "path": "../schwung-je8086",
-  "why": "rgeissen's fork, branch remote-ui: the JP-8000 front panel as the module's web page, and the modulation lever; not upstream yet"
+  "why": "rgeissen's fork, branch remote-ui: the JP-8000 front panel as the module's web page, and the modulation lever; not upstream yet",
+  "github_repo": "rgeissen/schwung-je8086"
  }
 }

@@ -26,6 +26,10 @@ import sys
 import tarfile
 
 catalog, modsrc, out = sys.argv[1:4]
+# a module built from a local fork (local-sources.json) names that fork as its
+# source: the commit it was built from exists there, not upstream
+_ls = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local-sources.json")
+FORKS = {k: v["github_repo"] for k, v in (json.load(open(_ls)).items() if os.path.exists(_ls) else []) if v.get("github_repo")}
 tree, logs, dist = os.path.join(out, "modules"), os.path.join(out, "logs"), os.path.join(out, "dist")
 os.makedirs(dist, exist_ok=True)
 cat = {m["id"]: m for m in json.load(open(catalog))["modules"]}
@@ -142,7 +146,7 @@ for mid, m in sorted(cat.items()):
         "component_type": m["component_type"], "install_subdir": sub,
         "description": m.get("description", ""), "author": m.get("author", ""),
         "asset": asset, "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
-        "source": {"github_repo": m["github_repo"], "commit": commit(repo)},
+        "source": {"github_repo": FORKS.get(m["github_repo"].split("/")[1], m["github_repo"]), "commit": commit(repo)},
         "requires": m.get("requires", ""), "requires_modules": m.get("requires_modules", []),
     })
     built.append(mid)
