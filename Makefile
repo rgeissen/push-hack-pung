@@ -5,14 +5,11 @@
 IMAGE   := push-hack-pung-builder
 HOST    ?= push.local
 SCHWUNG ?= $(abspath $(CURDIR)/../schwung)
-# push-hack: core/livedevice (Live devices) comes from here while src/go.mod
-# replaces core with this checkout (until core/v0.6.0 is tagged)
-PUSHHACK ?= $(abspath $(CURDIR)/../ableton-push-hack)
 MODSRC  ?= $(CURDIR)/build/modsrc
 VERSION := $(shell cat VERSION 2>/dev/null || echo dev)
 SSH     := ssh -o BatchMode=yes -o HostKeyAlias=push.local
 DOCKER  := docker run --rm --platform linux/amd64 \
-	-v $(CURDIR):/w -v $(PUSHHACK):/ableton-push-hack:ro -v push-hack-pung-gomod:/root/go/pkg/mod -w /w
+	-v $(CURDIR):/w -v push-hack-pung-gomod:/root/go/pkg/mod -w /w
 
 # AbletonOS keeps its dynamic linker at /lib, not /lib64.
 LDFLAGS := -s -w -X main.buildVersion=$(VERSION) -linkmode external \

@@ -36,8 +36,8 @@ Needs Push Hack's VST3 scan switched on (Push Manager, System tab). The hack ins
 new modules after its next start. Removing the hack with Push Hack Catalog removes the browser entries and
 keeps the plugin, so Sets with Pung devices still open (the devices are silent).
 
-Build: `src/go.mod` takes `core` from the push-hack checkout beside this repo (`../ableton-push-hack`) until
-`core/livedevice` is in a `core/vX.Y.Z` tag. `make build` copies the plugin binary from that `core`.
+Build: `src/go.mod` pins push-hack's `core` at `v0.6.0`, the first release with `core/livedevice`. `make build`
+copies the plugin binary from that module.
 
 ## Pung tracks (version 1)
 
