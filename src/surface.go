@@ -781,6 +781,7 @@ func (u *surface) cc(n, v byte) {
 	switch n {
 	case push3.CCShift:
 		u.shift = press
+		u.dirty.Store(true) // a touched cell shows FINE while Shift is held
 		return
 	case push3.CCDelete, push3.CCMute:
 		return // Live's (liveButtons)
@@ -967,7 +968,9 @@ func (u *surface) stepBank(d int) {
 		u.bankOff = n / 8 * 8
 		u.peekUntil = time.Time{}
 		u.refreshValues()
-		u.say(strings.ToUpper(cm.Banks[n].Name))
+		// no notice: the header names the page, and a takeover draws its own;
+		// a box over the knobs (Move's habit, where the page has no room to
+		// say it) hid two of them for 2.5 s on every page turn
 	}
 }
 
@@ -1703,3 +1706,6 @@ func (u *surface) overlayDrawUS(module string) int64 {
 	}
 	return 0
 }
+
+// redraw: the next frame draws, whatever changed.
+func (u *surface) redraw() { u.dirty.Store(true) }

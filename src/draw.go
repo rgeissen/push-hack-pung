@@ -186,10 +186,14 @@ const (
 
 // gauge: the 300-degree dial. frac 0..1; bipolar fills from the top; eff >= 0
 // draws modulation (the live value) as an outer arc.
-func gauge(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.NRGBA, readOnly bool) {
+// gauge: hot is the touched one: its track lighter, its value arc thicker.
+func gauge(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.NRGBA, readOnly, hot bool) {
 	frac = math.Max(0, math.Min(1, frac))
 	x, y := float64(cx), float64(cy)
-	track := cFaint
+	track, w := cFaint, 3.0
+	if hot {
+		track, w = cLine, 5
+	}
 	if readOnly {
 		// a read-only value is a dotted ring: same place, no promise of a knob
 		for i := 0; i <= 30; i++ {
@@ -197,18 +201,18 @@ func gauge(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.N
 			disc(img, x+math.Cos(a)*knobR, y+math.Sin(a)*knobR, 1.1, cLine)
 		}
 	} else {
-		arc(img, x, y, knobR, gaugeA0, gaugeSW, 3, track)
+		arc(img, x, y, knobR, gaugeA0, gaugeSW, w, track)
 	}
 	if bipolar {
 		mid := gaugeA0 + gaugeSW/2
 		e := gaugeA0 + gaugeSW*frac
 		if e > mid {
-			arc(img, x, y, knobR, mid, e-mid, 3, col)
+			arc(img, x, y, knobR, mid, e-mid, w, col)
 		} else {
-			arc(img, x, y, knobR, e, mid-e, 3, col)
+			arc(img, x, y, knobR, e, mid-e, w, col)
 		}
 	} else if !readOnly {
-		arc(img, x, y, knobR, gaugeA0, gaugeSW*frac, 3, col)
+		arc(img, x, y, knobR, gaugeA0, gaugeSW*frac, w, col)
 	}
 	a := gaugeA0 + gaugeSW*frac
 	disc(img, x+math.Cos(a)*(knobR-8), y+math.Sin(a)*(knobR-8), 2.2, cFg)

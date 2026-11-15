@@ -604,8 +604,20 @@
   document.querySelectorAll(".kinds button").forEach((b) => (b.onclick = () => setPickerKind(b.dataset.kind)));
   $("picker-close").onclick = () => ($("picker").hidden = true);
 
+  // Pung's settings (settings.go)
+  async function loadPrefs() {
+    const box = $("pref-touch-card");
+    if (!box) return;
+    try { box.checked = !!(await api("/api/settings")).settings.touch_card; } catch (e) { return; }
+    box.onchange = async () => {
+      const r = await post("/api/settings", { touch_card: box.checked });
+      if (!r.ok) { box.checked = !box.checked; alertBox(r.error || "could not save the setting"); }
+    };
+  }
+
   async function boot() {
     setSlotColor();
+    loadPrefs();
     try { state.modules = (await api("/api/modules")).modules || []; } catch (e) { /* the status line says why */ }
     await refreshStatus();
     loadPanel();

@@ -61,8 +61,46 @@ func (h *Host) componentInfo(s *Slot, comp string) map[string]any {
 	return out
 }
 
+// componentValues: what a module's page is sent, as Schwung Manager sends
+// it (schwung-manager/remote_ui.go): the fields of the component's state when
+// that is a JSON object (strings, numbers, booleans; JE-8086's panel is built
+// on its "temp" field, the emulator's whole patch image, and waited "for the
+// slot" forever without it), the values its widgets name (viz.extra_keys),
+// and every declared parameter, read last so they are the freshest.
 func (h *Host) componentValues(s *Slot, comp string, cp []map[string]any) map[string]any {
 	vals := map[string]any{}
+	if raw, ok := s.Get(comp + ":state"); ok && strings.HasPrefix(strings.TrimSpace(raw), "{") {
+		var st map[string]any
+		if json.Unmarshal([]byte(raw), &st) == nil {
+			for k, v := range st {
+				switch tv := v.(type) {
+				case string:
+					vals[comp+":"+k] = tv
+				case float64:
+					vals[comp+":"+k] = strconv.FormatFloat(tv, 'f', -1, 64)
+				case bool:
+					vals[comp+":"+k] = map[bool]string{true: "1", false: "0"}[tv]
+				}
+			}
+		}
+	}
+	declared := map[string]bool{}
+	for _, p := range cp {
+		if k, _ := p["key"].(string); k != "" {
+			declared[k] = true
+		}
+	}
+	for _, p := range cp {
+		viz, _ := p["viz"].(map[string]any)
+		extra, _ := viz["extra_keys"].([]any)
+		for _, x := range extra {
+			if k, _ := x.(string); k != "" && !declared[k] {
+				if v, ok := s.Get(comp + ":" + k); ok {
+					vals[comp+":"+k] = v
+				}
+			}
+		}
+	}
 	for _, p := range cp {
 		k, _ := p["key"].(string)
 		if k == "" {

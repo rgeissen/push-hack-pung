@@ -171,9 +171,10 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		if set != nil && set.failed != "" && nb <= 6 {
 			label(img, scrW/2, 17, "MODULE UI OFF", cWarn, 0) // the top bar's middle: the header is on the right
 		}
-		// the detail card, except over a picture: the picture shows the
-		// touch itself, and a card would hide what is being turned
-		if u.peekEnc >= 0 && u.peekEnc < len(b.Keys) && !covered[u.peekEnc] && time.Now().Before(u.peekUntil) && b.Keys[u.peekEnc] != "" {
+		// the detail card, only when asked for (settings.go: on the Push the
+		// touched cell shows it in place), and never over a picture: the
+		// picture shows the touch itself, and a card would hide it
+		if u.h.settings.get().TouchCard && u.peekEnc >= 0 && u.peekEnc < len(b.Keys) && !covered[u.peekEnc] && time.Now().Before(u.peekUntil) && b.Keys[u.peekEnc] != "" {
 			u.drawPeek(img, u.peekEnc, p, cm.Params[b.Keys[u.peekEnc]], b.Keys[u.peekEnc], sc)
 		}
 	}
@@ -303,8 +304,12 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 	if m == nil {
 		m = &paramMeta{Key: key, Name: key, Type: "string", ReadOnly: true}
 	}
+	// A touched cell shows what Move's detail card showed, in place (the
+	// card is a setting, settings.go): the range at the gauge's ends, a
+	// list's neighbouring options, and fine adjustment.
+	touched := u.touched == col
 	nameCol := cDim
-	if u.touched == col {
+	if touched {
 		nameCol = cFg
 		rect(img, cx-16, 43, 32, 2, sc)
 	}
@@ -312,8 +317,22 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 	val, unit := m.display(v, ok)
 	switch {
 	case m.Type == "enum":
-		frameRect(img, cx-44, 64, 88, 28, cLine)
+		box := cLine
+		if touched {
+			box = sc
+		}
+		frameRect(img, cx-44, 64, 88, 28, box)
 		styled(img, cx, 84, fitLabel(val, 80), cFg, faceValue, 0)
+		if n := len(m.Options); touched && n > 1 && ok {
+			// where a turn goes next, either way
+			i, _ := m.enumIndex(v)
+			if i > 0 {
+				label(img, cx-55, 124, "<"+fitLabel(strings.ToUpper(m.Options[i-1]), 47), cDim, -1)
+			}
+			if i < n-1 {
+				label(img, cx+55, 124, fitLabel(strings.ToUpper(m.Options[i+1]), 47)+">", cDim, 1)
+			}
+		}
 		if n := len(m.Options); n > 1 && n <= 12 {
 			i, _ := m.enumIndex(v)
 			x0 := cx - (n-1)*9/2
@@ -332,7 +351,23 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 		styled(img, cx, 84, fitLabel(val, colW-10), cFg, faceValue, 0)
 		return
 	default:
-		gauge(img, cx, knobCY, m.frac(v), m.Bipolar, sc, m.ReadOnly)
+		gauge(img, cx, knobCY, m.frac(v), m.Bipolar, sc, m.ReadOnly, touched)
+		if touched && !m.ReadOnly && m.Max > m.Min {
+			// the range, at the ends of the arc
+			lo, _ := m.display(strconv.FormatFloat(m.Min, 'f', -1, 64), true)
+			hi, _ := m.display(strconv.FormatFloat(m.Max, 'f', -1, 64), true)
+			label(img, cx-52, 107, fitLabel(lo, 40), cDim, -1)
+			label(img, cx+52, 107, fitLabel(hi, 40), cDim, 1)
+			// fine adjustment: what Shift does here, and that it is on
+			if m.fineApplies() {
+				if u.shift {
+					rect(img, cx+22, 45, 34, 13, sc)
+					label(img, cx+39, 55, "FINE", cBlack, 0)
+				} else {
+					label(img, cx+56, 55, "SHIFT:FINE", cLine, 1)
+				}
+			}
+		}
 	}
 	if m.Type != "enum" {
 		w := styled(img, 0, -100, val, cFg, faceValue, -1) // measure

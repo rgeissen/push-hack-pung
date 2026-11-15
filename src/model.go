@@ -402,6 +402,17 @@ func (m *paramMeta) display(v string, ok bool) (val, unit string) {
 }
 
 // step moves a value by delta encoder clicks. fine: Shift held.
+// fineApplies: Shift makes a turn finer for this parameter (step, below).
+func (m *paramMeta) fineApplies() bool {
+	if m.Type == "enum" || m.Type == "string" || m.ReadOnly {
+		return false
+	}
+	if m.Type == "int" || (m.Step >= 1 && m.Step == math.Trunc(m.Step)) {
+		return math.Round((m.Max-m.Min)/128) > 1
+	}
+	return true
+}
+
 func (m *paramMeta) step(v string, delta int, fine bool) (string, bool) {
 	if m.ReadOnly || delta == 0 {
 		return v, false

@@ -97,6 +97,7 @@ func main() {
 	mux := http.NewServeMux()
 	h.routes(mux)
 	h.webRoutes(mux)
+	h.settingsRoutes(mux)
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {

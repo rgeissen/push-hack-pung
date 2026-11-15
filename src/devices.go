@@ -756,7 +756,17 @@ func (d *device) refused() bool {
 	if raw, ok := d.s.Meta(comp, "chain_params"); ok && raw != "" {
 		json.Unmarshal([]byte(raw), &cp) //nolint:errcheck
 	}
-	return len(cp) > 0 && len(d.p.h.componentValues(d.s, comp, cp)) == 0
+	if len(cp) == 0 {
+		return false
+	}
+	for _, p := range cp { // declared parameters only: a refused module may still answer "state"
+		if k, _ := p["key"].(string); k != "" {
+			if _, ok := d.s.Get(comp + ":" + k); ok {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // reload: the module again, and the device's last state.

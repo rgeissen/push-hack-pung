@@ -64,6 +64,7 @@ type Host struct {
 	live     *live           // the PushHack Remote Script session (live.go)
 	screened map[string]bool // module id -> passed the crash screen (screen.go); set once at start
 	ui       *surface        // the Pung view on the Push (surface.go); nil without one
+	settings *settingsStore  // Pung's own settings (settings.go)
 
 	selMu      sync.Mutex
 	selKey     string // Live's selection that selDev was worked out for
@@ -78,7 +79,7 @@ type Host struct {
 }
 
 func newHost(modulesDir, dataDir, busSocket string) *Host {
-	h := &Host{modulesDir: modulesDir, dataDir: dataDir, busSocket: busSocket}
+	h := &Host{modulesDir: modulesDir, dataDir: dataDir, busSocket: busSocket, settings: loadSettings(dataDir)}
 	empty := []*Slot{}
 	h.active.Store(&empty)
 	h.transport.h = h

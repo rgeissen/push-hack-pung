@@ -140,8 +140,21 @@ The rules for a recognized structure:
 | Value unknown | a neutral shape in dim. **A read that did not answer never becomes a picture** |
 | Overlay failed | the default view, and `MODULE UI OFF` in warn at the top centre |
 
-Over a picture, touching an encoder does **not** open the detail card: the picture already shows the
-touch, and a card would hide what is being turned. The value stays readable in the row under it.
+**The touched cell says it all, in place.** Move opens a large detail card on every touch, because its whole
+screen is one small LCD. On the Push every encoder has a 120-pixel column, so the card only hides the
+neighbouring knobs. The touched cell instead shows:
+
+- its name in fg over a slot-colour underline, and a thicker gauge on a lighter track;
+- the **range** at the ends of the gauge's arc (`0` and `127`, `-50` and `+50`);
+- for a list, its box outlined in slot colour and the **neighbouring options** (`<BPF`, `SAW>`): where a
+  turn goes next, either way;
+- **fine adjustment** where Shift changes the step: a `SHIFT:FINE` hint, and a lit `FINE` badge while
+  Shift is held.
+
+The card stays available as a setting (web page, **Push display > Detail card on touch**; `touch_card` in
+`settings.json`), off by default, and never opens over a picture. Turning a page shows no notice either:
+the header names the page (a takeover draws its own indicator), and a box over the knobs hid two of them
+for 2.5 s on every page turn. Notices are for what the screen does not already say.
 
 ## 5. Custom screens
 
@@ -205,7 +218,9 @@ If it only restyles the default page, it does not ship.
   picture is never the only way to a value. A picture has an `aria-label` naming its values.
 - **Phone widths.** Cards stack, a picture keeps its proportion, a row of controls folds to two columns.
 - **A module's own `web_ui.html`** runs in a sandbox under a strip of its compartments. It decides its
-  own look, but follows §1.
+  own look, but follows §1. It is sent what Schwung Manager sends: the declared parameters, the values
+  its widgets name (`viz.extra_keys`), and the fields of its `state` when that is a JSON object
+  (JE-8086's panel is built on `state.temp`, the emulator's whole patch image).
 
 ## 7. Motion and performance
 
@@ -225,6 +240,7 @@ Before a screen, widget or web section ships:
 - [ ] The touched element is in slot colour; slot colour is used for nothing else.
 - [ ] Unknown values draw a neutral shape, never a guess.
 - [ ] Every value is readable as text somewhere on the screen (the row under a picture counts).
+- [ ] Nothing covers a knob that is not being turned: no card, no notice the header already gives.
 - [ ] Nothing is drawn outside its band; the header and the name and value row are untouched.
 - [ ] It stays under 8 ms a frame on the device (`TestShippedOverlaysDraw` renders it; screenshots with
       `PUNG_SHOTS=dir go test`).

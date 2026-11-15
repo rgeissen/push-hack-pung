@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -236,6 +237,33 @@ func TestModuleInChannel(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "module.json"), []byte(c.json), 0o644)
 		if got := moduleInChannel(ModuleInfo{Dir: dir}); got != c.want {
 			t.Errorf("%s: %d, want %d", c.json, got, c.want)
+		}
+	}
+}
+
+// Shift makes a turn finer exactly where step() does.
+func TestFineApplies(t *testing.T) {
+	for _, c := range []struct {
+		m    paramMeta
+		want bool
+	}{
+		{paramMeta{Type: "float", Min: 0, Max: 1}, true},
+		{paramMeta{Type: "int", Min: 0, Max: 127}, false},
+		{paramMeta{Type: "int", Min: 20, Max: 20000}, true},
+		{paramMeta{Type: "enum", Options: []string{"a", "b"}}, false},
+		{paramMeta{Type: "float", Min: 0, Max: 1, ReadOnly: true}, false},
+	} {
+		if got := c.m.fineApplies(); got != c.want {
+			t.Errorf("%+v: %v", c.m, got)
+		}
+		// and step agrees: fine moves less than coarse, or not differently
+		if c.m.Type != "enum" && !c.m.ReadOnly {
+			mid := fmt.Sprint((c.m.Min + c.m.Max) / 2)
+			a, _ := c.m.step(mid, 1, false)
+			b, _ := c.m.step(mid, 1, true)
+			if (a != b) != c.want {
+				t.Errorf("%+v: coarse %s fine %s, fineApplies %v", c.m, a, b, c.want)
+			}
 		}
 	}
 }
