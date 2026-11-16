@@ -75,6 +75,11 @@ func TestFactoryListsFromContracts(t *testing.T) {
 	if jv[1].Mode != "performance" || jv[1].List != "performance" || jv[1].Count != "num_performances" {
 		t.Errorf("minijv's performance list: %+v", jv[1])
 	}
+	// Load Expansion (load_expansion) changes the card, never the 48 rows:
+	// offered as banks, the bank's name changed and the list did not
+	if jv[1].BankItems != "" || jv[1].BankSelect != "" {
+		t.Errorf("minijv's performances have no banks, got %q / %q", jv[1].BankItems, jv[1].BankSelect)
+	}
 }
 
 func TestPresetListReading(t *testing.T) {

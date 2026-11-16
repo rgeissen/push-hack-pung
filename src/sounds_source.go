@@ -168,11 +168,15 @@ func listOf(levels map[string]map[string]any, name string, lv map[string]any) pr
 // Soundfont), else one that returns to the list once a row is picked
 // (Surge's categories, Mini-JV's expansion cards). An items level whose pick
 // is an action (Mini-JV's Save to Slot: do_save_to_slot) is not a bank.
+// Neither is one that loads something the list does not show: Mini-JV's
+// Load Expansion in performance mode (load_expansion) puts a card's waves
+// into the synth and leaves the 48 performances as they are, so offering it
+// as banks switched the bank's name and never the rows (reported 2026-11-16).
 func bankChooser(levels map[string]map[string]any, name string, lv map[string]any) (items, sel string) {
 	isBank := func(l map[string]any) bool {
 		s := str(l["select_param"])
 		return l != nil && str(l["items_param"]) != "" && s != "" &&
-			!strings.HasPrefix(s, "do_") && !strings.Contains(s, "save")
+			!strings.HasPrefix(s, "do_") && !strings.HasPrefix(s, "load_") && !strings.Contains(s, "save")
 	}
 	menus := []map[string]any{lv}
 	if c := levels[str(lv["children"])]; c != nil {
