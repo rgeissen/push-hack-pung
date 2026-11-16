@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -276,7 +277,7 @@ func (sb *sbState) buildRows() []sbRow {
 			for i := 0; i < f.Count; i++ {
 				r := sbRow{ref: soundRef{Source: "factory", Bank: f.Bank, Index: i}, num: i + 1, name: f.Names[fmt.Sprint(i)]}
 				if f.Bank != "" && i == f.Index {
-					r.tag = strings.ToUpper(f.Bank)
+					r.tag = bankLabel(f.Bank)
 				}
 				out = append(out, r)
 			}
@@ -300,7 +301,7 @@ func (sb *sbState) buildRows() []sbRow {
 			if r.Source == "factory" {
 				row.num, row.tag = r.Index+1, "FACTORY"
 				if r.Bank != "" {
-					row.tag = strings.ToUpper(r.Bank)
+					row.tag = bankLabel(r.Bank)
 				}
 			}
 			out = append(out, row)
@@ -391,12 +392,7 @@ func (u *surface) sbBank(delta int) {
 	if len(f.Banks) == 0 {
 		return
 	}
-	at := 0
-	for i, b := range f.Banks {
-		if b.Name == f.Bank || b.Index == f.BankAt {
-			at = i
-		}
-	}
+	at := max(0, bankIndex(f)) // the bank the panel shows as current
 	n := at + delta
 	if n < 0 || n >= len(f.Banks) {
 		return
@@ -544,6 +540,15 @@ func bankIndex(f *factoryView) int {
 	}
 	return at
 }
+
+// bankLabel: a bank's name as the screen shows it. A module may carry a
+// file's checksum in the name it lists (Mini-JV: "02 Orchestral - CS
+// 0x3F0E09E2"): that is not part of what the bank is called.
+func bankLabel(name string) string {
+	return strings.ToUpper(strings.TrimSpace(bankChecksum.ReplaceAllString(name, "")))
+}
+
+var bankChecksum = regexp.MustCompile(`(?i)\s*-\s*CS\s+0x[0-9a-f]+\s*$`)
 
 // sbTurn: the jog turned, on the level the hands are on. Caller holds u.mu.
 func (u *surface) sbTurn(delta int) {
@@ -923,7 +928,7 @@ func (u *surface) drawSounds(img *image.NRGBA) {
 	crumb := strings.ToUpper(sb.dev.c.Name)
 	if sb.m != nil && sb.source == srcFactory && sb.m.fvOK {
 		if f := sb.m.v.Factory; f.Bank != "" {
-			crumb += "  /  " + strings.ToUpper(f.Bank)
+			crumb += "  /  " + bankLabel(f.Bank)
 		} else if f.Mode != "" {
 			crumb += "  /  " + strings.ToUpper(f.Mode)
 		}
@@ -1142,7 +1147,7 @@ func (u *surface) drawBankPanel(img *image.NRGBA, sc color.NRGBA) {
 		if first+i == at {
 			col = cFg
 		}
-		label(img, 18, y+14, fitLabel(strings.ToUpper(b.Name), 2*colW-36), col, -1)
+		label(img, 18, y+14, fitLabel(bankLabel(b.Name), 2*colW-36), col, -1)
 	}
 }
 

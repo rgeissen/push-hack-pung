@@ -127,3 +127,15 @@ func TestRowNamesForAListsOwnNameKey(t *testing.T) {
 		t.Fatalf("the default list: %+v", pl)
 	}
 }
+
+func TestBankLabelDropsAChecksum(t *testing.T) {
+	for in, want := range map[string]string{
+		"02 Orchestral - CS 0x3F0E09E2": "02 ORCHESTRAL",
+		"Factory (Preset A)":            "FACTORY (PRESET A)",
+		"Rock - Classics":               "ROCK - CLASSICS",
+	} {
+		if got := bankLabel(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+}
