@@ -4,6 +4,7 @@ package main
 // catalog has its own, and the files are what Live reads.
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -213,5 +214,59 @@ func TestAbletonTagsKeepWhatLiveWrote(t *testing.T) {
 	}
 	if raw, _ := os.ReadFile(path); string(raw) != "<x:xmpmeta>something else</x:xmpmeta>" {
 		t.Error("the unreadable file changed")
+	}
+}
+
+// The file as Live 13 itself wrote it on a Push after a Pung device was put
+// in a collection (testdata/live-folder-info.xmp: another header than
+// Pung's, an <ablFR:colors> bag on the item, CreatorTool and CreateDate):
+// Pung's start leaves it byte for byte, and a change of Pung's own tags
+// keeps the collection.
+func TestAbletonTagsOnLivesOwnFile(t *testing.T) {
+	live, err := os.ReadFile("testdata/live-folder-info.xmp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	presets, state := t.TempDir(), t.TempDir()
+	path := filepath.Join(presets, "Instruments", "Pung", "Ableton Folder Info", folderInfoName)
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	os.WriteFile(path, live, 0o644)
+	// Pung's devices and tags, as the file has them
+	src := string(live)
+	open, end := xmpItemsOpen.FindStringIndex(src), xmpItemsEnd.FindStringIndex(src)
+	items, ok := xmpItems(src[open[1]:end[0]])
+	if !ok || len(items) < 5 {
+		t.Fatalf("Live's file: %d items, shaped %v", len(items), ok)
+	}
+	tags := map[string][]string{}
+	var classes []*livedevice.Class
+	colored := ""
+	for _, it := range items {
+		name := strings.TrimSuffix(xmpItemPath.FindStringSubmatch(it)[1], ".adg")
+		tags[name] = xmpItemKeywords(it)
+		classes = append(classes, &livedevice.Class{Name: name, Kind: livedevice.Instrument, Ref: name})
+		if strings.Contains(it, "<ablFR:colors>") {
+			colored = name
+		}
+	}
+	if colored == "" {
+		t.Fatal("the sample has no item in a collection")
+	}
+	tagsOf := func(c *livedevice.Class) []string { return tags[c.Ref] }
+	if n, err := writeAbletonTags(presets, "Pung", classes, tagsOf, state); n != 0 || err != nil {
+		t.Fatalf("Pung rewrote Live's own file: %d %v", n, err)
+	}
+	if got, _ := os.ReadFile(path); !bytes.Equal(got, live) {
+		t.Fatal("Live's own file changed")
+	}
+	tags[colored] = append([]string{"Devices|Synthesizer|Digital"}, tags[colored]...)
+	if n, _ := writeAbletonTags(presets, "Pung", classes, tagsOf, state); n != 1 {
+		t.Fatalf("a new tag of Pung's did not reach the file (%d)", n)
+	}
+	got, _ := os.ReadFile(path)
+	s := string(got)
+	if !strings.Contains(s, "<ablFR:colors>") || !strings.Contains(s, "<xmp:CreatorTool>Ableton Index") || !strings.Contains(s, "Devices|Synthesizer|Digital") ||
+		strings.Count(s, "<ablFR:filePath>") != len(items) {
+		t.Fatalf("after the merge:\n%s", s)
 	}
 }
