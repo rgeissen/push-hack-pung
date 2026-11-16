@@ -254,3 +254,30 @@ func TestFineApplies(t *testing.T) {
 		}
 	}
 }
+
+// A module that computes its sound in processes of its own says so
+// (capabilities.forks_processes), and only its loads run realtime.
+func TestForkingModulesAreKnown(t *testing.T) {
+	root := t.TempDir()
+	for id, caps := range map[string]string{"jp8000": `{"forks_processes": true}`, "braids": `{}`} {
+		dir := filepath.Join(root, "sound_generators", id)
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"`+id+`","capabilities":`+caps+`}`), 0o644)
+	}
+	old := forkingModulesDir
+	forkingModulesDir = root
+	defer func() { forkingModulesDir = old }()
+	patch := filepath.Join(root, "p.json")
+	os.WriteFile(patch, []byte(`{"synth":{"module":"jp8000"}}`), 0o644)
+	plain := filepath.Join(root, "q.json")
+	os.WriteFile(plain, []byte(`{"synth":{"module":"braids"}}`), 0o644)
+	for _, c := range []struct {
+		key, val string
+		want     bool
+	}{{"synth:module", "jp8000", true}, {"synth:module", "braids", false}, {"synth:module", "", false},
+		{"synth:cutoff", "jp8000", false}, {"load_file", patch, true}, {"load_file", plain, false}} {
+		if got := loadsForkingModule(c.key, c.val); got != c.want {
+			t.Errorf("%s=%s: realtime load %v, want %v", c.key, c.val, got, c.want)
+		}
+	}
+}

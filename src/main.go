@@ -80,6 +80,7 @@ func main() {
 		cLockDir(real + "/")
 	}
 	h := newHost(*modules, *data, audiobus.SocketPath(audiobus.DefaultDir))
+	forkingModulesDir = *modules // engine.go: a forking module's processes are loaded realtime
 	// sounds: Schwung's presets folder (Pung's own, through the link above);
 	// presets.json from Pung's overrides, the data folder's winning
 	h.sounds = newSoundLib(h, presetsDir(base), filepath.Join(base, "overrides"), filepath.Join(*data, "overrides"))

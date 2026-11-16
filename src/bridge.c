@@ -328,6 +328,12 @@ int sb_take_midi_out(int slot, uint8_t *buf, int max) {
     return n;
 }
 
+/* back to ordinary scheduling, after a load at sb_set_realtime */
+int sb_set_timeshare(void) {
+    struct sched_param sp = {.sched_priority = 0};
+    return pthread_setschedparam(pthread_self(), SCHED_OTHER, &sp);
+}
+
 int sb_set_realtime(int priority) {
     struct sched_param sp = {.sched_priority = priority};
     return pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);

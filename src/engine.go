@@ -21,6 +21,9 @@ package main
 import "C"
 
 import (
+	"slices"
+	"os"
+	"bytes"
 	"errors"
 	"log"
 	"math"
@@ -116,10 +119,64 @@ func cWarm(i, blocks int) { C.sb_warm(C.int(i), C.int(blocks)) }
 
 func cSetRealtime(prio int) int { return int(C.sb_set_realtime(C.int(prio))) }
 
+// loadRTPriority: the realtime priority a module that computes its sound
+// in processes of its own is loaded at. Such a module (JE-8086) forks them
+// from the thread that loads it, and they take that thread's scheduling: on
+// Move that is realtime, and the module keeps them at FIFO 20. Loaded from
+// an ordinary thread, as here, they ran as ordinary background processes,
+// were held up by everything else on the Push, and the sound dropped out:
+// 3 underruns in 5 s with nothing playing (measured on a Push, 2026-11-16).
+// 20 is under everything that makes sound in time: Live's audio threads
+// (70), Pung's render thread (60), the audio loopback (50).
+const loadRTPriority = 20
+
+// forkingModulesDir: where the modules are (set once, at start).
+var forkingModulesDir string
+
+// loadsForkingModule: this set loads a module that forks its own processes.
+func loadsForkingModule(key, val string) bool {
+	if forkingModulesDir == "" {
+		return false
+	}
+	var ids []string
+	for _, m := range scanModules(forkingModulesDir) {
+		if m.Forks {
+			ids = append(ids, m.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return false
+	}
+	if strings.HasSuffix(key, ":module") {
+		return slices.Contains(ids, val)
+	}
+	if key == "load_file" { // a patch: any module it names
+		raw, _ := os.ReadFile(val)
+		for _, id := range ids {
+			if bytes.Contains(raw, []byte(`"`+id+`"`)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func cSet(i int, key, val string) {
 	if loadsModule(key) {
 		chainLoadMu.Lock()
 		defer chainLoadMu.Unlock()
+		if loadsForkingModule(key, val) {
+			// on this thread only, for this load only: its processes are
+			// forked in here and keep what they inherit
+			runtime.LockOSThread()
+			if rc := C.sb_set_realtime(loadRTPriority); rc != 0 {
+				log.Printf("engine: %s=%s: no realtime priority for its processes (rc=%d)", key, val, rc)
+			}
+			defer func() {
+				C.sb_set_timeshare()
+				runtime.UnlockOSThread()
+			}()
+		}
 	}
 	k, v := C.CString(key), C.CString(val)
 	C.sb_set_param(C.int(i), k, v)

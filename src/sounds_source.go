@@ -152,6 +152,11 @@ func listOf(levels map[string]map[string]any, name string, lv map[string]any) pr
 	}
 	if pl.Name == "preset_name" { // Schwung's naming convention for the rest
 		pl.Bulk, pl.NameAt = "preset_names", "preset_name_%d"
+	} else {
+		// a list with a name key of its own: a ROW's name is that key with
+		// ":<index>" (JE-8086: patch_name:12, performance_name:3). A module
+		// that does not answer it is learned as it is heard, as before
+		pl.NameAt = pl.Name + ":%d"
 	}
 	pl.BankItems, pl.BankSelect = bankChooser(levels, name, lv)
 	pl.Jump = strings.HasPrefix(pl.BankSelect, "jump_to")

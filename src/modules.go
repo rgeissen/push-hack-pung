@@ -24,6 +24,10 @@ type ModuleInfo struct {
 	WebUI       bool   `json:"web_ui"`
 	Help        bool   `json:"help"`
 	Loadable    bool   `json:"loadable"` // its DSP file is present
+	// Forks: its sound is computed in processes of its own
+	// (capabilities.forks_processes: JE-8086). They take their scheduling
+	// from the thread that loads the module (engine.go: cSet)
+	Forks bool `json:"-"`
 }
 
 var moduleCategories = map[string]string{
@@ -50,6 +54,9 @@ func scanModules(root string) []ModuleInfo {
 				ID, Name, Abbrev, Version, Author, Description string
 				DSP                                            string `json:"dsp"`
 				ComponentType                                  string `json:"component_type"`
+				Capabilities                                   struct {
+					Forks bool `json:"forks_processes"`
+				} `json:"capabilities"`
 			}
 			if json.Unmarshal(raw, &m) != nil || m.ID == "" {
 				continue
@@ -58,7 +65,7 @@ func scanModules(root string) []ModuleInfo {
 				continue // internal (the midi-sink): never offered to the user
 			}
 			info := ModuleInfo{ID: m.ID, Name: m.Name, Abbrev: m.Abbrev, Type: typ, Version: m.Version,
-				Author: m.Author, Description: m.Description, Dir: dir}
+				Author: m.Author, Description: m.Description, Dir: dir, Forks: m.Capabilities.Forks}
 			if info.Name == "" {
 				info.Name = m.ID
 			}

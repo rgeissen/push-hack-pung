@@ -60,5 +60,6 @@ int sb_take_midi_out(int slot, uint8_t *buf, int max);
 
 /* SCHED_FIFO for the calling thread. 0 on success. */
 int sb_set_realtime(int priority);
+int sb_set_timeshare(void);
 
 #endif

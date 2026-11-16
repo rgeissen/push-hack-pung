@@ -98,3 +98,27 @@ func TestPresetListReading(t *testing.T) {
 		t.Fatalf("%+v", rows)
 	}
 }
+
+// A list with a name key of its own names any row with "<key>:<index>"
+// (JE-8086), so its browser shows every name without a sound loaded.
+func TestRowNamesForAListsOwnNameKey(t *testing.T) {
+	lv := map[string]any{"list_param": "patch", "count_param": "patch_count", "name_param": "patch_name"}
+	pl := listOf(map[string]map[string]any{"patches": lv}, "patches", lv)
+	if pl.NameAt != "patch_name:%d" || pl.Bulk != "" {
+		t.Fatalf("JE-8086's list: NameAt %q Bulk %q", pl.NameAt, pl.Bulk)
+	}
+	got, ok := pl.nameAt(12, func(k string) (string, bool) {
+		if k == "patch_name:12" {
+			return "Chariots", true
+		}
+		return "", false
+	})
+	if !ok || got != "Chariots" {
+		t.Fatalf("row 12: %q %v", got, ok)
+	}
+	// Schwung's default stays as it was
+	def := map[string]any{"list_param": "preset", "count_param": "preset_count"}
+	if pl := listOf(map[string]map[string]any{"root": def}, "root", def); pl.NameAt != "preset_name_%d" || pl.Bulk != "preset_names" {
+		t.Fatalf("the default list: %+v", pl)
+	}
+}

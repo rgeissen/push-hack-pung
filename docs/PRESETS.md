@@ -101,6 +101,9 @@ still knows the sound by name, and keeps its tags.
  "names": {"factory/Preset A": {"0": "A.Piano 1", "5": "Pop Piano 3"}}}
 ```
 
+A list with a name key of its own (JE-8086: `patch_name`, `performance_name`) names any row with
+`<name key>:<index>`, and Pung reads every row that way, so its browser shows all names at once.
+
 `names` is what makes the factory list readable: almost no module can name a sound without loading it,
 so Pung **learns names as they are heard** (every browse, jog step and Live automation of the preset knob
 that reports a name) and keeps them. A module that can name any index (`patch_name:N`, `preset_name_N`,
