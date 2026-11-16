@@ -12,11 +12,11 @@ supported by Ableton.
 
 Three pages go with this repository, with pictures of every screen:
 
-- **[Manual](https://claude.ai/artifact/BJ47JjYFTh39t4RKWkNtEY)**: installing Pung, the Pung view and its
+- **[Manual](https://rgeissen.github.io/push-hack-pung/manual.html)** ([as a Claude artifact](https://claude.ai/artifact/BJ47JjYFTh39t4RKWkNtEY)): installing Pung, the Pung view and its
   controls, sounds, the web page, troubleshooting.
-- **[Vision](https://claude.ai/artifact/UXRfdHMtyVs9HqevVoNqt1)**: what Pung is, how it runs Schwung modules
+- **[Vision](https://rgeissen.github.io/push-hack-pung/)** ([as a Claude artifact](https://claude.ai/artifact/UXRfdHMtyVs9HqevVoNqt1)): what Pung is, how it runs Schwung modules
   as Live devices, and where it is going.
-- **[Design](https://claude.ai/artifact/CrRQBoVwhvpgoJpTZpHeC2)**: the design principles of the Pung view
+- **[Design](https://rgeissen.github.io/push-hack-pung/design.html)** ([as a Claude artifact](https://claude.ai/artifact/CrRQBoVwhvpgoJpTZpHeC2)): the design principles of the Pung view
   and of a module's own screens, for module authors.
 
 In this repository: [docs/UX-GUIDELINES.md](docs/UX-GUIDELINES.md) (the rules behind the Design page),

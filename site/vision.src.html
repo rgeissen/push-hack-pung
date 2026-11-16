@@ -1,0 +1,275 @@
+<!--title:Pung Vision and Architecture-->
+{{TOPBAR}}
+
+<section class="band hero"><div class="wrap">
+  <p class="eyebrow">Push 3 Standalone · Schwung modules · Devices in Live</p>
+  <h1>Move's modules, at home in Live on Push.</h1>
+  <p class="lead">Pung runs the modules of <em>Schwung</em>, the module system of Ableton Move, on Push 3 Standalone. Every synth, audio effect and MIDI effect becomes a device in Live: you find it in Push's browser, play it with the pads, automate it and save it with your Set. On the Push screen, each module gets a view made for it.</p>
+  [[screen img="je_patch" title="JE-8086 on Pung" alt="The Push screen showing JE-8086's Patch screen: a JP-8000-style LCD reading PERF CHARIOTS, upper split, arp up and down, 74 BPM; pictures of both oscillators, the filter response, the amp envelope and LFO 1; and the eight encoders' names and values along the bottom." hot="0" up="0-1" upsel="0" lo="0-4" losel="1"]]The JE-8086 emulation of Roland's JP-8000, running as a Live device. Its Patch screen shows the synth's own LCD and the patch at a glance while the encoders play its macros. Captured from a Push 3.[[/screen]]
+  <dl class="facts">
+    <div><dt>modules in the first release</dt><dd>102</dd></div>
+    <div><dt>one download, the catalog inside</dt><dd>48 MB</dd></div>
+    <div><dt>the longest Live waits for a module</dt><dd>½ block</dd></div>
+    <div><dt>typical time to Pung's first frame</dt><dd>≈50 ms</dd></div>
+  </dl>
+</div></section>
+
+<main class="band main"><div class="wrap">
+<nav class="toc" aria-label="On this page"><p>On this page</p><ol>
+  <li><a href="#idea">The idea</a></li>
+  <li><a href="#principles">Principles</a></li>
+  <li><a href="#architecture">Architecture</a></li>
+  <li><a href="#live">What Live gives a module</a></li>
+  <li><a href="#view">The Pung view</a></li>
+  <li><a href="#builds">Builds and licences</a></li>
+  <li><a href="#pipeline">Module pipeline</a></li>
+  <li><a href="#core">Push Hack core extensions</a></li>
+  <li><a href="#measured">Rules from measurements</a></li>
+  <li><a href="#status">Status and next steps</a></li>
+</ol></nav>
+
+<article>
+
+<section id="idea">
+  <div class="sec-head"><p class="eyebrow">01 · Vision</p><h2>The idea</h2></div>
+  <div class="prose">
+    <p>On Move, Schwung has to bring its own signal graph, because Move's firmware has none to offer: four tracks, one chain each. On Push, the best signal graph on the device is already there. It is Live.</p>
+    <p>So Pung does not build a graph. It makes every Schwung module a <strong>Live device</strong> and runs the module itself in a <strong>separate process</strong>, so a module can never take Live down. Live does what it does best: tracks, racks, parallel chains, sends, sidechains, automation, clip envelopes, MPE, latency compensation and saving with the Set. Pung does the two things only it can do: run Move's modules faithfully, and show them well.</p>
+    <p>The result is an instrument library that grew up on a small box with one encoder per parameter, now playable on Push's eight encoders, its pads and its large screen, inside a full Live Set.</p>
+  </div>
+</section>
+
+<section id="principles">
+  <div class="sec-head"><p class="eyebrow">02 · Vision</p><h2>Principles</h2></div>
+  <div class="prose">
+    <ul>
+      <li><strong>Nothing new to learn.</strong> Modules are found in Push's browser, loaded like any device, played with the pads and edited with the encoders. Pung's screen and web page are extras, never a door you have to go through.</li>
+      <li><strong>A module can never take Live down.</strong> Modules run outside Live's process. Live waits at most half an audio block for a module; if the answer is late, that block is silent and Live carries on.</li>
+      <li><strong>One instrument, two surfaces.</strong> A module's interface is cut into compartments. One compartment is one screen on the Push and one section of the web page, with the same names in the same order.</li>
+      <li><strong>The default must be world class.</strong> Every module gets a designed view built from its own parameters, with no code from its author. A module draws its own screen only where that is substantially better and true to the instrument.</li>
+      <li><strong>Open and licensed.</strong> Every module is built from its own source, ships with its licence texts and build notes, and has the complete source of its build published beside it.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="sec-head"><p class="eyebrow">03 · Implementation</p><h2>Architecture</h2></div>
+  <div class="diagram" role="img" aria-label="Live, on the left, holds a track with two Pung devices, each a small VST3 proxy. Each audio block crosses shared memory to the Pung process on the right, which runs one module instance per device and draws the Pung view and the web page. Below, push-manager hands the Push surface to Pung, push-display shows Pung's frames, and the PushHack Remote Script tells Pung what Live has selected.">
+    <svg viewBox="0 0 980 430" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow d" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+      <rect class="box live" x="10" y="10" width="400" height="250" rx="10"/>
+      <text class="t-h" x="30" y="40">Live</text>
+      <text class="t-m" x="30" y="60">ONE PROCESS · PUSH'S BROWSER, DEVICE VIEW, SET</text>
+      <text class="t-m" x="30" y="96">TRACK 2</text>
+      <rect class="dev p" x="30" y="106" width="170" height="64" rx="6"/>
+      <text x="44" y="132">JE-8086</text>
+      <text class="t-o" x="44" y="153">VST3 PROXY</text>
+      <rect class="dev p" x="214" y="106" width="176" height="64" rx="6"/>
+      <text x="228" y="132">CloudSeed</text>
+      <text class="t-o" x="228" y="153">VST3 PROXY</text>
+      <text class="t-m" x="30" y="200">LIVEDEVICE.SO: NO DSP, ONE CLASS PER MODULE</text>
+      <text class="t-m" x="30" y="220">AUTOMATION · RACKS · SENDS · STATE IN THE SET</text>
+
+      <rect class="box pung" x="570" y="10" width="400" height="250" rx="10"/>
+      <text class="t-h" x="590" y="40">Pung</text>
+      <text class="t-m" x="590" y="60">A HACK FOR PUSH HACK · ITS OWN PROCESS</text>
+      <rect class="dev" x="590" y="80" width="170" height="54" rx="6"/>
+      <text x="604" y="104">jp8000 instance</text>
+      <text class="t-m" x="604" y="122">SCHWUNG PLUGIN API</text>
+      <rect class="dev" x="780" y="80" width="170" height="54" rx="6"/>
+      <text x="794" y="104">cloudseed instance</text>
+      <text class="t-m" x="794" y="122">128-FRAME BLOCKS</text>
+      <rect class="dev" x="590" y="148" width="170" height="44" rx="6"/>
+      <text x="604" y="175">Pung view</text>
+      <rect class="dev" x="780" y="148" width="170" height="44" rx="6"/>
+      <text x="794" y="175">web page</text>
+      <rect class="dev" x="590" y="204" width="360" height="40" rx="6"/>
+      <text x="604" y="229">module catalog · overrides · browser tags</text>
+
+      <path class="wire" d="M410 120 H570" marker-end="url(#ah)" marker-start="url(#ah)"/>
+      <text class="t-o" x="425" y="108">EVERY AUDIO BLOCK</text>
+      <text class="t-m" x="425" y="140">SHARED MEMORY · FUTEX</text>
+      <path class="wire d" d="M410 200 H570" marker-end="url(#ahd)" marker-start="url(#ahd)"/>
+      <text class="t-m" x="425" y="190">CONTROL SOCKET</text>
+      <text class="t-m" x="425" y="220">CREATE · CLOSE · STATE</text>
+
+      <rect class="box" x="10" y="310" width="300" height="104" rx="10"/>
+      <text class="t-h" x="30" y="340">push-manager</text>
+      <text class="t-m" x="30" y="362">OWNS THE SURFACE, HANDS IT TO PUNG</text>
+      <text class="t-m" x="30" y="382">IN PLACE OF PUSH'S DEVICE VIEW</text>
+      <rect class="box" x="340" y="310" width="300" height="104" rx="10"/>
+      <text class="t-h" x="360" y="340">push-display</text>
+      <text class="t-m" x="360" y="362">SHOWS PUNG'S FRAMES ON THE PUSH</text>
+      <text class="t-m" x="360" y="382">PADS STAY WITH LIVE (MIDIPASS)</text>
+      <rect class="box" x="670" y="310" width="300" height="104" rx="10"/>
+      <text class="t-h" x="690" y="340">PushHack Remote Script</text>
+      <text class="t-m" x="690" y="362">LIVE'S SELECTION, TRACKS, DEVICES</text>
+      <text class="t-m" x="690" y="382">PARAMETERS, WITH UNDO</text>
+      <path class="wire d" d="M160 310 V262" marker-end="url(#ahd)"/>
+      <path class="wire d" d="M640 362 H660 V262" marker-end="url(#ahd)"/>
+      <path class="wire d" d="M820 310 V262" marker-end="url(#ahd)"/>
+    </svg>
+  </div>
+  <div class="sub">
+    <h3>The device proxy</h3>
+    <p>Live sees one VST3 plugin, <code>Pung.vst3</code>, whose factory lists one plugin class per installed module: Braids, OB-Xd, Dexed, CloudSeed and the rest. The plugin itself does no DSP. For every audio block it writes the block's MIDI, parameter changes, transport and input audio into shared memory, wakes the module's thread in Pung and waits for the output. It is the only Pung code inside Live, and it is small on purpose. The proxy is Push Hack's generic <code>livedevice.so</code>, which any hack can use.</p>
+  </div>
+  <div class="sub">
+    <h3>The engine</h3>
+    <p>Pung hosts each module instance with Schwung's own plugin API, the same contract the module has on Move. Each instance renders on its own realtime thread at Live's audio priority. Live renders tracks on several worker threads, so Pung devices render in parallel on all cores, where Move rendered everything on one. Module loads and the first warm-up render happen on a control thread before the instance is offered to Live, never on an audio thread.</p>
+  </div>
+  <div class="sub">
+    <h3>MIDI effects</h3>
+    <p>Live on Push has no slot for a MIDI-effect plugin from another maker: Live 13 scans a MIDI-in, MIDI-out VST3 as an audio effect. So a Pung MIDI effect reaches a sound in two ways. Every Pung instrument has a <strong>MIDI FX</strong> selector that loads the effect in front of the synth in the same chain. And each MIDI effect also exists as a device of its own ("Chord Track"), whose notes any other track takes with Live's <em>MIDI From</em>, Live's own instruments included. Measured on the device: 16 notes in, 48 out, all 48 heard by the instrument on the other track.</p>
+  </div>
+</section>
+
+<section id="live">
+  <div class="sec-head"><p class="eyebrow">04 · Implementation</p><h2>What Live gives a module</h2></div>
+  <div class="prose"><p>A Schwung module expects Move. On Push, every part of that contract is answered by Live, so a module runs unchanged.</p></div>
+  <div class="t"><table>
+    <thead><tr><th>The module expects</th><th>On Push, from Live</th></tr></thead>
+    <tbody>
+      <tr><td>128-frame blocks</td><td class="wrap1">Live's block, rendered in Schwung's 128-frame blocks. Any Live buffer size works.</td></tr>
+      <tr><td>Tempo and beat</td><td class="wrap1">Live's transport for each block: its tempo, its beat position and whether it plays. No sync settings to make.</td></tr>
+      <tr><td>MIDI in</td><td class="wrap1">The block's notes at their sample offsets. Pitch bend, mod wheel, sustain and pressure arrive as the MIDI bytes the module knows.</td></tr>
+      <tr><td>Parameters</td><td class="wrap1">VST3 parameters with Schwung's names, units and value strings. A list is a list parameter, an integer is stepped. Bank N on Push is the module's own bank N.</td></tr>
+      <tr><td>Module state</td><td class="wrap1">The plugin's state, saved with the Live Set, undo included.</td></tr>
+      <tr><td>Audio input</td><td class="wrap1">An audio effect's input is the audio of its place in Live's chain, so it works on any track, return or rack chain.</td></tr>
+      <tr><td>Browser entries</td><td class="wrap1">A rack per module in the User Library, with its parameter map and Live's own browser tags (Devices › Synthesizer › FM, Devices › Reverb, and so on).</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="view">
+  <div class="sec-head"><p class="eyebrow">05 · Implementation</p><h2>The Pung view</h2></div>
+  <div class="prose">
+    <p>Push's own device view already edits every Pung device. The Pung view goes further. When you select a Pung device and Push shows its device view, push-manager hands the screen and the encoders to Pung, and Pung draws the device in its own way. Its controls are Push's own, measured on a Push: the devices on the upper buttons, the selected one's button opens it, its pages on the lower buttons, the jog wheel steps through them, and Mute or Delete with a device's button act on it. Device View shows Push's view of the same device, and pressed again brings Pung's back. The pads, transport and editing buttons stay with Live throughout.</p>
+    <p>Three levels of interface exist on the Push, each further from Push's own look: <strong>Push native</strong> (always there), <strong>Pung default</strong> (designed from the module's parameters, for every module) and <strong>Pung custom</strong> (a module's own screens, where they earn their place). The <a href="{{LINK:design}}">design principles</a> describe them in detail.</p>
+  </div>
+  <div class="fig-pair">
+    [[screen img="push_native" title="Push native" alt="Push's own device view of the JE-8086 rack: eight macro knobs at 0.00 percent and a hint to map a macro." up="0-1" upsel="0" lo="0-4,6-7" losel="1"]]Push's own device view of the same device, here the rack that holds it.[[/screen]]
+    [[screen img="je_amp" title="Pung default" alt="Pung's default view of JE-8086's Amp page: an amp level dial at 89, and the amp envelope drawn over the attack, decay, sustain and release encoders, with their values below." up="0" upsel="0" lo="0-4" losel="1"]]Pung's default view of JE-8086's Amp page. Pung recognises the four envelope stages and draws the envelope over their encoders.[[/screen]]
+  </div>
+  <div class="prose">
+    <p>Moving between devices is measured, not hoped for. A frame never mixes two devices. A knob writes only to the device on the screen, once Live has confirmed it. A device you have seen before is drawn at once, and Pung's first frame typically comes about 50 ms after it gets the surface.</p>
+    <h3>Pictures that play</h3>
+    <p>The default view recognises four structures in any module's parameters, by their names and by sitting side by side: an envelope, a filter, an LFO and a mix of sources. It draws each one over the encoders that set it. While the device plays, the pictures show what the sound is doing:</p>
+    <ul>
+      <li>every note is a dot running along the envelope in time, and a bar under it lights the stage each note is in, on every module the same way;</li>
+      <li>the real spectrum sits behind the filter's curve;</li>
+      <li>an LFO's dot moves where its phase can be known.</li>
+    </ul>
+    <p>The rule is strict: <strong>nothing moves unless the sound moves.</strong> The motion is timed by what Pung knows: the notes, Live's beat, the times a module states, the sound itself. Where a module gives its times no unit, Pung reads them from the knob and lets the sound correct it. Where an instrument can tell its own state, Pung shows it: Mini-JV's envelopes run in the JV-880's own time, measured off the emulated instrument, Dexed's in the DX7 engine's own, and Mini-JV's display shows every one of its 28 voices' level and filter.</p>
+    <p>One live session per sound feeds both the Push and the web page, so the two always agree. It runs at 30 frames a second while someone watches, and stops when nobody does.</p>
+  </div>
+  <div class="fig-pair">
+    [[screen img="live_env" title="The envelope, as the voices move through it" alt="Mini-JV's Tone 2 Amp Env page: Pung's envelope of the JV-880's four stages, four notes of a chord shown as blue dots, three in the second stage and one in the third, and the stage bar under it lighting T2 and T3." up="0" upsel="0" lo="0-4" losel="1"]]A chord a moment ago on Mini-JV's tone 2: every note a dot on its own clock, in the JV-880's own times.[[/screen]]
+    [[screen img="live_filter" title="The sound behind the filter" alt="Mini-JV's Tone 1 Filter page: a low-pass response with the cutoff at 14, and behind it the grey spectrum of the sound reaching far higher." up="0" upsel="0" lo="0-4" losel="1"]]A cutoff of 14, and a sound reaching far higher: the filter envelope opens it.[[/screen]]
+  </div>
+</section>
+
+<section id="builds">
+  <div class="sec-head"><p class="eyebrow">06 · Implementation</p><h2>Builds and licences</h2></div>
+  <div class="prose">
+    <p>Move's modules are built for ARM; Push 3 is x86-64. Every module is built again from its own source. The recipe is read from the module's own build script, never run: only the compiler touches the source. Each build is checked as an x86-64 ELF against the Push's glibc 2.35, with its entry point, and the Push runs a real load test at install.</p>
+    <ul>
+      <li>A module is published only when its licence is known: a licence file, its <code>module.json</code>, its README, or a recorded permission.</li>
+      <li>Every package carries its licence texts and build notes. The complete source of every build is published beside it, as GPL-3.0 section 6(d) asks.</li>
+      <li>Firmware and ROMs are never in a package. Modules that need them (JE-8086, Mini-JV, Osirus) take the file you add yourself, recognised by its checksum.</li>
+      <li>A Pung release is one file with the whole catalog inside. The Modules page installs from that copy on the Push's own disk: nothing is downloaded at install.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="pipeline">
+  <div class="sec-head"><p class="eyebrow">07 · Implementation</p><h2>Module pipeline</h2></div>
+  <div class="prose">
+    <p>Schwung's catalogue grows every week. Pung keeps up with it through an <strong>automatic conversion and serving pipeline</strong>, which is already built and running: a small service that does, unattended, what the previous section describes by hand.</p>
+    <ul>
+      <li><strong>Watch.</strong> Every night it reads Schwung's catalogue and every module's latest release, and sorts each module into new, updated, current, built, failed or withheld (no known licence, or no published source).</li>
+      <li><strong>Convert.</strong> New modules and new releases are built for the Push's x86-64 from their source at the release tag, checked, and packaged with their licence texts, build notes and complete source, into a staging catalog. Builds run at the lowest priority with two compiles at once, so the machine they share keeps its other work.</li>
+      <li><strong>Review and serve.</strong> Nothing reaches users on its own: a maintainer reviews the staging catalog and publishes it, and can put the previous catalog back. Pung's Modules page reads a served catalog as readily as the one inside its release.</li>
+    </ul>
+    <p><strong>During the test phase</strong>, modules ship inside each Pung release: one file, nothing to host, and every tester on the same set. <strong>When the test phase is over</strong>, the plan is to switch on the served catalog, so new modules and module updates reach every Push as Schwung publishes them, without waiting for a Pung release.</p>
+  </div>
+</section>
+
+<section id="core">
+  <div class="sec-head"><p class="eyebrow">08 · Push Hack</p><h2>Push Hack core extensions</h2></div>
+  <div class="prose">
+    <p>Pung is a hack for Push Hack, the framework that opens Push 3 to community software. Pung keeps its weight in its own repository: the engine, the Pung view, the module builds, the catalog and the pipeline all live there. What Pung asks of Push Hack is deliberately small, and shaped so that other hacks gain from it as much as Pung does.</p>
+  </div>
+  <dl class="facts">
+    <div><dt>lines changed in Push Hack's existing parts</dt><dd>≈1,150</dd></div>
+    <div><dt>new package, compiled only by hacks that import it</dt><dd>1</dd></div>
+    <div><dt>new services, new Go dependencies</dt><dd>0</dd></div>
+    <div><dt>additions that change behaviour without a hack opting in</dt><dd>0</dd></div>
+  </dl>
+  <div class="prose">
+    <ul>
+      <li><strong>Opt-in throughout.</strong> Each addition changes nothing until a hack declares it in its <code>hack.json</code> or asks for it through the client library; push-manager only watches, read-only, for the moment one does. A Push Hack install with no such hack behaves exactly as before.</li>
+      <li><strong>Self-contained.</strong> The largest piece, the Live device layer, is a new package that nothing existing depends on: about 1,100 lines of Go and 1,100 of C++ for the plugin, which ships prebuilt. If the maintainers prefer to keep the core small, it can live as a module of its own beside the core, and Pung will take it from there.</li>
+      <li><strong>General, not Pung-shaped.</strong> Every part is written for any hack, comes with its tests, and is documented in Push Hack's own docs, with a small example hack for the device layer.</li>
+      <li><strong>Small, independent steps.</strong> The changes can land as separate pull requests, each reviewable and useful on its own: the MIDI reader fix, the client fields, pad pass-through, the device layer, then the device-view stand-in.</li>
+    </ul>
+  </div>
+  <div class="t"><table>
+    <thead><tr><th>Part</th><th>Size</th><th>What it adds</th><th>Who else gains</th></tr></thead>
+    <tbody>
+      <tr><td>core/livedevice <span class="muted">new package</span></td><td>≈2,200</td><td class="wrap1">The Live device layer: a generic VST3 proxy, the shared-memory block protocol, a Server and Provider API, bundle install and browser entries.</td><td class="wrap1">Any hack with a sound engine or a MIDI generator can appear in Live as a device: found in Push's browser, automated, saved with the Set, isolated from Live's process.</td></tr>
+      <tr><td>push-manager: device view</td><td>≈650</td><td class="wrap1">Shows a hack's own view in place of Push's device view while one of its devices is selected, and gives the screen back.</td><td class="wrap1">Any hack whose devices deserve a screen of their own, switched per app by the user.</td></tr>
+      <tr><td>push-manager + push-display: midipass</td><td>≈200</td><td class="wrap1">The pads and the buttons above CC 87 stay with Live while an app owns the surface.</td><td class="wrap1">Every app that owns the screen: the pads keep playing Live's scales, Note Repeat and MPE underneath it.</td></tr>
+      <tr><td>Home and Display settings</td><td>≈140</td><td class="wrap1">A <code>DEVICE</code> switch per app in Push Hack Home and on the Display page.</td><td class="wrap1">The user decides, app by app.</td></tr>
+      <tr><td>pmclient</td><td>≈30</td><td class="wrap1">Focus information and the pads option.</td><td class="wrap1">Any app can tell how it was opened and leave the pads to Live.</td></tr>
+      <tr><td>core/alsaseq</td><td>≈45</td><td class="wrap1">The MIDI reader survives buffer overruns and interrupted reads.</td><td class="wrap1">Every hack that reads MIDI.</td></tr>
+      <tr><td>push-catalog</td><td>≈60</td><td class="wrap1">Removing a hack removes its browser entries and keeps its plugin bundle.</td><td class="wrap1">Any hack with Live devices: Sets that used them still open after removal.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="small muted" style="margin:0">Sizes are lines of code, without tests, docs and the prebuilt plugin.</p>
+  <div class="note">
+    <b class="k">Status</b>
+    <p>These extensions are part of Push Hack: <a href="https://github.com/federico-pepe/ableton-push-hack/pull/102">pull request #102</a> landed in Push Hack 0.2.0-alpha, and hacks get the device layer with <code>core/v0.6.0</code>, which Pung builds on. In review: <a href="https://github.com/federico-pepe/ableton-push-hack/pull/106">pull request #106</a> makes the rack writer and the uninstaller remove only the racks a hack wrote itself, so the device presets you save with Push stay. Until it lands, Pung keeps them safe on its own side. Proposed next: push-manager shows an app's first frame instead of blanking the screen while it hands over (about 100 ms of black today), and Pung listed in Push Hack Catalog.</p>
+  </div>
+</section>
+
+<section id="measured">
+  <div class="sec-head"><p class="eyebrow">09 · Implementation</p><h2>Rules from measurements</h2></div>
+  <div class="prose">
+    <p>Measured on a Push 3 with Live 13 beta. Each one shaped the design.</p>
+    <ul>
+      <li><strong>Live scans plugins only when it starts.</strong> A new module is a new plugin class, so installing modules ends with one Live restart (Apply on the Modules page, about 30 seconds; the Set is recovered).</li>
+      <li><strong>Push names plugin banks "Bank 1", "Bank 2".</strong> Every Pung bank is padded to whole pages, so Push's Bank N is the module's own bank N.</li>
+      <li><strong>List each parameter once.</strong> Live keeps a value per listed entry; a parameter listed twice shows a stale value in one place.</li>
+      <li><strong>Defaults are real.</strong> Live sends a device its default values when it loads it, so a default must be the engine's true starting value, or a synth loads at volume 0.</li>
+      <li><strong>Never remove a plugin a Set has used</strong> before Live restarts after a crash: Live replays the Set's history while recovering, and a missing plugin crashes it.</li>
+      <li><strong>The Pung view's drawing budget is 8 ms a frame</strong>, 14 ms for a full-screen takeover. JE-8086's Patch screen draws in 3 to 5 ms on the device. A page of plain knobs draws in about 7.4 ms; the live spectrum adds about 1 ms, and a moving dot nothing measurable.</li>
+      <li><strong>Match Live's parameters by position, not by name.</strong> A JV-880's four tones share their parameter names. Matched by name, 97 of Live's parameters belonged to several keys at once, and a knob on one tone could change another. Pung now matches each parameter by its place in the device's list, and checks the name.</li>
+      <li><strong>A module applies a patch in its own time.</strong> Mini-JV boots its ROM and loads patches through its emulated firmware, later than any fixed delay. So every device is read back every 3 seconds, and Live hears whatever changed.</li>
+      <li><strong>Most modules cannot say how long their envelopes take.</strong> Of 307 envelope time knobs across 100 modules, 54 state a unit and 95 have a range in seconds; the rest have none. So the dots run on the knob where they must, and the sound itself corrects the volume envelope's.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="status">
+  <div class="sec-head"><p class="eyebrow">10 · Status</p><h2>Status and next steps</h2></div>
+  <div class="prose">
+    <p>Pung 0.1.14 is the current release. It brings 102 modules and the Pung view, with custom screens for JE-8086, Mini-JV, Dexed and Osirus. The default view draws envelopes, filters, LFOs and mixers for any module, and they play live as the sound moves, on the Push and on the web page; every envelope is one picture, each note a dot on its own clock, in the instrument's own times where Pung can know them; and the view's buttons, jog wheel and lights work as Push's own device view does. There is one sound browser for every module, built on Schwung's user presets, so sounds move between Move and Push. Also included: the web page, the Modules page and Live browser tags for every module. It is a testing release: expect rough edges, and tell us about them.</p>
+    <ul>
+      <li><strong>Overtake modules</strong>, which take over Move's whole surface, need a Move compatibility runtime and do not run yet.</li>
+      <li><strong>Modules render at 44.1 kHz.</strong> At another Live sample rate, pitch and tempo are off.</li>
+      <li><strong>Next on the Push screen:</strong> more instruments telling their own live state, as Mini-JV does, and custom screens for the instruments that deserve them (Braids and OB-Xd first).</li>
+      <li><strong>After the test phase:</strong> the served catalog from the module pipeline, so modules update as Schwung publishes them.</li>
+      <li><strong>Next for installing:</strong> browsing and installing modules from the Push itself.</li>
+    </ul>
+    <p>Read the <a href="{{LINK:manual}}">manual</a> to install and use Pung, and the <a href="{{LINK:design}}">design principles</a> to bring a module to it.</p>
+  </div>
+</section>
+
+</article>
+</div></main>
+
+{{FOOTER}}

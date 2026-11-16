@@ -1,0 +1,292 @@
+<!--title:Pung Manual-->
+{{TOPBAR}}
+
+<section class="band hero"><div class="wrap">
+  <p class="eyebrow">Pung 0.1.14 · Manual</p>
+  <h1>Play Schwung modules on Push 3.</h1>
+  <p class="lead">How to install Pung, find its devices in Push's browser, play and edit them on the Push screen, and add more modules. Everything here works from the Push, with an optional web page beside it.</p>
+  <dl class="facts">
+    <div><dt>modules ready to install</dt><dd>102</dd></div>
+    <div><dt>views on the Push</dt><dd>3</dd></div>
+    <div><dt>encoders, as on every Push device</dt><dd>8</dd></div>
+    <div><dt>Live restart to add modules</dt><dd>1</dd></div>
+  </dl>
+</div></section>
+
+<main class="band main"><div class="wrap">
+<nav class="toc" aria-label="On this page"><p>On this page</p><ol>
+  <li><a href="#need">What you need</a></li>
+  <li><a href="#install">Install</a></li>
+  <li><a href="#first">Your first Pung device</a></li>
+  <li><a href="#screen">The Pung view</a></li>
+  <li><a href="#controls">Controls</a></li>
+  <li><a href="#sounds">Sounds</a></li>
+  <li><a href="#pages">Pages and screens</a></li>
+  <li><a href="#live">The sound, live</a></li>
+  <li><a href="#push">Pung and Push's own view</a></li>
+  <li><a href="#midi">MIDI effects</a></li>
+  <li><a href="#web">The web page</a></li>
+  <li><a href="#modules">Adding modules</a></li>
+  <li><a href="#trouble">When something is wrong</a></li>
+  <li><a href="#remove">Removing Pung</a></li>
+</ol></nav>
+
+<article>
+
+<section id="need">
+  <div class="sec-head"><p class="eyebrow">Before you start</p><h2>What you need</h2></div>
+  <div class="prose">
+    <ul>
+      <li><strong>A Push 3 Standalone with Push Hack</strong>: push-manager, push-display and push-catalog, with the Live device extensions Pung is built on (see the note below).</li>
+      <li><strong>Push Hack's VST3 scan switched on</strong>: Push Manager, System tab.</li>
+      <li><strong>The PushHack Remote Script in Live</strong>: Live's Settings › MIDI › Control Surface: <code>PushHack</code>. The Pung view follows Live's selection through it.</li>
+      <li><strong>SSH access to the Push as root</strong>, as Push Hack's own setup gives you, for the install command.</li>
+    </ul>
+  </div>
+  <div class="note">
+    <b class="k">Testing release</b>
+    <p>Pung needs Push Hack's Live device extensions, proposed to Push Hack in <a href="https://github.com/federico-pepe/ableton-push-hack/pull/102">pull request #102</a> (the <a href="{{LINK:vision}}#core">vision page</a> lists them). Until it is merged, they are on the <code>feat/live-devices</code> branch of <a href="https://github.com/rgeissen/ableton-push-hack/tree/feat/live-devices">rgeissen/ableton-push-hack</a>. Without them, Pung's view does not open in place of Push's device view, and the pads do not stay with Live while it is open.</p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="sec-head"><p class="eyebrow">Setup</p><h2>Install</h2></div>
+  <div class="prose"><p>Pung will be listed in Push Hack Catalog. Until then, Push Hack Catalog's own installer installs it from Pung's release on GitHub, with one command.</p></div>
+  <ol class="steps">
+    <li><div><p>Open a shell on the Push as root.</p>
+      <div class="cmd"><div class="bar"><span>On your computer</span><button class="copy" type="button" data-copy="c1">Copy</button></div><pre><code id="c1">ssh root@push.local</code></pre></div></div></li>
+    <li><div><p>Run Push Hack Catalog's installer with Pung's registry. It downloads <code>pung.tar.gz</code> (48 MB, every module inside), installs the service and starts it.</p>
+      <div class="cmd"><div class="bar"><span>On the Push</span><button class="copy" type="button" data-copy="c2">Copy</button></div><pre><code id="c2">python3 -c "import urllib.request,sys; sys.stdout.write(urllib.request.urlopen('https://raw.githubusercontent.com/federico-pepe/ableton-push-hack/main/hacks/push-catalog/src/push-catalog.sh').read().decode())" \
+  | PUSH_CATALOG_REGISTRY=https://raw.githubusercontent.com/rgeissen/push-hack-pung/main/push-catalog.json \
+    bash -s -- install pung</code></pre></div></div></li>
+    <li><div><p><strong>Restart the Push once.</strong> Live looks for new plugins only when it starts. After the restart, Pung's devices are in Push's browser and Pung is in Push Hack Home (<kbd>Shift</kbd> + <kbd>Help</kbd>).</p></div></li>
+  </ol>
+</section>
+
+<section id="first">
+  <div class="sec-head"><p class="eyebrow">Getting started</p><h2>Your first Pung device</h2></div>
+  <ol class="steps">
+    <li><div><p>Select a MIDI track and open Push's browser to add an instrument.</p></div></li>
+    <li><div><p>Open <strong>User Library › Presets</strong>. Pung's devices are in <strong>Instruments › Pung</strong> (synths), <strong>Audio Effects › Pung</strong> (effects) and <strong>Instruments › Pung MIDI Effects</strong> (MIDI effects on a track of their own). Each entry also carries Live's own tags, such as <em>Synthesizer › FM</em> for Dexed or <em>Reverb</em> for CloudSeed, for browsers that filter by tag.</p></div></li>
+    <li><div><p>Load one. With Push in its device view, the Pung view opens by itself. Play the pads: scales, layouts, Note Repeat and recording are Live's, as always.</p></div></li>
+  </ol>
+  <div class="prose"><p>Pung devices are ordinary Live devices. Put them in racks, automate them, send to them, save the Set: Live keeps every module's state with the Set. The modules run outside Live's process, so if one crashes, Live goes on and the device is silent until Pung has restarted it.</p></div>
+</section>
+
+<section id="screen">
+  <div class="sec-head"><p class="eyebrow">On the Push</p><h2>The Pung view</h2></div>
+  <div class="prose"><p>The Pung view works like Push's own device view, on the same two levels. At <strong>chain level</strong> the upper buttons are the track's devices and the lower buttons are Live's tracks. Press the selected device's button and the device <strong>opens</strong>: the lower buttons become its pages, and upper button 1 goes back. The eight encoders edit the parameters above them at both levels.</p></div>
+  <div class="fig-pair">
+    [[screen img="ctl_chain" title="Chain level" alt="The Pung view of Mini-JV at chain level: the device MINI-JV filled at the upper left with a plus sign after it; the Macros page as knobs with the macro envelope drawn over attack, decay, sustain and release; Live's four tracks along the bottom, 1-MINI-JV filled." up="0-1" upsel="0" lo="0-3" losel="0"]]Chain level: the track's devices and <code>+</code> above, Live's tracks below. The encoders already edit the selected device. Captured from a Push 3.[[/screen]]
+    [[screen img="ctl_open" title="Device open" alt="The Pung view of Mini-JV with the device open: a back arrow and MINI-JV at the upper left and SOUNDS at the upper right; Tone 1's amp envelope with its stage bar; along the bottom an arrow, the pages Pitch Env, Filter, Filter Env, Amp, Amp 2, the shown page Amp Env filled, and an arrow for more." up="0,7" upsel="0" lo="0-7" losel="6"]]Device open: upper button 1 goes back, upper button 8 opens the device's sounds, and the lower row is its pages, with an arrow at each end while there are more. Captured from a Push 3.[[/screen]]
+  </div>
+  [[screen img="je_osc2" title="The parts of the screen" alt="Pung's view of JE-8086's OSC 2 page: the device JE-8086 top left; the track 2-JE-8086, the page OSC / OSC 2, a level meter and the page indicator 4/34 top right; six parameter cells (a Triangle list, an Off list and four dials); Live's tracks along the bottom." up="0" upsel="0" lo="0-4" losel="1" pins="1,13.2,7.5;2,68.4,7.5;3,86.4,7.5;4,93.1,7.5;5,12.4,48;6,34.6,38;7,33.4,75.6;8,12.5,94"]]JE-8086, OSC 2 page. Captured from a Push 3.[[/screen]]
+  <ul class="legend">
+    <li><span>1</span><span><strong>Devices on the track.</strong> The selected one is filled. Its button opens it: its pages appear on the lower buttons.</span></li>
+    <li><span>2</span><span><strong>Track and page.</strong> Live's track in its colour, then the section and page: <code>OSC / OSC 2</code>.</span></li>
+    <li><span>3</span><span><strong>Level meter.</strong> The device's own output.</span></li>
+    <li><span>4</span><span><strong>Page indicator.</strong> Page 4 of 34. An arrow is bright where the jog wheel (in the open device) or <kbd>Page</kbd> goes somewhere.</span></li>
+    <li><span>5</span><span><strong>A list.</strong> The option in a box, its position as dots (or <code>3/18</code> for long lists).</span></li>
+    <li><span>6</span><span><strong>A dial.</strong> Bipolar values fill from the top.</span></li>
+    <li><span>7</span><span><strong>The value</strong>, with its unit when it has one.</span></li>
+    <li><span>8</span><span><strong>Live's tracks</strong> at chain level, the selected one filled in its colour; the device's pages once it is open.</span></li>
+  </ul>
+  [[screen img="je_touch" title="Touch an encoder" alt="JE-8086's OSC 2 page with the fifth encoder touched: its name is bright with an orange underline, its dial is thicker, and its range 0 to 127 is printed at the ends of the arc." hot="4" up="0" upsel="0" lo="0-4" losel="1"]]Touching an encoder shows its range at the ends of the dial. On a list it shows the options a turn reaches next, either way. Where <kbd>Shift</kbd> gives finer steps, <code>FINE</code> appears beside the dial and lights while Shift is held.[[/screen]]
+</section>
+
+<section id="controls">
+  <div class="sec-head"><p class="eyebrow">On the Push</p><h2>Controls</h2></div>
+  <div class="t keys"><table>
+    <thead><tr><th>Control</th><th>In the Pung view</th></tr></thead>
+    <tbody>
+      <tr><td>Upper buttons</td><td class="wrap1"><strong>Chain level:</strong> the track's devices, then <code>+</code>. Press a device to select it; press the selected one to open it. <code>+</code> opens Push's own browser to add a device; leave the browser and the Pung view is back. <strong>Device open:</strong> button 1 goes back; button 8, <code>SOUNDS</code>, opens the <a href="#sounds">sound browser</a>.</td></tr>
+      <tr><td>Lower buttons</td><td class="wrap1"><strong>Chain level:</strong> Live's tracks. <strong>Device open:</strong> the device's pages. An arrow on the last button means more pages; each press moves the row by one, and an arrow on the first button moves it back.</td></tr>
+      <tr><td>Jog wheel</td><td class="wrap1"><strong>Chain level:</strong> turn to move a frame along the devices and <code>+</code>, press to open the one it is on. <strong>Device open:</strong> turn to step through the pages, nudge left to go back, press for the sound browser.</td></tr>
+      <tr><td>Encoders 1–8</td><td class="wrap1">Turn: the parameter above, at both levels. Touch: its range, its neighbouring options, and whether fine steps are there.</td></tr>
+      <tr><td><kbd>Shift</kbd> + turn</td><td class="wrap1">Finer steps, where the cell shows <code>FINE</code>.</td></tr>
+      <tr><td><kbd>Delete</kbd> + touch an encoder</td><td class="wrap1">The parameter back to its default.</td></tr>
+      <tr><td><kbd>Mute</kbd> + a device's button</td><td class="wrap1">The device off, and on again. Its parameters grey out while it is off.</td></tr>
+      <tr><td><kbd>Delete</kbd> + a device's button</td><td class="wrap1">Remove the device from the track.</td></tr>
+      <tr><td><kbd>Mute</kbd> or <kbd>Solo</kbd> + a track's button</td><td class="wrap1">Mute or solo that track.</td></tr>
+      <tr><td><kbd>◀</kbd> <kbd>▶</kbd></td><td class="wrap1">The previous or next track, at both levels.</td></tr>
+      <tr><td><kbd>Page &lt;</kbd> <kbd>Page &gt;</kbd></td><td class="wrap1">The previous or next page: a shortcut of Pung's own. Push's way is the jog wheel.</td></tr>
+      <tr><td><kbd>Save</kbd></td><td class="wrap1">Save the device's sound: name it and press the jog wheel (or Done). It is also a rack in Push's browser. To save the Set, press <kbd>Device</kbd> first, then <kbd>Save</kbd> in Push's own view.</td></tr>
+      <tr><td><kbd>Device</kbd></td><td class="wrap1">Push's own device view of the same device. Press again for the Pung view.</td></tr>
+      <tr><td><kbd>Mixer</kbd> <kbd>Clip</kbd> <kbd>Session</kbd></td><td class="wrap1">Push's views, as always. The Pung view closes.</td></tr>
+      <tr><td><kbd>Add</kbd> <kbd>Swap</kbd></td><td class="wrap1">Push's own, as everywhere: its browser to add a device, and its Hot-Swap, which can replace the device itself (one Pung device with another, for example). The Pung view closes and Push takes over.</td></tr>
+      <tr><td>Pads, transport</td><td class="wrap1">Live's, with Mute, Solo, Undo, Delete, Duplicate, Quantize, Capture and the rest of the editing buttons.</td></tr>
+      <tr><td><kbd>Shift</kbd> + <kbd>Help</kbd></td><td class="wrap1">Push Hack Home, where Pung and other apps live.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="prose">
+    <p><strong>The lights follow the screen.</strong> A button that offers something is lit: the chosen device, page or track in white, every other one in a dimmed version of its track's colour, the arrows too. A button that does nothing is dark.</p>
+    <p><strong>Full-screen pictures.</strong> Some modules draw a whole screen for a page (Mini-JV's Macros, Dexed's Algorithm). It shows while the device is open. The back button, <code>SOUNDS</code> and the page row are drawn over it when you open the device, turn a page or touch the jog wheel, so the way back is always there. At chain level the same page shows as knobs.</p>
+  </div>
+</section>
+
+<section id="sounds">
+  <div class="sec-head"><p class="eyebrow">On the Push</p><h2>Sounds</h2></div>
+  <div class="prose">
+    <p>Every Pung device's sounds are browsed the same way, whichever module it runs: its own sounds (<em>Factory</em>), the ones you saved (<em>User</em>), your <em>Favourites</em> and what you chose lately (<em>Recent</em>). Open the device, then press <code>SOUNDS</code> (upper button 8) or the jog wheel. The browser works like Push's own.</p>
+  </div>
+  <div class="t keys"><table>
+    <thead><tr><th>Control</th><th>In the sound browser</th></tr></thead>
+    <tbody>
+      <tr><td>Jog wheel, turn</td><td class="wrap1">Move on the level you are on: <em>Source</em> › <em>Bank</em> › <em>Sound</em>. A sound plays once you stop on it, so a quick spin plays only where it ends.</td></tr>
+      <tr><td>Jog wheel, press</td><td class="wrap1">One level down. On a sound: keep it and close the browser.</td></tr>
+      <tr><td>Jog wheel, nudge left</td><td class="wrap1">One level back up.</td></tr>
+      <tr><td>Jog wheel, nudge right</td><td class="wrap1">On a sound, its menu: favourite, Save, Save As, Rename, Delete (which asks first).</td></tr>
+      <tr><td>Upper row</td><td class="wrap1">Straight to Factory, User, Favourites or Recent.</td></tr>
+      <tr><td>Encoder 1, <kbd>Page &lt;</kbd> <kbd>Page &gt;</kbd></td><td class="wrap1">The bank, category or expansion card.</td></tr>
+      <tr><td>Lower row</td><td class="wrap1">Fav, Save, Save As, Rename, Delete, Compare, Cancel, Load. Hold <em>Compare</em> to hear the sound you had before you opened the browser.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="prose">
+    <ul>
+      <li><strong>Nothing is lost by looking.</strong> <em>Cancel</em>, or leaving the browser any way but loading, brings back the sound you had, exactly.</li>
+      <li><strong>Naming:</strong> <em>Save As</em> proposes a name. To change it, turn the jog wheel for the letter at the cursor and nudge it to move the cursor, or turn the eight encoders, one letter each. Press the jog wheel when done.</li>
+      <li><strong>Your sounds are Schwung's own user presets,</strong> file for file: a sound saved on Move opens on Push, and the other way round.</li>
+      <li><strong>Your sounds are in Push's own browser too:</strong> <em>User Library › Presets › Instruments › Pung › Mini-JV › your sound</em> (and the same for every module). Loading one brings the module with that sound, already named.</li>
+      <li>Where a module can name all its sounds, every name is there at once; otherwise a sound's name appears once you have heard it.</li>
+      <li>The Pung view's header names the device's sound; a <code>*</code> in front means you changed it since.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="pages">
+  <div class="sec-head"><p class="eyebrow">On the Push</p><h2>Pages and screens</h2></div>
+  <div class="prose">
+    <p>A module's pages come from the module itself: its own sections and their names, in its order. Every parameter is on a page, and each device remembers the page you left it on.</p>
+    <p>Where a page holds something Pung recognises, it draws it as a picture over the encoders that set it, with each encoder's name and value below. Touch an encoder and its part of the picture lights up.</p>
+    <ul>
+      <li><strong>An envelope</strong>: its stages as one shape, whatever the module calls them (attack, decay, sustain and release; or a JV's T1 to T4, a DX7's R1 to R4).</li>
+      <li><strong>A filter</strong>: its response curve from cutoff, resonance and type (low-pass, high-pass, band-pass or notch, and how steep).</li>
+      <li><strong>An LFO</strong>: its wave, with more cycles the faster its rate.</li>
+      <li><strong>A mix of sources</strong>: a fader over each level, and how much each source contributes to the whole.</li>
+    </ul>
+  </div>
+  [[screen img="je_amp" title="An envelope, drawn" alt="JE-8086's Amp page: the amp level dial, and the attack, decay, sustain and release stages drawn as one filled envelope over encoders 2 to 5, with their names and values below." up="0" upsel="0" lo="0-4" losel="1"]]JE-8086's Amp page. A Push 3 capture; its envelope is drawn by Pung's current code with the capture's values.[[/screen]]
+  <div class="prose">
+    <p>Some modules draw screens of their own where a picture says more than knobs: the Virus's filter routing, a JV-880's four tones, a DX7's algorithm. They follow the same rules: the encoders keep their meaning, and the names and values stay in view.</p>
+  </div>
+  [[screen img="osi_filters" title="Osirus: the filters as a signal path" alt="Osirus's Filters screen: the oscillators run through filter 1, a saturation stage and filter 2 to the amp, with both filter responses drawn on the right; the six encoders' names and values below." up="0" upsel="0" lo="0-4" losel="0"]]Filter 1, the saturation stage and filter 2 in the order the sound passes them, which filter the encoders edit, and both responses. Captured from a Push 3.[[/screen]]
+  [[screen img="minijv_macros" title="Mini-JV: the patch at a glance" alt="Mini-JV's Macros screen: a JV-880-style LCD reading #001 A.PIANO 1 with tones 1 and 2 on; four tone cards with their waves, levels, pans and envelopes; the eight macro encoders below." up="0" upsel="0" lo="0-4" losel="4"]]A full-screen view: the JV-880's display and its four tones, while the encoders play the patch's macros. Rendered by Pung's own code from a Push 3's device.[[/screen]]
+</section>
+
+<section id="live">
+  <div class="sec-head"><p class="eyebrow">On the Push</p><h2>The sound, live</h2></div>
+  <div class="prose">
+    <p>While a device plays, its pictures show what the sound is doing, not only how it is set. They follow one rule: <strong>nothing moves unless the sound moves, and nothing moves that Pung cannot know.</strong> Where Pung cannot know something, the picture stays still rather than guess.</p>
+    <p>One colour means "the sound, right now": the cyan blue of the marks below. Orange still means the encoder under your finger, and white is how the device is set.</p>
+    <ul>
+      <li><strong>Envelopes.</strong> Every note you play is a dot running along the envelope's lines in time: up the attack, down the decay, resting at the sustain point while you hold the key, and down the release once you let go. Under the envelope, a bar of its stages (A, D, S, R, or T1 T2 T3 S T4 on a JV) lights the stage each note is in; each stage is drawn as wide as its knob is turned. When a module gives its times in milliseconds or seconds, or Pung knows its engine (Mini-JV, Dexed), the timing is exact; otherwise Pung reads the time from the knob, and for the volume envelope it also listens: the dot waits at the top until the sound actually peaks, and the next notes run on what it heard. Effects' envelopes, such as a gate's, stay still: they follow the audio, not your notes; so do looping envelopes, which run on their own. Each new note briefly lights the envelope's start.</li>
+      <li><strong>Filters.</strong> Behind the curve, in grey, is the actual sound: its spectrum, low notes on the left, high on the right. When the sound reaches higher than the curve, something else is opening the filter, such as its envelope or key follow.</li>
+      <li><strong>LFOs.</strong> A dot runs along the wave at the LFO's real speed when Pung can know where the LFO is: when it is synced to Live's tempo with a rate like 1/8, or restarted by each note with a rate in Hz. An LFO that restarts on each note flashes at its start when you play. Any other LFO stays still.</li>
+    </ul>
+  </div>
+  [[screen img="live_env" title="An envelope, as the sound moves through it" alt="Mini-JV's Tone 2 Amp Env page: Pung's envelope of the JV-880's four stages, four notes of a chord shown as blue dots, three in the second stage and one in the third, and the stage bar under it lighting T2 and T3." up="0" upsel="0" lo="0-4" losel="1"]]Mini-JV's Tone 2 amp envelope, a moment after a chord: three notes still in T2, the first one already in T3. A Push 3 capture, its envelope band drawn by Pung's current code with the same values.[[/screen]]
+  [[screen img="live_filter" title="The sound behind the filter" alt="Mini-JV's Tone 1 Filter page: a low-pass response curve with the cutoff at 14, and behind it the grey spectrum of the sound reaching far higher, opened by the filter envelope." up="0" upsel="0" lo="0-4" losel="1"]]The cutoff is set to 14, but the sound behind it reaches much higher: the filter envelope (+23) and key follow open it. Captured from a Push 3.[[/screen]]
+  [[screen img="live_lfo" title="An LFO restarting" alt="Mini-JV's Tone 1 LFO 1 page: a triangle wave, with a blue line at its start as a note restarts it; LFO Sync is On." up="0" upsel="0" lo="0-4" losel="1"]]LFO 1 restarts with each note (LFO Sync on): its start lights as you play. Captured from a Push 3.[[/screen]]
+  <div class="prose">
+    <p><strong>Mini-JV runs in the JV-880's own time.</strong> Its Pitch, Filter and Amp Env pages show every note you play as a dot running through the JV's four stages, timed with the JV-880's own times, measured off the emulated instrument; the bar under them lights T1, T2, T3, S while you hold the key, and T4 once you let go. Dexed's operator and pitch envelopes run in the DX7 engine's own times the same way. Its Macros screen shows every one of its 28 voices: how loud each is, in the display, and where each one's filter is, on the TVF line, moving as the JV's envelopes and LFOs move them.</p>
+  </div>
+  [[screen img="live_voices" title="Mini-JV: every voice, live" alt="Mini-JV's Macros screen while a chord plays: the display shows #001 A.PIANO 1 with fourteen voice bars and 14 OF 28 VOICES; the TVF line shows the voices' filter cutoffs." up="0" upsel="0" lo="0-4" losel="1"]]Seven notes on two tones, fourteen voices: each one's level in the display, and its filter cutoff on the TVF line. Rendered by Pung's own code from a Push 3's device.[[/screen]]
+  <div class="prose">
+    <p>The pictures move while a note is held or the device sounds, for a moment after, and with Live's transport when a picture follows the tempo. The rest of the time the screen is drawn only when something changes. Most modules don't report where their envelopes and LFOs are, so for them the motion comes from the sound and the notes, and a free-running LFO stays still.</p>
+  </div>
+</section>
+
+<section id="push">
+  <div class="sec-head"><p class="eyebrow">On the Push</p><h2>Pung and Push's own view</h2></div>
+  <div class="prose">
+    <p>Push's own device view edits every Pung device too: its <em>Bank N</em> is the module's own page N. The Pung view takes its place whenever a Pung device is selected and Push shows its device view.</p>
+    <ul>
+      <li>Move to a track with a Pung device and the Pung view stays. Move to any other track and Push's own view is back.</li>
+      <li>Press <kbd>Device</kbd> in the Pung view to see the same device in Push's own device view (its <em>Bank</em> pages). Press <kbd>Device</kbd> again to return to the Pung view. This holds only while you stay on that device: select it again later and the Pung view opens as usual.</li>
+      <li>To keep Push's device view for good, switch Pung's <code>DEVICE</code> off in Push Hack Home (<kbd>Shift</kbd> + <kbd>Help</kbd>, choose PUNG, lower button 3), or on push-manager's Display page.</li>
+      <li>From Push Hack Home you can also open Pung by hand, on any track.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="midi">
+  <div class="sec-head"><p class="eyebrow">Playing</p><h2>MIDI effects</h2></div>
+  <div class="prose">
+    <p>Live on Push has no slot for a MIDI-effect plugin from another maker, so Pung's MIDI effects (the arpeggiators, chord tools and sequencers) reach a sound in two ways.</p>
+    <ul>
+      <li><strong>Inside a Pung instrument.</strong> Every Pung instrument has a <strong>MIDI FX</strong> selector on the pages after its own, one page per MIDI effect with that effect's settings. Pick one and it plays in front of the synth.</li>
+      <li><strong>On a track of its own.</strong> Load a MIDI effect from <em>User Library › Presets › Instruments › Pung MIDI Effects</em> on its own track. On the track it should play, set Live's <em>MIDI From</em> to that track and the effect. This drives any instrument, Live's own included.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="web">
+  <div class="sec-head"><p class="eyebrow">Beside the Push</p><h2>The web page</h2></div>
+  <div class="prose">
+    <p>Open <code>http://push.local:7720</code> on a computer, tablet or phone on the same network (Push Hack Catalog may give Pung another port; push-manager's page lists it).</p>
+    <ul>
+      <li><strong>Devices</strong>: every Pung device in the Set, by track. A device's sections are the same as its pages on the Push, under the same names. Change a value on either side and the other follows within half a second; click a section's title and the Push turns to it.</li>
+      <li><strong>Sound</strong>: the device's sounds, as in the <a href="#sounds">sound browser</a> on the Push: Factory, User, Favourites and Recent, the bank, and a search over every name. Click a sound or use the arrow keys to hear it, <kbd>Enter</kbd> or a double click keeps it, <kbd>Esc</kbd> brings back the sound you had. Each sound has a star, and yours can be renamed and deleted. <em>Export</em> downloads your sounds as Schwung preset files; <em>Import</em> adds such files, from another Push or from a Move.</li>
+      <li><strong>Sounds</strong> (top of the page): your sounds for every module in one place, with a search over all of them; star, rename, delete, and <em>Load on</em> any Pung device in your Set running that module. <em>Export all</em> is one zip in the folder layout a Move keeps; <em>Import</em> sorts every sound of such a zip into its module.</li>
+      <li><strong>Compartment pills</strong>: the device's sections as pills above its panel. Click one to show or hide its section, double-click one to show only that one, <em>All</em> to show every one. With one on, the Push turns to it; a dot marks the one the Push shows.</li>
+      <li><strong>A module's own panel</strong>: modules with a web panel of their own (JE-8086, Mini-JV) show it there; the pills show and hide its sections too where the module supports it (Mini-JV).</li>
+      <li><strong>Live</strong>: the sections' pictures move as they do on the Push (see <a href="#live">The sound, live</a>), and Mini-JV's panel shows its voices under the Macros. Only the sections you show are updated, and nothing is sent while the page is in a background tab.</li>
+      <li><strong>Settings</strong>: <em>Push display › Detail card on touch</em> brings back Move's large card on every touch. It is off on the Push, where the touched cell already shows everything in place.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="modules">
+  <div class="sec-head"><p class="eyebrow">Beside the Push</p><h2>Adding modules</h2></div>
+  <div class="prose">
+    <p>The <strong>Modules</strong> page on Pung's web page lists every module that came with your Pung release: instruments, audio effects and MIDI effects, by kind and tag, each with its version, licence and source.</p>
+  </div>
+  <ol class="steps">
+    <li><div><p><strong>Install</strong> the modules you want. They install from the copy inside Pung's release, on the Push itself: nothing is downloaded.</p></div></li>
+    <li><div><p><strong>Apply.</strong> New devices need one Live restart, because Live looks for plugins only when it starts. Apply saves nothing for you: save your Set first. Live restarts in about 30 seconds and recovers the Set. Install several modules, then Apply once.</p></div></li>
+    <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV and Osirus emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum.</p></div></li>
+  </ol>
+  <div class="prose"><p>A new Pung release brings new modules and new versions; the Modules page shows updates. Removing a module needs Apply too.</p><p>During the test phase, modules come inside Pung's releases. After it, Pung's module pipeline, which is already built, will serve them directly, so updates arrive as Schwung publishes them.</p></div>
+</section>
+
+<section id="trouble">
+  <div class="sec-head"><p class="eyebrow">Help</p><h2>When something is wrong</h2></div>
+  <div class="t"><table>
+    <thead><tr><th>You see</th><th>Why, and what to do</th></tr></thead>
+    <tbody>
+      <tr><td class="wrap1">No Pung devices in the browser</td><td class="wrap1">Live has not started since Pung was installed, or the VST3 scan is off. Switch on the scan in Push Manager's System tab, then restart the Push.</td></tr>
+      <tr><td class="wrap1">The screen says the Pung view needs the PushHack Remote Script</td><td class="wrap1">Select <code>PushHack</code> as a control surface in Live's Settings › MIDI.</td></tr>
+      <tr><td class="wrap1">Push's own device view opens, not Pung's</td><td class="wrap1">Pung's <code>DEVICE</code> switch is off in Push Hack Home, or the device is not one of Pung's. A rack holding a Pung device counts.</td></tr>
+      <tr><td class="wrap1">A newly installed module is missing</td><td class="wrap1">Apply on the Modules page has not run since the install.</td></tr>
+      <tr><td class="wrap1">JE-8086, Mini-JV or Osirus is silent</td><td class="wrap1">Its firmware is missing. Add it on the Modules page.</td></tr>
+      <tr><td class="wrap1"><code>MODULE UI OFF</code> in the top bar</td><td class="wrap1">A module's own screen failed or drew too slowly, so Pung shows its default view instead. Everything still works; Pung's log says why.</td></tr>
+      <tr><td class="wrap1">Pitch or tempo is off</td><td class="wrap1">Modules render at 44.1 kHz. Set Live to 44.1 kHz.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="remove">
+  <div class="sec-head"><p class="eyebrow">Help</p><h2>Removing Pung</h2></div>
+  <div class="prose">
+    <p>Remove Pung with Push Hack Catalog. Its browser entries go with it. Its plugin stays on purpose, so Sets that use Pung devices still open, with those devices silent.</p>
+    <p>Delete the plugin (<code>/data/.vst3/Pung.vst3</code>) only when no Set uses it any more, and never just before Live recovers from a crash: Live replays the Set's history while it recovers, and a missing plugin crashes it.</p>
+  </div>
+</section>
+
+</article>
+</div></main>
+
+{{FOOTER}}
+<script>
+document.querySelectorAll("button.copy").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var el = document.getElementById(b.dataset.copy);
+    var text = el.textContent;
+    var done = function () { b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1600); };
+    var select = function () { var r = document.createRange(); r.selectNodeContents(el); var s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "Selected"; };
+    try {
+      navigator.clipboard.writeText(text).then(done, select);
+    } catch (e) { select(); }
+  });
+});
+</script>
