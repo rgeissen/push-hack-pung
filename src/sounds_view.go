@@ -1232,7 +1232,7 @@ func (u *surface) paintSoundLEDs() {
 		if u.view == "sounds" && i < 4 {
 			v = dimw
 			if i == sb.source {
-				v = sc
+				v = ledChosen // the chosen source: white, as every chosen thing (surface.go)
 			}
 		}
 		u.led(false, 102+uint8(i), v)

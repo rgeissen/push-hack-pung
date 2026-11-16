@@ -8,6 +8,21 @@ web pages, and room for modules to draw their own pictures on the Push screen.
 It is a hack for [Push Hack](https://github.com/federico-pepe/ableton-push-hack). It is not made, approved or
 supported by Ableton.
 
+## Read more
+
+Three pages go with this repository, with pictures of every screen:
+
+- **[Manual](https://claude.ai/artifact/BJ47JjYFTh39t4RKWkNtEY)**: installing Pung, the Pung view and its
+  controls, sounds, the web page, troubleshooting.
+- **[Vision](https://claude.ai/artifact/UXRfdHMtyVs9HqevVoNqt1)**: what Pung is, how it runs Schwung modules
+  as Live devices, and where it is going.
+- **[Design](https://claude.ai/artifact/CrRQBoVwhvpgoJpTZpHeC2)**: the design principles of the Pung view
+  and of a module's own screens, for module authors.
+
+In this repository: [docs/UX-GUIDELINES.md](docs/UX-GUIDELINES.md) (the rules behind the Design page),
+[docs/overrides.md](docs/overrides.md) (a module's own Push screens), [docs/PRESETS.md](docs/PRESETS.md)
+(sounds) and [docs/DESIGN.md](docs/DESIGN.md) (how Pung is built).
+
 ## Pung devices in Live
 
 Every Schwung module is a device in Live, on Push Hack's Live device layer
