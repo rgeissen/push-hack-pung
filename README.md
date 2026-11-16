@@ -96,13 +96,13 @@ same buttons. A hand that knows Push knows Pung.
 
 | | Upper display buttons | Lower display buttons |
 |---|---|---|
-| **Chain level** | the track's devices, the selected one filled; an arrow at an end when there are more than fit | Live's tracks |
+| **Chain level** | the track's devices, the selected one filled, then `+` (add a device: Push's own browser); an arrow at an end when there are more than fit | Live's tracks |
 | **Device open** | button 1 goes back (`< NAME`) | the device's pages, the shown one filled; an arrow when there are more |
 
 | Control | In Pung, as on Push |
 |---|---|
 | A device's upper button | selects it; the selected one's opens and closes it |
-| Jog wheel, chain level | moves a focus along the devices; its press opens the focused one |
+| Jog wheel, chain level | moves a focus along the devices and `+`; its press opens the focused one |
 | Jog wheel, device open | steps through the pages; a nudge left goes back |
 | Encoders | the 8 parameters above them, at both levels. Touch one to see its range. |
 | Shift + turn | fine adjustment |

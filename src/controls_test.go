@@ -108,7 +108,8 @@ func TestTwoLevelsAsOnPush(t *testing.T) {
 	top, bot := func(i int) byte { return push3.CCScreenTop1 + byte(i) }, func(i int) byte { return push3.CCScreenBot1 + byte(i) }
 
 	// chain level: the upper row is the track's devices
-	if u.open || u.deviceSlots() != [8]int{0, 1, 2, slotNone, slotNone, slotNone, slotNone, slotNone} {
+	// (slot 3 is Push's "+", after the three devices)
+	if u.open || u.deviceSlots() != [8]int{0, 1, 2, 3, slotNone, slotNone, slotNone, slotNone} {
 		t.Fatalf("chain level: open %v, devices %v", u.open, u.deviceSlots())
 	}
 	press(u, bot(2)) // a track: nothing opens, no page changes
@@ -149,6 +150,16 @@ func TestTwoLevelsAsOnPush(t *testing.T) {
 	if u.focus != 2 || u.open || u.bank != 3 {
 		t.Fatalf("jog at chain level: focus %d, open %v, page %d", u.focus, u.open, u.bank+1)
 	}
+	u.cc(push3.CCJogWheel, 1) // on to "+", and no further
+	u.cc(push3.CCJogWheel, 1)
+	if u.focus != 3 {
+		t.Fatalf("the jog's last stop is +: focus %d", u.focus)
+	}
+	press(u, push3.CCJogPress) // "+" is Push's browser: nothing opens here
+	if u.open {
+		t.Fatal("jog press on + opened the device")
+	}
+	u.cc(push3.CCJogWheel, 127)
 	u.cc(push3.CCJogWheel, 127)
 	press(u, push3.CCJogPress)
 	if !u.open {
@@ -248,8 +259,8 @@ func TestLEDsSayWhatWorks(t *testing.T) {
 	}
 	u.paintLEDs()
 	// chain level: three devices, three tracks; this is the middle track
-	if got := row(push3.CCScreenTop1); got != [8]bool{true, true, true} {
-		t.Errorf("device buttons lit %v", got)
+	if got := row(push3.CCScreenTop1); got != [8]bool{true, true, true, true} {
+		t.Errorf("device buttons lit %v (three devices and +)", got)
 	}
 	if got := row(push3.CCScreenBot1); got != [8]bool{true, true, true} {
 		t.Errorf("track buttons lit %v", got)

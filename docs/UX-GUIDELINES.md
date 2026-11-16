@@ -112,7 +112,7 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
 
 | | Upper display buttons | Lower display buttons |
 |---|---|---|
-| **Chain level** | the track's devices, the selected one filled | Live's tracks |
+| **Chain level** | the track's devices, the selected one filled, then `+` | Live's tracks |
 | **Device open** | button 1: `< NAME`, back | the device's pages, the shown one filled |
 
 - **A device's button selects it; the selected one's opens and closes it.** Another device or track
@@ -135,8 +135,9 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
   the options in the palette's near-black, and they looked dead.
 - **Pung's own additions**, where Push has nothing: Page < > step the pages (Push leaves them unused in
   its device view); Swap and, in an open device, the jog press open the sounds; Save saves the sound.
-- **Not there yet**: Push's `+` after the last device (its Add browser is Push's own: press Add), the
-  upper buttons 2 to 8 of an open device (Push puts a page's switches there), automation dots, moving a
+- **`+` after the last device**, as on Push: it hands the screen to Push and presses Add there (adding a
+  device is Push's own browser); backing out of the browser returns to Pung's view.
+- **Not there yet**: the upper buttons 2 to 8 of an open device (Push puts a page's switches there), automation dots, moving a
   device by holding its button.
 - **A full-panel screen** (a takeover, §5) belongs to the open device. It hides the two rows, so they are
   drawn over it for a moment on opening, on a page turn and while the jog wheel is touched: the way back

@@ -919,13 +919,38 @@ func (u *surface) pageSlots() [8]int {
 	return rowSlots(u.bankOff, len(cm.Banks))
 }
 
-// deviceSlots: the upper row at chain level: the track's devices.
+// deviceSlots: the upper row at chain level: the track's devices, then
+// Push's "+" (slot len(devs): add a device after them).
 func (u *surface) deviceSlots() [8]int {
 	if !u.liveActive() {
 		return rowSlots(0, 0)
 	}
 	devs, _ := u.live.state().deviceRow()
-	return rowSlots(u.devOff, len(devs))
+	return rowSlots(u.devOff, len(devs)+1)
+}
+
+// addDevice: Push's "+". Adding a device is Push's own browser: the screen
+// goes back to Push and Add is pressed there, as push-manager does it for
+// the Add button itself.
+func (u *surface) addDevice() {
+	c, pm := u.c, u.pm
+	if pm == nil {
+		return
+	}
+	go func() {
+		if err := pm.SurfaceLeave("live"); err != nil {
+			log.Printf("surface: +: %v", err)
+			return
+		}
+		time.Sleep(150 * time.Millisecond) // Push has its buttons again
+		p, ok := alsaseq.FindByName("Ableton Internal Input", alsaseq.CapWrite)
+		if !ok || c == nil {
+			return
+		}
+		c.SendCC(p.Addr, 0, push3.CCAdd, 127) //nolint:errcheck
+		time.Sleep(40 * time.Millisecond)
+		c.SendCC(p.Addr, 0, push3.CCAdd, 0) //nolint:errcheck
+	}()
 }
 
 // selectedDeviceIndex: where the selected device is in the track's devices (-1 none).
@@ -956,6 +981,9 @@ func (u *surface) top(i int) {
 	case s == slotRight:
 		u.devOff++
 	case s < 0:
+	case s == len(devs): // "+"
+		u.focus = s
+		u.addDevice()
 	case u.mute:
 		u.combo = true
 		d := devs[s]
@@ -1052,14 +1080,11 @@ func (u *surface) jog(delta int) {
 		return
 	}
 	devs, sel := u.live.state().deviceRow()
-	if len(devs) == 0 {
-		return
-	}
-	if u.focus < 0 || u.focus >= len(devs) {
+	if u.focus < 0 || u.focus > len(devs) {
 		u.focus = max(0, selectedDeviceIndex(devs, sel))
 	}
-	u.focus = max(0, min(len(devs)-1, u.focus+sign(delta)))
-	u.devOff = rowShow(u.devOff, len(devs), u.focus)
+	u.focus = max(0, min(len(devs), u.focus+sign(delta))) // the last stop is "+"
+	u.devOff = rowShow(u.devOff, len(devs)+1, u.focus)
 }
 
 // jogPress: chain level: the focused device (selects it; the selected one
@@ -1074,7 +1099,11 @@ func (u *surface) jogPress() {
 	}
 	devs, sel := u.live.state().deviceRow()
 	at := selectedDeviceIndex(devs, sel)
-	if u.focus < 0 || u.focus >= len(devs) || u.focus == at {
+	if u.focus == len(devs) {
+		u.addDevice() // on "+"
+		return
+	}
+	if u.focus < 0 || u.focus > len(devs) || u.focus == at {
 		u.openDevice()
 		return
 	}
@@ -1271,10 +1300,10 @@ func (u *surface) paintLEDs() {
 			case s == slotLeft || s == slotRight:
 				top[i] = opt
 			case s < 0:
-			case devs[s].I == sel:
+			case s < len(devs) && devs[s].I == sel:
 				top[i] = ledChosen
 			default:
-				top[i] = opt
+				top[i] = opt // another device, or "+"
 			}
 		}
 	}

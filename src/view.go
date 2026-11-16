@@ -342,8 +342,8 @@ func drawPageIndicator(img *image.NRGBA, x, page, pages int) {
 // drawDeviceRow: the selected track's devices over the upper buttons, as
 // Push's device view shows them: the one holding the selected device
 // filled (its button opens it), the one under the jog wheel framed, a
-// device switched off dimmed, an arrow where there are more. Returns how
-// many columns it used.
+// device switched off dimmed, an arrow where there are more, and Push's "+"
+// after the last. Returns how many columns it used.
 func (u *surface) drawDeviceRow(img *image.NRGBA, sc color.NRGBA) int {
 	devs, sel := u.live.state().deviceRow()
 	n := 0
@@ -356,6 +356,12 @@ func (u *surface) drawDeviceRow(img *image.NRGBA, sc color.NRGBA) int {
 			arrowCell(img, i, 12, 1, sc)
 		case s < 0:
 			continue
+		case s == len(devs): // Push's "+": add a device after these
+			rect(img, x+colW/2-5, 12, 11, 1, sc)
+			rect(img, x+colW/2, 7, 1, 11, sc)
+			if s == u.focus {
+				frameRect(img, x+colW/2-12, 5, 25, 15, cFg)
+			}
 		default:
 			d := devs[s]
 			name := fitLabel(strings.ToUpper(d.Name), colW-20)
