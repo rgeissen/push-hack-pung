@@ -263,6 +263,28 @@ func TestLEDsSayWhatWorks(t *testing.T) {
 	if lit(push3.CCAdd) || lit(push3.CCNew) {
 		t.Error("Add or New is lit: they do nothing here")
 	}
+	// as Push lights them: the chosen one white, every other option lit in
+	// the track's colour, never the near-black that reads as off
+	dark := pIdx("dgray")
+	for cc, v := range u.leds {
+		if v == dark {
+			t.Errorf("button %d is lit in a colour too dark to see", cc)
+		}
+	}
+	if u.leds[uint16(push3.CCScreenTop1+1)] != ledChosen || u.leds[uint16(push3.CCScreenTop1)] == ledChosen || u.leds[uint16(push3.CCScreenTop1)] == 0 {
+		t.Errorf("devices: the selected one must be white and the others lit: %v %v", u.leds[uint16(push3.CCScreenTop1)], u.leds[uint16(push3.CCScreenTop1+1)])
+	}
+	for col, want := range map[int]string{0xC93C00: "dk_orange", 0: "gray_mid", 0x3663fc: "dk_cobalt"} {
+		if got := ledOption(col); got != pIdx(want) {
+			t.Errorf("a %06x track's options are lit %d, want %s (%d)", col, got, want, pIdx(want))
+		}
+	}
+	for _, col := range []int{0, 0xff0000, 0x00ff00, 0x0000ff, 0xffffff, 0x101010, 0x3B2B14, 0xff94a6} {
+		e := push3.ColorForIndex(ledOption(col)).RGB
+		if max(e.R, e.G, e.B) < 55 || ledOption(col) == ledChosen {
+			t.Errorf("track colour %06x: its options would be lit %v: too dark, or as the chosen one", col, e)
+		}
+	}
 	// open: only the way back above; the pages and their arrow below
 	press(u, push3.CCScreenTop1+1)
 	u.paintLEDs()
@@ -271,5 +293,8 @@ func TestLEDsSayWhatWorks(t *testing.T) {
 	}
 	if got := row(push3.CCScreenBot1); got != [8]bool{true, true, true, true, true, true, true, true} {
 		t.Errorf("open: page buttons lit %v", got)
+	}
+	if u.leds[uint16(push3.CCScreenBot1)] != ledChosen || u.leds[uint16(push3.CCScreenBot1+3)] == ledChosen || u.leds[uint16(push3.CCScreenBot1+7)] == 0 {
+		t.Error("pages: the shown one must be white, the others and the arrow lit")
 	}
 }

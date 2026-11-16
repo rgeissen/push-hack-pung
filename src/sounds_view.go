@@ -1220,7 +1220,12 @@ func (u *surface) drawNameEditor(img *image.NRGBA) {
 // paintSoundLEDs: the browser's and the editor's buttons. Caller holds u.mu.
 func (u *surface) paintSoundLEDs() {
 	sc := pIdx(slotLED[u.slot%len(slotLED)])
-	white, dimw, red := pIdx("white"), pIdx("dgray"), pIdx("red")
+	white, red := pIdx("white"), pIdx("red")
+	dimw := ledOption(0) // an option not chosen: lit, never dark (surface.go)
+	if u.liveActive() {
+		_, col := u.live.state().trackHeader()
+		dimw = ledOption(col)
+	}
 	sb := u.sb
 	for i := 0; i < 8; i++ {
 		v := uint8(0)

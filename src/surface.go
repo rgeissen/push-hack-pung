@@ -364,6 +364,14 @@ func (u *surface) routes(mux *http.ServeMux) {
 		writeJSON(w, 200, map[string]any{"ok": true, "focused": u.focused.Load(), "view": u.view, "slot": u.slot + 1,
 			"device_row": row, "device_row_selected": rowSel, "open": u.open, "focus": u.focus,
 			"page_slots": u.pageSlots(), "device_slots": u.deviceSlots(),
+			"leds": func() map[string][]uint8 { // the display buttons' lights, as last set
+				out := map[string][]uint8{"upper": make([]uint8, 8), "lower": make([]uint8, 8)}
+				for i := 0; i < 8; i++ {
+					out["upper"][i] = u.leds[uint16(push3.CCScreenTop1)+uint16(i)]
+					out["lower"][i] = u.leds[uint16(push3.CCScreenBot1)+uint16(i)]
+				}
+				return out
+			}(),
 			"fallback":      map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
 			"frame_draw_us": u.frameStats.drawUS.Load(), "frame_push_us": u.frameStats.pushUS.Load(), "frames": u.frameStats.n.Load(),
 			"module_ui_draw_us": u.overlayDrawUS(p.Module),
@@ -1189,16 +1197,61 @@ func (u *surface) led(pad bool, n, v uint8) {
 	}
 }
 
-// paintLEDs lights what has a meaning now and switches off the rest: a
-// button that does nothing is dark. Caller holds u.mu.
+// The display buttons' lights, as Push's own device view sets them
+// (read off the Push, 2026-11-16): the chosen thing white, every other
+// option LIT in a dimmed version of its track's colour, nothing dark that
+// can be pressed.
+const ledChosen = 122 // Push's lit-white button
+
+var ledOptionCache = map[int]uint8{}
+
+// ledOption: the light of an option that is not the chosen one: the palette
+// colour nearest the track's colour at Push's dimmed strength (an orange
+// track's options are its "dk_orange"). col is 0xRRGGBB; 0: a neutral one.
+func ledOption(col int) uint8 {
+	if v, ok := ledOptionCache[col]; ok {
+		return v
+	}
+	r, g, b := float64(col>>16&0xff), float64(col>>8&0xff), float64(col&0xff)
+	if col == 0 {
+		r, g, b = 200, 200, 200
+	}
+	// by hue, among the palette's dimmed colours (their brightest channel
+	// 55..110: Push's own are there, an orange track's dk_orange at 93):
+	// lit, and plainly dimmer than the chosen one's white
+	m := math.Max(1, math.Max(r, math.Max(g, b)))
+	r, g, b = r/m, g/m, b/m
+	best, bestD := uint8(118), math.MaxFloat64 // gray_mid, if nothing else
+	for i := 1; i < 128; i++ {
+		pe := push3.ColorForIndex(uint8(i))
+		e := pe.RGB
+		em := math.Max(float64(e.R), math.Max(float64(e.G), float64(e.B)))
+		if pe.Name == "" || int(pe.Index) != i || em < 55 || em > 110 {
+			continue
+		}
+		d := math.Pow(float64(e.R)/em-r, 2) + math.Pow(float64(e.G)/em-g, 2) + math.Pow(float64(e.B)/em-b, 2)
+		if d < bestD {
+			best, bestD = uint8(i), d
+		}
+	}
+	ledOptionCache[col] = best
+	return best
+}
+
+// paintLEDs lights every button that offers something now and switches off
+// the rest: a button that does nothing is dark, one that can be pressed is
+// never dark. Caller holds u.mu.
 func (u *surface) paintLEDs() {
 	if u.sb != nil && (u.view == "sounds" || u.view == "name") {
 		u.paintSoundLEDs()
 		return
 	}
-	sc := pIdx(slotLED[u.slot%len(slotLED)])
-	white, dimw := pIdx("white"), pIdx("dgray")
 	live := u.liveActive()
+	opt := ledOption(0) // this track's options: its devices, the open one's pages
+	if live {
+		_, col := u.live.state().trackHeader()
+		opt = ledOption(col)
+	}
 	on := func(b bool) uint8 {
 		if b {
 			return 63
@@ -1210,20 +1263,18 @@ func (u *surface) paintLEDs() {
 	switch {
 	case !live:
 	case u.open:
-		top[0] = white
+		top[0] = ledChosen // the open device, and the way back
 	default:
 		devs, sel := u.live.state().deviceRow()
 		for i, s := range u.deviceSlots() {
 			switch {
 			case s == slotLeft || s == slotRight:
-				top[i] = white
+				top[i] = opt
 			case s < 0:
 			case devs[s].I == sel:
-				top[i] = sc
-			case s == u.focus:
-				top[i] = white
+				top[i] = ledChosen
 			default:
-				top[i] = dimw
+				top[i] = opt
 			}
 		}
 	}
@@ -1234,19 +1285,19 @@ func (u *surface) paintLEDs() {
 		for i, s := range u.pageSlots() {
 			switch {
 			case s == slotLeft || s == slotRight:
-				bot[i] = white
+				bot[i] = opt
 			case s == u.bank:
-				bot[i] = sc
+				bot[i] = ledChosen
 			case s >= 0:
-				bot[i] = dimw
+				bot[i] = opt
 			}
 		}
 	default:
 		page, first, sel := u.trackPage()
-		for i := range page {
-			bot[i] = dimw
+		for i, t := range page {
+			bot[i] = ledOption(t.Color) // each track in its own colour
 			if first+i == sel {
-				bot[i] = white
+				bot[i] = ledChosen
 			}
 		}
 	}

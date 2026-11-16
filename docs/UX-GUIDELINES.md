@@ -129,7 +129,10 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
 - **Mute, Solo and Delete stay Live's buttons** (the pads need them: Delete + pad, Mute + pad). Pung only
   reads them. Push takes a Mute or Solo let go within about 0.4 s as a tap on the selected track; when
   the press was used with one of Pung's buttons, Pung puts that track back.
-- **A button that does nothing is dark.**
+- **A button that offers something is lit; one that does nothing is dark.** The lights are Push's own
+  (read off the Push): the chosen device, page or track white, every other option lit in a dimmed version
+  of its track's colour, the arrows too. Never a colour so dark it reads as off: Pung's first version lit
+  the options in the palette's near-black, and they looked dead.
 - **Pung's own additions**, where Push has nothing: Page < > step the pages (Push leaves them unused in
   its device view); Swap and, in an open device, the jog press open the sounds; Save saves the sound.
 - **Not there yet**: Push's `+` after the last device (its Add browser is Push's own: press Add), the
