@@ -209,7 +209,10 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 		if h.prov != nil {
 			for _, d := range h.prov.list() {
 				e := map[string]any{"n": d.s.Index, "name": d.c.Name, "module": d.c.module, "kind": d.c.Kind,
-					"component": d.c.component(), "selected": d.s.Index == sel}
+					"component": d.c.component(), "selected": d.s.Index == sel,
+					// blocks that could not run, and notes of theirs delivered a block later
+					"skipped_blocks": d.skipped.Load(), "held_notes_sent": d.heldSent.Load(),
+					"doubled_keys_released": d.s.rekeyed.Load()}
 				if d.s.Index == sel {
 					e["track"] = track
 				}

@@ -393,3 +393,45 @@ func TestLFOExtrasFromTheModule(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// A block that cannot run keeps its notes for the next one: a note-off is
+// never lost with the block's audio (hanging notes), a note that began and
+// ended while nothing ran is not played late, and streams are let go.
+func TestSkippedBlocksKeepTheirNotes(t *testing.T) {
+	var h heldMidi
+	for _, m := range [][]byte{
+		{0x80, 60, 0},   // the end of a note the module is sounding
+		{0x90, 64, 100}, // a note that began ...
+		{0xD0, 80, 0},   // pressure: a stream
+		{0xB0, 74, 12},  // a controller: a stream
+		{0x90, 67, 90},  // a key still down when the blocks run again
+		{0x80, 64, 0},   // ... and ended while nothing ran
+		{0xB0, 64, 0},   // the sustain pedal coming up
+		{0x91, 64, 80},  // the same pitch on another channel: its own note
+		{0xE0, 0, 64},   // a bend
+		{0xB0, 123, 0},  // all notes off
+		{0x90, 72, 0},   // a note-off written as a note-on of velocity 0
+	} {
+		h.keep(m)
+	}
+	var got []string
+	n := h.flush(func(m []byte) { got = append(got, fmt.Sprintf("%02x %d %d", m[0], m[1], m[2])) })
+	want := []string{"80 60 0", "90 67 90", "b0 64 0", "91 64 80", "b0 123 0", "90 72 0"}
+	if fmt.Sprint(got) != fmt.Sprint(want) || n != len(want) || h.n != 0 {
+		t.Fatalf("delivered %v (%d), want %v", got, n, want)
+	}
+	// full of held keys: a note-off still gets in, an old note-on gives way
+	for i := 0; i < 400; i++ {
+		h.keep([]byte{0x90, byte(i % 100), 100})
+	}
+	h.keep([]byte{0x80, 120, 0})
+	offs := 0
+	h.flush(func(m []byte) {
+		if m[0] == 0x80 && m[1] == 120 {
+			offs++
+		}
+	})
+	if offs != 1 {
+		t.Fatalf("a note-off was lost from a full buffer (%d)", offs)
+	}
+}

@@ -33,10 +33,12 @@ type Slot struct {
 	Index int    // 0-based; the user sees Index+1
 	Name  string // "Pung 1": the MIDI port and the Link channel
 
-	own  sync.Mutex // held for each call into the chain; the engine only TRIES it
-	midi chan midiMsg
-	bus  *audiobus.Client
-	seq  *alsaseq.Client // the host's one port, for MIDI a module sends
+	own     sync.Mutex // held for each call into the chain; the engine only TRIES it
+	midi    chan midiMsg
+	keys    keyGuard      // a key is down or up for the synth, never counted
+	rekeyed atomic.Uint64 // note-offs the guard put in front of a doubled note-on
+	bus     *audiobus.Client
+	seq     *alsaseq.Client // the host's one port, for MIDI a module sends
 
 	loading   atomic.Bool // a long call (module load) holds the lock: skip, do not wait
 	peakBits  atomic.Uint32
@@ -266,12 +268,20 @@ func (s *Slot) queue(msg []byte) {
 
 // ---- engine side ---------------------------------------------------------
 
+// sendMidi is the one way MIDI goes into the chain: under the slot's lock,
+// through the key guard.
+func (s *Slot) sendMidi(msg []byte) {
+	if s.keys.feed(msg, func(m []byte) { cMidi(s.Index, m, 0) }) {
+		s.rekeyed.Add(1)
+	}
+}
+
 func (s *Slot) drainMidi() {
 	for {
 		select {
 		case m := <-s.midi:
 			s.live.trackMidi(m.b[:m.n])
-			cMidi(s.Index, m.b[:m.n], 0)
+			s.sendMidi(m.b[:m.n])
 		default:
 			return
 		}

@@ -543,11 +543,87 @@ type device struct {
 
 	lastChain json.RawMessage // the last state given (SetState), to load again (revive)
 
+	// blocks that could not run, and their notes (Process, heldMidi)
+	held     heldMidi      // the realtime thread's only
+	skipped  atomic.Uint64 // blocks skipped
+	heldSent atomic.Uint64 // notes of skipped blocks delivered later
+
 	// a state loads in the background (SetState): loadMu is held while one
 	// loads, loading says one is on its way, stateSeq makes the newest win
 	loadMu   sync.Mutex
 	loading  atomic.Bool
 	stateSeq atomic.Uint64
+}
+
+// heldMidi: the notes of blocks that could not run (Process), kept for the
+// next one that can. Only the realtime thread touches it; nothing is
+// allocated. What is kept: note-ons and note-offs, and the controllers that
+// end notes (sustain, all sound off, all notes off). Pressure, bends and
+// other controllers of a block that made no sound are let go: they are
+// streams, and the next block brings their newest value.
+type heldMidi struct {
+	n   int
+	buf [256][3]byte
+}
+
+func (h *heldMidi) keep(msg []byte) {
+	if len(msg) < 3 {
+		return
+	}
+	switch st := msg[0] & 0xF0; {
+	case st == 0x80 || st == 0x90:
+	case st == 0xB0 && (msg[1] == 64 || msg[1] == 120 || msg[1] == 123):
+	default:
+		return
+	}
+	if h.n == len(h.buf) {
+		// full: a note-off is never the one to go. The oldest note-on is
+		// given up for it (with its own note-off, if that is kept too)
+		if !(msg[0]&0xF0 == 0x80 || (msg[0]&0xF0 == 0x90 && msg[2] == 0)) {
+			return
+		}
+		for i := 0; i < h.n; i++ {
+			if h.buf[i][0]&0xF0 == 0x90 && h.buf[i][2] > 0 {
+				copy(h.buf[i:], h.buf[i+1:h.n])
+				h.n--
+				break
+			}
+		}
+		if h.n == len(h.buf) {
+			return
+		}
+	}
+	h.buf[h.n] = [3]byte{msg[0], msg[1], msg[2]}
+	h.n++
+}
+
+// flush gives what was kept to send, in order, and empties it. A note
+// that began AND ended while nothing ran is left out whole: played now, it
+// would be a click of a note long over. Returns how many were sent.
+func (h *heldMidi) flush(send func(msg []byte)) int {
+	isOn := func(m [3]byte) bool { return m[0]&0xF0 == 0x90 && m[2] > 0 }
+	isOff := func(m [3]byte) bool { return m[0]&0xF0 == 0x80 || (m[0]&0xF0 == 0x90 && m[2] == 0) }
+	var gone [256]bool
+	for i := 0; i < h.n; i++ {
+		if !isOn(h.buf[i]) {
+			continue
+		}
+		for j := i + 1; j < h.n; j++ {
+			if !gone[j] && isOff(h.buf[j]) && h.buf[j][0]&0x0F == h.buf[i][0]&0x0F && h.buf[j][1] == h.buf[i][1] {
+				gone[i], gone[j] = true, true
+				break
+			}
+		}
+	}
+	sent := 0
+	for i := 0; i < h.n; i++ {
+		if !gone[i] {
+			send(h.buf[i][:])
+			sent++
+		}
+	}
+	h.n = 0
+	return sent
 }
 
 // Process runs one block on the device's realtime thread.
@@ -562,12 +638,18 @@ func (d *device) Process(b *livedevice.Block) {
 		}
 	}
 	if !d.s.acquire() {
-		return // a module is loading: silence, never a wait
+		// a module is loading (or the chain is busy this period): silence,
+		// never a wait. But the block's notes are not thrown away with its
+		// audio: a note-off lost here is a note that never ends (reported
+		// as hanging notes, 2026-11-16). They wait for the next block.
+		d.skipped.Add(1)
+		b.Events(func(_ int, msg []byte) { d.held.keep(msg) })
+		return
 	}
 	defer d.s.own.Unlock()
 	b.Params(d.applyParam)
 	d.s.drainMidi() // notes played by a test or the web page (POST /api/devices/{n}/note)
-	b.Events(func(_ int, msg []byte) {
+	deliver := func(msg []byte) {
 		d.s.live.trackMidi(msg)
 		n := d.recentN.Add(1) - 1
 		var e [4]byte
@@ -577,11 +659,15 @@ func (d *device) Process(b *livedevice.Block) {
 			var m [3]byte
 			k := copy(m[:], msg)
 			m[0] = m[0]&0xF0 | byte(ch)
-			cMidi(d.s.Index, m[:k], 0)
+			d.s.sendMidi(m[:k])
 			return
 		}
-		cMidi(d.s.Index, msg, 0)
-	})
+		d.s.sendMidi(msg)
+	}
+	if d.held.n > 0 { // what the skipped blocks brought, first and in order
+		d.heldSent.Add(uint64(d.held.flush(deliver)))
+	}
+	b.Events(func(_ int, msg []byte) { deliver(msg) })
 	n := b.Frames
 	var input []float32
 	if d.c.Kind == livedevice.Effect {
