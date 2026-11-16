@@ -1,6 +1,8 @@
 package main
 
-// view.go: the chain view and the module browser, drawn for the Push panel.
+// view.go: the Pung view, drawn for the Push panel: the device row or the
+// way back on top, the 8 parameter cells, Live's tracks or the open
+// device's pages at the bottom (surface.go has the controls).
 
 import (
 	"fmt"
@@ -17,19 +19,7 @@ import (
 
 func rgb(r, g, b uint8) color.NRGBA { return color.NRGBA{r, g, b, 255} }
 
-func kindColor(kind string) color.NRGBA {
-	switch kind {
-	case "other":
-		return cLine
-	case "midi":
-		return colMidi
-	case "synth":
-		return colInst
-	}
-	return colAfx
-}
-
-// drawChain: banks on top, 8 parameter cells, the chain row at the bottom.
+// drawChain: the upper row, the 8 parameter cells, the lower row.
 func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	sc := slotColor(u.slot)
 	p, cm, b := u.currentBank()
@@ -42,26 +32,27 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	liveKeys := u.readLiveKeys(ls, u.liveOut, p, b)
 	defer func() { u.fxUsed = u.liveDrew || liveKeys }()
 	if u.drawTakeover(img, p, cm, b, sc) {
+		// the screen is the module's, but the way back and the pages are
+		// Push's: over it for a moment (surface.go: rowsUntil)
+		if time.Now().Before(u.rowsUntil) {
+			y, h := botY+3, scrH-botY-6
+			rect(img, 0, 0, scrW, topH, cBlack)
+			rect(img, 0, botY, scrW, scrH-botY, cBlack)
+			rect(img, 0, 0, scrW, 2, sc)
+			drawBack(img, strings.ToUpper(p.Name), sc)
+			drawPageRow(img, y, h, cm, u.pageSlots(), u.bank, sc)
+		}
 		return
 	}
 	rect(img, 0, 0, scrW, 2, sc)
 
-	// top bar: the track's devices (as on Push), or the banks
-	nb := 0
-	if u.liveActive() && !u.bankList {
+	// top bar: the track's devices, or the way back out of the open one
+	// (as on Push)
+	nb := 1
+	if u.open {
+		drawBack(img, strings.ToUpper(p.Name), sc)
+	} else {
 		nb = u.drawDeviceRow(img, sc)
-	} else if cm != nil {
-		for i := 0; i < 8 && u.bankOff+i < len(cm.Banks); i++ {
-			x := i * colW
-			name := fitLabel(strings.ToUpper(cm.Banks[u.bankOff+i].Name), colW-20)
-			if u.bankOff+i == u.bank {
-				rect(img, x+8, 5, colW-16, 15, sc)
-				label(img, x+colW/2, 17, name, cBlack, 0)
-			} else {
-				label(img, x+colW/2, 17, name, cDim, 0)
-			}
-			nb++
-		}
 	}
 	hd := header{page: u.bank, meter: true, peak: peak}
 	if cm != nil {
@@ -73,7 +64,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		if col == 0 {
 			hd.trackCol = cFg
 		}
-		if cm != nil && u.bank < len(cm.Banks) && !u.bankList {
+		if cm != nil && u.bank < len(cm.Banks) {
 			hd.bank = strings.ToUpper(cm.Banks[u.bank].Name)
 			if cl := cm.Banks[u.bank].CompLabel; cl != "" && !strings.EqualFold(cl, cm.Banks[u.bank].Name) {
 				hd.bank = strings.ToUpper(cl) + " / " + hd.bank // the compartment, then its page
@@ -84,8 +75,6 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		if hd.meter {
 			hd.sound = u.soundTitle()
 		}
-	} else {
-		hd.track, hd.trackCol = fmt.Sprintf("TRACK %d", u.slot+1), cFg
 	}
 	if set := u.ov.get(u.h.modulesDir, p.Module); set != nil && set.failed != "" && cm != nil && b != nil {
 		hd.warn = "MODULE UI OFF"
@@ -116,6 +105,11 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		}
 		comp := set.compartment(b.Compartment)
 		screen, skeys := comp.pageScreen(b.Page)
+		if comp != nil && comp.takeover {
+			// a full-panel screen is the open device's (drawTakeover); at
+			// chain level its page shows as knobs, between Push's two rows
+			screen = nil
+		}
 		if screen != nil && set.failed == "" && !set.off {
 			// a custom screen: the compartment (or this page of it) draws the
 			// whole band, with every one of its keys' values; the encoders'
@@ -199,73 +193,62 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		}
 	}
 
-	// chain row, or Live's tracks while the view follows Live
-	y, h := botY+3, scrH-botY-6
+	// a device switched off: its parameters greyed, as Push shows it
 	if u.liveActive() {
-		u.drawTrackRow(img, y, h)
+		if devs, sel := u.live.state().deviceRow(); selectedDeviceIndex(devs, sel) >= 0 && !devs[selectedDeviceIndex(devs, sel)].Active {
+			for py := topH; py < botY; py++ {
+				for px := 0; px < scrW; px++ {
+					c := img.NRGBAAt(px, py)
+					g := uint8((int(c.R)*3 + int(c.G)*6 + int(c.B)) / 10 * 45 / 100)
+					img.SetNRGBA(px, py, color.NRGBA{g, g, g, 255})
+				}
+			}
+		}
+	}
+	// lower row: the open device's pages, or Live's tracks (as on Push)
+	y, h := botY+3, scrH-botY-6
+	if u.open && cm != nil {
+		drawPageRow(img, y, h, cm, u.pageSlots(), u.bank, sc)
 		return
 	}
-	u.drawChainRow(img, y, h)
+	u.drawTrackRow(img, y, h)
 }
 
-// drawChainRow: the chain's positions under the lower buttons: a window of
-// 8; a marker at an edge says the chain goes on.
-func (u *surface) drawChainRow(img *image.NRGBA, y, h int) {
-	if u.chainOff > 0 {
-		for k := 0; k < 5; k++ {
-			rect(img, 1+k, y+h/2-k, 1, 2*k+1, cFg)
-		}
+// drawBack: the open device's name over upper button 1, which leaves it.
+func drawBack(img *image.NRGBA, name string, sc color.NRGBA) {
+	for k := 0; k < 5; k++ { // <
+		rect(img, 10+k, 12-k, 1, 2*k+1, sc)
 	}
-	if u.chainOff+8 < len(u.positions) {
-		for k := 0; k < 5; k++ {
-			rect(img, scrW-2-k, y+h/2-k, 1, 2*k+1, cFg)
-		}
+	label(img, 22, 17, fitLabel(name, colW-30), sc, -1)
+}
+
+// arrowCell: a row's "more" arrow in column col (dir -1 left, 1 right).
+func arrowCell(img *image.NRGBA, col, cy, dir int, c color.NRGBA) {
+	cx := col*colW + colW/2
+	rect(img, cx-6, cy, 12, 1, c)
+	for k := 0; k < 5; k++ {
+		rect(img, cx+dir*(6-k), cy-k, 1, 2*k+1, c)
 	}
-	for j := 0; j < 8 && u.chainOff+j < len(u.positions); j++ {
-		i, q := u.chainOff+j, u.positions[u.chainOff+j]
+}
+
+// drawPageRow: the open device's pages under the lower buttons, the shown
+// one filled; an arrow where the row goes on (surface.go: rowSlots).
+func drawPageRow(img *image.NRGBA, y, h int, cm *compMeta, slots [8]int, cur int, sc color.NRGBA) {
+	for j, s := range slots {
 		x, w := j*colW+7, colW-14
-		if q.Kind == "add" {
-			if i == u.pos { // selected: solid, so it reads as the selection
-				frameRect(img, x, y, w, h, slotColor(u.slot))
-				label(img, x+w/2, y+14, "+ ADD", cFg, 0)
-				continue
-			}
-			for dx := 0; dx < w; dx += 6 {
-				rect(img, x+dx, y, 3, 1, cLine)
-				rect(img, x+dx, y+h-1, 3, 1, cLine)
-			}
-			rect(img, x, y, 1, h, cLine)
-			rect(img, x+w-1, y, 1, h, cLine)
-			label(img, x+w/2, y+14, "+ ADD", cDim, 0)
-			continue
-		}
-		kc := kindColor(q.Kind)
-		name := fitLabel(strings.ToUpper(q.Name), w-24)
 		switch {
-		case i == u.pos:
-			rect(img, x, y, w, h, kc)
-			label(img, x+10, y+14, name, cBlack, -1)
-		case q.Bypassed:
-			frameRect(img, x, y, w, h, cFaint)
-			rect(img, x+3, y+4, 2, h-8, dim(kc, 0.35))
-			label(img, x+10, y+14, name, cDim, -1)
+		case s == slotLeft:
+			arrowCell(img, j, y+h/2, -1, sc)
+		case s == slotRight:
+			arrowCell(img, j, y+h/2, 1, sc)
+		case s < 0 || s >= len(cm.Banks):
 		default:
-			frameRect(img, x, y, w, h, cLine)
-			rect(img, x+3, y+4, 2, h-8, kc)
-			label(img, x+10, y+14, name, cFg, -1)
-		}
-		if q.Bypassed {
-			bc := cWarn
-			if i == u.pos {
-				bc = cBlack // on the selection's fill, as its name
-			}
-			label(img, x+w-6, y+14, "B", bc, 1)
-		}
-		if i < len(u.positions)-1 && j < 7 {
-			cx, cy := (j+1)*colW, y+h/2
-			for k := 0; k < 4; k++ {
-				rect(img, cx-3+k, cy-4+k, 1, 1, cDim)
-				rect(img, cx-3+k, cy+4-k, 1, 1, cDim)
+			name := fitLabel(strings.ToUpper(cm.Banks[s].Name), w-12)
+			if s == cur {
+				rect(img, x, y, w, h, sc)
+				label(img, x+8, y+14, name, cBlack, -1)
+			} else {
+				label(img, x+8, y+14, name, sc, -1)
 			}
 		}
 	}
@@ -357,24 +340,42 @@ func drawPageIndicator(img *image.NRGBA, x, page, pages int) {
 }
 
 // drawDeviceRow: the selected track's devices over the upper buttons, as
-// Push's device view shows them; the one holding the selected device
-// filled. Pressing it again lists the banks (bankList). Returns how many.
+// Push's device view shows them: the one holding the selected device
+// filled (its button opens it), the one under the jog wheel framed, a
+// device switched off dimmed, an arrow where there are more. Returns how
+// many columns it used.
 func (u *surface) drawDeviceRow(img *image.NRGBA, sc color.NRGBA) int {
 	devs, sel := u.live.state().deviceRow()
 	n := 0
-	for i, d := range devs {
-		if i >= 8 {
-			break
-		}
+	for i, s := range u.deviceSlots() {
 		x := i * colW
-		name := fitLabel(strings.ToUpper(d.Name), colW-20)
-		if d.I == sel {
-			rect(img, x+8, 5, colW-16, 15, sc)
-			label(img, x+colW/2, 17, name, cBlack, 0)
-		} else {
-			label(img, x+colW/2, 17, name, cDim, 0)
+		switch {
+		case s == slotLeft:
+			arrowCell(img, i, 12, -1, sc)
+		case s == slotRight:
+			arrowCell(img, i, 12, 1, sc)
+		case s < 0:
+			continue
+		default:
+			d := devs[s]
+			name := fitLabel(strings.ToUpper(d.Name), colW-20)
+			switch {
+			case d.I == sel && !d.Active:
+				rect(img, x+8, 5, colW-16, 15, cLine)
+				label(img, x+colW/2, 17, name, cBlack, 0)
+			case d.I == sel:
+				rect(img, x+8, 5, colW-16, 15, sc)
+				label(img, x+colW/2, 17, name, cBlack, 0)
+			case !d.Active:
+				label(img, x+colW/2, 17, name, cLine, 0)
+			default:
+				label(img, x+colW/2, 17, name, cDim, 0)
+			}
+			if s == u.focus && d.I != sel {
+				frameRect(img, x+8, 5, colW-16, 15, cFg)
+			}
 		}
-		n++
+		n = i + 1
 	}
 	return n
 }
@@ -634,75 +635,6 @@ func (u *surface) drawPeek(img *image.NRGBA, enc int, p position, m *paramMeta, 
 	}
 }
 
-// drawBrowser: modules as cards in 8 columns; top row picks, jog moves.
-func (u *surface) drawBrowser(img *image.NRGBA) {
-	sc := slotColor(u.slot)
-	rect(img, 0, 0, scrW, 2, sc)
-	verb := "ADD"
-	if u.br.mode == "swap" {
-		verb = "REPLACE " + strings.ToUpper(u.br.target.Name)
-	}
-	page := u.br.cursor / 8 * 8
-	pages := (len(u.br.items) + 7) / 8
-	troom := scrW - 24
-	if pages > 1 {
-		pw := pageIndicatorWidth(page/8, pages)
-		drawPageIndicator(img, scrW-8-pw, page/8, pages)
-		troom -= pw + hdGap
-	}
-	label(img, 12, 17, fitLabel(verb+" - PICK WITH THE BUTTON ABOVE, OR JOG AND PRESS", troom), cFg, -1)
-	kc := colAfx
-	switch u.br.kind {
-	case "sound_generator":
-		kc = colInst
-	case "midi_fx":
-		kc = colMidi
-	}
-	if len(u.br.items) == 0 {
-		label(img, scrW/2, 84, "NO MODULES OF THIS KIND ARE INSTALLED", cDim, 0)
-	}
-	for i := 0; i < 8 && page+i < len(u.br.items); i++ {
-		m := u.br.items[page+i]
-		x, y, w, h := i*colW+5, 26, colW-10, 108
-		on := page+i == u.br.cursor
-		bg := rgb(12, 12, 11)
-		if on {
-			bg = rgb(26, 22, 16)
-		}
-		rect(img, x, y, w, h, bg)
-		if on {
-			frameRect(img, x, y, w, h, sc)
-			frameRect(img, x+1, y+1, w-2, h-2, sc)
-		} else {
-			frameRect(img, x, y, w, h, cFaint)
-		}
-		rect(img, x+8, y+10, 3, 30, kc)
-		name := m.Name
-		if len(name) > 13 && m.Abbrev != "" {
-			name = m.Abbrev
-		}
-		styled(img, x+8, y+64, fitText(name, w-12, faceName), cFg, faceName, -1)
-		label(img, x+8, y+80, fitLabel(strings.ToUpper(m.Author), w-12), cDim, -1)
-		label(img, x+8, y+96, fitLabel(m.Version, w-12), cDim, -1)
-		if m.ID == u.br.target.Module {
-			label(img, x+18, y+30, "LOADED", sc, -1)
-		}
-	}
-	// bottom row: the categories, and cancel
-	for i, c := range []struct{ name, kind string }{{"MIDI FX", "midi_fx"}, {"SYNTHS", "sound_generator"}, {"AUDIO FX", "audio_fx"}} {
-		x, w := i*colW+7, colW-14
-		if c.kind == u.br.kind {
-			rect(img, x, botY+3, w, scrH-botY-6, kc)
-			label(img, x+w/2, botY+17, c.name, cBlack, 0)
-		} else {
-			frameRect(img, x, botY+3, w, scrH-botY-6, cLine)
-			label(img, x+w/2, botY+17, c.name, cFg, 0)
-		}
-	}
-	frameRect(img, 7*colW+7, botY+3, colW-14, scrH-botY-6, cWarn)
-	label(img, 7*colW+colW/2, botY+17, "CANCEL", cWarn, 0)
-}
-
 // ovValues: what a module's drawing gets for its keys (override.go, v).
 func (u *surface) ovValues(p position, cm *compMeta, keys []string) map[string]ovValue {
 	return ovValuesOf(cm, keys, func(k string) (string, bool) {
@@ -738,7 +670,9 @@ func ovValuesOf(cm *compMeta, keys []string, get func(string) (string, bool)) ma
 // list, a failed or switched-off screen, or no screen: false, and the
 // default view draws instead. Notices still draw on top (render).
 func (u *surface) drawTakeover(img *image.NRGBA, p position, cm *compMeta, b *bank, sc color.NRGBA) bool {
-	if cm == nil || b == nil || u.bankList || p.Module == "" {
+	// a module's full-panel screen belongs to the OPEN device: at chain level
+	// the rows are Push's (devices, tracks) and the page shows as knobs
+	if cm == nil || b == nil || !u.open || p.Module == "" {
 		return false
 	}
 	set := u.ov.get(u.h.modulesDir, p.Module)

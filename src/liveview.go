@@ -35,6 +35,7 @@ type liveParam struct {
 	Display   string   `json:"display"`
 	Quantized bool     `json:"quantized"`
 	Items     []string `json:"items"`
+	Default   *float64 `json:"default"` // Live's default for it (nil: it has none)
 }
 
 type liveDevice struct {
@@ -66,6 +67,7 @@ type liveDevSummary struct {
 	Name   string `json:"name"`
 	Class  string `json:"class"`
 	Chains int    `json:"chains"`
+	Active bool   `json:"active"` // its Device On
 }
 
 // liveTrack is one of Live's tracks (the "tracks" topic): the Pung view's
@@ -75,6 +77,16 @@ type liveTrack struct {
 	Name  string          `json:"name"`
 	Kind  string          `json:"kind"`
 	Color int             `json:"color"`
+	Mute  bool            `json:"mute"`
+	Solo  bool            `json:"solo"`
+}
+
+// flag: the track's mute or solo, as the tracks topic last said.
+func (t liveTrack) flag(prop string) bool {
+	if prop == "solo" {
+		return t.Solo
+	}
+	return t.Mute
 }
 
 type liveState struct {
@@ -175,7 +187,19 @@ func (s *liveState) deviceRow() ([]liveDevSummary, int) {
 	return append([]liveDevSummary(nil), s.trackDevs...), s.selTop
 }
 
-// trackColorName: the selected track's name and colour.
+// setTopActive: a device of the track was switched on or off from here:
+// shown at once, before Live's list is read again.
+func (s *liveState) setTopActive(i int, on bool) {
+	s.mu.Lock()
+	for k := range s.trackDevs {
+		if s.trackDevs[k].I == i {
+			s.trackDevs[k].Active = on
+		}
+	}
+	s.mu.Unlock()
+}
+
+// trackHeader: the selected track's name and colour.
 func (s *liveState) trackHeader() (string, int) {
 	tracks, i := s.trackRow()
 	if i < 0 {
@@ -611,22 +635,6 @@ func (m *paramMeta) toNormValue(raw string) float64 {
 		return 0
 	}
 	return math.Max(0, math.Min(1, m.frac(raw)))
-}
-
-// padNoteInKey: Push's in-key layout (rows a fourth apart: three scale steps),
-// so the pads play the Set's scale while the Pung view is up.
-func padNoteInKey(col, row, octave int, sc liveScale) (byte, bool) {
-	iv := sc.Intervals
-	if !sc.Supported || len(iv) == 0 {
-		iv = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
-	}
-	deg := col + row*3
-	oct := deg / len(iv)
-	n := 36 + sc.Root + 12*(oct+octave) + iv[deg%len(iv)]
-	if n < 0 || n > 127 {
-		return 0, false
-	}
-	return byte(n), true
 }
 
 // forgetProbe: a module was installed, updated or removed: its metadata is

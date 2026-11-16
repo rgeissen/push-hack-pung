@@ -229,21 +229,22 @@ func TestPeekCardKeepsItsText(t *testing.T) {
 
 func TestBottomRowsKeepTheirText(t *testing.T) {
 	initFaces()
-	u := &surface{touched: -1}
-	long := "A Device Name Far Too Long For Its Box"
-	u.positions = []position{{Kind: "midi", Name: long}, {Kind: "synth", Name: long, Bypassed: true}, {Kind: "fx", Name: long},
-		{Kind: "fx", Name: long, Bypassed: true}, {Kind: "add"}, {Kind: "fx", Name: long}, {Kind: "fx", Name: "Short"}, {Kind: "add"}, {Kind: "fx", Name: long}}
+	long := "A Page Name Far Too Long For Its Box"
 	y, h := botY+3, scrH-botY-6
-	for _, sel := range []int{0, 1, 4} {
-		u.pos = sel
+	// the open device's pages: 12 of them, scrolled each way
+	cm := &compMeta{}
+	for i := 0; i < 12; i++ {
+		cm.Banks = append(cm.Banks, bank{Name: fmt.Sprintf("%d %s", i+1, long)})
+	}
+	for _, off := range []int{0, 1, 4} {
 		img := newFrame()
-		boxes := spy(func() { u.drawChainRow(img, y, h) })
+		boxes := spy(func() { drawPageRow(img, y, h, cm, rowSlots(off, len(cm.Banks)), off+2, slotColor(0)) })
 		for _, b := range boxes {
 			c := b.r.Min.X / colW
-			within(t, fmt.Sprintf("chain row, position %d", c), []textBox{b}, image.Rect(c*colW+7, y, c*colW+colW-7, y+h))
+			within(t, fmt.Sprintf("page row, column %d", c), []textBox{b}, image.Rect(c*colW+7, y, c*colW+colW-7, y+h))
 		}
-		apart(t, "chain row", boxes)
-		gallery(t, fmt.Sprintf("chain-row-%d", sel), img)
+		apart(t, "page row", boxes)
+		gallery(t, fmt.Sprintf("page-row-%d", off), img)
 	}
 	var tracks []liveTrack
 	for i := 0; i < 11; i++ {
@@ -256,33 +257,4 @@ func TestBottomRowsKeepTheirText(t *testing.T) {
 		within(t, fmt.Sprintf("track %d", c), []textBox{b}, image.Rect(c*colW+7, y, c*colW+colW-7, y+h))
 	}
 	gallery(t, "track-row", img)
-}
-
-func TestBrowserKeepsItsText(t *testing.T) {
-	initFaces()
-	u := &surface{touched: -1}
-	u.br = browser{mode: "swap", kind: "sound_generator", target: position{Name: "The Instrument Being Replaced Here", Module: "m3"}}
-	for i := 0; i < 19; i++ {
-		u.br.items = append(u.br.items, ModuleInfo{ID: fmt.Sprintf("m%d", i), Name: "WWWWWWWWWWWWWWWWWWWW Synth", Author: "An Author With A Long Name",
-			Version: "1.23.456-beta.7+build"})
-	}
-	u.br.cursor = 3
-	img := newFrame()
-	boxes := spy(func() { u.drawBrowser(img) })
-	var cards, top []textBox
-	for _, b := range boxes {
-		if b.r.Max.Y <= topH {
-			top = append(top, b)
-		} else if b.r.Min.Y < botY {
-			cards = append(cards, b)
-		}
-	}
-	within(t, "browser title", top, image.Rect(0, 0, scrW, topH))
-	apart(t, "browser title", top)
-	for _, b := range cards {
-		c := b.r.Min.X / colW
-		within(t, fmt.Sprintf("browser card %d", c), []textBox{b}, image.Rect(c*colW+5, 26, c*colW+colW-5, 26+108))
-	}
-	apart(t, "browser cards", cards)
-	gallery(t, "browser", img)
 }

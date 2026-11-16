@@ -85,13 +85,13 @@ push.compartment({
   draws none of its own elements, only its notices on top. The screen must then show what those elements
   showed: the encoders' names and values (`v.$knobs`, the eight keys the encoders turn now, `""` for an
   empty one), the touched one, and which page it is (`v.$page`, the index into `v.$pages`, the page
-  labels). `v.$name` is the device's name and `v.$track` Live's track. The bank list, Shift + Swap and any
+  labels). `v.$name` is the device's name and `v.$track` Live's track. Leaving the open device (upper button 1, a jog nudge left) and any
   failure bring Pung's default view back. A takeover's budget is 14 ms (it draws what Pung's own elements
   would have).
 - **`extra_keys`**: values a screen shows that no encoder edits (a patch name, a mode); they are read with
   the compartment's keys and given in `v`, even without metadata.
 - Band screens and page screens also get `v.$page`, `v.$pages` and `v.$knobs`.
-- The header says `COMPARTMENT / PAGE`. Page < > step through the pages; the bank list lists them.
+- The header says `COMPARTMENT / PAGE`. The jog wheel and Page < > step through the pages; the open device's lower row lists them.
 - Parameters no compartment names stay reachable after the compartments, on the generic banks.
 - A module that declares none: each of its banks is a compartment.
 
@@ -162,4 +162,4 @@ while the page is hidden. Mini-JV's page draws its chip's voices from `frame.key
   over 8 ms, a draw over 40 ms, or a script that throws switch the picture off until Pung restarts. The
   native page comes back and the top bar says `MODULE UI OFF`. The log says why.
 - The panel has 16-bit color: gradients show steps. Use flat colors and 2-pixel lines.
-- **Shift + Swap** switches between your picture and the native page, so a user can always get back.
+- **A user can always get back**: a takeover shows only while the device is open, and the way back and the page row are drawn over it on opening, on a page turn and while the jog wheel is touched.

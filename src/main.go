@@ -205,7 +205,6 @@ func main() {
 	go lv.run(stop)
 	surf := newSurface(h)
 	surf.live = lv
-	lv.onSelect = surf.followLive
 	lv.state().onChange = func() { surf.dirty.Store(true) }
 	go surf.run(stop)
 	surf.routes(mux)

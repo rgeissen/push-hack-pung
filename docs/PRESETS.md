@@ -117,12 +117,13 @@ sound was loaded; a later state that differs marks the sound **edited** (`* Fat 
 
 ### Without opening anything
 
-- **Jog wheel: the next or previous sound** in the current source and bank, as now (built, 0.1.3). The
-  header shows `PRESET A  6/128  POP PIANO 3` while it changes.
+- The jog wheel no longer steps sounds outside the browser (it did until 0.1.9): in Pung's view it is
+  Push's own, a focus along the devices and the pages of the open one, and a brush of it must not load
+  another sound.
 - **The sound's name is always on screen**, in the header beside the device: `MINI-JV  POP PIANO 3`, with
   `*` when edited.
 
-### The browser (press the jog wheel)
+### The browser (Swap, or a jog press in the open device)
 
 Built in phase 2 and tested on the Push with Mini-JV (`src/sounds_view.go`; the frames are in
 `TestSoundBrowserKeepsItsText`, `PUNG_GALLERY=dir` writes them).
@@ -168,8 +169,7 @@ applied only when the hands turned to it: going down through the bank shown chan
   longer the device's.
 - A sound whose name was never heard shows a dash beside its number: no name is guessed.
 - The header of the Pung view names the device's sound beside the page, with `*` once it is edited
-  (checked every 2 s). A quick jog step outside the browser makes the sound it lands on the device's sound,
-  and a recent one.
+  (checked every 2 s).
 - **Save** (Push's button) in the Pung view saves the device's sound: the name editor at once, the sound
   and its rack in Push's browser on Done, back to the Pung view on Done or Cancel. The Set is saved in
   Push's own view (Device, then Save): Push's Save dialog would be under the Pung view.

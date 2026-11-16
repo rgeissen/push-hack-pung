@@ -76,29 +76,44 @@ Pung track.
 
 ## The Push interface
 
-It follows Push's own Device view.
+It works as Push 3's own device view does, measured on a Push (standalone): the same two levels, the
+same buttons. A hand that knows Push knows Pung.
+
+| | Upper display buttons | Lower display buttons |
+|---|---|---|
+| **Chain level** | the track's devices, the selected one filled; an arrow at an end when there are more than fit | Live's tracks |
+| **Device open** | button 1 goes back (`< NAME`) | the device's pages, the shown one filled; an arrow when there are more |
+
+| Control | In Pung, as on Push |
+|---|---|
+| A device's upper button | selects it; the selected one's opens and closes it |
+| Jog wheel, chain level | moves a focus along the devices; its press opens the focused one |
+| Jog wheel, device open | steps through the pages; a nudge left goes back |
+| Encoders | the 8 parameters above them, at both levels. Touch one to see its range. |
+| Shift + turn | fine adjustment |
+| Delete + touch an encoder | the parameter back to its default |
+| Mute + a device's button | the device off and on (its parameters grey out) |
+| Delete + a device's button | remove the device |
+| Mute / Solo + a track's button | that track |
+| D-pad left / right | the previous / next track |
+| Device View | Push's own device view of the device, and back |
+| Mix, Clip, Session, Add, Settings, Set | go on to Push |
+| Pads, Play, Record, scales, octave ... | Live's, untouched |
+
+Pung's own, where Push has nothing:
 
 | Control | In Pung |
 |---|---|
-| Bottom row | the chain: MIDI FX > instrument > audio FX > + ADD. Press to select. A chain has up to 17 positions; the row shows 8 and scrolls, and an arrow at its edge says there is more. |
-| D-pad left / right, jog click left / right | the previous / next position in the chain |
-| Top row | the parameter banks of the selected module |
-| Encoders | the 8 parameters above them. Touch one to see it in detail. |
-| Shift + turn | fine adjustment |
-| Jog wheel | the synth's presets |
-| Add | add a module after the selected one (opens the module browser) |
-| Swap | replace the selected module |
-| Shift + Swap | the module's own Push picture, or the native page |
-| Delete + a chain button | remove that module |
-| Mute + a chain button | bypass that module |
-| New | make this Pung track's MIDI track in Live (the audio return is made by hand) |
-| 1/4 ... 1/32t (left column) | Pung tracks 1 to 8 |
-| Pads | play the selected Pung track (chromatic, rows a fourth apart) |
-| Octave up / down | the pads' octave |
-| Play, Record | still go to Live |
+| Page < > | the previous / next page (a shortcut; Push's way is the jog wheel) |
+| Swap | the sound browser (see below) |
+| Jog press, device open | the sound browser |
+| Save | save the device's sound |
 
-In the module browser, the top row picks a module, the jog wheel moves and its press picks, the bottom row
-chooses MIDI FX, synths or audio FX, and the last button cancels.
+A module's full-screen picture (Mini-JV's Macros, Dexed's Algorithm) shows while its device is open. The
+back button and the page row are drawn over it when you open the device, turn a page or touch the jog wheel.
+
+**Swap while Pung stands in for Push's device view** goes to Push, which opens its own Hot-Swap: that
+button is push-manager's then. Open the sounds with a jog press in the open device.
 
 ## Install and update
 

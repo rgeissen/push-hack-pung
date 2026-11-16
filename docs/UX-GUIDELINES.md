@@ -105,11 +105,45 @@ selection, and for fills at 28% toward black. Never use it for decoration.
     or not shown. A range's two ends are shortened together (`-24K` and `24K`, not `-24K` and `24000`).
 - Neighbouring columns keep 16 px between their texts, so a row of values reads as columns.
 
+### The controls: Push's own device view
+
+Pung's view works as Push 3's device view does. This was **measured on a Push** (standalone, with Meld
+and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/controls_test.go` pins it:
+
+| | Upper display buttons | Lower display buttons |
+|---|---|---|
+| **Chain level** | the track's devices, the selected one filled | Live's tracks |
+| **Device open** | button 1: `< NAME`, back | the device's pages, the shown one filled |
+
+- **A device's button selects it; the selected one's opens and closes it.** Another device or track
+  selected: back at chain level.
+- **The encoders edit at both levels**: at chain level they show the selected device's last page.
+- **Rows scroll as Push's do**: an arrow on the last button while more follow, on the first once
+  scrolled, one step a press (`rowSlots`).
+- **The jog wheel**: at chain level a focus along the devices (framed), its press opens the focused one;
+  in an open device it steps the pages; a nudge left goes back.
+- **D-pad left / right are the tracks**, at both levels.
+- **Push's verbs**: Shift fine; Delete + touch resets a parameter to its default (the module's own, else
+  Live's); Mute + a device's button switches it off and on, and its parameters grey out; Delete + a
+  device's button removes it; Mute or Solo + a track's button is that track's.
+- **Mute, Solo and Delete stay Live's buttons** (the pads need them: Delete + pad, Mute + pad). Pung only
+  reads them. Push takes a Mute or Solo let go within about 0.4 s as a tap on the selected track; when
+  the press was used with one of Pung's buttons, Pung puts that track back.
+- **A button that does nothing is dark.**
+- **Pung's own additions**, where Push has nothing: Page < > step the pages (Push leaves them unused in
+  its device view); Swap and, in an open device, the jog press open the sounds; Save saves the sound.
+- **Not there yet**: Push's `+` after the last device (its Add browser is Push's own: press Add), the
+  upper buttons 2 to 8 of an open device (Push puts a page's switches there), automation dots, moving a
+  device by holding its button.
+- **A full-panel screen** (a takeover, §5) belongs to the open device. It hides the two rows, so they are
+  drawn over it for a moment on opening, on a page turn and while the jog wheel is touched: the way back
+  is never hidden for good.
+
 ### The header
 
 Laid out from the right, each part only where it fits whole, never crossing the device or bank row:
 
-1. **The page indicator**, `< 4/34 >`: where Page < and Page > go. An arrow is bright where its button goes
+1. **The page indicator**, `< 4/34 >`: where the jog wheel (in an open device) and Page < and Page > go. An arrow is bright where its button goes
    somewhere (the button is lit then too), faint where not. It always gets its room first.
 2. **The level meter**: the device's own output. At rest a floor line, not ten dim blocks (those read as
    an indicator that does not work).
@@ -232,8 +266,8 @@ What the user sees must always be one device, whole:
 
 ### Sounds
 
-Every module's sounds are browsed the same way (`docs/PRESETS.md`): the jog wheel steps them in the Pung
-view, and a jog press opens the sound browser. Its rules, which any screen that changes a device's sound
+Every module's sounds are browsed the same way (`docs/PRESETS.md`): Swap opens the sound browser, as
+Push's Swap offers another sound for a device (and a jog press in the open device does too). Its rules, which any screen that changes a device's sound
 follows:
 
 - **The jog is Push's.** Turn moves, press selects, a nudge left goes back, a nudge right opens the
@@ -282,7 +316,8 @@ If it only restyles the default page, it does not ship.
 8. **The web side.** A custom screen's compartment is a section of the module's web page, with the same
    name. If the screen shows a relationship, the page should show it too. Without a web page of its own,
    Pung's page shows the screen itself (drawn by the same code).
-9. **Shift + Swap** returns to the default view, always; so does the bank list.
+9. **The way back is Push's**: upper button 1 or a jog nudge left leaves the open device, and at chain
+   level the page shows as plain knobs. A takeover never hides that for good (§3, The controls).
 
 ### Showcase
 

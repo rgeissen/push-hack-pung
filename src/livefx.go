@@ -330,9 +330,8 @@ func (u *surface) liveSlot() *Slot {
 		if d, _ := u.pungDevice(); d != nil {
 			return d.s
 		}
-		return nil
 	}
-	return u.cur()
+	return nil
 }
 
 // liveSess: the live session of the shown sound, kept ticking while the

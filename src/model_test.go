@@ -184,19 +184,6 @@ func TestLiveNormRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPadsInKey(t *testing.T) {
-	cMajor := liveScale{Supported: true, Root: 0, Intervals: []int{0, 2, 4, 5, 7, 9, 11}}
-	want := map[[2]int]byte{{0, 0}: 36, {1, 0}: 38, {0, 1}: 41, {7, 0}: 48}
-	for cr, n := range want {
-		if got, _ := padNoteInKey(cr[0], cr[1], 0, cMajor); got != n {
-			t.Errorf("pad col %d row %d: %d, want %d", cr[0], cr[1], got, n)
-		}
-	}
-	dMinor := liveScale{Supported: true, Root: 2, Intervals: []int{0, 2, 3, 5, 7, 8, 10}}
-	if got, _ := padNoteInKey(0, 0, 0, dMinor); got != 38 {
-		t.Errorf("D minor bottom-left: %d, want 38", got)
-	}
-}
 
 // A Live device has no parameter for a hierarchy key without chain_params:
 // its column goes, and a bank left empty goes (OB-Xd's osc_quantize).

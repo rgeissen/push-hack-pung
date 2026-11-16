@@ -1,26 +1,37 @@
 package main
 
-// surface.go: Pung's chain editor on the Push screen, buttons and pads,
-// as an app of Push Hack Home (Shift + Help opens Home; Help goes back to
-// Live; push-manager owns those gestures).
+// surface.go: the Pung view on the Push screen and its controls, an app of
+// Push Hack Home that stands in for Push's device view while a Pung device
+// is selected (Shift + Help opens Home; push-manager owns those gestures).
 //
-// The layout follows Push's own Device view so a Push user's hands already
-// know it:
-//   bottom row   the chain: MIDI FX > synth > audio FX > +ADD; while the view
-//                follows a device in Live: Live's tracks, as on Push's device
-//                view (the left and right arrows step through them)
-//   top row      the parameter banks of the selected component
-//   encoders     the 8 parameters shown above them; touch shows details
-//   Add / Swap   insert after the selection / replace it (module browser)
-//   Delete+chain remove; Mute+chain bypass; Shift+turn fine
-//   1/4..1/32t   slots 1..8 (the scene column)
-//   pads         play the selected slot (chromatic, rows a fourth apart)
-//   jog          a synth's presets; in the browser, the selection
+// It works as Push 3's own device view does (measured on a Push, standalone,
+// 2026-11-16: docs/UX-GUIDELINES.md, "The controls"), on two levels:
+//
+//   chain level  upper row: the track's devices (the selected one filled; an
+//                arrow at an end when there are more than fit)
+//                lower row: Live's tracks
+//   device open  upper row: button 1 goes back (< NAME)
+//                lower row: the device's pages (an arrow when there are more)
+//
+//   a device's upper button   selects it; the selected one's opens and closes it
+//   jog wheel                 chain level: moves a focus along the devices, its
+//                             press opens the focused one; open: steps the
+//                             pages, its press opens the sounds, nudge left
+//                             goes back
+//   encoders                  the 8 parameters over them, at both levels;
+//                             Shift fine; Delete + touch: back to its default
+//   Mute + a device's button  the device off and on; Delete + it: remove it
+//   Mute / Solo + a track     that track
+//   D-pad left / right        the previous / next track
+//   Page < >                  the previous / next page (Pung's own shortcut)
+//   Swap                      the sound browser; Save: save the sound
+//
+// The pads and every button that plays, records or edits in Live stay
+// Live's (liveButtons).
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"image"
 	"log"
@@ -28,8 +39,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,14 +56,6 @@ type position struct {
 	Module   string
 	Name     string
 	Bypassed bool
-}
-
-type browser struct {
-	mode   string // add | swap
-	kind   string // midi_fx | sound_generator | audio_fx
-	items  []ModuleInfo
-	cursor int
-	target position
 }
 
 type surface struct {
@@ -77,37 +78,45 @@ type surface struct {
 	standIn atomic.Bool
 
 	mu       sync.Mutex
-	slot     int
-	pos      int
-	chainOff int // first chain position shown on the bottom row
-	bank     int
-	bankOff  int
-	// bankList: the upper row lists the banks instead of the track's devices
-	// (pressing the selected device's button, as on Push)
-	bankList  bool
-	view      string
-	shift     bool
-	del, mute bool
+	slot int // the colour the view is drawn in (always the first: one view)
+	pos  int // the selected device, in positions
+	bank int // the page shown
+	// the two levels of Push's device view: open, the lower row is the
+	// device's pages and upper button 1 goes back; closed, the upper row is
+	// the track's devices and the lower row Live's tracks
+	open    bool
+	bankOff int // open: how far the page row is scrolled (pageSlots)
+	devOff  int // closed: how far the device row is scrolled (deviceSlots)
+	focus   int // closed: the device under the jog wheel (index in the track's devices), -1 none
+	view    string
+	shift   bool
+	// held, with a display button or a touch: Delete, Mute, Solo. They are
+	// Live's buttons too (liveButtons): Pung only reads them
+	del, mute, solo bool
+	combo           bool      // the held button was used with one of Pung's: its tap must not count in Live
+	holdAt          time.Time // when Mute or Solo went down
+	// rowsUntil: a module's full-panel screen hides the two rows; they are
+	// drawn over it until then (on opening, on a page turn, while the jog
+	// wheel is touched), so the way back and the pages are never hidden for good
+	rowsUntil time.Time
 	touched   int // encoder under a finger, -1 none
-	peekUntil time.Time
-	peekEnc   int
-	octave    int
-	toast     string
-	toastAt   time.Time
-	br        browser
-	lastEnum  [8]time.Time
+	peekUntil       time.Time
+	peekEnc         int
+	toast           string
+	toastAt         time.Time
+	lastEnum        [8]time.Time
 
 	meta      map[string]*compMeta // slot|prefix|module
 	vals      map[string]string    // slot|prefix:key
 	positions []position
 	lastVals  time.Time
 	lastPos   time.Time
-	held      map[byte]byte // pad -> note it started, for its note-off
 	leds      map[uint16]uint8
 	ov        *overrides
 	// what the last Live refresh read from Pung's own device (state: "fallback")
 	fallbackDev, fallbackRead int
-	lvIdx                     map[string]int // live mode: module key -> Live parameter index
+	lvIdx                     map[string]int     // module key -> Live parameter index
+	lvDef                     map[string]float64 // module key -> Live's default for it, 0..1 (where Live has one)
 
 	// live mode: the selection the view is built for (liveView.key), since
 	// when, and what is known of it; a frame is drawn only for a selection
@@ -118,9 +127,6 @@ type surface struct {
 	liveReady, liveResolved, livePung bool
 	liveWritable                      bool              // the device is confirmed (liveView.writable)
 	bankMem                           map[string][2]int // a device's page, kept while others are shown (as Push does)
-	// live mode: the jog's preset, stepped on the input thread and loaded
-	// off it (a preset load blocks in the module's set_param), latest wins
-	pj presetJog
 	sb *sbState // the sound browser (sounds_view.go); nil when closed
 	// the header's sound: whether the device's state is still the sound it
 	// became (read off the frame, every few seconds)
@@ -134,8 +140,8 @@ func newSurface(h *Host) *surface {
 	pm := pmclient.New("http://127.0.0.1:7701")
 	pm.App = "pung"
 	exe, _ := os.Executable()
-	u := &surface{h: h, pm: pm, view: "chain", touched: -1, peekEnc: -1,
-		meta: map[string]*compMeta{}, vals: map[string]string{}, held: map[byte]byte{}, leds: map[uint16]uint8{},
+	u := &surface{h: h, pm: pm, view: "chain", touched: -1, peekEnc: -1, focus: -1,
+		meta: map[string]*compMeta{}, vals: map[string]string{}, leds: map[uint16]uint8{},
 		ov: newOverrides(filepath.Join(h.dataDir, "overrides"), filepath.Join(filepath.Dir(exe), "overrides"))}
 	h.ui = u
 	return u
@@ -207,7 +213,6 @@ func (u *surface) run(done <-chan struct{}) {
 				if u.live != nil {
 					u.live.state().active.Store(false)
 				}
-				u.releasePads()
 			},
 		})
 	}
@@ -357,25 +362,23 @@ func (u *surface) routes(mux *http.ServeMux) {
 			}
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "focused": u.focused.Load(), "view": u.view, "slot": u.slot + 1,
-			"device_row": row, "device_row_selected": rowSel, "bank_list": u.bankList,
+			"device_row": row, "device_row_selected": rowSel, "open": u.open, "focus": u.focus,
+			"page_slots": u.pageSlots(), "device_slots": u.deviceSlots(),
 			"fallback":      map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
 			"frame_draw_us": u.frameStats.drawUS.Load(), "frame_push_us": u.frameStats.pushUS.Load(), "frames": u.frameStats.n.Load(),
 			"module_ui_draw_us": u.overlayDrawUS(p.Module),
 			"position":          p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
-			"octave": u.octave, "toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,
+			"toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,
 			"live_path": func() []int {
 				if u.live == nil {
 					return nil
 				}
 				return u.live.state().view().path
-			}(), "browser": map[string]any{"kind": u.br.kind, "mode": u.br.mode,
-				"cursor": u.br.cursor, "count": len(u.br.items)}})
+			}()})
 	})
 }
 
 // ---- model ---------------------------------------------------------------------
-
-func (u *surface) cur() *Slot { return u.h.slot(u.slot) }
 
 func (u *surface) moduleName(id string) string {
 	if m, ok := findModule(u.h.modulesDir, id); ok {
@@ -387,92 +390,13 @@ func (u *surface) moduleName(id string) string {
 	return id
 }
 
-// refreshPositions rebuilds the chain row. Caller holds u.mu.
+// refreshPositions rebuilds what the view shows of Live. Caller holds u.mu.
 func (u *surface) refreshPositions(force bool) {
 	if u.liveActive() {
 		u.refreshLive()
 		return
 	}
-	if !force && time.Since(u.lastPos) < 500*time.Millisecond {
-		return
-	}
-	u.lastPos = time.Now()
-	s := u.cur()
-	if s == nil {
-		u.positions = nil
-		return
-	}
-	c := s.composition()
-	var ps []position
-	for i, m := range c.MidiFX {
-		if m != "" {
-			ps = append(ps, position{Kind: "midi", Prefix: "midi_fx" + strconv.Itoa(i+1), N: i + 1, Module: m})
-		}
-	}
-	nmidi := len(ps)
-	ps = append(ps, position{Kind: "synth", Prefix: "synth", N: 1, Module: c.Synth})
-	nfx := 0
-	for i, m := range c.FX {
-		if m != "" {
-			ps = append(ps, position{Kind: "fx", Prefix: "fx" + strconv.Itoa(i+1), N: i + 1, Module: m})
-			nfx++
-		}
-	}
-	// a full chain is 8 MIDI FX + 1 synth + 8 audio FX = 17 positions; the
-	// bottom row shows 8 of them and scrolls (keepVisible)
-	if nfx < maxAudioFX || nmidi < maxMidiFX {
-		ps = append(ps, position{Kind: "add"})
-	}
-	for i := range ps {
-		p := &ps[i]
-		switch {
-		case p.Kind == "add":
-			p.Name = "+ ADD"
-		case p.Module == "":
-			p.Name = "NO SYNTH"
-		default:
-			p.Name = u.moduleName(p.Module)
-			v, _ := s.Get(p.Prefix + ":bypassed")
-			p.Bypassed = v == "1"
-		}
-	}
-	// keep the selection on the same component when the row shifts
-	var sel position
-	if u.pos >= 0 && u.pos < len(u.positions) {
-		sel = u.positions[u.pos]
-	}
-	u.positions = ps
-	if sel.Prefix != "" {
-		for i, p := range ps {
-			if p.Prefix == sel.Prefix && p.Module == sel.Module {
-				u.pos = i
-				break
-			}
-		}
-	}
-	if u.pos >= len(ps) {
-		u.pos = len(ps) - 1
-	}
-	if u.pos < 0 {
-		u.pos = 0
-	}
-	u.keepVisible()
-}
-
-// keepVisible scrolls the chain row so the selection is on it.
-func (u *surface) keepVisible() {
-	if u.pos < u.chainOff {
-		u.chainOff = u.pos
-	}
-	if u.pos >= u.chainOff+8 {
-		u.chainOff = u.pos - 7
-	}
-	if max := len(u.positions) - 8; u.chainOff > max {
-		u.chainOff = max
-	}
-	if u.chainOff < 0 {
-		u.chainOff = 0
-	}
+	u.positions = nil
 }
 
 // liveButtons stay Live's while Pung owns the surface, with the pads:
@@ -541,18 +465,6 @@ func (u *surface) stepTrack(d int) {
 	}
 }
 
-// step moves the selection along the chain (D-pad, jog clicks).
-func (u *surface) step(d int) {
-	n := u.pos + d
-	if n < 0 || n >= len(u.positions) {
-		return
-	}
-	u.pos, u.bank, u.bankOff = n, 0, 0
-	u.peekUntil = time.Time{}
-	u.keepVisible()
-	u.refreshValues()
-}
-
 func (u *surface) selected() (position, bool) {
 	if u.pos >= 0 && u.pos < len(u.positions) {
 		return u.positions[u.pos], true
@@ -587,17 +499,7 @@ func (u *surface) metaFor(p position) *compMeta {
 		}
 		return cm
 	}
-	k := fmt.Sprintf("%d|%s|%s", u.slot, p.Prefix, p.Module)
-	if cm, ok := u.meta[k]; ok {
-		return cm
-	}
-	s := u.cur()
-	if s == nil {
-		return nil
-	}
-	cm := buildMeta(p.Module, func(key string) (string, bool) { return s.Meta(p.Prefix, key) })
-	u.meta[k] = cm
-	return cm
+	return nil
 }
 
 // liveBanks: the module's banks as its device in Live has them. A key with
@@ -769,21 +671,6 @@ func (u *surface) refreshValues() {
 		u.refreshLive()
 		return
 	}
-	p, _, b := u.currentBank()
-	s := u.cur()
-	if b == nil || s == nil {
-		return
-	}
-	for _, k := range b.Keys {
-		if k == "" {
-			continue
-		}
-		if v, ok := s.Get(p.Prefix + ":" + k); ok {
-			u.vals[u.valKey(p, k)] = v
-		} else {
-			delete(u.vals, u.valKey(p, k))
-		}
-	}
 }
 
 func (u *surface) say(msg string) {
@@ -808,9 +695,18 @@ func (u *surface) handle(msg []byte) {
 				u.touched = int(n)
 				u.peekEnc = int(n)
 				u.peekUntil = time.Now().Add(time.Hour)
+				if u.del && u.view == "chain" { // Delete + touch: back to its default, as on Push
+					u.resetParam(int(n))
+				}
 			} else if u.touched == int(n) {
 				u.touched = -1
 				u.peekUntil = time.Now().Add(300 * time.Millisecond)
+			}
+		case n == push3.NoteJogTouch && msg[0]&0x0F == 0: // a hand on the jog wheel: where it would go
+			if on {
+				u.rowsUntil = time.Now().Add(time.Hour)
+			} else {
+				u.rowsUntil = time.Now().Add(1200 * time.Millisecond)
 			}
 		case push3.IsPadNote(n):
 			// the pads are Live's (pmclient Pads): Push's own playing UX
@@ -822,6 +718,11 @@ func (u *surface) handle(msg []byte) {
 	}
 }
 
+// tapWindow: Push takes a Mute or Solo let go this soon as a tap, and
+// toggles the selected track (measured on a Push: 290 ms toggles, 440 ms
+// does not).
+const tapWindow = 450 * time.Millisecond
+
 func (u *surface) cc(n, v byte) {
 	press := v > 0
 	switch n {
@@ -829,8 +730,12 @@ func (u *surface) cc(n, v byte) {
 		u.shift = press
 		u.dirty.Store(true) // a touched cell shows FINE while Shift is held
 		return
-	case push3.CCDelete, push3.CCMute:
-		return // Live's (liveButtons)
+	case push3.CCDelete:
+		u.del = press // Live's too (liveButtons): read here for Delete + ...
+		return
+	case push3.CCMute, push3.CCSolo:
+		u.holdModifier(n == push3.CCMute, press)
+		return
 	}
 	if u.sb != nil && (u.view == "sounds" || u.view == "name") {
 		switch {
@@ -878,272 +783,300 @@ func (u *surface) cc(n, v byte) {
 	if u.standIn.Load() && pushManagersButton(n) {
 		return // push-manager closes the view and passes it on to Push
 	}
+	if !u.liveActive() {
+		return
+	}
 	switch {
-	case n == push3.CCSave && u.liveActive():
+	case n == push3.CCSave:
 		u.saveButton() // the device's sound (sounds_view.go)
+	case n == push3.CCSwap:
+		u.openSounds() // as Push's Swap: another sound for this device
+	case n == push3.CCAdd || n == push3.CCNew:
+		u.say("ADD DEVICES WITH PUSH'S BROWSER|SHIFT + HELP, HELP GOES BACK TO PUSH'S VIEW")
 	case n >= push3.CCScreenTop1 && n < push3.CCScreenTop1+8:
 		u.top(int(n - push3.CCScreenTop1))
 	case n >= push3.CCScreenBot1 && n < push3.CCScreenBot1+8:
 		u.bottom(int(n - push3.CCScreenBot1))
-	case n >= 36 && n <= 43: // the scene column: slots 1..8
-		u.selectSlot(int(n - 36))
-	case (n == push3.CCAdd || n == push3.CCSwap || n == 92) && u.liveActive():
-		u.say("ADD AND SWAP DEVICES WITH PUSH'S BROWSER|SHIFT + HELP, HELP GOES BACK TO PUSH'S VIEW")
-	case n == push3.CCAdd:
-		u.openBrowser("add")
-	case n == 92: // New: make this slot's tracks in Live
-		slot := u.slot
-		u.say(fmt.Sprintf("ASKING LIVE FOR TRACK %d...", slot+1))
-		go func() {
-			_, err := ensureTracks(slot)
-			u.mu.Lock()
-			switch {
-			case errors.Is(err, errNoScript):
-				u.say("LIVE: TURN ON THE PUSHHACK REMOTE SCRIPT|LIVE SETTINGS > MIDI > CONTROL SURFACE: PUSHHACK")
-			case err != nil:
-				u.say("LIVE: " + err.Error())
-			default:
-				u.say(fmt.Sprintf("MIDI TRACK 'PUNG %d' IS READY|NOW AN AUDIO TRACK: INPUT PUSHHACK, PUNG %d, MONITOR IN", slot+1, slot+1))
-			}
-			u.mu.Unlock()
-		}()
-	case n == push3.CCSwap && u.shift: // the module's own UI, or the native one
-		if p, ok := u.selected(); ok && p.Module != "" {
-			if set := u.ov.get(u.h.modulesDir, p.Module); set != nil {
-				set.off = !set.off
-				if set.off {
-					u.say("NATIVE UI")
-				} else if set.failed != "" {
-					u.say("MODULE UI IS OFF: " + set.failed)
-				} else {
-					u.say("MODULE UI")
-				}
-			} else {
-				u.say("THIS MODULE HAS NO PUSH UI OF ITS OWN")
-			}
-		}
-	case n == push3.CCSwap:
-		u.openBrowser("swap")
-	case (n == 44 || n == 45) && u.view != "browse" && u.liveActive():
-		u.stepTrack(map[bool]int{true: -1, false: 1}[n == 44]) // as on Push: the tracks
-	case n == 44 || n == push3.CCJogClickLeft: // D-pad left, jog click left
-		if u.view == "browse" {
-			u.moveCursor(-1)
-		} else {
-			u.step(-1)
-		}
-	case n == 45 || n == push3.CCJogClickRight:
-		if u.view == "browse" {
-			u.moveCursor(1)
-		} else {
-			u.step(1)
-		}
-	case n == push3.CCJogPress:
-		if u.view == "browse" {
-			u.choose(u.br.cursor)
-		} else if u.liveActive() {
-			u.openSounds() // the sound browser (sounds_view.go)
-		}
-	case n == 55: // octave up
-		if u.octave < 4 {
-			u.releasePadsLocked()
-			u.octave++
-			u.say(fmt.Sprintf("OCTAVE %+d", u.octave))
-		}
-	case n == 54:
-		if u.octave > -3 {
-			u.releasePadsLocked()
-			u.octave--
-			u.say(fmt.Sprintf("OCTAVE %+d", u.octave))
-		}
-	case (n == 62 || n == 63) && u.view != "browse" && u.liveActive():
-		u.stepBank(map[bool]int{true: -1, false: 1}[n == 62]) // Page < >: the banks
-	case n == 62: // page left
-		if u.view == "browse" {
-			u.moveCursor(-8)
-		} else if u.bankOff > 0 {
-			u.bankOff -= 8
-		}
-	case n == 63:
-		if u.view == "browse" {
-			u.moveCursor(8)
-		} else if _, cm, _ := u.currentBank(); cm != nil && u.bankOff+8 < len(cm.Banks) {
-			u.bankOff += 8
-		}
+	case n == push3.CCDPadLeft:
+		u.stepTrack(-1) // as on Push: the tracks, at both levels
+	case n == push3.CCDPadRight:
+		u.stepTrack(1)
+	case n == push3.CCJogClickLeft:
+		u.open = false // back, as Push's jog
+	case n == push3.CCJogPress || n == push3.CCDPadCenter:
+		u.jogPress()
+	case n == push3.CCPageLeft:
+		u.stepBank(-1) // Pung's own shortcut: Push has none for pages
+	case n == push3.CCPageRight:
+		u.stepBank(1)
 	}
 }
 
-// followLive: Live's selected track belongs to slot i.
-func (u *surface) followLive(i int) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	// Following Live's devices, the view follows the selected device (the
-	// device topic, refreshLive), and the pads and parameters go through
-	// Live: a slot means nothing there. Moving it reset the page and lost
-	// the values for a frame, as the track changed under a device still
-	// shown (measured 2026-11-15).
-	if u.liveActive() {
+// holdModifier: Mute or Solo went down or up. Live has the button too, and
+// takes a short press as a tap on the selected track; a press used with one
+// of Pung's buttons must not count there, so the track is put back.
+func (u *surface) holdModifier(mute, press bool) {
+	prop := map[bool]string{true: "mute", false: "solo"}[mute]
+	if mute {
+		u.mute = press
+	} else {
+		u.solo = press
+	}
+	if press {
+		u.combo, u.holdAt = false, time.Now()
 		return
 	}
-	if i != u.slot && u.h.slot(i) != nil {
-		u.selectSlot(i)
-		u.dirty.Store(true)
-	}
-}
-
-func (u *surface) selectSlot(i int) {
-	if u.h.slot(i) == nil {
-		if _, err := u.h.openSlot(i); err != nil {
-			u.say("TRACK " + strconv.Itoa(i+1) + ": " + err.Error())
-			return
-		}
-	}
-	if i != u.slot {
-		u.releasePadsLocked()
-	}
-	u.slot, u.pos, u.bank, u.bankOff, u.view, u.chainOff = i, 0, 0, 0, "chain", 0
-	u.peekUntil = time.Time{}
-	u.refreshPositions(true)
-	// land on the synth, the component most people want first
-	for j, p := range u.positions {
-		if p.Kind == "synth" {
-			u.pos = j
-		}
-	}
-	u.refreshValues()
-	u.say(fmt.Sprintf("TRACK %d", i+1))
-}
-
-func (u *surface) top(i int) {
-	if u.view == "browse" {
-		page := u.br.cursor / 8 * 8
-		if page+i < len(u.br.items) {
-			u.choose(page + i)
-		}
+	if !u.combo || time.Since(u.holdAt) >= tapWindow || !u.liveActive() {
 		return
 	}
-	if u.liveActive() && !u.bankList { // the track's devices, as on Push
-		devs, sel := u.live.state().deviceRow()
+	tracks, sel := u.live.state().trackRow()
+	if sel < 0 {
+		return
+	}
+	ref, was := tracks[sel].Ref, tracks[sel].flag(prop)
+	go func() {
+		time.Sleep(250 * time.Millisecond) // Push acts on the release
+		if now, ok := trackFlag(ref, prop); ok && now != was {
+			liveCall("track", "set", map[string]any{"track": ref, prop: was}) //nolint:errcheck
+		}
+	}()
+}
+
+// trackFlag: a track's mute or solo, as Live has it now.
+func trackFlag(ref json.RawMessage, prop string) (bool, bool) {
+	raw, err := liveCall("track", "get", map[string]any{"track": ref})
+	if err != nil {
+		return false, false
+	}
+	var t map[string]any
+	if json.Unmarshal(raw, &t) != nil {
+		return false, false
+	}
+	v, ok := t[prop].(bool)
+	return v, ok
+}
+
+// rowSlots: what the 8 buttons of a row show of n things, scrolled off
+// steps, as Push's device view does it (measured): an arrow on the first
+// button once scrolled and on the last while more follow; each step moves
+// the row by one. A slot is an index, slotNone, slotLeft or slotRight.
+const (
+	slotNone  = -1
+	slotLeft  = -2
+	slotRight = -3
+)
+
+func rowSlots(off, n int) [8]int {
+	var out [8]int
+	for k := range out {
+		i := k + off
 		switch {
-		case i >= len(devs):
-		case devs[i].I == sel:
-			u.bankList = true // the selected device again: its banks
+		case k == 0 && off > 0:
+			out[k] = slotLeft
+		case k == 7 && i < n-1:
+			out[k] = slotRight
+		case i < n:
+			out[k] = i
 		default:
-			// select it in Live; a Pung device stays here, any other gives
-			// the screen to Push (push-manager's device view)
-			go liveCall("device", "select", map[string]any{"track": u.live.state().view().dev.Track, "path": []int{devs[i].I}})
+			out[k] = slotNone
 		}
-		return
 	}
-	_, cm, _ := u.currentBank()
-	if cm != nil && u.bankOff+i < len(cm.Banks) {
-		u.bank = u.bankOff + i
-		u.peekUntil = time.Time{} // the card belonged to the old bank
-		u.refreshValues()
-	}
-	u.bankList = false // a bank chosen: the devices again
+	return out
 }
 
-// stepBank: the previous or next bank (Page < >, while the view follows Live).
-func (u *surface) stepBank(d int) {
+// rowShow: the scroll that puts thing i on the row, nearest to off.
+func rowShow(off, n, i int) int {
+	off = max(0, min(off, max(0, n-8)))
+	for step := 0; step < n; step++ {
+		for _, o := range []int{off - step, off + step} {
+			if o < 0 || o > max(0, n-8) {
+				continue
+			}
+			for _, s := range rowSlots(o, n) {
+				if s == i {
+					return o
+				}
+			}
+		}
+	}
+	return off
+}
+
+// pageSlots: the lower row while a device is open: its pages.
+func (u *surface) pageSlots() [8]int {
 	_, cm, _ := u.currentBank()
 	if cm == nil {
-		return
+		return rowSlots(0, 0)
 	}
-	if n := u.bank + d; n >= 0 && n < len(cm.Banks) {
-		u.bank = n
-		u.bankOff = n / 8 * 8
-		u.peekUntil = time.Time{}
-		u.refreshValues()
-		// no notice: the header names the page, and a takeover draws its own;
-		// a box over the knobs (Move's habit, where the page has no room to
-		// say it) hid two of them for 2.5 s on every page turn
-	}
+	return rowSlots(u.bankOff, len(cm.Banks))
 }
 
-func (u *surface) bottom(i int) {
-	if u.view == "browse" {
-		switch i {
-		case 0:
-			u.setBrowserKind("midi_fx")
-		case 1:
-			u.setBrowserKind("sound_generator")
-		case 2:
-			u.setBrowserKind("audio_fx")
-		case 7:
-			u.view = "chain"
+// deviceSlots: the upper row at chain level: the track's devices.
+func (u *surface) deviceSlots() [8]int {
+	if !u.liveActive() {
+		return rowSlots(0, 0)
+	}
+	devs, _ := u.live.state().deviceRow()
+	return rowSlots(u.devOff, len(devs))
+}
+
+// selectedDeviceIndex: where the selected device is in the track's devices (-1 none).
+func selectedDeviceIndex(devs []liveDevSummary, sel int) int {
+	for i, d := range devs {
+		if d.I == sel {
+			return i
+		}
+	}
+	return -1
+}
+
+// top: an upper display button. Chain level: the track's devices (the
+// selected one's opens it; with Mute it goes off and on, with Delete it is
+// removed). Open: button 1 goes back.
+func (u *surface) top(i int) {
+	if u.open {
+		if i == 0 {
+			u.open = false
 		}
 		return
 	}
-	if u.liveActive() { // Live's tracks, as on Push's device view
-		u.selectTrack(i)
-		return
-	}
-	i += u.chainOff // the button shows a window of the chain
-	if i >= len(u.positions) {
-		return
-	}
-	p := u.positions[i]
-	s := u.cur()
-	switch {
-	case u.del && p.Kind != "add":
-		u.remove(s, p)
-	case u.mute && p.Kind != "add" && p.Module != "":
-		val := "1"
-		if p.Bypassed {
-			val = "0"
-		}
-		s.Set(p.Prefix+":bypassed", val)
-		u.refreshPositions(true)
-		if val == "1" {
-			u.say(p.Name + " BYPASSED")
-		} else {
-			u.say(p.Name + " ON")
-		}
-	case p.Kind == "add":
-		u.pos = i
-		u.openBrowser("add")
+	st := u.live.state()
+	devs, sel := st.deviceRow()
+	switch s := u.deviceSlots()[i]; {
+	case s == slotLeft:
+		u.devOff--
+	case s == slotRight:
+		u.devOff++
+	case s < 0:
+	case u.mute:
+		u.combo = true
+		d := devs[s]
+		st.setTopActive(d.I, !d.Active)
+		go liveCall("device", "set_active", map[string]any{"track": st.view().dev.Track, "device": d.I, "on": !d.Active}) //nolint:errcheck
+	case u.del:
+		go liveCall("device", "delete", map[string]any{"track": st.view().dev.Track, "device": devs[s].I}) //nolint:errcheck
+	case devs[s].I == sel:
+		u.focus = s
+		u.openDevice()
 	default:
-		if u.pos != i {
-			u.pos, u.bank, u.bankOff = i, 0, 0
-			u.peekUntil = time.Time{}
-			u.refreshValues()
-		} else if p.Module == "" {
-			u.openBrowser("swap")
-		}
+		// select it in Live; a Pung device stays here, any other gives
+		// the screen to Push (push-manager's device view)
+		u.focus = s
+		go liveCall("device", "select", map[string]any{"track": st.view().dev.Track, "path": []int{devs[s].I}}) //nolint:errcheck
 	}
 }
 
-func (u *surface) remove(s *Slot, p position) {
-	if s == nil || p.Module == "" {
+// openDevice: the selected device's pages on the lower row (a Pung device,
+// read and confirmed: nothing else has pages here).
+func (u *surface) openDevice() {
+	if _, cm, _ := u.currentBank(); cm != nil && u.liveReady {
+		u.open = true
+		u.bankOff = rowShow(u.bankOff, len(cm.Banks), u.bank)
+		u.showRows()
+	}
+}
+
+// bottom: a lower display button. Open: the device's pages. Chain level:
+// Live's tracks (with Mute or Solo held: that track's).
+func (u *surface) bottom(i int) {
+	if u.open {
+		switch s := u.pageSlots()[i]; {
+		case s == slotLeft:
+			u.bankOff--
+		case s == slotRight:
+			u.bankOff++
+		case s >= 0:
+			u.setBank(s)
+		}
 		return
 	}
-	switch p.Kind {
-	case "midi":
-		s.Set("midi_fx:remove", strconv.Itoa(p.N))
-	case "fx":
-		s.Set("fx:remove", strconv.Itoa(p.N))
-	case "synth":
-		s.Set("synth:module", "")
+	page, _, _ := u.trackPage()
+	if i >= len(page) {
+		return
 	}
-	u.h.notify(s.Index, "chain", "")
-	u.forgetMeta()
-	u.refreshPositions(true)
-	u.refreshValues()
-	u.say(p.Name + " REMOVED")
+	if u.mute || u.solo {
+		u.combo = true
+		prop := map[bool]string{true: "mute", false: "solo"}[u.mute]
+		ref := page[i].Ref
+		go func() {
+			if v, ok := trackFlag(ref, prop); ok {
+				liveCall("track", "set", map[string]any{"track": ref, prop: !v}) //nolint:errcheck
+			}
+		}()
+		return
+	}
+	u.selectTrack(i)
 }
 
-// forgetMeta drops cached metadata after the chain's shape changed: a
-// position number now names a different instance.
+// setBank shows page n of the selected device.
+func (u *surface) setBank(n int) {
+	_, cm, _ := u.currentBank()
+	if cm == nil || n < 0 || n >= len(cm.Banks) || n == u.bank {
+		return
+	}
+	u.bank = n
+	u.bankOff = rowShow(u.bankOff, len(cm.Banks), n)
+	u.peekUntil = time.Time{} // the card belonged to the old page
+	u.showRows()
+	u.refreshValues()
+	// no notice: the page row and the header name the page, and a takeover
+	// draws its own; a box over the knobs hid two of them on every page turn
+}
+
+// showRows: the rows over a full-panel screen, for a moment.
+func (u *surface) showRows() {
+	if t := time.Now().Add(1500 * time.Millisecond); t.After(u.rowsUntil) {
+		u.rowsUntil = t
+	}
+}
+
+// stepBank: the previous or next page (the jog wheel in an open device, Page < >).
+func (u *surface) stepBank(d int) { u.setBank(u.bank + d) }
+
+// jog: the wheel, as on Push's device view. Chain level: a focus along the
+// track's devices. Open: the device's pages.
+func (u *surface) jog(delta int) {
+	if !u.liveActive() || u.view != "chain" {
+		return
+	}
+	if u.open {
+		u.stepBank(sign(delta))
+		return
+	}
+	devs, sel := u.live.state().deviceRow()
+	if len(devs) == 0 {
+		return
+	}
+	if u.focus < 0 || u.focus >= len(devs) {
+		u.focus = max(0, selectedDeviceIndex(devs, sel))
+	}
+	u.focus = max(0, min(len(devs)-1, u.focus+sign(delta)))
+	u.devOff = rowShow(u.devOff, len(devs), u.focus)
+}
+
+// jogPress: chain level: the focused device (selects it; the selected one
+// opens). Open: the device's sounds.
+func (u *surface) jogPress() {
+	if u.view != "chain" {
+		return
+	}
+	if u.open {
+		u.openSounds() // the sound browser (sounds_view.go)
+		return
+	}
+	devs, sel := u.live.state().deviceRow()
+	at := selectedDeviceIndex(devs, sel)
+	if u.focus < 0 || u.focus >= len(devs) || u.focus == at {
+		u.openDevice()
+		return
+	}
+	go liveCall("device", "select", map[string]any{"track": u.live.state().view().dev.Track, "path": []int{devs[u.focus].I}}) //nolint:errcheck
+}
+
+// forgetMeta drops cached metadata after a module changed.
 func (u *surface) forgetMeta() { u.meta = map[string]*compMeta{} }
 
 func (u *surface) turn(enc, delta int) {
-	if u.view == "browse" {
-		if enc == 0 {
-			u.moveCursor(delta)
-		}
-		return
-	}
 	u.peekEnc = enc
 	if u.touched != enc {
 		u.peekUntil = time.Now().Add(1200 * time.Millisecond)
@@ -1165,355 +1098,63 @@ func (u *surface) turn(enc, delta int) {
 		}
 		u.lastEnum[enc] = time.Now()
 	}
-	if u.liveActive() && (!u.liveReady || !u.liveWritable) {
-		// the device shown is not the selected one yet, or only remembered:
-		// a turn would land on the wrong one
-		return
-	}
-	vk := u.valKey(p, key)
-	cur, ok := u.vals[vk]
+	cur, ok := u.vals[u.valKey(p, key)]
 	if !ok {
 		return // no value read yet: never step from a guess
 	}
-	nv, changed := m.step(cur, delta, u.shift)
-	if !changed {
-		return
-	}
-	u.vals[vk] = nv
-	if u.liveActive() { // through Live: undo and automation recording work
-		if idx, ok := u.lvIdx[key]; ok {
-			// the index was read from the device the view is built for:
-			// written only while that is still the selected one
-			if v := u.live.state().view(); len(v.path) > 0 && v.writable && v.key == u.liveKey {
-				u.live.state().write(paramWrite{track: v.dev.Track, path: v.path, index: idx, norm: m.toNormValue(nv)})
-			}
-		} else if d, prefix := u.pungDevice(); d != nil {
-			// a parameter Live's list does not reach: into Pung's device,
-			// which reports it to Live (SetOutside)
-			go d.SetOutside(prefix+":"+key, nv)
-		}
-		return
-	}
-	if s := u.cur(); s != nil {
-		s.Set(p.Prefix+":"+key, nv)
-		u.h.notify(s.Index, p.Prefix+":"+key, nv)
+	if nv, changed := m.step(cur, delta, u.shift); changed {
+		u.writeParam(p, key, m, nv)
 	}
 }
 
-// jog: a synth's presets in the chain view.
-func (u *surface) jog(delta int) {
-	if u.view == "browse" {
-		u.moveCursor(delta)
+// resetParam: Delete + an encoder's touch puts its parameter back to its
+// default, as on Push: the module's own where it states one, else Live's.
+func (u *surface) resetParam(enc int) {
+	p, cm, b := u.currentBank()
+	if b == nil || enc >= len(b.Keys) || b.Keys[enc] == "" {
 		return
 	}
-	p, cm, _ := u.currentBank()
-	if u.liveActive() {
-		u.jogLivePreset(delta, cm)
+	key := b.Keys[enc]
+	m := cm.Params[key]
+	if m == nil || m.ReadOnly {
 		return
 	}
-	s := u.cur()
-	if cm == nil || s == nil || cm.Presets.List == "" {
+	var nv string
+	switch def, live := u.lvDef[key]; {
+	case m.Default != nil && m.Max > m.Min:
+		nv = m.fromNorm((*m.Default - m.Min) / (m.Max - m.Min))
+	case m.Default != nil && m.Type == "enum" && len(m.Options) > 1:
+		nv = m.fromNorm(*m.Default / float64(len(m.Options)-1))
+	case live:
+		nv = m.fromNorm(def)
+	default:
+		u.say("NO DEFAULT IS KNOWN FOR " + strings.ToUpper(m.Name))
 		return
 	}
-	count := 0
-	if v, ok := s.Get(p.Prefix + ":" + cm.Presets.Count); ok {
-		count, _ = strconv.Atoi(v)
-	}
-	if count <= 0 {
+	u.writeParam(p, key, m, nv)
+}
+
+// writeParam sets a parameter of the shown device. Through Live where Live
+// lists it, so undo and automation recording work. Caller holds u.mu.
+func (u *surface) writeParam(p position, key string, m *paramMeta, nv string) {
+	if !u.liveActive() || !u.liveReady || !u.liveWritable {
+		// the device shown is not the selected one yet, or only remembered:
+		// a write would land on the wrong one
 		return
 	}
-	cur := 0
-	if v, ok := s.Get(p.Prefix + ":" + cm.Presets.List); ok {
-		cur, _ = strconv.Atoi(v)
-	}
-	n := cur + sign(delta)
-	if n < 0 || n >= count {
-		return
-	}
-	s.Set(p.Prefix+":"+cm.Presets.List, strconv.Itoa(n))
-	name := ""
-	if cm.Presets.Name != "" {
-		name, _ = s.Get(p.Prefix + ":" + cm.Presets.Name)
-	}
-	u.refreshValues()
-	u.say(fmt.Sprintf("%d/%d %s", n+1, count, name))
-	u.h.notify(s.Index, p.Prefix+":"+cm.Presets.List, strconv.Itoa(n))
-}
-
-// presetJog: where the jog has taken the selected device's preset (key: the
-// selection, liveKey), and what has been loaded of it.
-type presetJog struct {
-	key                    string
-	gen                    int // one per device: a load in flight for another leaves this one alone
-	count, target, applied int
-	busy                   bool
-	at                     time.Time // the last step: after a pause the preset is read again (it may have moved elsewhere)
-	name                   string    // the name the last load answered
-}
-
-// jogLivePreset steps the preset of the Pung device the view shows. Only a
-// device the view is confirmed for (as a knob turn): a step must never land
-// on the device Live is only about to select. Caller holds u.mu.
-func (u *surface) jogLivePreset(delta int, cm *compMeta) {
-	if cm == nil || cm.Presets.List == "" || !u.liveReady || !u.liveWritable {
-		return
-	}
-	d, prefix := u.pungDevice()
-	if d == nil {
-		return
-	}
-	pr := cm.Presets
-	if u.pj.key != u.liveKey || u.pj.count <= 0 || (!u.pj.busy && time.Since(u.pj.at) > 2*time.Second) {
-		// first step on this device, or after a pause: where it is now
-		// (Push's own device view or the web page may have moved it)
-		count, cur := 0, 0
-		if v, ok := d.s.Get(prefix + ":" + pr.Count); ok {
-			count, _ = strconv.Atoi(strings.TrimSpace(v))
+	u.vals[u.valKey(p, key)] = nv
+	if idx, ok := u.lvIdx[key]; ok {
+		// the index was read from the device the view is built for:
+		// written only while that is still the selected one
+		if v := u.live.state().view(); len(v.path) > 0 && v.writable && v.key == u.liveKey {
+			u.live.state().write(paramWrite{track: v.dev.Track, path: v.path, index: idx, norm: m.toNormValue(nv)})
 		}
-		if v, ok := d.s.Get(prefix + ":" + pr.List); ok {
-			cur, _ = strconv.Atoi(strings.TrimSpace(v))
-		}
-		if count <= 0 {
-			return
-		}
-		u.pj = presetJog{key: u.liveKey, gen: u.pj.gen + 1, count: count, target: cur, applied: cur}
-	}
-	n := u.pj.target + sign(delta)
-	if n < 0 || n >= u.pj.count || n == u.pj.target {
-		return
-	}
-	u.pj.target, u.pj.at = n, time.Now()
-	u.say(fmt.Sprintf("%d/%d", n+1, u.pj.count))
-	if !u.pj.busy {
-		u.pj.busy = true
-		go u.loadLivePreset(d, prefix, pr.List, pr.Name, u.pj.gen)
+	} else if d, prefix := u.pungDevice(); d != nil {
+		// a parameter Live's list does not reach: into Pung's device,
+		// which reports it to Live (SetOutside)
+		go d.SetOutside(prefix+":"+key, nv)
 	}
 }
-
-// loadLivePreset loads the jog's target until it stops moving: one load at a
-// time, the latest target next, so a fast spin loads where it ends rather
-// than every preset on the way. SetOutside tells Live (the preset is one of
-// its parameters, so Push's device view and undo follow) and reads the rest
-// of the device back once the loads stop.
-func (u *surface) loadLivePreset(d *device, prefix, listKey, nameKey string, gen int) {
-	for {
-		u.mu.Lock()
-		if u.pj.gen != gen { // another device now: its own load runs
-			u.mu.Unlock()
-			return
-		}
-		n := u.pj.target
-		if n == u.pj.applied {
-			u.pj.busy = false
-			name := u.pj.name
-			u.mu.Unlock()
-			if u.h.sounds != nil { // the device's sound now, and a recent one
-				u.h.sounds.Settled(d, soundRef{Source: "factory", Index: n, Name: name})
-			}
-			return
-		}
-		u.mu.Unlock()
-		d.SetOutside(prefix+":"+listKey, strconv.Itoa(n))
-		name := ""
-		if nameKey != "" {
-			name, _ = d.s.Get(prefix + ":" + nameKey)
-		}
-		u.mu.Lock()
-		if u.pj.gen == gen {
-			u.pj.applied, u.pj.name = n, strings.TrimSpace(name)
-			if u.pj.target == n {
-				u.say(strings.TrimSpace(fmt.Sprintf("%d/%d %s", n+1, u.pj.count, strings.TrimSpace(name))))
-			}
-		}
-		u.mu.Unlock()
-	}
-}
-
-// ---- browser ------------------------------------------------------------------
-
-func (u *surface) openBrowser(mode string) {
-	p, _ := u.selected()
-	kind := "audio_fx"
-	switch p.Kind {
-	case "midi":
-		kind = "midi_fx"
-	case "synth":
-		if mode == "swap" || p.Module == "" {
-			kind = "sound_generator"
-		}
-	}
-	if mode == "swap" && p.Kind == "add" {
-		mode = "add"
-	}
-	u.br = browser{mode: mode, kind: kind, target: p}
-	u.setBrowserKind(kind)
-	u.view = "browse"
-}
-
-func (u *surface) setBrowserKind(kind string) {
-	u.br.kind = kind
-	u.br.items = nil
-	for _, m := range scanModules(u.h.modulesDir) {
-		if m.Type == kind && m.Loadable {
-			u.br.items = append(u.br.items, m)
-		}
-	}
-	sort.SliceStable(u.br.items, func(i, j int) bool { return u.br.items[i].Name < u.br.items[j].Name })
-	u.br.cursor = 0
-	for i, m := range u.br.items {
-		if m.ID == u.br.target.Module {
-			u.br.cursor = i
-		}
-	}
-	if u.br.mode == "swap" && kindOf(u.br.target.Kind) != kind {
-		u.br.mode = "add" // switching category turns a swap into an add
-	}
-}
-
-func kindOf(posKind string) string {
-	switch posKind {
-	case "midi":
-		return "midi_fx"
-	case "synth":
-		return "sound_generator"
-	}
-	return "audio_fx"
-}
-
-func (u *surface) moveCursor(d int) {
-	n := u.br.cursor + d
-	if n < 0 {
-		n = 0
-	}
-	if n >= len(u.br.items) {
-		n = len(u.br.items) - 1
-	}
-	if n >= 0 {
-		u.br.cursor = n
-	}
-}
-
-func (u *surface) choose(i int) {
-	if i < 0 || i >= len(u.br.items) {
-		return
-	}
-	m := u.br.items[i]
-	s := u.cur()
-	if s == nil {
-		return
-	}
-	t := u.br.target
-	c := s.composition()
-	switch {
-	case m.Type == "sound_generator":
-		s.Set("synth:module", m.ID)
-	case u.br.mode == "swap" && kindOf(t.Kind) == m.Type && t.Module != "":
-		s.Set(t.Prefix+":module", m.ID)
-	case m.Type == "audio_fx":
-		at := countSet(c.FX) + 1 // append
-		if t.Kind == "fx" && t.N < at {
-			at = t.N + 1 // insert after the selection
-			s.Set("fx:insert", strconv.Itoa(at))
-		}
-		if at > maxAudioFX {
-			u.say("THE CHAIN IS FULL")
-			return
-		}
-		s.Set(fmt.Sprintf("fx%d:module", at), m.ID)
-	case m.Type == "midi_fx":
-		at := countSet(c.MidiFX) + 1
-		if t.Kind == "midi" && t.N < at {
-			at = t.N + 1
-			s.Set("midi_fx:insert", strconv.Itoa(at))
-		}
-		if at > maxMidiFX {
-			u.say("THE CHAIN IS FULL")
-			return
-		}
-		s.Set(fmt.Sprintf("midi_fx%d:module", at), m.ID)
-	}
-	if e, ok := s.Get("load_error"); ok && e != "" {
-		u.say("LOAD FAILED: " + e)
-	}
-	u.h.notify(s.Index, "chain", "")
-	u.forgetMeta()
-	u.view = "chain"
-	u.refreshPositions(true)
-	for j, p := range u.positions {
-		if p.Module == m.ID {
-			u.pos = j
-		}
-	}
-	u.keepVisible()
-	u.bank, u.bankOff = 0, 0
-	u.refreshValues()
-	u.say(m.Name)
-}
-
-func countSet(list []string) int {
-	n := 0
-	for _, m := range list {
-		if m != "" {
-			n++
-		}
-	}
-	return n
-}
-
-// ---- pads ------------------------------------------------------------------------
-
-// padNote: chromatic, rows a fourth apart, C2 at the bottom left.
-func (u *surface) padNote(pad byte) (byte, bool) {
-	col, row := push3.PadCoord(pad)
-	n := 36 + 12*u.octave + row*5 + col
-	if n < 0 || n > 127 {
-		return 0, false
-	}
-	return byte(n), true
-}
-
-func (u *surface) pad(pad, vel byte, on bool) {
-	if u.liveActive() { // the pads keep playing the selected track, in the Set's scale
-		u.padToLive(pad, vel, on)
-		return
-	}
-	s := u.cur()
-	if s == nil {
-		return
-	}
-	ch := byte(u.slot & 0x0F)
-	if on {
-		note, ok := u.padNote(pad)
-		if !ok {
-			return
-		}
-		u.held[pad] = note
-		s.queue([]byte{0x90 | ch, note, vel})
-		return
-	}
-	if note, ok := u.held[pad]; ok {
-		delete(u.held, pad)
-		s.queue([]byte{0x80 | ch, note, 0})
-	}
-}
-
-func (u *surface) releasePads() {
-	u.mu.Lock()
-	u.releasePadsLocked()
-	u.mu.Unlock()
-}
-
-func (u *surface) releasePadsLocked() {
-	s := u.cur()
-	for pad, note := range u.held {
-		if s != nil {
-			s.queue([]byte{0x80 | byte(u.slot&0x0F), note, 0})
-		}
-		delete(u.held, pad)
-	}
-}
-
-// ---- LEDs ------------------------------------------------------------------------
 
 func pIdx(name string) uint8 {
 	if i, ok := push3.ColorByName(name); ok {
@@ -1527,7 +1168,7 @@ var slotLED = []string{"orange", "sky", "pink_hot", "mint", "yellow", "violet", 
 func (u *surface) led(pad bool, n, v uint8) {
 	// the lights are Live's again the moment the surface goes: a light
 	// written after that stays wrong (Live repaints only what changes)
-	if u.c == nil || !u.focused.Load() {
+	if !u.focused.Load() {
 		return
 	}
 	k := uint16(n)
@@ -1538,6 +1179,9 @@ func (u *surface) led(pad bool, n, v uint8) {
 		return
 	}
 	u.leds[k] = v
+	if u.c == nil {
+		return // no port (a test): the plan is kept in leds
+	}
 	if pad {
 		u.c.SendNote(u.push, 0, n, v)
 	} else {
@@ -1545,7 +1189,8 @@ func (u *surface) led(pad bool, n, v uint8) {
 	}
 }
 
-// paintLEDs lights what has a meaning now and switches off the rest. Caller holds u.mu.
+// paintLEDs lights what has a meaning now and switches off the rest: a
+// button that does nothing is dark. Caller holds u.mu.
 func (u *surface) paintLEDs() {
 	if u.sb != nil && (u.view == "sounds" || u.view == "name") {
 		u.paintSoundLEDs()
@@ -1553,90 +1198,85 @@ func (u *surface) paintLEDs() {
 	}
 	sc := pIdx(slotLED[u.slot%len(slotLED)])
 	white, dimw := pIdx("white"), pIdx("dgray")
-	// top row: banks, or the browser's cards
-	for i := 0; i < 8; i++ {
-		v := uint8(0)
-		if u.view == "browse" {
-			if page := u.br.cursor / 8 * 8; page+i < len(u.br.items) {
-				v = dimw
-				if page+i == u.br.cursor {
-					v = white
-				}
-			}
-		} else if u.liveActive() && !u.bankList { // the track's devices
-			if devs, sel := u.live.state().deviceRow(); i < len(devs) {
-				v = dimw
-				if devs[i].I == sel {
-					v = sc
-				}
-			}
-		} else if _, cm, _ := u.currentBank(); cm != nil && u.bankOff+i < len(cm.Banks) {
-			v = dimw
-			if u.bankOff+i == u.bank {
-				v = sc
-			}
-		}
-		u.led(false, push3.CCScreenTop1+uint8(i), v)
-	}
-	// bottom row: the chain, or the browser's categories
-	for i := 0; i < 8; i++ {
-		v := uint8(0)
-		if u.view == "browse" {
-			kinds := []string{"midi_fx", "sound_generator", "audio_fx"}
-			if i < 3 {
-				v = dimw
-				if kinds[i] == u.br.kind {
-					v = white
-				}
-			} else if i == 7 {
-				v = pIdx("red")
-			}
-		} else if u.liveActive() {
-			if page, first, sel := u.trackPage(); i < len(page) {
-				v = dimw
-				if first+i == sel {
-					v = white
-				}
-			}
-		} else if j := u.chainOff + i; j < len(u.positions) {
-			p := u.positions[j]
-			switch {
-			case j == u.pos:
-				v = sc
-			case p.Bypassed:
-				v = pIdx("dk_red")
-			default:
-				v = dimw
-			}
-		}
-		u.led(false, push3.CCScreenBot1+uint8(i), v)
-	}
-	// the scene column (repeat rates) and the pads are Live's (liveButtons, Pads)
-	// white buttons this app answers to
-	for _, b := range []uint8{push3.CCAdd, push3.CCSwap, 92} { // Live lights its own (liveButtons)
-		u.led(false, b, 63)
-	}
-	// Save: the device's sound, where there is a Pung device to save
-	save := uint8(0)
-	if u.liveActive() {
-		if d, _ := u.pungDevice(); d != nil {
-			save = 63
-		}
-	}
-	u.led(false, push3.CCSave, save)
-	// Page < >: lit where they go somewhere, as the header's arrows show
-	pl, pr := u.pageSteps()
-	u.led(false, 62, map[bool]uint8{true: 63, false: 0}[pl])
-	u.led(false, 63, map[bool]uint8{true: 63, false: 0}[pr])
-	// D-pad left/right: lit when the chain goes on in that direction
-	lr := func(on bool) uint8 {
-		if on {
+	live := u.liveActive()
+	on := func(b bool) uint8 {
+		if b {
 			return 63
 		}
 		return 0
 	}
-	u.led(false, 44, lr(u.view == "chain" && u.pos > 0))
-	u.led(false, 45, lr(u.view == "chain" && u.pos < len(u.positions)-1))
+	// upper row: the track's devices, or the way back
+	var top, bot [8]uint8
+	switch {
+	case !live:
+	case u.open:
+		top[0] = white
+	default:
+		devs, sel := u.live.state().deviceRow()
+		for i, s := range u.deviceSlots() {
+			switch {
+			case s == slotLeft || s == slotRight:
+				top[i] = white
+			case s < 0:
+			case devs[s].I == sel:
+				top[i] = sc
+			case s == u.focus:
+				top[i] = white
+			default:
+				top[i] = dimw
+			}
+		}
+	}
+	// lower row: the open device's pages, or Live's tracks
+	switch {
+	case !live:
+	case u.open:
+		for i, s := range u.pageSlots() {
+			switch {
+			case s == slotLeft || s == slotRight:
+				bot[i] = white
+			case s == u.bank:
+				bot[i] = sc
+			case s >= 0:
+				bot[i] = dimw
+			}
+		}
+	default:
+		page, first, sel := u.trackPage()
+		for i := range page {
+			bot[i] = dimw
+			if first+i == sel {
+				bot[i] = white
+			}
+		}
+	}
+	for i := 0; i < 8; i++ {
+		u.led(false, push3.CCScreenTop1+uint8(i), top[i])
+		u.led(false, push3.CCScreenBot1+uint8(i), bot[i])
+	}
+	// Swap and Save: the device's sounds, where there is a Pung device (as
+	// a stand-in for Push's device view, Swap is push-manager's)
+	pung := false
+	if live {
+		d, _ := u.pungDevice()
+		pung = d != nil
+	}
+	u.led(false, push3.CCSave, on(pung))
+	if !u.standIn.Load() {
+		u.led(false, push3.CCSwap, on(pung))
+	}
+	// Page < >: lit where they go somewhere, as the header's arrows show
+	pl, pr := u.pageSteps()
+	u.led(false, push3.CCPageLeft, on(pl))
+	u.led(false, push3.CCPageRight, on(pr))
+	// D-pad left / right: the previous and next track
+	tl, tr := false, false
+	if live {
+		tracks, sel := u.live.state().trackRow()
+		tl, tr = sel > 0, sel >= 0 && sel < len(tracks)-1
+	}
+	u.led(false, push3.CCDPadLeft, on(tl))
+	u.led(false, push3.CCDPadRight, on(tr))
 }
 
 // ---- frames ---------------------------------------------------------------------
@@ -1666,6 +1306,7 @@ func (u *surface) frames(done <-chan struct{}) {
 		}
 		peak := u.level()
 		animating := math.Abs(peak-lastPeak) > 0.5 || time.Now().Before(u.peekUntil.Add(50*time.Millisecond)) ||
+			(u.open && time.Now().Before(u.rowsUntil.Add(50*time.Millisecond))) ||
 			(u.toast != "" && time.Since(u.toastAt) < 2600*time.Millisecond) || u.liveWanted()
 		if !u.dirty.Swap(false) && !animating {
 			u.mu.Unlock()
@@ -1710,7 +1351,7 @@ const (
 // or lit for it. Each hold ends, and draws what there is, if the answer
 // does not come. Caller holds u.mu.
 func (u *surface) holdFrame() bool {
-	if !u.liveActive() || u.view == "browse" || u.view == "sounds" || u.view == "name" || u.liveReady {
+	if !u.liveActive() || u.view == "sounds" || u.view == "name" || u.liveReady {
 		return false
 	}
 	age := time.Since(u.liveSince)
@@ -1739,7 +1380,7 @@ func (u *surface) enterSelection(v liveView) {
 	u.liveReady = false
 	u.vals = map[string]string{}
 	u.lvIdx = map[string]int{}
-	u.bankList = false
+	u.open, u.focus = false, -1 // another device: the chain level, as on Push
 	u.peekUntil = time.Time{}
 	m := u.bankMem[v.key]
 	u.bank, u.bankOff = m[0], m[1]
@@ -1753,28 +1394,17 @@ func (u *surface) level() float64 {
 		if d, _ := u.pungDevice(); d != nil {
 			return peakDB(d.s.peak())
 		}
-		return -120
-	}
-	if s := u.cur(); s != nil {
-		return peakDB(s.peak())
 	}
 	return -120
 }
 
-// pageSteps: whether Page < and Page > go anywhere now (what they do:
-// buttons()).
+// pageSteps: whether Page < and Page > go anywhere now.
 func (u *surface) pageSteps() (left, right bool) {
-	if u.view == "browse" {
-		return u.br.cursor >= 8, u.br.cursor/8 < (len(u.br.items)-1)/8
-	}
 	_, cm, _ := u.currentBank()
-	if cm == nil {
+	if cm == nil || !u.liveActive() {
 		return false, false
 	}
-	if u.liveActive() {
-		return u.bank > 0, u.bank < len(cm.Banks)-1
-	}
-	return u.bankOff > 0, u.bankOff+8 < len(cm.Banks)
+	return u.bank > 0, u.bank < len(cm.Banks)-1
 }
 
 // render draws the current view. Caller holds u.mu.
@@ -1789,8 +1419,6 @@ func (u *surface) render(peak float64) *image.NRGBA {
 		return img
 	}
 	switch {
-	case u.view == "browse":
-		u.drawBrowser(img)
 	case u.view == "sounds" && u.sb != nil:
 		u.drawSounds(img)
 	case u.view == "name" && u.sb != nil && u.sb.ed != nil:
@@ -1871,8 +1499,7 @@ func (u *surface) refreshLive() {
 			u.pos = i
 		}
 	}
-	u.keepVisible()
-	u.lvIdx = map[string]int{}
+	u.lvIdx, u.lvDef = map[string]int{}, map[string]float64{}
 	u.liveReady = false
 	sel, ok := u.selected()
 	if !v.ready || !ok || sel.Kind == "other" || sel.N != selIdx {
@@ -1892,6 +1519,9 @@ func (u *surface) refreshLive() {
 			continue
 		}
 		u.lvIdx[key] = lp.I
+		if lp.Default != nil {
+			u.lvDef[key] = (*lp.Default - lp.Min) / (lp.Max - lp.Min)
+		}
 		u.vals[u.valKey(sel, key)] = cm.Params[key].fromNorm((lp.V - lp.Min) / (lp.Max - lp.Min))
 	}
 	// What Live does not list (the Remote Script reads 128 parameters of a
@@ -1971,29 +1601,6 @@ func (u *surface) pungDevice() (*device, string) {
 		return nil, ""
 	}
 	return d, d.c.component()
-}
-
-// padToLive sends a pad's note to Live through the "Pung" input, which
-// Live listens to on the selected (armed) track. Caller holds u.mu.
-func (u *surface) padToLive(pad, vel byte, on bool) {
-	if u.h.seq == nil {
-		return
-	}
-	if on {
-		_, _, sc := u.live.state().snapshot()
-		col, row := push3.PadCoord(pad)
-		note, ok := padNoteInKey(col, row, u.octave, sc)
-		if !ok {
-			return
-		}
-		u.held[pad] = note
-		u.h.seq.SendMIDI(alsaseq.Subscribers, []byte{0x90, note, vel})
-		return
-	}
-	if note, ok := u.held[pad]; ok {
-		delete(u.held, pad)
-		u.h.seq.SendMIDI(alsaseq.Subscribers, []byte{0x80, note, 0})
-	}
 }
 
 // compartmentScreen renders a compartment's custom screen as the Push shows
