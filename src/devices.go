@@ -400,11 +400,12 @@ type provider struct {
 	classes map[string]*sclass
 	used    map[int]bool    // chain slots in use by devices
 	devs    map[int]*device // by chain slot
+	kept    *keptStates     // the devices' states from the Pung before this one
 }
 
 func newProvider(h *Host, classes []*sclass) *provider {
 	p := &provider{h: h, classes: map[string]*sclass{}, used: map[int]bool{maxSlots - 1: true}, // the metadata probe
-		devs: map[int]*device{}}
+		devs: map[int]*device{}, kept: loadKeptStates(h.dataDir, liveIdentity(), time.Now())}
 	for _, c := range classes {
 		p.classes[c.UID] = c
 	}
@@ -481,7 +482,26 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 	p.mu.Unlock()
 	p.gen.Add(1)
 	go p.reviveSiblings(sc.module) // a module that refused to start beside another
+	go d.adoptKept()
 	return d, nil
+}
+
+// adoptKept: a device Live never asked the state of (made since the Set was
+// last saved) gets no state back from the plugin after a restart of Pung,
+// and came up as new. The plugin gives a state right after it makes the
+// device, or never: one that got none takes what was kept for such a device.
+func (d *device) adoptKept() {
+	time.Sleep(2 * time.Second)
+	if d.stateSeq.Load() != 0 {
+		return // the plugin gave it a state
+	}
+	if kept, ok := d.p.kept.take("", d.c.module, time.Now()); ok {
+		if err := d.adopt(kept, false); err != nil {
+			log.Printf("%s: its state from before the restart: %v", d.c.Name, err)
+			return
+		}
+		log.Printf("%s: its state from before the restart (Live holds none for it)", d.c.Name)
+	}
 }
 
 // device: the one at chain slot n, or nil.
@@ -544,7 +564,9 @@ type device struct {
 	lastChain json.RawMessage // the last state given (SetState), to load again (revive)
 
 	// blocks that could not run, and their notes (Process, heldMidi)
-	held     heldMidi      // the realtime thread's only
+	held     heldMidi // the realtime thread's only
+	liveMu   sync.Mutex
+	liveKey  string        // stateKey of the state Live's plugin holds for this device
 	skipped  atomic.Uint64 // blocks skipped
 	heldSent atomic.Uint64 // notes of skipped blocks delivered later
 
@@ -846,6 +868,16 @@ func (d *device) matches(liveParams []liveParam) float64 {
 // State is the device's Pung patch, the format Move saves, plus what the
 // device keeps outside the chain.
 func (d *device) State() (string, error) {
+	st, err := d.currentState()
+	if err == nil { // Live asked: this is what its plugin holds from now on
+		d.liveMu.Lock()
+		d.liveKey = stateKey(st)
+		d.liveMu.Unlock()
+	}
+	return st, err
+}
+
+func (d *device) currentState() (string, error) {
 	if d.loading.Load() && d.lastChain != nil {
 		// a state still loading is the device's state: the chain, half
 		// loaded, is not (saved, it would lose the patch)
@@ -872,7 +904,11 @@ func (d *device) stateDoc(chain any) map[string]any {
 	return doc
 }
 
-func (d *device) SetState(state string) error {
+func (d *device) SetState(state string) error { return d.adopt(state, true) }
+
+// adopt loads a state: one Live's plugin gave (fromLive), or the one kept
+// for a device whose plugin holds none (adoptKept).
+func (d *device) adopt(state string, fromLive bool) error {
 	var st struct {
 		MidiFX    int             `json:"midi_fx"`
 		OutCh     int             `json:"out_ch"`
@@ -882,6 +918,24 @@ func (d *device) SetState(state string) error {
 	}
 	if json.Unmarshal([]byte(state), &st) != nil || len(st.Chain) == 0 {
 		return errors.New("not a Pung device state")
+	}
+	// what Live's plugin holds, which after a restart of Pung is older than
+	// the device was: the state kept at the stop is the device's (keptstate.go)
+	kept, ok := "", false
+	if fromLive {
+		d.liveMu.Lock()
+		d.liveKey = stateKey(state)
+		d.liveMu.Unlock()
+		kept, ok = d.p.kept.take(state, d.c.module, time.Now())
+	}
+	if ok {
+		prev := st
+		st.Chain, st.Sound, st.SoundHash = nil, nil, ""
+		if json.Unmarshal([]byte(kept), &st) != nil || len(st.Chain) == 0 || patchModule(st.Chain, d.c.Kind) != d.c.module {
+			st = prev
+		} else {
+			log.Printf("%s: its state from before the restart, not the one Live last saved", d.c.Name)
+		}
 	}
 	// A device of one module never loads another's patch: a state that
 	// names another module came from the wrong device (a plugin that asked

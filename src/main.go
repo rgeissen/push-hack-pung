@@ -237,6 +237,7 @@ func main() {
 		restart = true
 	}
 	log.Printf("stopping")
+	h.prov.keepStates() // before anything closes: what each device is now (keptstate.go)
 	// The surface goes to Live, not to whatever push-manager falls back to:
 	// a Pung that stopped holding it (an update, an Apply) left Home holding
 	// the buttons and a black screen, and Live's question after its restart
