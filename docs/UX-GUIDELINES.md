@@ -142,7 +142,7 @@ Where a page's keys describe a structure Pung knows, Pung draws it over those kn
 
 | Structure | Recognized when | Drawn as |
 |---|---|---|
-| **Envelope** | adjacent keys ending in `attack`, `decay`, `hold`, `sustain`, `release` with one shared prefix (`amp_`, `f_`, `filter_`, `macro_`...), in any order; `sustain_time` beside a sustain is a sustain slope | the envelope, filled; handles where stages meet; the sustain level as a guide; stage letters under the segments |
+| **Envelope** | adjacent keys with one shared prefix (`amp_`, `f_`, `fenv_`, `macro_`...), in any order, naming its stages: by word (`attack` `atk` `att`, `decay` `dcy` `dec`, `hold` `hld`, `sustain` `sus`, `release` `rel`, `delay` after a prefix), with a unit or kind after it (`amp_attack_ms`, `env_sustain_level`), or by letter after an underscore (`fenv_a`, `vca_r`); `sustain_time` beside a sustain is a sustain slope. Or NUMBERED, after a prefix ending in `env` or `eg`: Roland's `time1..4` / `level1..4` (`tvaenvtime1`), Yamaha's `r1..4` / `l1..4` (`op1_eg_r1`), whole on the page | **one picture for every envelope** (see *Envelopes* below): the shape, filled; handles where segments meet; the plateau's level as a guide; the stage bar under it |
 | **Filter** | a cutoff (`cutoff`, `cutofffrequency`, or `freq` after a filter's name: `flt_freq`) beside its resonance (`resonance`, `reso`, `res`, `q`) or its type, the same filter named (`filter1_cutoff`, `filter1_resonance`). A type on the page that names a filter (`filter_type`, `filter1_mode`, `ftype`) gives the response, and joins the picture when it sits beside it; without one the filter is a 12 dB lowpass. A `macro_cutoff` is not a filter | the response over three decades, filled; the cutoff a handle on the curve; 0 dB dashed. The type's slope is read from its name (`LP 24 dB`, `LP12`, `Analog 4P`, `Ladder`). A type Pung cannot read (`Comb`) draws no curve, only its name |
 | **LFO** | a wave (`shape`, `wave`, `waveform`) beside its rate (`rate`, `speed`, `freq`), sharing a prefix that names an LFO (`lfo1_`, `lfo_`) | the wave around a centre line, filled toward it, 1 to 5 cycles as the rate knob goes. A wave Pung does not know exactly (`Skewed Sine`, `Wave 3`) is drawn as its name |
 | **Mix** | three or more adjacent levels of different sources, named alike (`saw_level`, `pulse_level`, `sub_level`; `level_o1`, `level_o2`, `level_noise`; `mix_1`...). Not an envelope's levels, an FM operator's (a modulator's level is a depth), or effects' | a fader over each source's knob, and across the top each source's share of the whole |
@@ -156,6 +156,32 @@ The rules for a recognized structure:
 - **Draw in the knob's terms.** Times are drawn in proportion to their knob, not to scale in
   milliseconds: the shape is what the hand turns, and a 10-second release would squeeze everything else
   to a line. Without a sustain, stages are drawn against their longest, so short means short.
+
+#### Envelopes: one model, one picture
+
+Every envelope Pung draws, on every module, on the default view, a module's screen (`g.envelope`) and the
+web page, is the same thing (`src/envmodel.go`; `web/visuals.js` copies it constant for constant, and
+`make test-visuals` checks every envelope of the fleet number for number):
+
+- **A start level, then SEGMENTS** in the order a note goes through them: the timed stages, each a line to
+  its level; at most one **plateau**, where a held key waits; after it the **release** stages, which run
+  from the let-go. That covers every envelope the fleet has: ADSR, AD, AHD, DAHDSR, delay-AR (the MS-20's
+  EG1), the Virus's sustain slope, Roland's T1-T4 / L1-L4 (Mini-JV), Yamaha's R1-R4 / L1-L4 (Dexed).
+  - Named stages: delay, attack (to the top), hold, decay (to the sustain, or to nothing), the plateau (a
+    sustain; or a release with no sustain, where the level holds at its peak), release.
+  - Numbered stages: the last is the release and the key waits at the level before it. Roland's start
+    from nothing, Yamaha's from their last level (the one their release returns to). A pitch envelope's
+    levels swing about the middle.
+- **A segment is as wide as its time knob has travelled** (a rate knob the other way round: high is
+  short); the plateau takes the rest of the width.
+- **A note's dot crosses a segment in the stage's real time** and reaches its corner as the stage ends,
+  waits on the plateau while the key is held, and runs the release from the let-go, starting where the
+  release line has the level the note had. Shape is what the hand turns; motion is what the sound does.
+- **The stage bar** under it has one segment per drawn segment, exactly as wide, named in the module's
+  terms (`A D S R`, `DL A S R`, `T1 T2 T3 S T4`, `R1 R2 R3 S R4`), lit while a note's dot is in it, and
+  outlined in slot colour while one of its knobs is touched.
+- **A module never draws an envelope itself.** What only a module can know is how long its stages take,
+  and it says that, not a picture: `push.envelopeTimes` (overrides.md).
 - **A module's own widget wins** over Pung's picture for the same columns.
 - **What the fleet gets**: `src/testdata/fleet-pictures.txt` lists every picture Pung draws on every
   page of the 100 modules Schwung captured (`TestFleetPictures`), so a rule's change shows module by
@@ -250,9 +276,9 @@ If it only restyles the default page, it does not ship.
 6. **A takeover replaces Pung's elements, so it owns their jobs**: every encoder's name and value
    (`v.$knobs`), the touched one in slot colour, which page of how many. The bottom 56 pixels are the
    encoder row, by convention (y 104 to 160), so that the hands find their values where they always are.
-7. **A picture over knobs is aligned with them.** When a page's knobs are the parts of one thing (an
-   envelope's rate and level per stage), draw each part over its own knobs, as the JV-880 and DX7 envelope
-   pages do: stage *i* over encoders 2*i* and 2*i*+1.
+7. **A picture over knobs is aligned with them** where the parts are places (a keyboard's break point
+   over its knob). An envelope is not drawn by a module at all (rule 1): Pung's envelope draws each
+   segment as wide as its knob has turned, and names it in the stage bar, on every module alike.
 8. **The web side.** A custom screen's compartment is a section of the module's web page, with the same
    name. If the screen shows a relationship, the page should show it too. Without a web page of its own,
    Pung's page shows the screen itself (drawn by the same code).
@@ -265,9 +291,10 @@ If it only restyles the default page, it does not ship.
 | JE-8086 | Patch | takeover | the JP-8000's LCD (P:A11, the patch name, the parameter being turned), both oscillators' waves, the filter's response, the amp envelope, LFO 1: the patch at a glance while the encoders play its macros |
 | JE-8086 | Osc, Filter & Amp, LFO & Mod, FX, Play & Arp, System | default | the tabs of its own web panel, its numbered sections as pages |
 | Mini-JV | Macros | takeover | the JV-880's LCD and its four tones: which wave, how loud, where panned, their amp envelopes. A JV patch is four tones |
-| Mini-JV | Tone 1-4, Pitch / Filter / Amp Env pages | page screens | the JV's 4-stage envelope, each stage over its time and level knobs, key-off before stage 4 |
+| Mini-JV | Tone 1-4, Pitch / Filter / Amp Env pages | default | Pung's envelope (T1 T2 T3 S T4), on the JV's own times (`push.envelopeTimes`) |
 | Dexed | Algorithm | takeover | the algorithm as the DX7 prints it (from Dexed's own table), ratios and levels in the operators, the feedback loop, the six envelopes; encoders: algorithm, feedback, six levels |
-| Dexed | Operator 1-6 EG and Key Scale, Pitch EG | page screens | 4-rate/4-level envelopes over their knobs; keyboard level scaling over a keyboard |
+| Dexed | Operator 1-6 EG, Pitch EG | default | Pung's envelope (R1 R2 R3 S R4), on msfa's own times (`push.envelopeTimes`) |
+| Dexed | Operator 1-6 Key Scale | page screens | keyboard level scaling over a keyboard |
 | Osirus | Filters, Envelopes | band screens | the filter routing as a signal path with both responses; both envelopes with the sustain slope in words |
 | OB-Xd, Braids | (pages) | default + widgets | their own widgets over their knobs |
 | Hera | DCO, VCF (and Main) | default + widgets | the wave the Juno's DCO puts out (saw, pulse at its width, the sub an octave down, noise as a band) summed at their levels, the pulse width and how far PWM moves it; the filter and where the envelope takes the cutoff |
@@ -304,8 +331,8 @@ time), the loudest sample of each block, the last 4096 samples of the output, an
 
 | Picture | What moves | From |
 |---|---|---|
-| **Envelope** (every one a synth or a MIDI effect has) | each note a dot running along the lines **on its own clock**: it travels each stage at that stage's speed and reaches its corner as the stage ends, rests at the sustain point while the key is held, and runs down the release from the moment the key is let go, from wherever the level was. A short trail behind each dot; the newest note's stage lit up to its dot with a hairline to the base. Under the shape, **the stage bar**: one segment per stage, as wide as the stage is drawn, lit while a note's dot is in it (and outlined in slot colour while its knob is touched) | the notes (when each went down and was let go) and each stage's time: **exact** where the module states it (`250 ms`, `1.2 s`); **from the knob's range** where that range is seconds (`0.001 .. 3`; Surge's `-8 .. 5` is log2 of seconds); otherwise **Pung's curve** on the knob's travel (2 ms .. 10 s). For the amplitude envelope (no prefix, `amp`, `vca`, `tva`, `aeg`...) the output's level then says when a stage really ends, for a note held alone: the dot waits at the attack's corner until the sound peaks, at the decay's until it settles, at the release's end until it is silent (-60 dB under where it was let go), and later notes' times are scaled by what was measured |
-| **Envelope** of an audio effect (a gate's, a ducker's) | still | it runs on the audio it hears, not on notes |
+| **Envelope** (every one a synth or a MIDI effect has) | each note a dot running along the lines **on its own clock**: it crosses each segment in that stage's time and reaches its corner as the stage ends, waits on the plateau while the key is held, and runs the release from the moment the key is let go, from where the release line has the level the note had. A short trail behind each dot; the newest note's segment lit up to its dot with a hairline to the base. Under the shape, **the stage bar**: one segment per drawn segment, exactly as wide, lit while a note's dot is in it (and outlined in slot colour while one of its knobs is touched) | the notes (when each went down and was let go) and each stage's time: **the module's** where its overlay knows its engine (`push.envelopeTimes`: Mini-JV, Dexed); **exact** where the module states it (`250 ms`, `1.2 s`, a key ending in `_ms`); **from the knob's range** where that range is seconds (`0.001 .. 3`; Surge's `-8 .. 5` is log2 of seconds); otherwise **Pung's curve** on the knob's travel (2 ms .. 10 s). For the amplitude envelope (no prefix, `amp`, `vca`, `tva`, `aeg`...) the output's level then says when a stage really ends, for a note held alone: the dot waits at the attack's corner until the sound peaks, at the decay's until it settles, at the release's end until it is silent (-60 dB under where it was let go), and later notes' times are scaled by what was measured |
+| **Envelope** of an audio effect (a gate's, a ducker's), or a looping one (`cycle_`, `loop_`) | still | it runs on the audio it hears, or on a phase of its own: no note shows where it is |
 | every envelope | its start flashes as a note begins it again | the notes |
 | **Filter** | the sound's spectrum behind the response (1/6-octave smoothing, tilted 3 dB an octave about 1 kHz, falling at most 36 dB a second) | measured: the output itself. It is the whole device's sound, after every filter and effect, so a static cutoff with a bright spectrum says the envelope or key follow is opening it |
 | **LFO** synced to the beat with a rate in note values (`1/8.`, `1/4T`) | a playhead running through the drawn cycles, a trail | exact: Live's beat, while Live plays |
@@ -326,21 +353,27 @@ dropped, never queued. A module's own page (an iframe) gets every frame as `{typ
 (overrides.md). Measured: about 2 frames a second at rest, 30 while the sound moves, each a few hundred
 bytes plus 240 spectrum values.
 
-**An instrument's own times**: Mini-JV's envelope pages (Pitch, Filter and Amp Env of each tone) run every
-note through the JV's four stages in the JV's own time. Its time values (0..127) have no unit, so the
-seconds were **measured off the emulated JV-880**: a note played through each stage while the chip's
-envelope was read every 128-sample block until it settled (`JV_TIME` in `overrides/minijv/push_ui.js`).
-T1, T2/T3 and T4 have different scales (T = 80 is 2.6 s as an attack, 3.5 s as a second stage, 4.5 s as
-a release), a stage takes its time whatever levels it moves between, and keyfollow and velocity time
-sense moved it by under 3% in the measurement. The pitch and filter envelopes run on the same envelope
-generator and use the same table. The bar under the envelope reads `T1` .. `T4`, and `T3 SUSTAIN` while
-a held key keeps the third stage's level. A key let go early starts the fourth stage from the level it
-had, drawn as its own line down.
+**An instrument's own times**: two overlays tell Pung what their engines make of their stage knobs
+(`push.envelopeTimes`), so their dots run as the engine does. Their envelopes are otherwise Pung's own,
+exactly as every other module's.
 
-The chip's voices (`live_voices`, v2: each voice's TVA envelope, amplitude, TVF coefficient and pan) are
-still read for the Macros screen and the module's own web page, which show every voice's level and filter
-cutoff live. They no longer place the envelope dots: the chip's level is not linear in the patch's L
-values (L 64 reads 0.11 of L 127), so a dot placed by level could not move in time.
+- **Mini-JV**: its time values (0..127) have no unit, so the seconds were **measured off the emulated
+  JV-880**: a note played through each stage while the chip's envelope was read every 128-sample block
+  until it settled (`JV_TIME` in `overrides/minijv/push_ui.js`). T1, T2/T3 and T4 have different scales
+  (T = 80 is 2.6 s as an attack, 3.5 s as a second stage, 4.5 s as a release), a stage takes its time
+  whatever levels it moves between, and keyfollow and velocity time sense moved it by under 3% in the
+  measurement. The pitch and filter envelopes run on the same envelope generator and use the same table.
+- **Dexed**: its overlay runs msfa's own envelope code (`env.cc` with `ACCURATE_ENVELOPE`, as the module
+  is built; `pitchenv.cc`) on the patch's rates and levels: a falling stage steps down by the rate's
+  increment every 64 samples, a rising one approaches its ceiling exponentially, a stage that does not
+  move waits msfa's fixed time. The operator's output level sets where its levels sit, and so its attack's
+  pace; it is read from the operator's page. Rate 99 attacks in 1.5 ms, rate 50 in 0.17 s, rate 0 in 44 s.
+  Velocity and keyboard rate scaling are not in it (both default to none in a DX7 patch).
+
+The JV chip's voices (`live_voices`, v2: each voice's TVA envelope, amplitude, TVF coefficient and pan)
+are read for the Macros screen and the module's own web page, which show every voice's level and filter
+cutoff live. They do not place the envelope dots: the chip's level is not linear in the patch's L values
+(L 64 reads 0.11 of L 127), so a dot placed by level could not move in time.
 
 **The look**: live marks are in the modulation colour (`mod`), so they never read as a touch (slot
 colour) or as the patch (fg). A playhead is a mod dot ringed in black with a dashed hairline to the base;
@@ -351,11 +384,13 @@ neutral grey laid under the curve that shapes it, lighter where it is louder, ne
 -72 dBFS), for 1.5 s after the last note or sound, and while Live plays if a picture follows the beat.
 Otherwise it draws only on change, as before.
 
-**What the fleet can give**: of 289 envelope time knobs in the 100 captured modules, 14 state a unit
-(milliseconds), 98 have a range in seconds (Surge's 54 among them), and the other 177 are 0..1, 0..127
-or 0..100 with no unit: those run on Pung's curve, which the amplitude envelope's sound corrects. The
-curve is the one estimate a live picture makes; a module that states its times in ms or s gets exact
-dots for nothing. One LFO rate in the fleet is in Hz.
+**What the fleet can give**: 35 of the 100 captured modules have envelopes Pung recognizes on their own
+pages (119 envelopes, 307 time knobs; `src/testdata/fleet-pictures.txt`). 54 of the knobs state a unit
+(milliseconds, or a key ending in `_ms`), 95 have a range in seconds (Surge's among them), and 158 are
+0..1, 0..127 or 0..100 with no unit. Of those, Dexed's 24 operator rates get msfa's times from its
+overlay (and Mini-JV's, on its overlay's pages); the rest run on Pung's curve, which the amplitude
+envelope's sound corrects. The curve is the one estimate a live picture makes; a module that states its
+times in ms or s gets exact dots for nothing. One LFO rate in the fleet is in Hz.
 
 **Cost**, measured on the device (`frame_draw_us`, `frame_push_us` in `GET /api/surface/state`): a page
 of plain knobs draws in about 7.4 ms and hands over in about 1.8 ms; the spectrum adds about 1 ms, a

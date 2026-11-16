@@ -6,9 +6,13 @@
 //   operator with its frequency ratio and output level. Beside it the voice's
 //   name and all six operator envelopes. The encoders: algorithm, feedback
 //   and the six levels -- the FM patch's shape under the hands.
-// - Every 4-rate / 4-level envelope (pitch, and each operator's) is a page
-//   whose screen draws it with each stage over its own two knobs (rate,
-//   level), key-off before stage 4. Rates are speeds: high is short.
+// - Every 4-rate / 4-level envelope (pitch, and each operator's) is Pung's
+//   own envelope, the picture every module's envelopes get
+//   (docs/UX-GUIDELINES.md, "Envelopes"): R1 R2 R3, the plateau where a
+//   held key waits at L3, R4 from the let-go, starting from L4 as the DX7
+//   does. What only this module knows is how long its stages take:
+//   push.envelopeTimes runs msfa's own envelope (env.cc, pitchenv.cc) to
+//   tell Pung, so every note's dot runs through them as the engine does.
 // - Each operator's keyboard scaling page draws the scaling curve over a
 //   keyboard: break point, left and right depth and curve.
 //
@@ -141,59 +145,86 @@ function egKeys(prefix) { // R1 L1 R2 L2 R3 L3 R4 L4: each stage over its two kn
   for (var i = 1; i <= 4; i++) out.push(prefix + "r" + i, prefix + "l" + i);
   return out;
 }
-function dur(rate) { return 0.04 + Math.pow(1 - rate, 1.6); } // a rate is a speed
 
-function stageX(i) { return i * 240 - (i ? 4 : 0); } // stage i over columns 2i, 2i+1
-
-// x0..x1 across, top..base up; prefix "op3_eg_" or "pitch_eg_"; small: one
-// compact line (the takeover), else stages over their knobs
-function dxEnv(g, v, prefix, x0, x1, top, base, small, centered) {
-  var R = [], L = [], i, t = v.$touched || "", ok = true;
-  for (i = 1; i <= 4; i++) {
-    if (!known(v, prefix + "r" + i)) ok = false;
-    R.push(fr(v, prefix + "r" + i, 0.7));
-    L.push(fr(v, prefix + "l" + i, i < 3 ? 1 : i === 3 ? 0.7 : 0));
+// ---- the DX's own times: msfa's envelope, run here ----------------------------------
+// env.cc (built with ACCURATE_ENVELOPE, as the module is): a level is a
+// log-amplitude in 1/65536ths; a falling stage steps down by inc per 64
+// samples, a rising one approaches 17<<24 exponentially from 1716<<16; a
+// stage that does not move (or an attack to level 0) waits a fixed time.
+var LEVELLUT = [0, 5, 9, 13, 17, 20, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 42, 43, 45, 46];
+var STATICS = [1764000, 1764000, 1411200, 1411200, 1190700, 1014300, 992250, 882000, 705600, 705600, 584325, 507150,
+  502740, 441000, 418950, 352800, 308700, 286650, 253575, 220500, 220500, 176400, 145530, 145530, 125685, 110250,
+  110250, 88200, 88200, 74970, 61740, 61740, 55125, 48510, 44100, 37485, 31311, 30870, 27562, 27562, 22050, 18522,
+  17640, 15435, 14112, 13230, 11025, 9261, 9261, 7717, 6615, 6615, 5512, 5512, 4410, 3969, 3969, 3439, 2866, 2690,
+  2249, 1984, 1896, 1808, 1411, 1367, 1234, 1146, 926, 837, 837, 705, 573, 573, 529, 441, 441];
+var SR = 44100, BLOCK = 64, U16 = 65536, U24 = 16777216, CEIL = 17 * U24;
+function scaleOut(l) { l = Math.max(0, Math.min(99, Math.round(l))); return l >= 20 ? 28 + l : LEVELLUT[l]; }
+function ampLevel(l, outlevel) { return Math.max(16, (scaleOut(l) >> 1) * 64 + outlevel - 4256) * U16; }
+function ampInc(rate) { var q = Math.min(63, (Math.round(rate) * 41) >> 6); return (4 + (q & 3)) * Math.pow(2, 2 + 6 + (q >> 2)); }
+// seconds for one amp stage, from level `from` (internal units) to level l at rate
+function ampStage(from, l, rate, outlevel, first) {
+  var to = ampLevel(l, outlevel), r = Math.max(0, Math.min(99, Math.round(rate)));
+  if (to === from || (first && Math.round(l) === 0)) {
+    var c = r < 77 ? STATICS[r] : 20 * (99 - r);
+    if (r < 77 && first && Math.round(l) === 0) c /= 20;
+    return { secs: c / SR, level: from };
   }
-  var y = function (l) { return base - l * (base - top); };
-  var pts = [], hx = [];
-  if (small) {
-    var d = [dur(R[0]), dur(R[1]), dur(R[2]), 0.6, dur(R[3])], tot = d[0] + d[1] + d[2] + d[3] + d[4], x = x0;
-    pts.push([x, y(L[3])]);
-    for (i = 0; i < 3; i++) { x += d[i] / tot * (x1 - x0); pts.push([x, y(L[i])]); }
-    x += d[3] / tot * (x1 - x0); pts.push([x, y(L[2])]);
-    pts.push([x1, y(L[3])]);
-    g.area(pts, base, ok ? BAR : "#24262b");
-    g.poly(pts, 1.5, ok ? "fg" : "dim");
-    return;
+  var inc = ampInc(r), blocks = 0, lv = from;
+  if (to < lv) return { secs: Math.ceil((lv - to) / inc) * BLOCK / SR, level: to };
+  lv = Math.max(lv, 1716 * U16);
+  while (lv < to) { // the step is constant between the multiplier's steps: whole runs at once
+    var m = Math.floor((CEIL - lv) / U24);
+    if (m <= 0) break;
+    var edge = Math.min(to, CEIL - m * U24 + 1), n = Math.max(1, Math.ceil((edge - lv) / (m * inc)));
+    lv += n * m * inc;
+    blocks += n;
   }
-  var maxd = dur(0);
-  pts.push([stageX(0), y(L[3])]);
-  for (i = 0; i < 4; i++) {
-    var rx = stageX(i), rw = (i < 3 ? stageX(i + 1) : x1) - rx;
-    var ex = rx + Math.max(6, dur(R[i]) / maxd * (rw - 16));
-    pts.push([ex, y(L[i])]);
-    hx.push([ex, y(L[i])]);
-    if (i < 3) pts.push([rx + rw, y(L[i])]);
-  }
-  if (centered) g.line(x0, y(0.5), x1, y(0.5), 1, "line");
-  else g.area(pts, base, ok ? BAR : "#24262b");
-  g.line(x0, base, x1, base, 1, "line");
-  g.poly(pts, 2, ok ? "fg" : "dim");
-  for (i = 0; i < 4; i++) {
-    var hot = t === prefix + "r" + (i + 1) || t === prefix + "l" + (i + 1);
-    var a = pts[i === 0 ? 0 : 2 * i], b = pts[2 * i + 1];
-    if (hot) g.line(a[0], a[1], b[0], b[1], 3.5, ACCENT);
-    g.dot(b[0], b[1], hot ? 5 : 3, hot ? ACCENT : ok ? "fg" : "dim");
-    g.text(stageX(i) + 8, top - 10, String(i + 1), hot ? ACCENT : "dim", -1);
-  }
-  var ko = stageX(3);
-  for (var yy = top - 18; yy < base; yy += 6) g.line(ko, yy, ko, yy + 3, 1, "dim");
-  g.text(x1 - 6, top - 10, "KEY OFF", "dim", 1);
+  return { secs: blocks * BLOCK / SR, level: to };
+}
+// pitchenv.cc: linear, a rate table, 21.3 s at the slowest unit
+var PRATE = [1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 16, 16, 17, 18, 18,
+  19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 33, 34, 36, 37, 38, 39, 41, 42, 44, 46, 47, 49, 51, 53, 54, 56, 58,
+  60, 62, 64, 66, 68, 70, 72, 74, 76, 79, 82, 85, 88, 91, 94, 98, 102, 106, 110, 115, 120, 125, 130, 135, 141, 147, 153,
+  159, 165, 171, 178, 185, 193, 202, 211, 232, 243, 254, 255];
+var PTAB = [-128, -116, -104, -95, -85, -76, -68, -61, -56, -52, -49, -46, -43, -41, -39, -37, -35, -33, -32, -31, -30,
+  -29, -28, -27, -26, -25, -24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5,
+  -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+  29, 30, 31, 32, 33, 34, 35, 38, 40, 43, 46, 49, 53, 58, 65, 73, 82, 92, 103, 115, 127];
+var PUNIT = Math.floor(BLOCK * U24 / (21.3 * SR) + 0.5);
+function pitchStage(fromL, l, rate) {
+  var a = PTAB[Math.max(0, Math.min(99, Math.round(fromL)))] * 524288, b = PTAB[Math.max(0, Math.min(99, Math.round(l)))] * 524288;
+  var inc = PRATE[Math.max(0, Math.min(99, Math.round(rate)))] * PUNIT;
+  return Math.ceil(Math.abs(b - a) / inc) * BLOCK / SR;
 }
 
-function egScreen(prefix, centered) {
-  return function (g, v) { dxEnv(g, v, prefix, 0, g.w, 24, 80, false, centered); };
-}
+var timesMemo = {};
+push.envelopeTimes(function (env) {
+  var st = env.stages, R = [], L = [], seg = [], i;
+  for (i = 0; i < st.length; i++) {
+    var m = /^rate([1-4])$/.exec(st[i].role);
+    if (m) { seg[+m[1] - 1] = i; R[+m[1] - 1] = st[i].raw; L[+m[1] - 1] = st[i].level; }
+  }
+  if (R.length !== 4 || R.concat(L).some(function (x) { return x === null || x === undefined; })) return null;
+  var key = st[seg[0]].key, op = /^op([1-6])_eg_/.exec(key), outlevel = 127 * 32;
+  if (op) { // the operator's output level sets where its levels sit, and so its attack's pace
+    var ol = env.value("op" + op[1] + "_level");
+    if (ol !== null) outlevel = Math.min(127, scaleOut(ol)) * 32;
+  }
+  var memo = (op ? "a" + outlevel : "p") + ":" + R.join(",") + ":" + L.join(",");
+  if (timesMemo[memo]) return timesMemo[memo];
+  var secs = st.map(function () { return null; });
+  if (op) {
+    var lv = 0;
+    for (i = 0; i < 3; i++) { var r = ampStage(lv, L[i], R[i], outlevel, i === 0); secs[seg[i]] = r.secs; lv = r.level; }
+    secs[seg[3]] = ampStage(ampLevel(L[2], outlevel), L[3], R[3], outlevel, false).secs;
+  } else {
+    var from = L[3];
+    for (i = 0; i < 3; i++) { secs[seg[i]] = pitchStage(from, L[i], R[i]); from = L[i]; }
+    secs[seg[3]] = pitchStage(L[2], L[3], R[3]);
+  }
+  timesMemo[memo] = secs;
+  return secs;
+});
 
 // ---- keyboard level scaling --------------------------------------------------------------
 
@@ -273,7 +304,7 @@ push.compartment({
     for (var i = 0; i < 6; i++) {
       var ex = x + (i % 3) * 136, ey = 52 + Math.floor(i / 3) * 26, hot = (v.$touched || "").indexOf("op" + (i + 1) + "_") === 0;
       g.text(ex, ey + 16, String(i + 1), hot ? ACCENT : "dim", -1);
-      dxEnv(g, v, op(i + 1, "eg_"), ex + 12, ex + 128, ey + 2, ey + 22, true);
+      g.envelope(ex + 8, ey - 4, 124, 30, { keys: egKeys(op(i + 1, "eg_")) });
     }
     knobRow(g, v);
   }
@@ -291,14 +322,14 @@ push.compartment({
 });
 push.compartment({
   id: "pitch_eg", label: "Pitch EG",
-  pages: [{ label: "Pitch EG", keys: egKeys("pitch_eg_"), screen: egScreen("pitch_eg_", true) }]
+  pages: [{ label: "Pitch EG", keys: egKeys("pitch_eg_") }] // Pung's own envelope picture
 });
 for (var n = 1; n <= 6; n++) {
   push.compartment({
     id: "op" + n, label: "Operator " + n,
     pages: [
       { label: "Op " + n, keys: ["level", "coarse", "fine", "detune", "osc_mode", "vel_sens", "amp_mod", "rate_scale"].map(function (s) { return op(n, s); }) },
-      { label: "Op " + n + " EG", keys: egKeys(op(n, "eg_")), screen: egScreen(op(n, "eg_"), false) },
+      { label: "Op " + n + " EG", keys: egKeys(op(n, "eg_")) }, // Pung's own envelope picture
       { label: "Op " + n + " Key Scale", keys: ["key_bp", "key_ld", "key_rd", "key_lc", "key_rc"].map(function (s) { return op(n, s); }), screen: kbdScreen(n) }
     ]
   });

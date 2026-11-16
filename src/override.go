@@ -47,6 +47,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -122,10 +123,13 @@ type overrideSet struct {
 	overruns     int              // frames in a row over ovBudget
 	lastDrawUS   int64            // the last Push draw, in microseconds (/api/surface/state)
 	off          bool             // the user chose the native UI
+	envTimes     goja.Callable    // push.envelopeTimes: the module's engine's stage times (nil: from the knobs)
+	mu           sync.Mutex       // the VM is one goroutine's at a time: the Push's draw, a web page's
 }
 
 type overrides struct {
-	dirs []string // overlay roots, after the module's own dir
+	mu   sync.Mutex // the Push's view and the web page both ask
+	dirs []string   // overlay roots, after the module's own dir
 	sets map[string]*overrideSet
 }
 
@@ -148,6 +152,11 @@ func (o *overrides) find(m ModuleInfo) string {
 
 // get loads (once) the overrides for a module. nil: the module has none.
 func (o *overrides) get(modulesDir, id string) *overrideSet {
+	if o == nil {
+		return nil
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	if s, ok := o.sets[id]; ok {
 		return s
 	}
@@ -241,6 +250,20 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		set.compartments = append(set.compartments, c)
 		return goja.Undefined()
 	})
+	// push.envelopeTimes(fn): what the module's engine makes of its stage
+	// knobs, in seconds. fn(env) gets {stages: [{role, label, key, raw,
+	// level_key, level, plateau}], rates, value(key)} for one envelope Pung has
+	// recognized and returns each segment's seconds (null: Pung's own
+	// estimate). It runs when the envelope is drawn or watched, never on
+	// the live clock's tick.
+	push.Set("envelopeTimes", func(call goja.FunctionCall) goja.Value {
+		fn, ok := goja.AssertFunction(call.Argument(0))
+		if !ok {
+			panic(vm.NewTypeError("push.envelopeTimes needs a function"))
+		}
+		set.envTimes = fn
+		return goja.Undefined()
+	})
 	vm.Set("push", push)
 	timer := time.AfterFunc(200*time.Millisecond, func() { vm.Interrupt("push_ui.js took too long to load") })
 	_, err = vm.RunScript(path, string(src))
@@ -313,6 +336,8 @@ type ovValue struct {
 // render draws one widget into its own image (so it cannot draw outside its
 // frame) and copies that into the screen. false: it failed and is now off.
 func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovValue, touched string, sc color.NRGBA) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	w, h := p.span*colW-8, ovHeight
 	if p.full {
 		w, h = scrW, scrH
@@ -353,61 +378,41 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		}
 		return goja.Undefined()
 	})
-	// Pung's envelope (visuals.go), the one the default view and the web
-	// page draw: g.envelope(x, y, w, h, {attack, decay, hold, sustain,
-	// slope, release, labels}). A stage is a KEY (its value and its touch
-	// are read for you) or a number 0..1; a stage left out is not drawn.
+	// Pung's envelope (envmodel.go, visuals.go): the one picture every
+	// envelope gets, on the default view, a module's screen and the web
+	// page. g.envelope(x, y, w, h, {keys: [...], labels}) finds the envelope
+	// among the keys by Pung's own rules; or name the stages: {attack,
+	// decay, hold, sustain, slope, release, delay} or {time1.., rate1..,
+	// level1..}, each a KEY (its value and touch read for you) or a number
+	// 0..1. It runs live (every note a dot on its clock) wherever the sound
+	// is watched. Returns whether it drew one.
 	g.Set("envelope", func(call goja.FunctionCall) goja.Value {
 		x, y := call.Argument(0).ToFloat(), call.Argument(1).ToFloat()
 		ww, hh := call.Argument(2).ToFloat(), call.Argument(3).ToFloat()
-		e := envShape{Known: true}
-		if o, ok := call.Argument(4).Export().(map[string]any); ok {
-			stage := func(role string) (float64, bool) {
-				switch v := o[role].(type) {
-				case string:
-					ov, ok := vals[v]
-					if !ok || !ov.Known {
-						e.Known = false
-					}
-					if v == touched {
-						e.Touched = role
-					}
-					return ov.Frac, true
-				case int64:
-					return float64(v), true
-				case float64:
-					return v, true
-				}
-				return 0, false
-			}
-			e.A, _ = stage("attack")
-			e.D, e.HasD = stage("decay")
-			e.H, e.HasH = stage("hold")
-			e.S, e.HasS = stage("sustain")
-			e.Slope, e.HasSlope = stage("slope")
-			e.R, e.HasR = stage("release")
-			e.Labels, _ = o["labels"].(bool)
-			if t, ok := o["touched"].(string); ok && t != "" {
-				e.Touched = t
+		o, _ := call.Argument(4).Export().(map[string]any)
+		keys, vv, labels := envSpecKeys(o, vals)
+		if len(keys) == 0 {
+			return vm.ToValue(false)
+		}
+		if t, ok := o["touched"].(string); ok && t != "" {
+			touched = t
+		}
+		e := envShapeOf(keys, vv, touched)
+		e.Labels = labels
+		real := true // every stage a key: the envelope can be watched
+		for _, k := range keys {
+			if strings.HasPrefix(k, "#") {
+				real = false
 			}
 		}
-		// stages given as keys make a recognized envelope: it runs live, as
-		// the default view's does (envclock.go)
-		if o, ok := call.Argument(4).Export().(map[string]any); ok && p.live != nil && e.Known {
-			keys := map[string]string{}
-			for _, role := range []string{"attack", "decay", "hold", "sustain", "slope", "release"} {
-				if k, ok := o[role].(string); ok {
-					keys[role] = k
-				}
-			}
-			if keys["attack"] != "" {
-				key := p.liveKey + "/env/" + keys["attack"]
-				p.live.want(key, picGroup{kind: "env", keys: keys, fx: p.fx}, vals)
-				e.Live = p.liveOut.Envs[key]
-			}
+		if p.live != nil && e.Known && real {
+			ks := envKeysSorted(keys)
+			key := p.liveKey + "/env/" + ks[0]
+			p.live.want(key, picGroup{kind: "env", keys: keys, fx: p.fx, secs: s.envSecsLocked(keys, vv, nil)}, vv)
+			e.Live = p.liveOut.Envs[key]
 		}
 		drawEnvelope(img, image.Rect(int(x), int(y), int(x+ww), int(y+hh)), e, sc)
-		return goja.Undefined()
+		return vm.ToValue(true)
 	})
 	// Pung's filter, LFO and mix (visuals_shapes.go), as the default view
 	// and the web page draw them. A part is a KEY (value and touch read for
@@ -661,6 +666,144 @@ func ovPoints(vm *goja.Runtime, v goja.Value) [][2]float64 {
 	for _, p := range pairs {
 		if len(p) >= 2 {
 			out = append(out, [2]float64{p[0], p[1]})
+		}
+	}
+	return out
+}
+
+// envSpecKeys: the envelope a g.envelope spec names: {keys: [...]} found
+// by Pung's rules, or its stages named one by one (a number for a stage is
+// a value of its own, under a key "#role").
+func envSpecKeys(o map[string]any, vals map[string]ovValue) (map[string]string, map[string]ovValue, bool) {
+	labels, _ := o["labels"].(bool)
+	if list, ok := o["keys"].([]any); ok {
+		var ks []string
+		for _, k := range list {
+			if s, ok := k.(string); ok {
+				ks = append(ks, s)
+			}
+		}
+		if gs := envelopeGroups(ks); len(gs) > 0 {
+			return gs[0].keys, vals, labels
+		}
+		return nil, vals, labels
+	}
+	keys := map[string]string{}
+	vv := vals
+	copied := false
+	for role, x := range o {
+		if role == "labels" || role == "touched" || role == "keys" {
+			continue
+		}
+		if _, ok := envWordRole[role]; !ok && role != "slope" && !envNumberedRole(role) {
+			continue
+		}
+		switch v := x.(type) {
+		case string:
+			keys[role] = v
+		case int64, float64:
+			if !copied {
+				vv = make(map[string]ovValue, len(vals)+4)
+				for k, x := range vals {
+					vv[k] = x
+				}
+				copied = true
+			}
+			f := 0.0
+			if n, ok := v.(int64); ok {
+				f = float64(n)
+			} else {
+				f = v.(float64)
+			}
+			keys[role] = "#" + role
+			vv["#"+role] = ovValue{Frac: f, Known: true}
+		}
+	}
+	if _, a := keys["attack"]; !a && len(keys) > 0 {
+		if n, _ := envStageCount(keys); n == 0 {
+			return nil, vals, labels
+		}
+	}
+	return keys, vv, labels
+}
+
+// envSecs: each segment's seconds as the module's engine makes them
+// (push.envelopeTimes), for an envelope of these keys; nil: the module
+// says nothing.
+// read, when given, answers for a knob that is not among vals (env.value:
+// Dexed's attack depends on its operator's output level).
+func (s *overrideSet) envSecs(keys map[string]string, vals map[string]ovValue, read func(string) (ovValue, bool)) []float64 {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.envSecsLocked(keys, vals, read)
+}
+
+func (s *overrideSet) envSecsLocked(keys map[string]string, vals map[string]ovValue, read func(string) (ovValue, bool)) []float64 {
+	if s == nil || s.envTimes == nil || s.failed != "" || s.off {
+		return nil
+	}
+	e := envShapeOf(keys, vals, "")
+	if !e.Known {
+		return nil
+	}
+	vm := s.vm
+	raw := func(k string) goja.Value {
+		v, ok := vals[k]
+		if (!ok || !v.Known) && read != nil && k != "" {
+			v, ok = read(k)
+		}
+		if ok && v.Known {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(v.Value), 64); err == nil {
+				return vm.ToValue(f)
+			}
+		}
+		return goja.Null()
+	}
+	stages := vm.NewArray()
+	for i, sg := range e.Segs {
+		o := vm.NewObject()
+		o.Set("role", sg.Role)
+		o.Set("label", sg.Label)
+		o.Set("plateau", sg.Plateau)
+		o.Set("key", sg.TimeKey)
+		o.Set("raw", raw(sg.TimeKey))
+		lk := ""
+		if len(sg.Keys) > 1 {
+			lk = sg.Keys[1]
+		}
+		o.Set("level_key", lk)
+		o.Set("level", raw(lk))
+		stages.Set(strconv.Itoa(i), o)
+	}
+	env := vm.NewObject()
+	env.Set("stages", stages)
+	env.Set("rates", e.Rates)
+	env.Set("value", func(k string) goja.Value { return raw(k) }) // any knob's raw value (null: unread)
+	timer := time.AfterFunc(ovHardBudget, func() { vm.Interrupt("envelopeTimes took longer than 40 ms") })
+	res, err := s.envTimes(goja.Undefined(), env)
+	timer.Stop()
+	vm.ClearInterrupt()
+	if err != nil {
+		log.Printf("override %s: envelopeTimes: %s (Pung's own times)", s.source, firstLine(err.Error()))
+		s.envTimes = nil
+		return nil
+	}
+	var out []float64
+	if arr, ok := res.Export().([]any); ok {
+		out = make([]float64, len(e.Segs))
+		for i := range out {
+			out[i] = -1
+			if i < len(arr) {
+				switch n := arr[i].(type) {
+				case int64:
+					out[i] = float64(n)
+				case float64:
+					out[i] = n
+				}
+			}
 		}
 	}
 	return out

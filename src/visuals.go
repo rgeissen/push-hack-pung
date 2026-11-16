@@ -11,97 +11,25 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"regexp"
-	"strings"
 )
 
-// ---- envelopes --------------------------------------------------------------------
 
-// envGroup: one envelope among a page's keys, and the columns it covers.
-type envGroup struct {
-	prefix     string
-	keys       map[string]string // role (attack, decay, hold, sustain, slope, release) -> key
-	start, end int               // columns [start, end)
-}
-
-var envRole = regexp.MustCompile(`^(.*?)_?(attack|decay|hold|sustain|release)(?:_(time|level|rate))?$`)
-
-// envelopeGroups finds the envelopes on a page: keys whose names end in
-// attack, decay, (hold,) sustain, release, sharing what comes before, in
-// adjacent columns, in any order (the JV-880 lists release before
-// sustain). A group needs an attack and a decay or release. "sustain_time"
-// beside a sustain is the Virus's sustain SLOPE.
-func envelopeGroups(keys []string) []envGroup {
-	type hit struct {
-		role string
-		col  int
-	}
-	by := map[string][]hit{}
-	var order []string
-	for col, k := range keys {
-		m := envRole.FindStringSubmatch(strings.ToLower(k))
-		if m == nil {
-			continue
-		}
-		role := m[2]
-		if role == "sustain" && m[3] == "time" {
-			role = "slope"
-		}
-		p := strings.TrimSuffix(m[1], "_")
-		if _, ok := by[p]; !ok {
-			order = append(order, p)
-		}
-		by[p] = append(by[p], hit{role, col})
-	}
-	var out []envGroup
-	for _, p := range order {
-		g := envGroup{prefix: p, keys: map[string]string{}, start: 99, end: -1}
-		for _, h := range by[p] {
-			if _, dup := g.keys[h.role]; dup {
-				continue
-			}
-			g.keys[h.role] = keys[h.col]
-			g.start, g.end = min(g.start, h.col), max(g.end, h.col+1)
-		}
-		_, a := g.keys["attack"]
-		_, d := g.keys["decay"]
-		_, r := g.keys["release"]
-		// attack+decay is an envelope (a pitch envelope often is just that);
-		// attack+release alone is a compressor's or a gate's timing, and a
-		// drawn envelope would say something false about it
-		if !a || (!d && !(r && len(g.keys) >= 3)) || g.end-g.start != len(g.keys) {
-			continue // not an envelope, or other knobs between its parts
-		}
-		out = append(out, g)
-	}
-	return out
-}
-
-// envShape is an envelope to draw: each part 0..1 as its knob shows it.
-type envShape struct {
-	A, D, H, S, Slope, R       float64
-	HasD, HasH, HasS, HasSlope bool
-	HasR, Known                bool
-	Touched                    string   // the role under a finger, or ""
-	Labels                     bool     // the stage letters under it
-	Live                       *envLive // what the sound is doing in it (livefx.go); nil: a still picture
-}
+// ---- envelopes (envmodel.go says what one is) ----------------------------------------
 
 // mixColor: c faded toward black, for fills (the panel has no alpha).
 func mixColor(c color.NRGBA, t float64) color.NRGBA {
 	return color.NRGBA{uint8(float64(c.R) * t), uint8(float64(c.G) * t), uint8(float64(c.B) * t), 255}
 }
 
+
 // drawEnvelope draws an envelope in the rect: the shape filled in the
-// slot's color, faded; the stages as a line, the one being turned thick and
-// in the slot's color; handles where stages meet; the sustain level as a
-// guide; the stage letters under it. Unknown values draw a neutral shape,
-// dimmed. Times are drawn in proportion to their knobs, never to scale:
-// the shape is what the hand turns.
+// slot's color, faded; its segments as a line, the touched one thick and in
+// the slot's color; handles where segments meet; the plateau's level as a
+// guide; and, with Labels, the stage bar under it. Unknown values draw a
+// neutral shape, dimmed. With Live, every note is a dot on its own clock
+// (envclock.go). Widths are the knobs' travel, never a time scale: the
+// shape is what the hand turns, the dot is what the sound does.
 func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGBA) {
-	if !e.Known {
-		e = envShape{A: 0.25, D: 0.35, S: 0.6, R: 0.35, HasD: true, HasS: true, HasR: true, Labels: e.Labels}
-	}
 	fg, accent := cFg, sc
 	if !e.Known {
 		fg, accent = cDim, cDim
@@ -111,148 +39,70 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 	if e.Labels {
 		base = float64(r.Max.Y - 20)
 	}
-	span := x1 - x0
-	seg := func(f float64) float64 { return span * (0.05 + 0.25*f) }
-	wa := seg(e.A)
-	wd, wh, wr := 0.0, 0.0, 0.0
-	if e.HasD {
-		wd = seg(e.D)
+	if len(e.Segs) == 0 {
+		return
 	}
-	if e.HasH {
-		wh = seg(e.H) * 0.6
+	pts, _ := envLayout(e, x0, x1, top, base)
+	floor := base // where the fill falls to: the middle of a signed envelope
+	if e.Signed {
+		floor = (top + base) / 2
 	}
-	if e.HasR {
-		wr = seg(e.R)
-	}
-	ws := 0.0
-	if e.HasS {
-		ws = max(span*0.16, span-wa-wd-wh-wr)
-	}
-	// without a sustain to absorb the rest, the width is what the stages
-	// take at their longest: short stages draw short, not stretched
-	k := 1.0
-	if !e.HasS {
-		full := 1.0
-		for _, has := range []bool{e.HasD, e.HasR} {
-			if has {
-				full++
-			}
-		}
-		if e.HasH {
-			full += 0.6
-		}
-		k = span / (seg(1) * full)
-	} else if used := wa + wd + wh + ws + wr; used > span {
-		k = span / used
-	}
-	wa, wd, wh, ws, wr = wa*k, wd*k, wh*k, ws*k, wr*k
-	lvl := func(f float64) float64 { return base - f*(base-top) }
-	sus := 0.0
-	if e.HasS {
-		sus = e.S
-	}
-	endSus := sus
-	if e.HasSlope { // the Virus: below the middle the sustain falls while held, above it rises
-		endSus = max(0, min(1, sus+(e.Slope-0.5)*1.6))
-	}
-	type pt struct {
-		x, y float64
-		role string // the stage that ENDS here
-	}
-	pts := []pt{{x0, base, ""}}
-	x := x0 + wa
-	pts = append(pts, pt{x, top, "attack"})
-	if e.HasH {
-		x += wh
-		pts = append(pts, pt{x, top, "hold"})
-	}
-	if e.HasD {
-		x += wd
-		y := base // an AD envelope decays to nothing
-		if e.HasS {
-			y = lvl(sus)
-		}
-		pts = append(pts, pt{x, y, "decay"})
-	}
-	if e.HasS {
-		x += ws
-		role := "sustain"
-		if e.HasSlope {
-			role = "slope"
-		}
-		pts = append(pts, pt{x, lvl(endSus), role})
-	}
-	if e.HasR {
-		x += wr
-		pts = append(pts, pt{x, base, "release"})
-	}
-
-	// the fill, column by column under the line
+	// the fill, column by column between the line and its floor
 	fill := mixColor(accent, 0.28)
 	for i := 1; i < len(pts); i++ {
 		a, b := pts[i-1], pts[i]
-		for px := int(a.x); px < int(b.x); px++ {
-			t := (float64(px) - a.x) / max(1, b.x-a.x)
-			y := a.y + (b.y-a.y)*t
-			rect(img, px, int(y), 1, int(base-y)+1, fill)
+		for px := int(a.X); px < int(b.X); px++ {
+			t := (float64(px) - a.X) / max(1, b.X-a.X)
+			y := a.Y + (b.Y-a.Y)*t
+			lo, hi := math.Min(y, floor), math.Max(y, floor)
+			rect(img, px, int(lo), 1, int(hi-lo)+1, fill)
 		}
 	}
-	// the baseline and the sustain level's guide
 	aaLine(img, x0, base, x1, base, 1, cLine)
-	if e.HasS && e.HasD {
-		sy := lvl(sus)
-		for gx := x0; gx < pts[len(pts)-2].x; gx += 6 {
+	if e.Signed {
+		aaLine(img, x0, floor, x1, floor, 1, cLine)
+	}
+	// the plateau's level, as a guide from the start
+	pl := e.plateau()
+	if pl > 0 {
+		sy := pts[pl].Y
+		for gx := x0; gx < pts[pl].X; gx += 6 {
 			aaLine(img, gx, sy, min(gx+3, x1), sy, 1, mixColor(fg, 0.45))
 		}
 	}
-	// the stages, the touched one thick and in the slot's color
-	hot := func(role string) bool {
-		return e.Touched == role || (role == "slope" && e.Touched == "sustain")
-	}
+	// the segments, the touched one thick and in the slot's color
 	for i := 1; i < len(pts); i++ {
-		a, b := pts[i-1], pts[i]
 		w, c := 2.2, fg
-		if hot(b.role) {
+		if e.Hot == i-1 {
 			w, c = 3.6, accent
 		}
-		aaLine(img, a.x, a.y, b.x, b.y, w, c)
+		aaLine(img, pts[i-1].X, pts[i-1].Y, pts[i].X, pts[i].Y, w, c)
 	}
-	// handles where stages meet; sustain's handle sits on its level
+	// handles where segments meet
 	for i := 1; i < len(pts)-1; i++ {
-		p, rad, c := pts[i], 3.0, fg
-		if hot(p.role) || (p.role == "decay" && e.Touched == "sustain") {
+		rad, c := 3.0, fg
+		if e.Corner == i {
 			rad, c = 4.5, accent
 		}
-		disc(img, p.x, p.y, rad, c)
+		disc(img, pts[i].X, pts[i].Y, rad, c)
 	}
 	// the sound in it, as it plays (envclock.go): each note a dot running
 	// along the lines on its clock, a short trail behind it; the newest
-	// note's stage lit up to its dot, with a hairline down to the base
+	// note's segment lit up to its dot, with a hairline down to the base
 	lv := e.Live
-	if lv != nil && !e.Known {
+	if !e.Known || e.Still {
 		lv = nil
 	}
-	stageSeg := func(stage string) int {
-		if stage == "sustain" && e.HasSlope {
-			stage = "slope"
-		}
-		for i := 1; i < len(pts); i++ {
-			if pts[i].role == stage {
-				return i
-			}
-		}
-		return -1
-	}
 	at := func(p envPos) (float64, float64, int) {
-		i := stageSeg(p.Stage)
-		if i < 0 {
+		i := p.Seg
+		if i < 0 || i+1 >= len(pts) {
 			return 0, 0, -1
 		}
-		a, b := pts[i-1], pts[i]
+		a, b := pts[i], pts[i+1]
 		t := math.Max(0, math.Min(1, p.Prog))
-		return a.x + (b.x-a.x)*t, a.y + (b.y-a.y)*t, i
+		return a.X + (b.X-a.X)*t, a.Y + (b.Y-a.Y)*t, i
 	}
-	lit := map[string]bool{}
+	lit := map[int]bool{}
 	if lv != nil {
 		if lv.Retrig > 0 { // a note began: the envelope starts again
 			aaLine(img, x0, top, x0, base, 2.4, mixColor(cMod, lv.Retrig))
@@ -267,15 +117,17 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 			if cur.Done {
 				continue
 			}
-			lit[cur.Stage] = true
+			lit[cur.Seg] = true
 			for k := trailLen; k >= 1; k-- {
 				back := dt - float64(k)*envTrailDT
 				if v.Age+back < 0 {
 					continue
 				}
-				if x, y, i := at(envAt(v, back, e)); i > 0 {
-					f := 1 - float64(k)/float64(trailLen+1)
-					disc(img, x, y, 1.2+1.6*f, mixColor(cMod, 0.1+0.4*f))
+				if q := envAt(v, back, e); !q.Done {
+					if x, y, i := at(q); i >= 0 {
+						f := 1 - float64(k)/float64(trailLen+1)
+						disc(img, x, y, 1.2+1.6*f, mixColor(cMod, 0.1+0.4*f))
+					}
 				}
 			}
 			x, y, i := at(cur)
@@ -284,7 +136,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 			}
 			rad := 3.2 + 1.4*v.Vel
 			if n == 0 {
-				aaLine(img, pts[i-1].x, pts[i-1].y, x, y, 3.4, cMod) // the stage so far
+				aaLine(img, pts[i].X, pts[i].Y, x, y, 3.4, cMod) // the segment so far
 				for gy := y + 7; gy < base-2; gy += 5 {
 					aaLine(img, x, gy, x, math.Min(gy+2, base-2), 1, mixColor(cMod, 0.6))
 				}
@@ -294,76 +146,56 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 			disc(img, x, y, rad, cMod)
 		}
 	}
-	// the stages, as a bar under the shape: each stage its own segment, as
-	// wide as it is drawn; lit while a note's dot is in it, outlined in the
-	// slot's color while its knob is touched
+	// the stage bar: one segment per drawn segment, exactly as wide; lit
+	// while a note's dot is in it, outlined in the slot's color while one of
+	// its knobs is touched
 	if e.Labels {
-		letter := map[string]string{"attack": "A", "hold": "H", "decay": "D", "sustain": "S", "slope": "S", "release": "R"}
 		by, bh := int(base)+4, 13
 		for i := 1; i < len(pts); i++ {
-			a, b := pts[i-1], pts[i]
-			sx, ex := int(math.Round(a.x))+1, int(math.Round(b.x))-1
+			sx, ex := int(math.Round(pts[i-1].X))+1, int(math.Round(pts[i].X))-1
 			if i == 1 {
-				sx = int(math.Round(a.x))
+				sx = int(math.Round(pts[i-1].X))
 			}
 			if i == len(pts)-1 {
-				ex = int(math.Round(b.x))
+				ex = int(math.Round(pts[i].X))
 			}
 			w := ex - sx
 			if w < 2 {
 				continue
 			}
-			on := lit[b.role] || (b.role == "slope" && lit["sustain"])
+			s := e.Segs[i-1]
 			bg, ink := cStageOff, cDim
 			if !e.Known {
 				bg = cFaint
 			}
-			if on {
+			if lit[i-1] {
 				bg, ink = cMod, cBlack
 			}
 			rect(img, sx, by, w, bh, bg)
-			if hot(b.role) {
+			if e.Hot == i-1 {
 				rect(img, sx, by, w, 1, accent)
 				rect(img, sx, by+bh-1, w, 1, accent)
 				rect(img, sx, by, 1, bh, accent)
 				rect(img, ex-1, by, 1, bh, accent)
-				if !on {
+				if !lit[i-1] {
 					ink = accent
 				}
 			}
-			if w >= 9 {
-				label(img, sx+w/2, by+bh-2, letter[b.role], ink, 0)
+			if txt := envBarLabel(s.Label, float64(w)); txt != "" {
+				label(img, sx+w/2, by+bh-2, txt, ink, 0)
 			}
 		}
 	}
+}
+
+// envBarLabel: a stage's name, if it fits its segment (a letter needs 9
+// pixels, two 16, three 22).
+func envBarLabel(l string, w float64) string {
+	if w >= 7+7*float64(len(l)) || (len(l) == 1 && w >= 9) {
+		return l
+	}
+	return ""
 }
 
 // cStageOff: a stage's segment while no note is in it.
 var cStageOff = color.NRGBA{40, 42, 46, 255}
-
-// envShapeOf reads a group's values (what the default view and the web
-// show) into a shape.
-func envShapeOf(g envGroup, vals map[string]ovValue, touchedKey string) envShape {
-	e := envShape{Known: true, Labels: true}
-	get := func(role string) (float64, bool) {
-		k, ok := g.keys[role]
-		if !ok {
-			return 0, false
-		}
-		v := vals[k]
-		if !v.Known {
-			e.Known = false
-		}
-		if k == touchedKey {
-			e.Touched = role
-		}
-		return v.Frac, true
-	}
-	e.A, _ = get("attack")
-	e.D, e.HasD = get("decay")
-	e.H, e.HasH = get("hold")
-	e.S, e.HasS = get("sustain")
-	e.Slope, e.HasSlope = get("slope")
-	e.R, e.HasR = get("release")
-	return e
-}

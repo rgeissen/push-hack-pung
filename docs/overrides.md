@@ -43,7 +43,7 @@ The frame starts at the widget's top left. Nothing you draw can leave it.
 | `g.dot(x, y, r, color)` | a filled circle |
 | `g.poly(points, width, color)` | a curve through `[[x, y], ...]` (or `[x0, y0, x1, y1, ...]`) in one call |
 | `g.area(points, baseY, color)` | the area between such a curve and the line `y = baseY`, filled |
-| `g.envelope(x, y, w, h, {attack, decay, hold, sustain, slope, release, labels})` | Pung's envelope, the one the default view and the web page draw. Each stage is a key (its value and touch are read for you) or a number 0..1; a stage left out is not drawn; `slope` is a Virus-style sustain slope; `labels: true` adds the stage bar (a segment per stage, lit while a note is in it) |
+| `g.envelope(x, y, w, h, {keys: [...], labels})` | Pung's envelope, the one picture every envelope gets (UX-GUIDELINES.md, *Envelopes*): Pung finds the envelope among the keys by its own rules, draws it, and runs it live (every note a dot on its clock). Or name the stages: `{attack, decay, hold, sustain, slope, release, delay}` or `{time1.., rate1.., level1..}`, each a key (its value and touch are read for you) or a number 0..1. `labels: true` adds the stage bar. Returns whether it drew one |
 | `g.filter(x, y, w, h, {cutoff, resonance, type})` | Pung's filter response. `cutoff` and `resonance` are keys or numbers 0..1; `type` is a key or a name (`"LP 24 dB"`, `"HP"`, `"BandPass"`); without a type, a lowpass |
 | `g.lfo(x, y, w, h, {shape, rate})` | Pung's LFO: `shape` a key or a name (`"Sine"`, `"Saw Up"`, `"S&H"`), `rate` a key or a number 0..1 (1 to 5 cycles) |
 | `g.mix(x, y, w, h, [levels])` | Pung's mixer: a fader per level (a key or a number 0..1), and each one's share of the whole across the top |
@@ -78,8 +78,9 @@ push.compartment({
   compartment, with the values of all its keys in `v`. The encoders' names and values stay under it, and
   the native layer still owns every encoder.
 - **A page's own `screen`** (`pages: [{label, keys, screen}]`) draws the band for that page only; the other
-  pages keep the default view. Use it where one page needs a picture (an envelope's eight stage knobs) and
-  the rest are fine as knobs.
+  pages keep the default view. Use it where one page needs a picture (a keyboard's level scaling) and
+  the rest are fine as knobs. Never for an envelope: a page of envelope knobs gets Pung's envelope by
+  itself, the same as every module's.
 - **`takeover: true`** (with `screen`): the screen draws **all of the panel** (`g.w` 960, `g.h` 160), and Pung
   draws none of its own elements, only its notices on top. The screen must then show what those elements
   showed: the encoders' names and values (`v.$knobs`, the eight keys the encoders turn now, `""` for an
@@ -96,6 +97,26 @@ push.compartment({
 
 The bar for a `screen`: substantially better than the default view, and true to the instrument (its
 structure, its vocabulary). Otherwise leave it out.
+
+## An engine's envelope times (`push.envelopeTimes`)
+
+Pung runs every note through an envelope in time (UX-GUIDELINES.md, *Envelopes*). Where a knob says its
+time (`250 ms`, a key ending in `_ms`, a range in seconds) Pung knows it; where it does not, Pung
+estimates. An overlay that knows the engine says it instead, and draws nothing for it:
+
+```js
+push.envelopeTimes(function (env) {
+  // env.stages: one per drawn segment, in order: {role, label, key, raw,
+  //   level_key, level, plateau}; raw and level are the knobs' raw values (null: unread)
+  // env.rates: the stage knobs are rates; env.value(key): any knob's raw value
+  return env.stages.map(function (s) { return s.plateau ? null : secondsFor(s); }); // null: Pung's estimate
+});
+```
+
+It is called when an envelope is drawn or watched (never on the live clock's tick) for every envelope
+Pung recognizes on the module's pages, its screens' `g.envelope` and the web page alike. Mini-JV's gives
+the JV-880's measured tables; Dexed's runs msfa's envelope on the patch (memoised: the same rates and
+levels give the same answer).
 
 **On the web page.** `GET /api/devices/<n>/compartments` lists them, with the one the Push shows now
 (`shown`); `POST /api/devices/<n>/compartment {"id": ...}` turns the Push to one. Pung's own page shows them as

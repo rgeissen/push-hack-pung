@@ -1,7 +1,7 @@
 // Braids on Push: its two envelopes drawn as envelopes.
 // An overlay shipped with Pung (Braids itself ships no push_ui.js).
-// The encoders stay where they are: each segment sits over the knob that
-// shapes it, and the native layer still writes every value.
+// Pung's own envelope, with the envelope's name on it; the encoders stay
+// where they are and the native layer still writes every value.
 
 function envelope(a, d, s, r) {
   return function (g, v) {

@@ -8,89 +8,233 @@
 (function () {
   "use strict";
   const NS = "http://www.w3.org/2000/svg";
-  const ROLE = /^(.*?)_?(attack|decay|hold|sustain|release)(?:_(time|level|rate))?$/;
-  const LETTER = { attack: "A", hold: "H", decay: "D", sustain: "S", slope: "S", release: "R" };
+  // ---- envelopes: as envmodel.go, constant for constant ------------------------------
+  //
+  // An envelope is a start level and SEGMENTS: timed stages, at most one
+  // PLATEAU (where a held key waits), then the RELEASE stages. A segment is
+  // as wide as its time knob has travelled (a rate's reversed); a note's dot
+  // crosses it in the stage's real time; the stage bar has one segment per
+  // drawn segment, exactly as wide.
 
-  // envelopeGroups: as visuals.go. keys -> [{prefix, keys:{role:key}, start, end}]
+  const ENV_WORD = /^(.*?)_?(attack|atk|att|decay|dcy|dec|hold|hld|sustain|sus|release|rel|delay)(?:_(time|level|rate|lvl|ms|sec|s))?$/;
+  const ENV_LETTER = /^(.+?)_([adhsr])(?:_(time|level|ms))?$/;
+  const ENV_NUMBERED = /^(.*?)_?(time|rate|level|lvl|t|r|l)_?([1-8])$/;
+  const ENV_PREFIX_OK = /(env|eg)[0-9]*$/;
+  const ENV_LOOPING = /^(cycle|cyc|loop)/;
+  const ENV_WORD_ROLE = {
+    attack: "attack", atk: "attack", att: "attack", a: "attack",
+    decay: "decay", dcy: "decay", dec: "decay", d: "decay",
+    hold: "hold", hld: "hold", h: "hold",
+    sustain: "sustain", sus: "sustain", s: "sustain",
+    release: "release", rel: "release", r: "release",
+    delay: "delay",
+  };
+  const NUM_KIND = { time: "time", t: "time", rate: "rate", r: "rate", level: "level", lvl: "level", l: "level" };
+
+  // envRoleOf: as envmodel.go. key -> [prefix, role] or null
+  function envRoleOf(key) {
+    const k = String(key).toLowerCase();
+    let m = ENV_NUMBERED.exec(k);
+    if (m) {
+      const p = m[1].replace(/_$/, "");
+      if (ENV_PREFIX_OK.test(p)) return [p, NUM_KIND[m[2]] + m[3]];
+    }
+    m = ENV_WORD.exec(k);
+    if (m) {
+      let role = ENV_WORD_ROLE[m[2]];
+      if (role === "sustain" && m[3] === "time") role = "slope";
+      const p = m[1].replace(/_$/, "");
+      if (role === "delay" && p === "") return null;
+      return [p, role];
+    }
+    m = ENV_LETTER.exec(k);
+    if (m) return [m[1], ENV_WORD_ROLE[m[2]]];
+    return null;
+  }
+  const isNumberedRole = (r) => /^(time|rate|level)/.test(r);
+
+  // envStageCount: as envmodel.go. -> [n, rates]
+  function envStageCount(keys) {
+    let n = 0, rates = false;
+    for (let i = 1; i <= 8; i++) {
+      const t = ("time" + i) in keys, r = ("rate" + i) in keys;
+      if (!t && !r) break;
+      if (t && r) return [0, false];
+      n = i; rates = r;
+    }
+    for (const role in keys) {
+      if (/^(time|rate)/.test(role) && parseInt(role.slice(4), 10) > n) return [0, false];
+    }
+    return [n, rates];
+  }
+
+  // envNumberedComplete: as envmodel.go: four stages or more, every level they need
+  function envNumberedComplete(keys) {
+    const [n, rates] = envStageCount(keys);
+    if (n < 4) return false;
+    for (let i = 1; i <= (rates ? n : n - 1); i++) if (!(("level" + i) in keys)) return false;
+    return true;
+  }
+
+  // envelopeGroups: as envmodel.go. keys -> [{prefix, keys:{role:key}, start, end}]
   function envelopeGroups(keys) {
     const by = new Map();
     keys.forEach((k, col) => {
-      const m = ROLE.exec(String(k).toLowerCase());
-      if (!m) return;
-      let role = m[2];
-      if (role === "sustain" && m[3] === "time") role = "slope";
-      const p = m[1].replace(/_$/, "");
-      if (!by.has(p)) by.set(p, []);
-      by.get(p).push({ role, col });
+      const hit = envRoleOf(k);
+      if (!hit) return;
+      if (!by.has(hit[0])) by.set(hit[0], []);
+      by.get(hit[0]).push({ role: hit[1], col });
     });
     const out = [];
     by.forEach((hits, prefix) => {
       const g = { prefix, keys: {}, start: 99, end: -1 };
+      let numbered = 0, named = 0;
       hits.forEach((h) => {
         if (g.keys[h.role]) return;
         g.keys[h.role] = keys[h.col];
         g.start = Math.min(g.start, h.col);
         g.end = Math.max(g.end, h.col + 1);
+        if (isNumberedRole(h.role)) numbered++; else named++;
       });
       const n = Object.keys(g.keys).length;
-      const a = !!g.keys.attack, d = !!g.keys.decay, r = !!g.keys.release;
-      // attack+release alone is a compressor's timing, not an envelope
-      if (!a || (!d && !(r && n >= 3)) || g.end - g.start !== n) return;
+      if (g.end - g.start !== n || (numbered && named)) return;
+      if (numbered) {
+        if (!envNumberedComplete(g.keys)) return;
+      } else {
+        const a = !!g.keys.attack, d = !!g.keys.decay, r = !!g.keys.release;
+        if (!a || (!d && !(r && n >= 3))) return;
+      }
       out.push(g);
     });
     return out;
   }
 
-  // layout: as drawEnvelope in visuals.go. Times in proportion to their
-  // knobs, never to scale: the shape is what the hand turns.
+  // envShapeOf: as envmodel.go. frac(key) -> 0..1 or null (unread);
+  // min(key) -> the knob's minimum
+  function envShapeOf(keys, frac, minOf, touched) {
+    const e = { Start: 0, Segs: [], Signed: false, Rates: false, Known: true, Still: false, Hot: -1, Corner: -1 };
+    const get = (role, def) => {
+      const k = keys[role];
+      if (!k) return [def, "", false];
+      const f = frac(k);
+      if (f === null || f === undefined) { e.Known = false; return [def, k, true]; }
+      return [Math.max(0, Math.min(1, f)), k, true];
+    };
+    Object.values(keys).forEach((k) => {
+      const hit = envRoleOf(k);
+      if (hit && ENV_LOOPING.test(hit[0])) e.Still = true;
+    });
+    const [n, rates] = envStageCount(keys);
+    if (n > 0) {
+      e.Rates = rates;
+      const kind = rates ? "rate" : "time", letter = rates ? "R" : "T";
+      Object.values(keys).forEach((k) => {
+        const lk = String(k).toLowerCase(), m = minOf(k);
+        if (lk.includes("pitch") || lk.includes("penv") || (m !== null && m !== undefined && m < 0)) e.Signed = true;
+      });
+      const rest = e.Signed ? 0.5 : 0, defLevel = [1, 0.7, 0.6, 0, 0, 0, 0, 0];
+      for (let i = 1; i <= n; i++) {
+        let [w, tk] = get(kind + i, 0.35);
+        if (rates) w = 1 - w;
+        let [level, lk, ok] = get("level" + i, defLevel[i - 1]);
+        if (!ok) level = rest;
+        const s = { Role: kind + i, Label: letter + i, W: w, Level: level, TimeKey: tk, Keys: [tk, lk], Release: i === n, Plateau: false };
+        if (i === n && n > 1) {
+          const hold = e.Segs[e.Segs.length - 1];
+          e.Segs.push({ Role: "sustain", Label: "S", W: 0, Level: hold.Level, Plateau: true, Release: false, TimeKey: "", Keys: [] });
+        }
+        e.Segs.push(s);
+      }
+      e.Start = rates ? e.Segs[e.Segs.length - 1].Level : rest;
+    } else {
+      const [sus, susKey, hasS] = get("sustain", 0.6);
+      const [slope, slopeKey, hasSlope] = get("slope", 0.5);
+      const hasR = get("release", 0)[2];
+      const add = (role, label, level, def) => {
+        const [w, k, ok] = get(role, def);
+        if (!ok) return;
+        const s = { Role: role, Label: label, W: w, Level: level, TimeKey: k, Keys: [k], Plateau: false, Release: role === "release" };
+        if (role === "decay" && hasS) s.Keys.push(susKey);
+        e.Segs.push(s);
+      };
+      add("delay", "DL", 0, 0.2);
+      add("attack", "A", 1, 0.25);
+      add("hold", "H", 1, 0.3);
+      add("decay", "D", hasS ? sus : 0, 0.35);
+      if (hasS || hasR) {
+        let level = e.Segs.length ? e.Segs[e.Segs.length - 1].Level : 1;
+        if (hasS) level = sus;
+        if (hasSlope) level = Math.max(0, Math.min(1, sus + (slope - 0.5) * 1.6));
+        e.Segs.push({ Role: "sustain", Label: "S", W: 0, Level: level, Plateau: true, Release: false, TimeKey: "", Keys: hasS ? [susKey, slopeKey] : [] });
+      }
+      add("release", "R", 0, 0.35);
+    }
+    if (!e.Known) e.Segs.forEach((s) => { s.W = 0.3; });
+    e.Segs.forEach((s, i) => {
+      s.Keys.forEach((k, j) => {
+        if (k && k === touched) {
+          e.Hot = i; e.Corner = i + 1;
+          if (s.Plateau && j === 0) e.Corner = i;
+        }
+      });
+    });
+    return e;
+  }
+  const plateauOf = (e) => e.Segs.findIndex((s) => s.Plateau);
+  const levelBefore = (e, i) => (i <= 0 ? e.Start : e.Segs[i - 1].Level);
+
+  // layout: as envLayout in envmodel.go -> {pts:[{x,y}], k, span}
   function layout(e, x0, x1, top, base) {
-    const span = x1 - x0;
-    const seg = (f) => span * (0.05 + 0.25 * f);
-    let wa = seg(e.A), wd = e.HasD ? seg(e.D) : 0, wh = e.HasH ? seg(e.H) * 0.6 : 0, wr = e.HasR ? seg(e.R) : 0;
-    let ws = e.HasS ? Math.max(span * 0.16, span - wa - wd - wh - wr) : 0;
-    // without a sustain, the width is what the stages take at their longest
+    const span = x1 - x0, seg = (f) => span * (0.05 + 0.25 * f);
+    const ws = e.Segs.map(() => 0);
+    let used = 0, timed = 0, pl = -1;
+    e.Segs.forEach((s, i) => {
+      if (s.Plateau) { pl = i; return; }
+      ws[i] = seg(s.W); used += ws[i]; timed++;
+    });
     let k = 1;
-    const used = wa + wd + wh + ws + wr;
-    if (!e.HasS) k = span / (seg(1) * (1 + (e.HasD ? 1 : 0) + (e.HasR ? 1 : 0) + (e.HasH ? 0.6 : 0)));
-    else if (used > span) k = span / used;
-    wa *= k; wd *= k; wh *= k; ws *= k; wr *= k;
+    if (pl >= 0) {
+      ws[pl] = Math.max(span * 0.16, span - used);
+      if (used + ws[pl] > span) k = span / (used + ws[pl]);
+    } else if (timed > 0) k = span / (seg(1) * timed);
     const lvl = (f) => base - f * (base - top);
-    const sus = e.HasS ? e.S : 0;
-    const endSus = e.HasSlope ? Math.max(0, Math.min(1, sus + (e.Slope - 0.5) * 1.6)) : sus;
-    const pts = [{ x: x0, y: base, role: "" }];
-    let x = x0 + wa;
-    pts.push({ x, y: top, role: "attack" });
-    if (e.HasH) { x += wh; pts.push({ x, y: top, role: "hold" }); }
-    if (e.HasD) { x += wd; pts.push({ x, y: e.HasS ? lvl(sus) : base, role: "decay" }); }
-    if (e.HasS) { x += ws; pts.push({ x, y: lvl(endSus), role: e.HasSlope ? "slope" : "sustain" }); }
-    if (e.HasR) { x += wr; pts.push({ x, y: base, role: "release" }); }
-    return { pts, k, span, sus, lvl };
+    const pts = [{ x: x0, y: lvl(e.Start) }];
+    let x = x0;
+    e.Segs.forEach((s, i) => { x += ws[i] * k; pts.push({ x, y: lvl(s.Level) }); });
+    return { pts, k, span, lvl };
   }
 
-  // envAt: where a note is in an envelope dt seconds after its frame, as
-  // envclock.go. v = [age, off (< 0 held), vel, A, H, D, R], in seconds.
+  // relStart, envAt: as envmodel.go. v = [age, off (< 0 held), vel, T0, T1, ...] (seconds, per segment)
+  function relStart(e, lv) {
+    const pl = plateauOf(e);
+    if (pl < 0 || pl + 1 >= e.Segs.length) return 0;
+    const from = e.Segs[pl].Level, to = e.Segs[pl + 1].Level;
+    if (Math.abs(from - to) < 1e-6) return 0;
+    return Math.max(0, Math.min(1, (from - lv) / (from - to)));
+  }
   const TRAIL = 9, TRAIL_DT = 0.033;
   function envAt(v, dt, e) {
-    const age = v[0] + dt, off = v[1] >= 0 ? v[1] + dt : -1, A = v[3], Hd = v[4], D = v[5], R = v[6];
-    const sus = e.HasS ? e.S : 0;
-    const frac = (t, d) => (d <= 1e-6 ? 1 : t / d);
-    const pre = (t) => {
-      if (t < A) { const p = frac(t, A); return { stage: "attack", prog: p, level: p }; }
-      t -= A;
-      if (e.HasH) { if (t < Hd) return { stage: "hold", prog: frac(t, Hd), level: 1 }; t -= Hd; }
-      if (e.HasD) { if (t < D) { const p = frac(t, D); return { stage: "decay", prog: p, level: 1 - (1 - sus) * p }; } t -= D; }
-      if (e.HasS) return { stage: "sustain", prog: 0, level: sus };
-      if (e.HasR && t < R) return { stage: "release", prog: frac(t, R), level: 0 };
-      return { done: true };
+    const age = v[0] + dt, off = v[1] >= 0 ? v[1] + dt : -1;
+    const tt = (i) => (3 + i < v.length ? v[3 + i] : 0);
+    const pos = (i, p) => { const a = levelBefore(e, i), b = e.Segs[i].Level; return { seg: i, prog: p, level: a + (b - a) * p }; };
+    const run = (i, p, t, stopAt) => {
+      for (; i < e.Segs.length && i !== stopAt; i++) {
+        const d = tt(i), left = d * (1 - p);
+        if (t < left && d > 1e-6) return pos(i, p + t / d);
+        t -= left; p = 0;
+      }
+      if (i === stopAt && i < e.Segs.length) return pos(i, 0);
+      return { seg: e.Segs.length - 1, prog: 1, done: true };
     };
-    if (off < 0 || !e.HasS) return pre(age);
-    if (!e.HasR) return { done: true };
-    const was = pre(age - off);
-    if (was.done) return was;
-    const p0 = sus > 1e-3 && was.level < sus ? 1 - was.level / sus : 0;
-    const p = p0 + frac(off, R);
-    return p >= 1 ? { done: true } : { stage: "release", prog: p, level: sus * (1 - p) };
+    const pl = plateauOf(e);
+    if (pl < 0) return run(0, 0, age, -1);
+    if (off < 0) return run(0, 0, age, pl);
+    if (pl + 1 >= e.Segs.length) return { seg: pl, done: true };
+    const at = run(0, 0, age - off, pl);
+    return run(pl + 1, relStart(e, at.level), off, -1);
   }
+  // a stage's name, if it fits its segment: as envBarLabel in visuals.go
+  const barLabel = (l, w) => (w >= 7 + 7 * l.length || (l.length === 1 && w >= 9) ? l : "");
 
   // one figure: an envelope group drawn from live values, redrawn on change
   const figures = new Set();
@@ -105,66 +249,46 @@
     let hot = "", drag = null;
 
     const frac = (key) => {
+      if (String(key).startsWith("#")) return null;
       const p = io.meta(key), v = parseFloat(io.value(key));
       if (!p || isNaN(v)) return null;
       const lo = p.min ?? 0, hi = p.max ?? 1;
       return hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 0;
     };
-    const shape = () => {
-      const e = { Known: true };
-      const get = (role) => {
-        const k = g.keys[role];
-        if (!k) return [0, false];
-        const f = frac(k);
-        if (f === null) e.Known = false;
-        return [f || 0, true];
-      };
-      [e.A] = get("attack");
-      [e.D, e.HasD] = get("decay");
-      [e.H, e.HasH] = get("hold");
-      [e.S, e.HasS] = get("sustain");
-      [e.Slope, e.HasSlope] = get("slope");
-      [e.R, e.HasR] = get("release");
-      if (!e.Known) return { A: 0.25, D: 0.35, S: 0.6, R: 0.35, HasD: true, HasS: true, HasR: true, Known: false };
-      return e;
-    };
-    const isHot = (role) => hot && (hot === role || (role === "slope" && hot === "sustain"));
+    const minOf = (key) => { const p = io.meta(key); return p ? p.min ?? 0 : null; };
+    const shape = () => envShapeOf(g.keys, frac, minOf, hot);
 
-    let lastL = null, lastLive = null;
+    let lastL = null, lastE = null, lastLive = null;
     function draw() {
       const e = shape(), L = layout(e, x0, x1, top, base), pts = L.pts;
-      lastL = L;
+      lastL = L; lastE = e;
       svg.classList.toggle("unknown", !e.Known);
+      const floor = e.Signed ? (top + base) / 2 : base;
       let h = "";
       const poly = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      h += `<polygon class="fill" points="${poly} ${pts[pts.length - 1].x},${base}"/>`;
+      h += `<polygon class="fill" points="${x0},${floor} ${poly} ${pts[pts.length - 1].x.toFixed(1)},${floor}"/>`;
       h += `<line class="base" x1="${x0}" y1="${base}" x2="${x1}" y2="${base}"/>`;
-      if (e.HasS && e.HasD) {
-        const sy = L.lvl(L.sus).toFixed(1);
-        h += `<line class="guide" x1="${x0}" y1="${sy}" x2="${pts[pts.length - 2].x.toFixed(1)}" y2="${sy}"/>`;
-      }
+      if (e.Signed) h += `<line class="base" x1="${x0}" y1="${floor}" x2="${x1}" y2="${floor}"/>`;
+      const pl = plateauOf(e);
+      if (pl > 0) h += `<line class="guide" x1="${x0}" y1="${pts[pl].y.toFixed(1)}" x2="${pts[pl].x.toFixed(1)}" y2="${pts[pl].y.toFixed(1)}"/>`;
       for (let i = 1; i < pts.length; i++) {
         const a = pts[i - 1], b = pts[i];
-        h += `<line class="seg${isHot(b.role) ? " hot" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+        h += `<line class="seg${e.Hot === i - 1 ? " hot" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
       }
-      // the stages as a bar under the shape, each as wide as it is drawn:
-      // lit while a note's dot is in it (liveEnv), outlined while its knob is touched
+      // the stage bar: one segment per drawn segment, exactly as wide; lit
+      // while a note's dot is in it (paintLive), outlined while its knob is touched
       for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1], b = pts[i];
-        const sx = a.x + (i === 1 ? 0 : 1), ex = b.x - (i === pts.length - 1 ? 0 : 1), w = ex - sx;
+        const sx = pts[i - 1].x + (i === 1 ? 0 : 1), ex = pts[i].x - (i === pts.length - 1 ? 0 : 1), w = ex - sx;
         if (w < 2) continue;
-        const hc = isHot(b.role) ? " hot" : "";
-        h += `<rect class="stage${hc}" data-stage="${b.role}" x="${sx.toFixed(1)}" y="${base + 5}" width="${w.toFixed(1)}" height="14" rx="1"/>`;
-        if (w >= 10) h += `<text class="sl${hc}" data-stage="${b.role}" x="${((sx + ex) / 2).toFixed(1)}" y="${base + 15.5}">${LETTER[b.role]}</text>`;
+        const hc = e.Hot === i - 1 ? " hot" : "", txt = barLabel(e.Segs[i - 1].Label, w);
+        h += `<rect class="stage${hc}" data-seg="${i - 1}" x="${sx.toFixed(1)}" y="${base + 5}" width="${w.toFixed(1)}" height="14" rx="1"/>`;
+        if (txt) h += `<text class="sl${hc}" data-seg="${i - 1}" x="${((sx + ex) / 2).toFixed(1)}" y="${base + 15.5}">${txt}</text>`;
       }
-      // the handles: every stage's end except the last at the baseline
-      for (let i = 1; i < pts.length; i++) {
-        const p = pts[i];
-        if (i === pts.length - 1 && p.role !== "release") continue;
-        const big = isHot(p.role) || (p.role === "decay" && hot === "sustain");
-        const y = p.role === "release" ? base : p.y;
-        h += `<circle class="handle${big ? " hot" : ""}" data-role="${p.role}" cx="${p.x}" cy="${y}" r="${big ? 6 : 4.5}"/>`;
-        h += `<circle class="grab" data-role="${p.role}" cx="${p.x}" cy="${y}" r="14"/>`;
+      // the handles: every point where two segments meet
+      for (let i = 1; i < pts.length - 1; i++) {
+        const big = e.Corner === i;
+        h += `<circle class="handle${big ? " hot" : ""}" data-pt="${i}" cx="${pts[i].x}" cy="${pts[i].y}" r="${big ? 6 : 4.5}"/>`;
+        h += `<circle class="grab" data-pt="${i}" cx="${pts[i].x}" cy="${pts[i].y}" r="14"/>`;
       }
       h += `<g class="live"></g>`;
       svg.innerHTML = h;
@@ -174,10 +298,10 @@
     }
 
     // the sound in it, as the Push draws it (visuals.go, envclock.go): the
-    // frame carries each note's clock (its age and its stage times), and the
-    // page runs it on every animation frame, so the dots move as smoothly as
-    // the screen: each along its lines, a short trail behind it; the newest
-    // note's stage lit up to its dot; the bar's segments lit where notes are
+    // frame carries each note's clock (its age and its segments' times), and
+    // the page runs it on every animation frame, so the dots move as
+    // smoothly as the screen: each along its lines, a short trail behind
+    // it; the newest note's segment lit up to its dot; the bar lit where notes are
     let liveAt = 0, raf = 0;
     function liveEnv(d) {
       lastLive = d;
@@ -186,21 +310,17 @@
     }
     function paintLive() {
       raf = 0;
-      const d = lastLive;
+      const d = lastLive, e = lastE;
       const lay = svg.querySelector("g.live");
-      if (!lay || !lastL || !svg.isConnected) return;
+      if (!lay || !lastL || !e || !svg.isConnected) return;
       const lit = new Set();
       let h = "";
-      if (d && !svg.classList.contains("unknown")) {
-        const pts = lastL.pts, e = shape();
-        const seg = (stage) => {
-          if (stage === "sustain" && e.HasSlope) stage = "slope";
-          return pts.findIndex((p, i) => i > 0 && p.role === stage);
-        };
+      if (d && e.Known && !e.Still) {
+        const pts = lastL.pts;
         const at = (p) => {
-          const i = seg(p.stage);
-          if (i < 1) return null;
-          const a = pts[i - 1], b = pts[i], t = Math.max(0, Math.min(1, p.prog));
+          const i = p.seg;
+          if (i < 0 || i + 1 >= pts.length) return null;
+          const a = pts[i], b = pts[i + 1], t = Math.max(0, Math.min(1, p.prog));
           return [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, i];
         };
         const dt = Math.min(0.25, (performance.now() - liveAt) / 1000);
@@ -209,11 +329,13 @@
         for (let n = vs.length - 1; n >= 0; n--) { // the newest drawn last, on top
           const v = vs[n], cur = envAt(v, dt, e);
           if (cur.done) continue;
-          lit.add(cur.stage === "sustain" && e.HasSlope ? "slope" : cur.stage);
+          lit.add(cur.seg);
           for (let k = TRAIL; k >= 1; k--) {
             const back = dt - k * TRAIL_DT;
             if (v[0] + back < 0) continue;
-            const q = at(envAt(v, back, e));
+            const bq = envAt(v, back, e);
+            if (bq.done) continue;
+            const q = at(bq);
             if (!q) continue;
             const f = 1 - k / (TRAIL + 1);
             h += `<circle class="trail" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${(1.4 + 1.8 * f).toFixed(1)}" style="opacity:${(0.12 + 0.45 * f).toFixed(2)}"/>`;
@@ -222,7 +344,7 @@
           if (!q) continue;
           let r = 3.6 + 1.6 * v[2];
           if (n === 0) {
-            const a = pts[q[2] - 1];
+            const a = pts[q[2]];
             h += `<line class="lit" x1="${a.x}" y1="${a.y}" x2="${q[0].toFixed(1)}" y2="${q[1].toFixed(1)}"/>`;
             h += `<line class="hair" x1="${q[0].toFixed(1)}" y1="${(q[1] + 7).toFixed(1)}" x2="${q[0].toFixed(1)}" y2="${base - 2}"/>`;
             r = 5.2;
@@ -231,17 +353,19 @@
         }
       }
       lay.innerHTML = h;
-      svg.querySelectorAll("[data-stage]").forEach((el) => el.classList.toggle("on", lit.has(el.dataset.stage)));
+      svg.querySelectorAll("[data-seg]").forEach((el) => el.classList.toggle("on", lit.has(+el.dataset.seg)));
       if (lit.size && !raf) raf = requestAnimationFrame(paintLive); // runs while a note is in it
     }
 
-    // dragging: a handle moves the knobs that place it
+    // dragging: a handle is the end of a segment. Across, it sets that
+    // segment's time knob (its width); up and down, its level knob (the
+    // plateau's: the sustain, and its slope at its end)
     const toLocal = (ev) => {
       const r = svg.getBoundingClientRect();
       return { x: ((ev.clientX - r.left) / r.width) * W, y: ((ev.clientY - r.top) / r.height) * H };
     };
-    const setFrac = (role, f) => {
-      const key = g.keys[role], p = key && io.meta(key);
+    const setFrac = (key, f) => {
+      const p = key && io.meta(key);
       if (!p) return;
       f = Math.max(0, Math.min(1, f));
       const lo = p.min ?? 0, hi = p.max ?? 1;
@@ -250,28 +374,29 @@
       if (String(v) !== String(io.value(key))) io.set(key, String(v));
     };
     svg.addEventListener("pointerdown", (ev) => {
-      const role = ev.target.dataset && ev.target.dataset.role;
-      if (!role) return;
+      const pt = ev.target.dataset && +ev.target.dataset.pt;
+      if (!pt) return;
       ev.preventDefault();
       svg.setPointerCapture(ev.pointerId);
-      const L = layout(shape(), x0, x1, top, base);
-      const i = L.pts.findIndex((p) => p.role === role);
-      drag = { role, from: L.pts[i - 1].x, k: L.k, span: L.span };
-      hot = role === "slope" ? "sustain" : role;
+      const e = shape(), L = layout(e, x0, x1, top, base);
+      drag = { seg: pt - 1, from: L.pts[pt - 1].x, k: L.k, span: L.span };
+      const s = e.Segs[pt - 1];
+      hot = s.Plateau ? s.Keys[1] || s.Keys[0] || "" : s.Keys[s.Keys.length - 1] || s.TimeKey;
       draw();
     });
     svg.addEventListener("pointermove", (ev) => {
       if (!drag) return;
-      const q = toLocal(ev), d = drag, w = (q.x - d.from) / (d.span * d.k);
+      const q = toLocal(ev), e = shape(), s = e.Segs[drag.seg];
       const level = (base - q.y) / (base - top);
-      const e = shape();
-      switch (d.role) {
-        case "attack": setFrac("attack", (w - 0.05) / 0.25); break;
-        case "hold": setFrac("hold", (w / 0.6 - 0.05) / 0.25); break;
-        case "decay": setFrac("decay", (w - 0.05) / 0.25); if (e.HasS) setFrac("sustain", level); break;
-        case "sustain": setFrac("sustain", level); break;
-        case "slope": setFrac("slope", (level - e.S) / 1.6 + 0.5); break;
-        case "release": setFrac("release", (w - 0.05) / 0.25); break;
+      if (s.Plateau) {
+        const [susK, slopeK] = s.Keys;
+        if (slopeK) { const sus = frac(susK) || 0; setFrac(slopeK, (level - sus) / 1.6 + 0.5); }
+        else if (susK) setFrac(susK, level);
+      } else {
+        const w = ((q.x - drag.from) / (drag.span * drag.k) - 0.05) / 0.25;
+        setFrac(s.TimeKey, e.Rates ? 1 - w : w);
+        const lk = s.Keys[1];
+        if (lk) setFrac(lk, level);
       }
       draw();
     });
@@ -283,8 +408,7 @@
       el: svg,
       draw,
       touch(key) { // a control of this group is under the hand
-        const role = Object.keys(g.keys).find((r) => g.keys[r] === key) || "";
-        if (!drag && role !== hot) { hot = role; draw(); }
+        if (!drag && key !== hot) { hot = key; draw(); }
       },
       live(f) { if (fig.key) liveEnv(f && f.envs ? f.envs[fig.key] : null); },
       alive() { return svg.isConnected; },
@@ -656,5 +780,5 @@
     figures.forEach((f) => (f.alive() ? f.draw() : figures.delete(f)));
   }
 
-  window.PungVisuals = { envAt, envelopeGroups, pictureGroups, filterKind, filterDB, lfoWave, layout, figure, redrawAll, live };
+  window.PungVisuals = { envAt, envShapeOf, envRoleOf, envelopeGroups, pictureGroups, filterKind, filterDB, lfoWave, layout, figure, redrawAll, live };
 })();

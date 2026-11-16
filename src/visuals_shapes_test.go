@@ -278,6 +278,62 @@ func TestFleetPictures(t *testing.T) {
 		}
 		raw, _ := json.Marshal(pages)
 		os.WriteFile(filepath.Join(dir, "fleet-pages.json"), raw, 0o644)
+		// every envelope of the fleet, and every kind, as Go reads, lays
+		// out and runs it: the page must find the same numbers
+		var envs []map[string]any
+		addEnv := func(name string, keys map[string]string, vals map[string]ovValue, touched string) {
+			e := envShapeOf(keys, vals, touched)
+			pts, _ := envLayout(e, 10, 470, 12, 82)
+			frac, mins := map[string]any{}, map[string]float64{}
+			for _, k := range keys {
+				if v := vals[k]; v.Known {
+					frac[k] = v.Frac
+				} else {
+					frac[k] = nil
+				}
+				mins[k] = vals[k].Min
+			}
+			v := envVoice{Off: -1, T: make([]float64, len(e.Segs))}
+			for i := range v.T {
+				v.T[i] = 0.2 + 0.1*float64(i)
+			}
+			var at []map[string]any
+			for _, c := range [][2]float64{{0.05, -1}, {0.3, -1}, {0.7, -1}, {5, -1}, {5.1, 0.1}, {5.6, 0.6}, {0.15, 0.05}, {20, 10}} {
+				v.Age, v.Off = c[0], c[1]
+				p := envAt(v, 0, e)
+				at = append(at, map[string]any{"age": c[0], "off": c[1], "seg": p.Seg, "prog": p.Prog, "level": p.Level, "done": p.Done})
+			}
+			envs = append(envs, map[string]any{"name": name, "keys": keys, "frac": frac, "min": mins, "touched": touched,
+				"shape": e, "pts": pts, "t": v.T, "at": at})
+		}
+		for name, c := range envFleet {
+			e := envelopeGroups(c.keys)[0]
+			vals := map[string]ovValue{}
+			for _, k := range c.keys {
+				f, ok := c.frac[k]
+				if !ok {
+					f = 0.5
+				}
+				vals[k] = ovValue{Frac: f, Known: true}
+			}
+			for _, touched := range append([]string{""}, c.keys...) {
+				addEnv(name, e.keys, vals, touched)
+			}
+			delete(vals, c.keys[0])
+			addEnv(name+" unread", e.keys, vals, "")
+		}
+		for _, line := range strings.Split(got, "\n") {
+			if i := strings.Index(line, ": env "); i >= 0 {
+				ks := strings.Fields(line[i+6:])
+				vals := map[string]ovValue{}
+				for j, k := range ks {
+					vals[k] = ovValue{Frac: float64((j*37)%11) / 10, Known: true}
+				}
+				addEnv(line[:i], envelopeGroups(ks)[0].keys, vals, ks[len(ks)/2])
+			}
+		}
+		raw, _ = json.Marshal(envs)
+		os.WriteFile(filepath.Join(dir, "env-cases.json"), raw, 0o644)
 	}
 	if os.Getenv("PUNG_UPDATE") != "" {
 		os.WriteFile("testdata/fleet-pictures.txt", []byte(got), 0o644)

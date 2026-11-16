@@ -78,60 +78,78 @@ func TestSpectrumFindsTheTone(t *testing.T) {
 // An amplitude envelope follows the sound: a note, a rise, a fall to the
 // sustain, a hold, a release, silence.
 // A note runs through an envelope on its own clock: each stage takes its
-// time, the sustain waits for the key, the release starts where the level was.
+// time, the plateau waits for the key, the release starts where the level was.
 func TestEnvelopeClock(t *testing.T) {
-	e := envShape{S: 0.5, HasD: true, HasS: true, HasR: true, Known: true}
-	v := envVoice{A: 0.1, D: 0.2, R: 0.5, Off: -1}
-	at := func(age, off float64) string {
+	e := envCase([]string{"attack", "decay", "sustain", "release"}, map[string]float64{"sustain": 0.5}, "")
+	v := envVoice{T: []float64{0.1, 0.2, 0, 0.5}, Off: -1}
+	at := func(e envShape, age, off float64) string {
 		v.Age, v.Off = age, off
 		p := envAt(v, 0, e)
 		if p.Done {
 			return "done"
 		}
-		return fmt.Sprintf("%s %.2f", p.Stage, p.Prog)
+		return fmt.Sprintf("%s %.2f", e.Segs[p.Seg].Label, p.Prog)
 	}
 	for _, c := range []struct {
 		age, off float64
 		want     string
 	}{
-		{0.05, -1, "attack 0.50"},
-		{0.2, -1, "decay 0.50"},
-		{3, -1, "sustain 0.00"},
-		{3, 0.25, "release 0.50"},
+		{0.05, -1, "A 0.50"},
+		{0.2, -1, "D 0.50"},
+		{3, -1, "S 0.00"},
+		{3, 0.25, "R 0.50"},
 		{3, 0.6, "done"},
-		{0.075, 0.025, "release 0.05"}, // let go at 0.05 (level 0.5, the sustain's): the whole release
-		{0.125, 0.1, "release 0.70"},   // let go at 0.025 (level 0.25): half way down already
+		{0.075, 0.025, "R 0.05"}, // let go at 0.05 (level 0.5, the sustain's): the whole release
+		{0.125, 0.1, "R 0.70"},   // let go at 0.025 (level 0.25): half way down already
 	} {
-		if got := at(c.age, c.off); got != c.want {
+		if got := at(e, c.age, c.off); got != c.want {
 			t.Fatalf("age %.3f off %.3f: %s, want %s", c.age, c.off, got, c.want)
 		}
 	}
-	// no sustain: it runs through by itself, let go or not
-	ad := envShape{HasD: true, Known: true}
-	v = envVoice{A: 0.1, D: 0.4, Age: 0.3, Off: 0.2}
-	if p := envAt(v, 0, ad); p.Stage != "decay" || math.Abs(p.Prog-0.5) > 1e-9 {
+	// no plateau: it runs through by itself, let go or not
+	ad := envCase([]string{"attack", "decay"}, nil, "")
+	v = envVoice{T: []float64{0.1, 0.4}, Age: 0.3, Off: 0.2}
+	if p := envAt(v, 0, ad); ad.Segs[p.Seg].Label != "D" || math.Abs(p.Prog-0.5) > 1e-9 {
 		t.Fatalf("AD: %+v", p)
 	}
 	if p := envAt(v, 0.3, ad); !p.Done {
 		t.Fatalf("AD over: %+v", p)
 	}
+	// a Roland envelope: T1 T2 T3, waits at L3, T4 from the let-go
+	jv := envCase(envFleet["jv-amp"].keys, envFleet["jv-amp"].frac, "")
+	v = envVoice{T: []float64{0.2, 0.3, 0.4, 0, 1}, Off: -1}
+	for _, c := range []struct {
+		age, off float64
+		want     string
+	}{{0.1, -1, "T1 0.50"}, {0.35, -1, "T2 0.50"}, {0.7, -1, "T3 0.50"}, {5, -1, "S 0.00"}, {5.5, 0.5, "T4 0.50"}, {7, 1.5, "done"}} {
+		if got := at(jv, c.age, c.off); got != c.want {
+			t.Fatalf("jv age %.2f off %.2f: %s, want %s", c.age, c.off, got, c.want)
+		}
+	}
+	// a Yamaha envelope starts from its last level and returns to it
+	dx := envCase(envFleet["dx"].keys, envFleet["dx"].frac, "")
+	if dx.Start != dx.Segs[len(dx.Segs)-1].Level || !dx.Rates || dx.Segs[0].W > 0.1 {
+		t.Fatalf("dx: start %.2f, rates %v, R1 at 0.95 drawn %.2f wide", dx.Start, dx.Rates, dx.Segs[0].W)
+	}
 
 	for _, c := range []struct {
+		key  string
 		v    ovValue
 		secs float64
 		src  string
 	}{
-		{ovValue{Display: "250", Unit: "ms"}, 0.25, "stated"},
-		{ovValue{Display: "1.5 s"}, 1.5, "stated"},
-		{ovValue{Value: "0.5", Type: "float", Min: 0.001, Max: 3}, 0.5, "range"},
-		{ovValue{Value: "-1", Type: "float", Min: -8, Max: 5}, 0.5, "range"}, // Surge: log2 of seconds
-		{ovValue{Value: "0", Frac: 0, Type: "int", Max: 127}, envCurveMin, "curve"},
-		{ovValue{Value: "127", Frac: 1, Type: "int", Max: 127}, envCurveMax, "curve"},
-		{ovValue{Value: "0.5", Frac: 0.5, Type: "float", Max: 1}, 0.1414, "curve"},
+		{"a", ovValue{Display: "250", Unit: "ms"}, 0.25, "stated"},
+		{"a", ovValue{Display: "1.5 s"}, 1.5, "stated"},
+		{"amp_attack_ms", ovValue{Value: "120", Display: "120", Type: "int", Max: 5000}, 0.12, "stated"},
+		{"a", ovValue{Value: "0.5", Type: "float", Min: 0.001, Max: 3}, 0.5, "range"},
+		{"a", ovValue{Value: "-1", Type: "float", Min: -8, Max: 5}, 0.5, "range"}, // Surge: log2 of seconds
+		{"a", ovValue{Value: "0", Frac: 0, Type: "int", Max: 127}, envCurveMin, "curve"},
+		{"a", ovValue{Value: "127", Frac: 1, Type: "int", Max: 127}, envCurveMax, "curve"},
+		{"a", ovValue{Value: "0.5", Frac: 0.5, Type: "float", Max: 1}, 0.1414, "curve"},
 	} {
-		secs, src := stageTime(c.v)
+		secs, src := stageTime(c.key, c.v, c.v.Frac, false)
 		if src != c.src || math.Abs(secs-c.secs) > 1e-3 {
-			t.Fatalf("%+v: %.4f %s, want %.4f %s", c.v, secs, src, c.secs, c.src)
+			t.Fatalf("%s %+v: %.4f %s, want %.4f %s", c.key, c.v, secs, src, c.secs, c.src)
 		}
 	}
 }
@@ -147,7 +165,7 @@ func TestEnvelopeMeasuresTheSound(t *testing.T) {
 		"attack": {Value: "0", Frac: 0, Known: true}, "decay": {Value: "0", Frac: 0, Known: true},
 		"sustain": {Value: "0.5", Frac: 0.5, Known: true}, "release": {Value: "0", Frac: 0, Known: true},
 	}
-	e := envShapeOf(envGroup{keys: g.keys}, vals, "")
+	e := envShapeOf(g.keys, vals, "")
 	ph := 0.0
 	var stages []string
 	frame := func(amp float32) *envLive {
@@ -156,7 +174,9 @@ func TestEnvelopeMeasuresTheSound(t *testing.T) {
 		l := fx.envelope("e", g, e, vals)
 		st := "-"
 		if len(l.Voices) > 0 {
-			st = envAt(l.Voices[0], 0, e).Stage
+			if p := envAt(l.Voices[0], 0, e); !p.Done {
+				st = e.Segs[p.Seg].Role
+			}
 		}
 		if os.Getenv("ENVDBG") != "" {
 			tr := fx.envs["e"]
@@ -190,7 +210,7 @@ func TestEnvelopeMeasuresTheSound(t *testing.T) {
 	s.live.trackMidi([]byte{0x90, 62, 100})
 	s.live.trackMidi([]byte{0x90, 64, 100}) // two held: nothing is measured
 	l := frame(0.5)
-	if len(l.Voices) != 2 || math.Abs(l.Voices[0].A-tr.scale[0]*envCurveMin) > 1e-9 {
+	if len(l.Voices) != 2 || math.Abs(l.Voices[0].T[0]-tr.scale[0]*envCurveMin) > 1e-9 {
 		t.Fatalf("voices %+v", l.Voices)
 	}
 	// an audio effect's envelope has no clock

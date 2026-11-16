@@ -163,7 +163,14 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			if ls != nil {
 				u.liveDrew = true
 			}
-			drawPictureLive(img, r, g, u.ovValues(p, cm, g.keyList()), touchedKey, sc, ls, u.liveOut, key)
+			gv := u.ovValues(p, cm, g.keyList())
+			if g.kind == "env" && ls != nil {
+				g.secs = set.envSecs(g.keys, gv, func(k string) (ovValue, bool) {
+					x := u.ovValues(p, cm, []string{k})[k]
+					return x, x.Known
+				})
+			}
+			drawPictureLive(img, r, g, gv, touchedKey, sc, ls, u.liveOut, key)
 			for c := g.start; c < g.end; c++ {
 				covered[c] = true
 			}

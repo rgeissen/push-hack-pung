@@ -26,6 +26,7 @@ type picGroup struct {
 	fx         bool              // an audio effect's: it follows the audio it hears, not the notes
 	keys       map[string]string // role -> key (mix: "0", "1", ... in column order)
 	start, end int               // columns [start, end)
+	secs       []float64         // env: each segment's time as the module's overlay says it (push.envelopeTimes); nil: from the knobs
 }
 
 // pictureGroups: every structure Pung draws on a page, left to right, none
@@ -872,7 +873,7 @@ func drawPictureLive(img *image.NRGBA, r image.Rectangle, g picGroup, vals map[s
 	}
 	switch g.kind {
 	case "env":
-		e := envShapeOf(envGroup{keys: g.keys, start: g.start, end: g.end}, vals, touchedKey)
+		e := envShapeOf(g.keys, vals, touchedKey)
 		e.Live = out.Envs[key]
 		drawEnvelope(img, r, e, sc)
 	case "filter":

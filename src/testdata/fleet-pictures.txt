@@ -9,6 +9,8 @@
 9w9 / MT: C 1/2: env mt_c_attack mt_c_decay
 9w9 / HT: C 1/2: env ht_c_attack ht_c_decay
 aphex / MIXER: mix mix_esp mix_sub mix_noise mix_fb
+aphex / ENVELOPES: env e1_delay e1_atk e1_rel
+aphex / ENVELOPES: env e2_hold e2_atk e2_dcy e2_sus e2_rel
 braids / MAIN: env attack decay sustain release
 braids / AMP ENVELOPE: env attack decay sustain release
 braids / FILTER: env f_attack f_decay f_sustain f_release
@@ -21,6 +23,12 @@ chordism / MODULATION: lfo lfo_shape lfo_rate
 chordism / MIXER: mix mix_1 mix_2 mix_3 mix_4
 denis / CONTROL: filter filter_cutoff filter_q
 denis / CONTROL: env attack decay sustain release
+dexed / OP 1: ENVELOPE: env op1_eg_r1 op1_eg_r2 op1_eg_r3 op1_eg_r4 op1_eg_l1 op1_eg_l2 op1_eg_l3 op1_eg_l4
+dexed / OP 2: ENVELOPE: env op2_eg_r1 op2_eg_r2 op2_eg_r3 op2_eg_r4 op2_eg_l1 op2_eg_l2 op2_eg_l3 op2_eg_l4
+dexed / OP 3: ENVELOPE: env op3_eg_r1 op3_eg_r2 op3_eg_r3 op3_eg_r4 op3_eg_l1 op3_eg_l2 op3_eg_l3 op3_eg_l4
+dexed / OP 4: ENVELOPE: env op4_eg_r1 op4_eg_r2 op4_eg_r3 op4_eg_r4 op4_eg_l1 op4_eg_l2 op4_eg_l3 op4_eg_l4
+dexed / OP 5: ENVELOPE: env op5_eg_r1 op5_eg_r2 op5_eg_r3 op5_eg_r4 op5_eg_l1 op5_eg_l2 op5_eg_l3 op5_eg_l4
+dexed / OP 6: ENVELOPE: env op6_eg_r1 op6_eg_r2 op6_eg_r3 op6_eg_r4 op6_eg_l1 op6_eg_l2 op6_eg_l3 op6_eg_l4
 dragonfly-hall / MAIN: mix dry_level early_level late_level
 ducker / MAIN: env attack hold release
 filter / MAIN: filter cutoff resonance
@@ -28,9 +36,20 @@ fizzik / MAIN: filter cutoff resonance ftype
 fizzik / PATCH: filter cutoff resonance ftype
 fizzik / EXCITER: env exc_attack exc_decay
 forge / MIX: mix v1_lvl v2_lvl v3_lvl v4_lvl v5_lvl v6_lvl v7_lvl v8_lvl
+forge / PV 1: E 1 / E 2 +: env pv1_e1_atk pv1_e1_dec
+forge / PV 2: E 1 / E 2 +: env pv2_e1_atk pv2_e1_dec
+forge / PV 3: E 1 / E 2 +: env pv3_e1_atk pv3_e1_dec
+forge / PV 4: E 1 / E 2 +: env pv4_e1_atk pv4_e1_dec
+forge / PV 5: E 1 / E 2 +: env pv5_e1_atk pv5_e1_dec
+forge / PV 6: E 1 / E 2 +: env pv6_e1_atk pv6_e1_dec
+forge / PV 7: E 1 / E 2 +: env pv7_e1_atk pv7_e1_dec
+forge / PV 8: E 1 / E 2 +: env pv8_e1_atk pv8_e1_dec
 freak / FILTER: filter filter_mode filter_cutoff filter_resonance
 freak / LFO: lfo lfo_shape lfo_rate
+freak / ENVELOPE: env env_attack_ms env_decay_ms env_sustain env_release_ms
+freak / CYCLE: env cycle_attack_ms cycle_decay_ms
 gate / MAIN: env attack hold release
+granny / ADSR ENVELOPE: env amp_attack_ms amp_decay_ms amp_sustain amp_release_ms
 helm / MAIN: filter cutoff resonance
 helm / MAIN: env amp_attack amp_decay amp_sustain amp_release
 helm / DISTORTION / FIL: env fil_attack fil_decay fil_release fil_sustain
@@ -63,15 +82,38 @@ minijv / TONE 3 4/12: lfo nvram_tone_3_lfo2form nvram_tone_3_lfo2rate
 moog / MAIN: filter cutoff resonance
 moog / MAIN: env attack decay sustain release
 moog / NOISE / F +: env f_attack f_decay f_sustain f_release
+mrdrums / MAIN: env attack_ms decay_ms
+mrdrums / PAD: env pad_attack_ms pad_decay_ms
+mrdrums / P 01: env p01_attack_ms p01_decay_ms
+mrdrums / P 02: env p02_attack_ms p02_decay_ms
+mrdrums / P 03: env p03_attack_ms p03_decay_ms
+mrdrums / P 04: env p04_attack_ms p04_decay_ms
+mrdrums / P 05: env p05_attack_ms p05_decay_ms
+mrdrums / P 06: env p06_attack_ms p06_decay_ms
+mrdrums / P 07: env p07_attack_ms p07_decay_ms
+mrdrums / P 08: env p08_attack_ms p08_decay_ms
+mrdrums / P 09: env p09_attack_ms p09_decay_ms
+mrdrums / P 10: env p10_attack_ms p10_decay_ms
+mrdrums / P 11: env p11_attack_ms p11_decay_ms
+mrdrums / P 12: env p12_attack_ms p12_decay_ms
+mrdrums / P 13: env p13_attack_ms p13_decay_ms
+mrdrums / P 14: env p14_attack_ms p14_decay_ms
+mrdrums / P 15: env p15_attack_ms p15_decay_ms
+mrdrums / P 16: env p16_attack_ms p16_decay_ms
+mrsample / MAIN: env attack_ms decay_ms sustain release_ms
 mrsample / MAIN: filter filter_cutoff filter_res
+mrsample / AMP ENV: env attack_ms decay_ms sustain release_ms
 mrsample / FILTER: filter filter_type filter_cutoff filter_res
 noisemaker / MAIN: filter cutoff resonance
 noisemaker / MACROS: filter cutoff resonance
 noisemaker / OSCILLATORS: mix osc1_vol osc2_vol osc3_vol
 noisemaker / FILTER: filter filter_type cutoff resonance
+noisemaker / FILTER ENV: env fenv_a fenv_d fenv_s fenv_r
 noisemaker / FILTER ENV: filter cutoff resonance
+noisemaker / AMP ENV: env aenv_a aenv_d aenv_s aenv_r
 noisemaker / LFO 1: lfo lfo1_wave lfo1_rate
 noisemaker / LFO 2: lfo lfo2_wave lfo2_rate
+noisemaker / ENV 3 (FREE): env free_a free_d
 noisemaker / ENV 3 (FREE): filter cutoff resonance
 noisemaker / ENV DRAW: filter cutoff resonance
 nusaw / MAIN: filter cutoff resonance
@@ -88,6 +130,22 @@ osirus / AMP ENV: env amp_attack amp_decay amp_sustain amp_release
 osirus / LFO 1: lfo lfo1_rate lfo1_shape
 osirus / LFO 2: lfo lfo2_rate lfo2_shape
 osirus / LFO 3: lfo lfo3_rate lfo3_shape
+po32-drum / V 01 1/2: env v01_atk v01_dcy
+po32-drum / V 02 1/2: env v02_atk v02_dcy
+po32-drum / V 03 1/2: env v03_atk v03_dcy
+po32-drum / V 04 1/2: env v04_atk v04_dcy
+po32-drum / V 05 1/2: env v05_atk v05_dcy
+po32-drum / V 06 1/2: env v06_atk v06_dcy
+po32-drum / V 07 1/2: env v07_atk v07_dcy
+po32-drum / V 08 1/2: env v08_atk v08_dcy
+po32-drum / V 09 1/2: env v09_atk v09_dcy
+po32-drum / V 10 1/2: env v10_atk v10_dcy
+po32-drum / V 11 1/2: env v11_atk v11_dcy
+po32-drum / V 12 1/2: env v12_atk v12_dcy
+po32-drum / V 13 1/2: env v13_atk v13_dcy
+po32-drum / V 14 1/2: env v14_atk v14_dcy
+po32-drum / V 15 1/2: env v15_atk v15_dcy
+po32-drum / V 16 1/2: env v16_atk v16_dcy
 pushnpull / FILTER: filter cutoff resonance
 rex / MAIN: env attack decay sustain release
 sfz / MORE 1: env attack decay sustain release
@@ -122,6 +180,8 @@ surge / LFO 10: env lfo10_attack lfo10_hold lfo10_decay lfo10_sustain lfo10_rele
 surge / LFO 11: DELAY: lfo lfo11_shape lfo11_rate
 surge / LFO 11: env lfo11_attack lfo11_hold lfo11_decay lfo11_sustain lfo11_release
 tablor / FILTER: filter flt_freq flt_res flt_type
+tablor / ENV: env vca_a vca_d vca_s vca_r
+tablor / ENV: env flt_a flt_d flt_s flt_r
 tablor / LFO 1: lfo lfo1_shape lfo1_rate
 tablor / LFO 2: lfo lfo2_shape lfo2_rate
 weird-dreams / V 1 / V 2 + 1/2: mix v1_vol v2_vol v3_vol v4_vol v5_vol v6_vol v7_vol v8_vol
@@ -133,4 +193,6 @@ weird-dreams / V 5 2/3: env v5_nattack v5_ndecay
 weird-dreams / V 6 2/3: env v6_nattack v6_ndecay
 weird-dreams / V 7 2/3: env v7_nattack v7_ndecay
 weird-dreams / V 8 2/3: env v8_nattack v8_ndecay
+work / VOICE FILTER: env vf_atk vf_dec
+work / MODULATION 4: env menv_atk menv_hold menv_dec
 wurl / MAIN: env attack decay

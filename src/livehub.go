@@ -183,7 +183,7 @@ func (ls *liveSession) tickLocked() {
 		}
 		switch p.g.kind {
 		case "env":
-			e := envShapeOf(envGroup{keys: p.g.keys, start: p.g.start, end: p.g.end}, p.vals, "")
+			e := envShapeOf(p.g.keys, p.vals, "")
 			out.Envs[key] = f.envelope(key, p.g, e, p.vals)
 		case "lfo":
 			out.LFOs[key] = f.lfo(key, p.g, p.vals)
@@ -278,9 +278,13 @@ func webFrame(o liveOut) []byte {
 			m["rt"] = r3(e.Retrig)
 		}
 		if len(e.Voices) > 0 {
-			vs := make([][7]float64, len(e.Voices))
+			vs := make([][]float64, len(e.Voices))
 			for i, v := range e.Voices {
-				vs[i] = [7]float64{r3(v.Age), r3(v.Off), r3(v.Vel), r3(v.A), r3(v.H), r3(v.D), r3(v.R)}
+				row := []float64{r3(v.Age), r3(v.Off), r3(v.Vel)}
+				for _, t := range v.T {
+					row = append(row, r3(t))
+				}
+				vs[i] = row
 			}
 			m["v"] = vs
 		}
@@ -350,6 +354,12 @@ func (h *Host) serveLive(w http.ResponseWriter, r *http.Request, s *Slot) {
 	}
 	ls := h.liveSession(s)
 	cm := buildMeta("", func(k string) (string, bool) { return s.Meta(comp, k) })
+	var set *overrideSet // the module's overlay: its engine's envelope times
+	if h.ui != nil {
+		if mod, _ := s.Get(comp + "_module"); mod != "" {
+			set = h.ui.ov.get(h.modulesDir, mod)
+		}
+	}
 	pics := map[string]picGroup{}
 	need := map[string]bool{}
 	for key, p := range spec {
@@ -374,6 +384,12 @@ func (h *Host) serveLive(w http.ResponseWriter, r *http.Request, s *Slot) {
 	refresh := func() {
 		vals := ovValuesOf(cm, keys, func(k string) (string, bool) { return s.Get(comp + ":" + k) })
 		for key, g := range pics {
+			if g.kind == "env" {
+				g.secs = set.envSecs(g.keys, vals, func(k string) (ovValue, bool) {
+					v := ovValuesOf(cm, []string{k}, func(k string) (string, bool) { return s.Get(comp + ":" + k) })[k]
+					return v, v.Known
+				})
+			}
 			ls.want(key, g, vals)
 		}
 		ls.wantKeys(live)
