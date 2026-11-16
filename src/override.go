@@ -268,6 +268,10 @@ type placement struct {
 	full      bool           // a takeover: the whole panel, from 0,0
 	offline   bool           // for the web page: its time does not count against the Push's budget
 	info      map[string]any // more for v: $page, $pages, $knobs... (takeover)
+	live      *liveSession   // the sound's live session: g.envelope draws it moving (nil: still)
+	liveOut   liveOut        // ... its latest frame
+	liveKey   string         // names this placement's pictures across frames
+	fx        bool           // the module is an audio effect: its envelopes follow audio, not notes
 }
 
 // place finds the widgets whose keys a bank shows side by side, in order.
@@ -301,6 +305,8 @@ func (s *overrideSet) place(keys []string) []placement {
 type ovValue struct {
 	Value, Display, Unit, Name string
 	Frac                       float64
+	Type                       string  // the parameter's (float, int, enum, ...)
+	Min, Max                   float64 // its range, as the module states it
 	Known                      bool // a value has been read (else Frac is 0 and means nothing)
 }
 
@@ -383,6 +389,21 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 			e.Labels, _ = o["labels"].(bool)
 			if t, ok := o["touched"].(string); ok && t != "" {
 				e.Touched = t
+			}
+		}
+		// stages given as keys make a recognized envelope: it runs live, as
+		// the default view's does (envclock.go)
+		if o, ok := call.Argument(4).Export().(map[string]any); ok && p.live != nil && e.Known {
+			keys := map[string]string{}
+			for _, role := range []string{"attack", "decay", "hold", "sustain", "slope", "release"} {
+				if k, ok := o[role].(string); ok {
+					keys[role] = k
+				}
+			}
+			if keys["attack"] != "" {
+				key := p.liveKey + "/env/" + keys["attack"]
+				p.live.want(key, picGroup{kind: "env", keys: keys, fx: p.fx}, vals)
+				e.Live = p.liveOut.Envs[key]
 			}
 		}
 		drawEnvelope(img, image.Rect(int(x), int(y), int(x+ww), int(y+hh)), e, sc)

@@ -271,24 +271,16 @@ func webFrame(o liveOut) []byte {
 	r3 := func(x float64) float64 { return math.Round(x*1000) / 1000 }
 	envs := map[string]any{}
 	for k, e := range o.Envs {
-		m := map[string]any{"m": e.Mode, "h": e.Held, "r": e.Ringing}
-		if e.Stage != "" {
-			m["s"], m["p"] = e.Stage, r3(e.Progress)
-		}
+		// the clock, not positions: the page runs it on every animation frame
+		// (visuals.js envAt), so its dots move as smoothly as the screen
+		m := map[string]any{"src": e.Source}
 		if e.Retrig > 0 {
 			m["rt"] = r3(e.Retrig)
 		}
-		if len(e.Trail) > 0 {
-			tr := make([][2]any, len(e.Trail))
-			for i, p := range e.Trail {
-				tr[i] = [2]any{p.Stage, r3(p.Progress)}
-			}
-			m["tr"] = tr
-		}
 		if len(e.Voices) > 0 {
-			vs := make([][3]any, len(e.Voices))
-			for i, p := range e.Voices {
-				vs[i] = [3]any{p.Stage, r3(p.Progress), r3(p.Vel)}
+			vs := make([][7]float64, len(e.Voices))
+			for i, v := range e.Voices {
+				vs[i] = [7]float64{r3(v.Age), r3(v.Off), r3(v.Vel), r3(v.A), r3(v.H), r3(v.D), r3(v.R)}
 			}
 			m["v"] = vs
 		}
@@ -366,7 +358,7 @@ func (h *Host) serveLive(w http.ResponseWriter, r *http.Request, s *Slot) {
 		default:
 			continue
 		}
-		g := picGroup{kind: p.Kind, keys: p.Keys}
+		g := picGroup{kind: p.Kind, keys: p.Keys, fx: strings.HasPrefix(comp, "fx")}
 		if p.Kind == "lfo" { // how it runs: from the page's own keys, as the Push finds them
 			g = withLFOExtras(g, cm)
 		}

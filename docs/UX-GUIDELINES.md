@@ -304,9 +304,8 @@ time), the loudest sample of each block, the last 4096 samples of the output, an
 
 | Picture | What moves | From |
 |---|---|---|
-| **Envelope** (the amplitude's: no prefix, `amp`, `vca`, `tva`, `aeg`...) | a playhead running along the shape, the stage lit as far as it has gone, a short trail; it only moves forward within a stage, and rests at the sustain point while the key is held | measured: the notes say which stage (a note began: attack; all let go: release), the output's level says how far through it (attack: level over the loudest of the last seconds; decay: the fall toward the sustain the knob sets; release: the fall from where it was let go) |
-| **Envelope** whose stage times state a unit (`250 ms`, `1.2 s`) | one mark per voice, sized by velocity | exact: each note's own time since it went down or was let go |
-| **Envelope** (any other: a filter's, a pitch envelope) | the notes' gate along the base: held, every stage up to the release; let go and still sounding, the release | the notes only; where in a filter envelope a note is cannot be heard in the output |
+| **Envelope** (every one a synth or a MIDI effect has) | each note a dot running along the lines **on its own clock**: it travels each stage at that stage's speed and reaches its corner as the stage ends, rests at the sustain point while the key is held, and runs down the release from the moment the key is let go, from wherever the level was. A short trail behind each dot; the newest note's stage lit up to its dot with a hairline to the base. Under the shape, **the stage bar**: one segment per stage, as wide as the stage is drawn, lit while a note's dot is in it (and outlined in slot colour while its knob is touched) | the notes (when each went down and was let go) and each stage's time: **exact** where the module states it (`250 ms`, `1.2 s`); **from the knob's range** where that range is seconds (`0.001 .. 3`; Surge's `-8 .. 5` is log2 of seconds); otherwise **Pung's curve** on the knob's travel (2 ms .. 10 s). For the amplitude envelope (no prefix, `amp`, `vca`, `tva`, `aeg`...) the output's level then says when a stage really ends, for a note held alone: the dot waits at the attack's corner until the sound peaks, at the decay's until it settles, at the release's end until it is silent (-60 dB under where it was let go), and later notes' times are scaled by what was measured |
+| **Envelope** of an audio effect (a gate's, a ducker's) | still | it runs on the audio it hears, not on notes |
 | every envelope | its start flashes as a note begins it again | the notes |
 | **Filter** | the sound's spectrum behind the response (1/6-octave smoothing, tilted 3 dB an octave about 1 kHz, falling at most 36 dB a second) | measured: the output itself. It is the whole device's sound, after every filter and effect, so a static cutoff with a bright spectrum says the envelope or key follow is opening it |
 | **LFO** synced to the beat with a rate in note values (`1/8.`, `1/4T`) | a playhead running through the drawn cycles, a trail | exact: Live's beat, while Live plays |
@@ -327,14 +326,21 @@ dropped, never queued. A module's own page (an iframe) gets every frame as `{typ
 (overrides.md). Measured: about 2 frames a second at rest, 30 while the sound moves, each a few hundred
 bytes plus 240 spectrum values.
 
-**An instrument's own state, per voice**: Mini-JV publishes its PCM chip's voices (`live_voices`, v2):
-each voice's TVA envelope on the scale of the patch's own levels (`ram2[10]`; L 127 = 0x7f80), its
-amplitude, its TVF coefficient and pan. Its Amp Env pages draw a dot per voice running along the JV's
-4-stage envelope in real time: the stage from the level against the tone's L1-L3, how far through from how
-far the level has gone. The chip does not say which tone a voice plays; a voice is matched to the
-switched-on tone whose L1 its first stage reached (two tones with one shape need no telling apart: the dot
-lands on the same curve). Its Macros screen and its own web page show every voice's level and filter
-cutoff live.
+**An instrument's own times**: Mini-JV's envelope pages (Pitch, Filter and Amp Env of each tone) run every
+note through the JV's four stages in the JV's own time. Its time values (0..127) have no unit, so the
+seconds were **measured off the emulated JV-880**: a note played through each stage while the chip's
+envelope was read every 128-sample block until it settled (`JV_TIME` in `overrides/minijv/push_ui.js`).
+T1, T2/T3 and T4 have different scales (T = 80 is 2.6 s as an attack, 3.5 s as a second stage, 4.5 s as
+a release), a stage takes its time whatever levels it moves between, and keyfollow and velocity time
+sense moved it by under 3% in the measurement. The pitch and filter envelopes run on the same envelope
+generator and use the same table. The bar under the envelope reads `T1` .. `T4`, and `T3 SUSTAIN` while
+a held key keeps the third stage's level. A key let go early starts the fourth stage from the level it
+had, drawn as its own line down.
+
+The chip's voices (`live_voices`, v2: each voice's TVA envelope, amplitude, TVF coefficient and pan) are
+still read for the Macros screen and the module's own web page, which show every voice's level and filter
+cutoff live. They no longer place the envelope dots: the chip's level is not linear in the patch's L
+values (L 64 reads 0.11 of L 127), so a dot placed by level could not move in time.
 
 **The look**: live marks are in the modulation colour (`mod`), so they never read as a touch (slot
 colour) or as the patch (fg). A playhead is a mod dot ringed in black with a dashed hairline to the base;
@@ -345,11 +351,11 @@ neutral grey laid under the curve that shapes it, lighter where it is louder, ne
 -72 dBFS), for 1.5 s after the last note or sound, and while Live plays if a picture follows the beat.
 Otherwise it draws only on change, as before.
 
-**What the fleet can give**: of the envelope and LFO times in the 100 captured modules, 13 state a unit
-(milliseconds) and one LFO rate is in Hz. Most motion therefore comes from measurement and the notes,
-and where the instrument's own state is wanted, the module must publish it: Mini-JV reads its 28 PCM
-voices straight from the emulated chip (`live_voices`: each voice's amplitude, both TVA stages as the
-firmware's envelope and LFO drive them, and its TVF coefficient) and shows them on its Macros screen.
+**What the fleet can give**: of 289 envelope time knobs in the 100 captured modules, 14 state a unit
+(milliseconds), 98 have a range in seconds (Surge's 54 among them), and the other 177 are 0..1, 0..127
+or 0..100 with no unit: those run on Pung's curve, which the amplitude envelope's sound corrects. The
+curve is the one estimate a live picture makes; a module that states its times in ms or s gets exact
+dots for nothing. One LFO rate in the fleet is in Hz.
 
 **Cost**, measured on the device (`frame_draw_us`, `frame_push_us` in `GET /api/surface/state`): a page
 of plain knobs draws in about 7.4 ms and hands over in about 1.8 ms; the spectrum adds about 1 ms, a

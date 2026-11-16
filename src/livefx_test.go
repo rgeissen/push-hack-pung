@@ -77,75 +77,125 @@ func TestSpectrumFindsTheTone(t *testing.T) {
 
 // An amplitude envelope follows the sound: a note, a rise, a fall to the
 // sustain, a hold, a release, silence.
-func TestEnvelopeFollowsTheSound(t *testing.T) {
-	s := &Slot{}
-	var fx liveFX
-	g := picGroup{kind: "env", keys: map[string]string{"attack": "attack", "decay": "decay", "sustain": "sustain", "release": "release"}}
-	e := envShape{A: 0.3, D: 0.3, S: 0.5, R: 0.4, HasD: true, HasS: true, HasR: true, Known: true}
-	ph := 0.0
-	frame := func(amp float32) *envLive {
-		s.live.feedAudio(block(amp, 220, 1470, &ph))
-		fx.look(s)
-		return fx.envelope("e", g, e, nil)
+// A note runs through an envelope on its own clock: each stage takes its
+// time, the sustain waits for the key, the release starts where the level was.
+func TestEnvelopeClock(t *testing.T) {
+	e := envShape{S: 0.5, HasD: true, HasS: true, HasR: true, Known: true}
+	v := envVoice{A: 0.1, D: 0.2, R: 0.5, Off: -1}
+	at := func(age, off float64) string {
+		v.Age, v.Off = age, off
+		p := envAt(v, 0, e)
+		if p.Done {
+			return "done"
+		}
+		return fmt.Sprintf("%s %.2f", p.Stage, p.Prog)
 	}
-	frame(0)
-	s.live.trackMidi([]byte{0x90, 60, 100})
-	var stages []string
-	note := func(l *envLive) {
-		if len(stages) == 0 || stages[len(stages)-1] != l.Stage {
-			stages = append(stages, l.Stage)
+	for _, c := range []struct {
+		age, off float64
+		want     string
+	}{
+		{0.05, -1, "attack 0.50"},
+		{0.2, -1, "decay 0.50"},
+		{3, -1, "sustain 0.00"},
+		{3, 0.25, "release 0.50"},
+		{3, 0.6, "done"},
+		{0.075, 0.025, "release 0.05"}, // let go at 0.05 (level 0.5, the sustain's): the whole release
+		{0.125, 0.1, "release 0.70"},   // let go at 0.025 (level 0.25): half way down already
+	} {
+		if got := at(c.age, c.off); got != c.want {
+			t.Fatalf("age %.3f off %.3f: %s, want %s", c.age, c.off, got, c.want)
 		}
 	}
-	for _, a := range []float32{0.1, 0.3, 0.6, 0.9, 1.0, 0.9, 0.8, 0.7, 0.6, 0.55, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5} {
-		l := frame(a)
-		note(l)
-		if l.Mode != "measured" || !l.Held {
-			t.Fatalf("mode %q held %v", l.Mode, l.Held)
+	// no sustain: it runs through by itself, let go or not
+	ad := envShape{HasD: true, Known: true}
+	v = envVoice{A: 0.1, D: 0.4, Age: 0.3, Off: 0.2}
+	if p := envAt(v, 0, ad); p.Stage != "decay" || math.Abs(p.Prog-0.5) > 1e-9 {
+		t.Fatalf("AD: %+v", p)
+	}
+	if p := envAt(v, 0.3, ad); !p.Done {
+		t.Fatalf("AD over: %+v", p)
+	}
+
+	for _, c := range []struct {
+		v    ovValue
+		secs float64
+		src  string
+	}{
+		{ovValue{Display: "250", Unit: "ms"}, 0.25, "stated"},
+		{ovValue{Display: "1.5 s"}, 1.5, "stated"},
+		{ovValue{Value: "0.5", Type: "float", Min: 0.001, Max: 3}, 0.5, "range"},
+		{ovValue{Value: "-1", Type: "float", Min: -8, Max: 5}, 0.5, "range"}, // Surge: log2 of seconds
+		{ovValue{Value: "0", Frac: 0, Type: "int", Max: 127}, envCurveMin, "curve"},
+		{ovValue{Value: "127", Frac: 1, Type: "int", Max: 127}, envCurveMax, "curve"},
+		{ovValue{Value: "0.5", Frac: 0.5, Type: "float", Max: 1}, 0.1414, "curve"},
+	} {
+		secs, src := stageTime(c.v)
+		if src != c.src || math.Abs(secs-c.secs) > 1e-3 {
+			t.Fatalf("%+v: %.4f %s, want %.4f %s", c.v, secs, src, c.secs, c.src)
 		}
-	}
-	s.live.trackMidi([]byte{0x80, 60, 0})
-	for _, a := range []float32{0.45, 0.3, 0.2, 0.1, 0.03, 0.01, 0, 0, 0, 0, 0, 0, 0, 0} {
-		note(frame(a))
-	}
-	want := []string{"attack", "decay", "sustain", "release", ""}
-	if fmt.Sprint(stages) != fmt.Sprint(want) {
-		t.Fatalf("stages %v, want %v", stages, want)
-	}
-	// a filter's envelope says only what the notes say
-	f := picGroup{kind: "env", keys: map[string]string{"attack": "filter_attack", "decay": "filter_decay"}}
-	if l := fx.envelope("f", f, e, nil); l.Mode != "gate" {
-		t.Fatalf("filter envelope: %q", l.Mode)
 	}
 }
 
-func TestTimedVoices(t *testing.T) {
-	now := 10 * time.Second
-	snap := liveSnap{Now: now, Voices: []liveNote{
-		{Note: 60, Vel: 127, On: now - 50*time.Millisecond},                           // in its attack (100 ms)
-		{Note: 62, Vel: 64, On: now - 150*time.Millisecond},                           // in its decay (200 ms)
-		{Note: 64, Vel: 64, On: now - 2*time.Second},                                  // holding
-		{Note: 65, Vel: 64, On: now - 3*time.Second, Off: now - 250*time.Millisecond}, // half released (500 ms)
-		{Note: 67, Vel: 64, On: now - 3*time.Second, Off: now - time.Second},          // done
-	}}
-	secs := map[string]float64{"attack": 0.1, "decay": 0.2, "release": 0.5}
-	e := envShape{HasD: true, HasS: true, HasR: true}
-	got := timedVoices(snap, secs, e)
-	var desc []string
-	for _, v := range got {
-		desc = append(desc, fmt.Sprintf("%s %.2f", v.Stage, v.Progress))
+// The amplitude envelope's note waits for the sound: the curve says the
+// attack takes 2 ms, the sound takes about 200; the dot waits at the attack's
+// corner until the level turns, and the next note's attack is the sound's.
+func TestEnvelopeMeasuresTheSound(t *testing.T) {
+	s := &Slot{}
+	var fx liveFX
+	g := picGroup{kind: "env", keys: map[string]string{"attack": "attack", "decay": "decay", "sustain": "sustain", "release": "release"}}
+	vals := map[string]ovValue{
+		"attack": {Value: "0", Frac: 0, Known: true}, "decay": {Value: "0", Frac: 0, Known: true},
+		"sustain": {Value: "0.5", Frac: 0.5, Known: true}, "release": {Value: "0", Frac: 0, Known: true},
 	}
-	want := "[attack 0.50 decay 0.25 sustain 0.50 release 0.50]"
-	if fmt.Sprint(desc) != want {
-		t.Fatalf("%v, want %s", desc, want)
+	e := envShapeOf(envGroup{keys: g.keys}, vals, "")
+	ph := 0.0
+	var stages []string
+	frame := func(amp float32) *envLive {
+		s.live.feedAudio(block(amp, 220, 1470, &ph))
+		fx.look(s)
+		l := fx.envelope("e", g, e, vals)
+		st := "-"
+		if len(l.Voices) > 0 {
+			st = envAt(l.Voices[0], 0, e).Stage
+		}
+		if os.Getenv("ENVDBG") != "" {
+			tr := fx.envs["e"]
+			fmt.Printf("lvl %.3f phase %d meas %v voices %+v st %s\n", fx.lvl, tr.m.phase, tr.meas[tr.m.on], l.Voices, st)
+		}
+		if len(stages) == 0 || stages[len(stages)-1] != st {
+			stages = append(stages, st)
+		}
+		time.Sleep(liveTick)
+		return l
 	}
-	if s, ok := secondsOf(ovValue{Display: "250", Unit: "ms"}); !ok || s != 0.25 {
-		t.Fatal("ms")
+	frame(0)
+	s.live.trackMidi([]byte{0x90, 60, 100})
+	for _, a := range []float32{0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0, 0.85, 0.7, 0.6, 0.52, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5} {
+		if l := frame(a); l.Source != "curve" {
+			t.Fatalf("source %q", l.Source)
+		}
 	}
-	if s, ok := secondsOf(ovValue{Display: "1.5 s"}); !ok || s != 1.5 {
-		t.Fatal("s")
+	s.live.trackMidi([]byte{0x80, 60, 0})
+	for _, a := range []float32{0.4, 0.3, 0.2, 0.1, 0.05, 0.01, 0.001, 0, 0, 0, 0, 0, 0, 0} {
+		frame(a)
 	}
-	if _, ok := secondsOf(ovValue{Display: "64"}); ok {
-		t.Fatal("a number with no unit is no time")
+	if want := "[- attack decay sustain release -]"; fmt.Sprint(stages) != want {
+		t.Fatalf("stages %v, want %s", stages, want)
+	}
+	tr := fx.envs["e"]
+	if a := tr.scale[0] * envCurveMin; a < 0.15 || a > 0.3 {
+		t.Fatalf("learned attack %.3f s, the sound's was about 0.22", a)
+	}
+	// the next note's dot runs on what was learned
+	s.live.trackMidi([]byte{0x90, 62, 100})
+	s.live.trackMidi([]byte{0x90, 64, 100}) // two held: nothing is measured
+	l := frame(0.5)
+	if len(l.Voices) != 2 || math.Abs(l.Voices[0].A-tr.scale[0]*envCurveMin) > 1e-9 {
+		t.Fatalf("voices %+v", l.Voices)
+	}
+	// an audio effect's envelope has no clock
+	if l := fx.envelope("fx", picGroup{kind: "env", keys: g.keys, fx: true}, e, vals); len(l.Voices) != 0 || l.Source != "" {
+		t.Fatalf("fx envelope %+v", l)
 	}
 }
 

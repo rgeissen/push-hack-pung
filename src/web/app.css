@@ -344,14 +344,19 @@ body[data-view="library"] [data-view-of="devices"] { display: none !important; }
 .lib-empty { color: var(--muted); padding: 18px; border: 1px dashed var(--line); border-radius: 8px; }
 
 /* the sound, live (visuals.js live layers; the Push draws the same) */
-.env .live .gate { fill: var(--mod); }
-.env .live .gate.ringing { fill: color-mix(in srgb, var(--mod) 55%, #000); }
 .env .live .retrig { stroke: var(--mod); stroke-width: 2.4; }
 .env .live .lit { stroke: var(--mod); stroke-width: 3.4; stroke-linecap: round; }
 .env .live .hair { stroke: color-mix(in srgb, var(--mod) 60%, #000); stroke-width: 1; stroke-dasharray: 2 3; }
 .env .live .ring { fill: #000; }
 .env .live .dot { fill: var(--mod); }
 .env .live .trail { fill: var(--mod); }
-.env .live .letter.live { fill: var(--mod); }
+/* the stages as a bar under an envelope: lit while a note's dot is in it */
+.env .stage { fill: #282a2e; }
+.env .stage.on { fill: var(--mod); }
+.env .stage.hot { stroke: var(--slot); stroke-width: 1.5; }
+.env .sl { fill: var(--muted); font: 600 10px var(--mono); text-anchor: middle; pointer-events: none; }
+.env .sl.hot { fill: var(--slot); }
+.env .sl.on { fill: #000; }
+.env.unknown .stage { fill: #1c1c1b; }
 .env .spec .specfill { fill: #24262a; mix-blend-mode: lighten; }
 .env .spec .specline { stroke: #686c70; stroke-width: 1.2; }

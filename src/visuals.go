@@ -109,7 +109,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 	x0, x1 := float64(r.Min.X+6), float64(r.Max.X-6)
 	top, base := float64(r.Min.Y+8), float64(r.Max.Y-6)
 	if e.Labels {
-		base = float64(r.Max.Y - 18)
+		base = float64(r.Max.Y - 20)
 	}
 	span := x1 - x0
 	seg := func(f float64) float64 { return span * (0.05 + 0.25*f) }
@@ -225,112 +225,121 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 		}
 		disc(img, p.x, p.y, rad, c)
 	}
-	// the sound in it, as it plays (livefx.go): the notes' gate along the
-	// base; the stage the amplitude is in, lit as far as it has gone, with a
-	// playhead and a short trail; or a mark per voice where the stage times
-	// are known
+	// the sound in it, as it plays (envclock.go): each note a dot running
+	// along the lines on its clock, a short trail behind it; the newest
+	// note's stage lit up to its dot, with a hairline down to the base
 	lv := e.Live
 	if lv != nil && !e.Known {
 		lv = nil
 	}
-	lit := func(role string) bool { return false }
+	stageSeg := func(stage string) int {
+		if stage == "sustain" && e.HasSlope {
+			stage = "slope"
+		}
+		for i := 1; i < len(pts); i++ {
+			if pts[i].role == stage {
+				return i
+			}
+		}
+		return -1
+	}
+	at := func(p envPos) (float64, float64, int) {
+		i := stageSeg(p.Stage)
+		if i < 0 {
+			return 0, 0, -1
+		}
+		a, b := pts[i-1], pts[i]
+		t := math.Max(0, math.Min(1, p.Prog))
+		return a.x + (b.x-a.x)*t, a.y + (b.y-a.y)*t, i
+	}
+	lit := map[string]bool{}
 	if lv != nil {
-		seg := func(stage string) int {
-			if stage == "sustain" && e.HasSlope {
-				stage = "slope"
-			}
-			for i := 1; i < len(pts); i++ {
-				if pts[i].role == stage {
-					return i
-				}
-			}
-			return -1
-		}
-		at := func(p envPoint) (float64, float64, bool) {
-			i := seg(p.Stage)
-			if i < 0 {
-				return 0, 0, false
-			}
-			a, b := pts[i-1], pts[i]
-			t := math.Max(0, math.Min(1, p.Progress))
-			return a.x + (b.x-a.x)*t, a.y + (b.y-a.y)*t, true
-		}
-		rel := seg("release")
-		switch {
-		case lv.Held:
-			to := pts[len(pts)-1].x
-			if rel > 0 {
-				to = pts[rel-1].x
-			}
-			rect(img, int(x0), int(base)-1, int(to-x0), 3, cMod)
-		case lv.Ringing && rel > 0:
-			rect(img, int(pts[rel-1].x), int(base)-1, int(pts[rel].x-pts[rel-1].x), 3, mixColor(cMod, 0.55))
-		}
 		if lv.Retrig > 0 { // a note began: the envelope starts again
 			aaLine(img, x0, top, x0, base, 2.4, mixColor(cMod, lv.Retrig))
 		}
-		switch lv.Mode {
-		case "measured":
-			for i := 0; i+1 < len(lv.Trail); i++ {
-				if x, y, ok := at(lv.Trail[i]); ok {
-					k := float64(i+1) / float64(len(lv.Trail))
-					disc(img, x, y, 1.4+1.6*k, mixColor(cMod, 0.12+0.45*k))
+		dt := 0.0 // the frame's ages, carried on to now
+		if lv.At > 0 {
+			dt = math.Max(0, math.Min(0.25, (liveNow() - lv.At).Seconds()))
+		}
+		for n := len(lv.Voices) - 1; n >= 0; n-- { // the newest drawn last, on top
+			v := lv.Voices[n]
+			cur := envAt(v, dt, e)
+			if cur.Done {
+				continue
+			}
+			lit[cur.Stage] = true
+			for k := trailLen; k >= 1; k-- {
+				back := dt - float64(k)*envTrailDT
+				if v.Age+back < 0 {
+					continue
+				}
+				if x, y, i := at(envAt(v, back, e)); i > 0 {
+					f := 1 - float64(k)/float64(trailLen+1)
+					disc(img, x, y, 1.2+1.6*f, mixColor(cMod, 0.1+0.4*f))
 				}
 			}
-			if lv.Stage != "" {
-				if i := seg(lv.Stage); i > 0 {
-					x, y, _ := at(envPoint{Stage: lv.Stage, Progress: lv.Progress})
-					aaLine(img, pts[i-1].x, pts[i-1].y, x, y, 3.4, cMod) // the stage so far
-					for gy := y + 7; gy < base-2; gy += 5 {
-						aaLine(img, x, gy, x, math.Min(gy+2, base-2), 1, mixColor(cMod, 0.6))
-					}
-					disc(img, x, y, 6, cBlack)
-					disc(img, x, y, 4.3, cMod)
-				}
-				lit = func(role string) bool {
-					return role == lv.Stage || (role == "slope" && lv.Stage == "sustain")
-				}
+			x, y, i := at(cur)
+			if i < 0 {
+				continue
 			}
-		case "timed":
-			for _, v := range lv.Voices {
-				if x, y, ok := at(v); ok {
-					disc(img, x, y, 6, cBlack)
-					disc(img, x, y, 2.6+1.8*v.Vel, cMod)
+			rad := 3.2 + 1.4*v.Vel
+			if n == 0 {
+				aaLine(img, pts[i-1].x, pts[i-1].y, x, y, 3.4, cMod) // the stage so far
+				for gy := y + 7; gy < base-2; gy += 5 {
+					aaLine(img, x, gy, x, math.Min(gy+2, base-2), 1, mixColor(cMod, 0.6))
 				}
+				rad = 4.6
 			}
-			lit = func(role string) bool {
-				for _, v := range lv.Voices {
-					if role == v.Stage || (role == "slope" && v.Stage == "sustain") {
-						return true
-					}
-				}
-				return false
-			}
-		default: // the notes only: held is everything up to the release
-			lit = func(role string) bool {
-				if role == "release" {
-					return lv.Ringing
-				}
-				return lv.Held
-			}
+			disc(img, x, y, rad+1.8, cBlack)
+			disc(img, x, y, rad, cMod)
 		}
 	}
-	// the stage letters, under their segments
+	// the stages, as a bar under the shape: each stage its own segment, as
+	// wide as it is drawn; lit while a note's dot is in it, outlined in the
+	// slot's color while its knob is touched
 	if e.Labels {
 		letter := map[string]string{"attack": "A", "hold": "H", "decay": "D", "sustain": "S", "slope": "S", "release": "R"}
+		by, bh := int(base)+4, 13
 		for i := 1; i < len(pts); i++ {
 			a, b := pts[i-1], pts[i]
-			c := cDim
-			if lit(b.role) {
-				c = cMod
+			sx, ex := int(math.Round(a.x))+1, int(math.Round(b.x))-1
+			if i == 1 {
+				sx = int(math.Round(a.x))
 			}
+			if i == len(pts)-1 {
+				ex = int(math.Round(b.x))
+			}
+			w := ex - sx
+			if w < 2 {
+				continue
+			}
+			on := lit[b.role] || (b.role == "slope" && lit["sustain"])
+			bg, ink := cStageOff, cDim
+			if !e.Known {
+				bg = cFaint
+			}
+			if on {
+				bg, ink = cMod, cBlack
+			}
+			rect(img, sx, by, w, bh, bg)
 			if hot(b.role) {
-				c = accent
+				rect(img, sx, by, w, 1, accent)
+				rect(img, sx, by+bh-1, w, 1, accent)
+				rect(img, sx, by, 1, bh, accent)
+				rect(img, ex-1, by, 1, bh, accent)
+				if !on {
+					ink = accent
+				}
 			}
-			label(img, int((a.x+b.x)/2), int(base)+14, letter[b.role], c, 0)
+			if w >= 9 {
+				label(img, sx+w/2, by+bh-2, letter[b.role], ink, 0)
+			}
 		}
 	}
 }
+
+// cStageOff: a stage's segment while no note is in it.
+var cStageOff = color.NRGBA{40, 42, 46, 255}
 
 // envShapeOf reads a group's values (what the default view and the web
 // show) into a shape.

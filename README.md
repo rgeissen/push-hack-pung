@@ -170,4 +170,4 @@ Braids' envelopes drawn as envelopes.
 ## License
 
 MIT. `src/third_party/schwung` (the plugin API header) and `src/web/static/schwung-remote-api.js` are from
-Pung, MIT, Copyright (c) 2025-2026 Charles Vestal. Modules keep their own licenses, which ship with them.
+Schwung, MIT, Copyright (c) 2025-2026 Charles Vestal. Modules keep their own licenses, which ship with them.

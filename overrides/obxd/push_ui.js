@@ -85,27 +85,9 @@ push.widget({
 // ---- envelopes ----------------------------------------------------------------
 function envelope(a, d, s, r, name) {
   return function (g, v) {
-    var w = g.w, top = 10, base = g.h - 8, span = w - 16;
-    var wa = 8 + frac(v, a) * span * 0.28, wd = 8 + frac(v, d) * span * 0.28, wr = 8 + frac(v, r) * span * 0.28;
-    var ws = Math.max(18, span - wa - wd - wr);
-    var x0 = 8, x1 = x0 + wa, x2 = x1 + wd, x3 = x2 + ws, x4 = x3 + wr;
-    var ys = base - frac(v, s) * (base - top);
-    var pts = [[x0, base], [x1, top], [x2, ys], [x3, ys], [x4, base]], keys = [a, d, s, r], fill = [];
-    for (var x = x0; x < x4; x += 2) {
-      var y = base;
-      for (var i = 0; i < 4; i++) {
-        var p = pts[i], q = pts[i + 1];
-        if (x >= p[0] && x <= q[0]) y = p[1] + (q[1] - p[1]) * ((x - p[0]) / Math.max(1, q[0] - p[0]));
-      }
-      fill.push([x, y]);
-    }
-    under(g, fill, base, "faint");
-    g.line(x0, base, x4, base, 1, "line");
-    for (var i = 0; i < 4; i++) {
-      var on = v.$touched === keys[i];
-      g.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], on ? 3 : 2, on ? "slot" : "fg");
-    }
-    for (var i = 1; i < 4; i++) g.dot(pts[i][0], pts[i][1], 3, v.$touched === keys[i] || v.$touched === keys[i - 1] ? "slot" : "fg");
+    // Pung's envelope (g.envelope): the same picture as the default view,
+    // and live: each note a dot on its clock, the stage bar lit under it
+    g.envelope(0, 0, g.w, g.h, { attack: a, decay: d, sustain: s, release: r, labels: true });
     title(g, name);
   };
 }

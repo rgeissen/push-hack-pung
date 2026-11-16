@@ -23,6 +23,7 @@ import (
 // picGroup: one recognized structure among a page's keys.
 type picGroup struct {
 	kind       string            // "env", "filter", "lfo", "mix"
+	fx         bool              // an audio effect's: it follows the audio it hears, not the notes
 	keys       map[string]string // role -> key (mix: "0", "1", ... in column order)
 	start, end int               // columns [start, end)
 }

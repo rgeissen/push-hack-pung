@@ -12,7 +12,9 @@
 //   move them.
 // - The JV's 4-stage envelopes (pitch, filter, amp: T1-T4 and L1-L4), each
 //   stage drawn over its own two knobs (time, level), key-off between 3 and
-//   4. Eight knobs of numbers become one envelope.
+//   4. Eight knobs of numbers become one envelope. Live, every note played
+//   is a dot running through the stages in the JV's own time (JV_TIME), and
+//   the bar under the envelope lights the stage each note is in.
 
 var ACCENT = "#ff8a3d", LCD_BG = "#1d270c", LCD_EDGE = "#3c4f18", LCD_INK = "#cfe878", LCD_DIM = "#7f9440";
 var CARD = "#1d2026", ON = "#4ade80";
@@ -47,21 +49,68 @@ function envKeys(t, sec) {
 // stage i over encoder columns 2i and 2i+1 (the band starts 4 px into column 0)
 function stageX(i) { return i * 240 - (i ? 4 : 0); }
 
+// ---- the JV's own times --------------------------------------------------------------
+// How long a stage takes for each time value (0..127), in seconds, measured
+// off the emulated JV-880 itself: a note played through each stage, the
+// chip's envelope read every 128-sample block until it settled. T1, T2/T3
+// and T4 each have their own scale; a stage takes its time whatever levels
+// it moves between (measured: from L0, L32 and L64 to L127, and down to
+// L0, L32, L64, L100 alike). The pitch and filter envelopes run on the same
+// envelope generator, and so on the same times.
+var JV_TIME = [ // T1, T2, T3, T4: [time value, seconds]
+  [[0, 0.000], [4, 0.000], [8, 0.000], [16, 0.000], [24, 0.000], [32, 0.000], [36, 0.000], [40, 0.000], [44, 0.000], [48, 0.000], [49, 0.000], [50, 0.000], [51, 0.000], [52, 0.000], [53, 0.000], [54, 0.067], [56, 0.165], [58, 0.293], [60, 0.415], [64, 0.700], [68, 1.065], [72, 1.474], [80, 2.580], [88, 4.168], [96, 6.461], [104, 9.726], [112, 14.376], [120, 20.997], [127, 29.161]],
+  [[0, 0.000], [4, 0.038], [8, 0.052], [16, 0.113], [24, 0.209], [32, 0.328], [36, 0.415], [40, 0.444], [44, 0.447], [48, 0.444], [49, 0.453], [50, 0.453], [51, 0.453], [52, 0.949], [53, 0.987], [54, 1.048], [56, 1.144], [58, 1.245], [60, 1.379], [64, 1.681], [68, 2.023], [72, 2.435], [80, 3.547], [88, 5.117], [96, 7.329], [104, 10.638], [112, 15.322], [120, 22.166], [127, 30.633]],
+  [[0, 0.000], [4, 0.029], [8, 0.052], [16, 0.116], [24, 0.209], [32, 0.328], [36, 0.424], [40, 0.444], [44, 0.456], [48, 0.444], [49, 0.444], [50, 0.447], [51, 0.453], [52, 0.938], [53, 0.996], [54, 1.036], [56, 1.144], [58, 1.245], [60, 1.376], [64, 1.675], [68, 2.023], [72, 2.435], [80, 3.538], [88, 5.114], [96, 7.329], [104, 10.638], [112, 15.316], [120, 22.166], [127, 30.633]],
+  [[0, 0.006], [4, 0.456], [8, 0.447], [16, 0.447], [24, 0.456], [32, 0.444], [36, 0.456], [40, 0.456], [44, 0.453], [48, 0.456], [49, 0.456], [50, 0.456], [51, 0.447], [52, 1.837], [53, 1.884], [54, 1.939], [56, 2.116], [58, 2.247], [60, 2.383], [64, 2.673], [68, 3.001], [72, 3.422], [80, 4.525], [88, 6.089], [96, 8.339], [104, 11.569], [112, 16.268], [120, 23.130], [127, 31.553]]
+];
+function jvSeconds(stage, raw) {
+  var tab = JV_TIME[stage], x = Math.max(0, Math.min(127, raw));
+  for (var i = 1; i < tab.length; i++) {
+    if (x <= tab[i][0]) {
+      var a = tab[i - 1], b = tab[i], f = (x - a[0]) / Math.max(1, b[0] - a[0]);
+      return a[1] + (b[1] - a[1]) * f;
+    }
+  }
+  return tab[tab.length - 1][1];
+}
+function rawOf(v, k) { var n = known(v, k) ? parseFloat(v[k].value) : NaN; return isNaN(n) ? 64 : n; }
+
+// where one note is in a tone's envelope: its clock (age, and since let go)
+// through the stages at their times; held after the third, at its level;
+// let go, the fourth runs from wherever the level was
+function jvAt(age, rel, secs, lv, start) {
+  var pre = function (t) {
+    var from = start;
+    for (var i = 0; i < 3; i++) {
+      if (t < secs[i]) { var p = secs[i] > 1e-6 ? t / secs[i] : 1; return { stage: i, p: p, level: from + (lv[i] - from) * p }; }
+      t -= secs[i];
+      from = lv[i];
+    }
+    return { stage: 2, p: 1, level: lv[2], sus: true };
+  };
+  if (rel < 0) return pre(age);
+  var was = pre(age - rel), q = secs[3] > 1e-6 ? rel / secs[3] : 1;
+  if (q >= 1) return null;
+  return { stage: 3, p: q, from: was.level, level: was.level + (lv[3] - was.level) * q };
+}
+
 function jvEnvelope(g, v, t, sec, x0, x1, top, base, small) {
   var e = ENV[sec], touched = v.$touched || "";
   var mid = (top + base) / 2;
   var y = function (f) { return e.signed ? mid - (f - 0.5) * (base - top) : base - f * (base - top); };
   var start = e.signed ? mid : base, ok = true, i;
   for (i = 0; i < 4; i++) if (!known(v, tk(t, e.t[i]))) ok = false;
-  var pts = [], hold = [], prev = start, w = (x1 - x0) / 4;
+  var pts = [], prev = start, w = (x1 - x0) / 4, lv = [];
   for (i = 0; i < 4; i++) {
     var rx = small ? x0 + i * w : stageX(i);
     var rw = small ? w : (i < 3 ? stageX(i + 1) : x1) - rx;
-    var lvl = e.l[i] ? y(fr(v, tk(t, e.l[i]), 0.5)) : start; // amp's last stage falls to nothing
+    var lf = e.l[i] ? fr(v, tk(t, e.l[i]), 0.5) : 0; // amp's last stage falls to nothing
+    lv.push(lf);
+    var lvl = y(lf);
     var ex = rx + Math.max(small ? 2 : 6, fr(v, tk(t, e.t[i]), 0.3) * (rw - (small ? 4 : 16)));
     if (i === 0) pts.push([rx, prev]);
     pts.push([ex, lvl]);
-    if (i < 3) { pts.push([rx + rw, lvl]); hold.push([ex, lvl, rx + rw]); }
+    if (i < 3) pts.push([rx + rw, lvl]);
     prev = lvl;
   }
   var col = ok ? "fg" : "dim";
@@ -71,42 +120,82 @@ function jvEnvelope(g, v, t, sec, x0, x1, top, base, small) {
   g.poly(pts, small ? 1.5 : 2, col);
   if (small) return;
   // the stage being turned, and its handle
+  var hotStage = -1;
   for (i = 0; i < 4; i++) {
     var hot = touched === tk(t, e.t[i]) || (e.l[i] && touched === tk(t, e.l[i]));
+    if (hot) hotStage = i;
     var a = pts[i === 0 ? 0 : 2 * i], b = pts[2 * i + 1];
     if (hot) g.line(a[0], a[1], b[0], b[1], 3.5, ACCENT);
     g.dot(b[0], b[1], hot ? 5 : 3, hot ? ACCENT : col);
     g.text(stageX(i) + 8, top - 10, String(i + 1), hot ? ACCENT : "dim", -1);
   }
-  // each voice, live, where it is in this tone's envelope (trackVoices)
-  if (sec === "Amp" && !small) {
-    var vst = trackVoices(v);
-    if (vst) for (var sl in vst) {
-      var q = vst[sl];
-      if (q.tone !== t || q.p === undefined) continue;
-      var a0 = pts[q.stage === 0 ? 0 : 2 * q.stage], b0 = pts[2 * q.stage + 1];
-      if (!a0 || !b0) continue;
-      var dx = a0[0] + (b0[0] - a0[0]) * q.p, dy = a0[1] + (b0[1] - a0[1]) * q.p;
-      g.line(a0[0], a0[1], dx, dy, 3.4, "mod");
-      g.dot(dx, dy, 7, "black");
-      g.dot(dx, dy, 4.6, "mod");
-    }
-  }
-  // the notes, live (v.$live): held, the stages up to key off light along
-  // the base; let go and still sounding, the fourth
-  var lv = v.$live;
-  if (lv && lv.known) {
-    if (lv.held > 0) g.fill(x0, base - 1, stageX(3) - x0, 3, "mod");
-    else if (lv.db > -72 && lv.since_off >= 0) g.fill(stageX(3), base - 1, x1 - stageX(3), 3, "#2a7f92");
-  }
   // key off: the last stage starts when the key is let go
   var ko = stageX(3);
   for (var yy = top - 18; yy < base; yy += 6) g.line(ko, yy, ko, yy + 3, 1, "dim");
   g.text(x1 - 6, top - 10, "KEY OFF", "dim", 1);
+
+  // every note, live, on its clock (v.$live.voices: age and since let go,
+  // at the session's frame): a dot running along this tone's lines, a trail
+  // behind it, the newest note's stage lit up to its dot
+  var lit = {}, sus = false, live = v.$live;
+  if (ok && live && live.known && live.voices && live.voices.length) {
+    var secs = [], st0 = e.signed ? 0.5 : 0;
+    for (i = 0; i < 4; i++) secs.push(jvSeconds(i, rawOf(v, tk(t, e.t[i]))));
+    var place = function (q) {
+      if (q.stage < 3) {
+        var a = pts[q.stage === 0 ? 0 : 2 * q.stage], b = pts[2 * q.stage + 1];
+        return [a[0] + (b[0] - a[0]) * q.p, a[1] + (b[1] - a[1]) * q.p];
+      }
+      var bx = pts[7][0]; // the fourth, from the level it was let go at
+      return [ko + (bx - ko) * q.p, y(q.level)];
+    };
+    var vs = live.voices.slice().sort(function (p, q) { return p.age - q.age; }).slice(0, 8);
+    for (var n = vs.length - 1; n >= 0; n--) {
+      var vo = vs[n], rel = vo.held ? -1 : vo.released, cur = jvAt(vo.age, rel, secs, lv, st0);
+      if (!cur) continue;
+      lit[cur.stage] = true;
+      if (cur.sus) sus = true;
+      for (var k = 9; k >= 1; k--) {
+        var back = k * 0.033;
+        if (vo.age - back < 0) continue;
+        var bq = jvAt(vo.age - back, rel < 0 ? -1 : rel - back, secs, lv, st0);
+        if (!bq) continue;
+        var tp = place(bq), f = 1 - k / 10;
+        g.dot(tp[0], tp[1], 1.2 + 1.6 * f, f > 0.6 ? "#2a8ea6" : "#1f5f70");
+      }
+      var at = place(cur), r = 3.2 + 1.4 * (vo.vel / 127);
+      if (n === 0) {
+        if (cur.stage === 3) {
+          if (Math.abs(y(cur.from) - pts[6][1]) > 1) g.line(ko, y(cur.from), pts[7][0], pts[7][1], 1, "#1f5f70"); // its own way down
+          g.line(ko, y(cur.from), at[0], at[1], 3.4, "mod");
+        } else if (!cur.sus) {
+          var sa = pts[cur.stage === 0 ? 0 : 2 * cur.stage];
+          g.line(sa[0], sa[1], at[0], at[1], 3.4, "mod");
+        }
+        for (var gy = at[1] + 7; gy < base - 2; gy += 5) g.line(at[0], gy, at[0], Math.min(gy + 2, base - 2), 1, "#2a8ea6");
+        r = 4.6;
+      }
+      g.dot(at[0], at[1], r + 1.8, "black");
+      g.dot(at[0], at[1], r, "mod");
+    }
+  }
+  // the stages as a bar under the envelope: lit while a note is in it; the
+  // third reads SUSTAIN while a held key keeps its level there
+  var by = base + 5, bh = 13;
+  for (i = 0; i < 4; i++) {
+    var sx = stageX(i) + (i ? 1 : 0), w2 = (i < 3 ? stageX(i + 1) : x1) - sx - (i < 3 ? 1 : 0);
+    var on = ok && !!lit[i], txt = i === 2 && sus && on ? "T3  SUSTAIN" : "T" + (i + 1);
+    g.fill(sx, by, w2, bh, on ? "mod" : ok ? "#282a2e" : "#1c1c1b");
+    if (hotStage === i) {
+      g.fill(sx, by, w2, 1, ACCENT); g.fill(sx, by + bh - 1, w2, 1, ACCENT);
+      g.fill(sx, by, 1, bh, ACCENT); g.fill(sx + w2 - 1, by, 1, bh, ACCENT);
+    }
+    g.text(sx + w2 / 2, by + bh - 2, txt, on ? "black" : hotStage === i ? ACCENT : "dim", 0);
+  }
 }
 
 function envScreen(t, sec) {
-  return function (g, v) { jvEnvelope(g, v, t, sec, 0, g.w, 24, 80, false); };
+  return function (g, v) { jvEnvelope(g, v, t, sec, 0, g.w, 24, 64, false); };
 }
 
 // ---- Macros: the takeover ------------------------------------------------------------
@@ -134,71 +223,6 @@ function voices(v) {
     return out;
   }
   return null;
-}
-
-// ---- where each voice is in its tone's amp envelope, live -----------------------------
-// Each voice's TVA envelope comes from the chip on the scale of the patch's
-// own levels (live_voices: L 127 = 1), so a voice's stage is read from its
-// level against its tone's L1..L3, and how far through it from how far the
-// level has gone. Which tone a voice plays is not in the chip; a voice is
-// matched to the switched-on tone whose levels its path fits (the peak of
-// its first stage against each L1). Two tones with one shape cannot be told
-// apart, and need not be: the dot lands on the same curve either way.
-var VS = {}, vsAt = -1;
-function ampLevels(v, t) {
-  return [fr(v, tk(t, "tvaenvlevel1"), 1), fr(v, tk(t, "tvaenvlevel2"), 1), fr(v, tk(t, "tvaenvlevel3"), 1)];
-}
-function tonesOn(v) {
-  var on = [];
-  for (var t = 0; t < 4; t++) if (fr(v, tk(t, "toneswitch"), 1) > 0.5) on.push(t);
-  return on;
-}
-function trackVoices(v) {
-  var lv = v.$live, vs = voices(v);
-  if (!vs || !lv || !lv.known || vs[0].env < 0) return null;
-  if (lv.t === vsAt) return VS;
-  vsAt = lv.t;
-  var on = tonesOn(v);
-  for (var i = 0; i < vs.length; i++) {
-    var e = vs[i].env, st = VS[i];
-    if (e <= 0.002) { // silent: the voice is over
-      if (st && ++st.zero > 3) delete VS[i];
-      continue;
-    }
-    if (!st || (st.stage >= 1 && e > st.last + 0.25)) { // a new note on this slot
-      st = VS[i] = { stage: 0, peak: e, last: e, from: 0, rel: 0, tone: -1, zero: 0, born: lv.notes };
-    }
-    st.zero = 0;
-    if (st.stage === 0) st.peak = Math.max(st.peak, e); // the first stage's reach: L1
-    // its tone: the one switched on whose first level its first stage
-    // reached; decided while that stage runs, then kept
-    if (on.length === 1) st.tone = on[0];
-    else if (on.length > 1 && (st.stage === 0 || st.tone < 0)) {
-      var best = -1, d = 9;
-      for (var k = 0; k < on.length; k++) {
-        var l1 = ampLevels(v, on[k])[0], dd = Math.abs(l1 - st.peak) + (st.stage === 0 && l1 < e - 0.03 ? 1 : 0);
-        if (dd < d) { d = dd; best = on[k]; }
-      }
-      st.tone = best;
-    }
-    var L = st.tone >= 0 ? ampLevels(v, st.tone) : [1, 1, 1];
-    var target = st.stage < 3 ? L[st.stage] : 0;
-    // the stage: done when the level has reached its target, or turned away
-    var toward = target - st.from, moved = e - st.from;
-    var p = Math.abs(toward) < 0.02 ? 1 : moved / toward;
-    var turned = st.stage < 3 && Math.abs(toward) >= 0.02 && (toward > 0 ? e < st.last - 0.01 : e > st.last + 0.01) && p > 0.2;
-    if (st.stage < 2 && (p >= 0.97 || turned)) { st.from = L[st.stage]; st.stage++; p = 0; }
-    else if (st.stage === 2 && (p >= 0.97 || turned)) { st.stage = 2; p = 1; st.held = true; }
-    // let go: every key up (or below its sustain while others are held)
-    if (st.stage < 3 && ((lv.held === 0 && lv.since_off >= 0) || (st.held && L[2] > 0.04 && e < L[2] - 0.04))) {
-      st.stage = 3; st.rel = e; p = 0;
-    }
-    if (st.stage === 3) p = 1 - e / Math.max(st.rel, 1e-4);
-    st.p = Math.max(0, Math.min(1, st.stage === st.lastStage ? Math.max(p, st.p || 0) : p)); // never backwards in a stage
-    st.lastStage = st.stage;
-    st.last = e;
-  }
-  return VS;
 }
 
 // amplitude in the LCD: one bar per voice, dB scaled; a keyed voice in ink,
@@ -376,11 +400,6 @@ function tonePages(t) {
   return out;
 }
 
-// what matching a voice to its tone needs, on every tone's pages
-var ampMatchKeys = [];
-for (var mt = 0; mt < 4; mt++) ["toneswitch", "tvaenvlevel1", "tvaenvlevel2", "tvaenvlevel3"].forEach(function (k) { ampMatchKeys.push(tk(mt, k)); });
-
 for (var tn = 0; tn < 4; tn++) {
-  push.compartment({ id: "tone" + (tn + 1), label: "Tone " + (tn + 1), pages: tonePages(tn),
-    extra_keys: ampMatchKeys, live_keys: ["live_voices"] });
+  push.compartment({ id: "tone" + (tn + 1), label: "Tone " + (tn + 1), pages: tonePages(tn) });
 }

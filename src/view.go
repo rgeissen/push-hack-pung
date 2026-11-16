@@ -120,7 +120,8 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			// a custom screen: the compartment (or this page of it) draws the
 			// whole band, with every one of its keys' values; the encoders'
 			// names and values stay under it
-			pl := placement{w: &ovWidget{keys: skeys, draw: screen}, col: 0, span: 8, info: u.takeoverInfo(p, cm, b, comp)}
+			pl := placement{w: &ovWidget{keys: skeys, draw: screen}, col: 0, span: 8, info: u.takeoverInfo(p, cm, b, comp),
+				live: ls, liveOut: u.liveOut, liveKey: fmt.Sprintf("push/%s/%s/screen", p.Module, b.Name), fx: p.Kind == "fx"}
 			if set.render(img, pl, u.ovValues(p, cm, skeys), touchedKey, sc) {
 				for c := range covered {
 					covered[c] = true
@@ -131,6 +132,8 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		} else {
 			for _, pl := range set.place(b.Keys) {
 				pl.info = map[string]any{"$live": u.liveInfo()}
+				pl.live, pl.liveOut, pl.fx = ls, u.liveOut, p.Kind == "fx"
+				pl.liveKey = fmt.Sprintf("push/%s/%s/w%d", p.Module, b.Name, pl.col)
 				touched := ""
 				if u.touched >= pl.col && u.touched < pl.col+pl.span {
 					touched = b.Keys[u.touched]
@@ -156,6 +159,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			if g.kind == "lfo" {
 				g = withLFOExtras(g, cm)
 			}
+			g.fx = p.Kind == "fx"
 			if ls != nil {
 				u.liveDrew = true
 			}
@@ -715,6 +719,7 @@ func ovValuesOf(cm *compMeta, keys []string, get func(string) (string, bool)) ma
 			e.Name = m.Name
 			e.Display, e.Unit = m.display(raw, ok)
 			e.Frac = m.frac(raw)
+			e.Type, e.Min, e.Max = m.Type, m.Min, m.Max
 		}
 		vals[k] = e
 	}
@@ -739,7 +744,8 @@ func (u *surface) drawTakeover(img *image.NRGBA, p position, cm *compMeta, b *ba
 		touched = b.Keys[u.touched]
 	}
 	info := u.takeoverInfo(p, cm, b, comp)
-	pl := placement{w: &ovWidget{keys: comp.screenKeys(), draw: comp.screen}, full: true, info: info}
+	pl := placement{w: &ovWidget{keys: comp.screenKeys(), draw: comp.screen}, full: true, info: info,
+		live: u.liveSess(), liveOut: u.liveOut, liveKey: fmt.Sprintf("push/%s/%s/takeover", p.Module, b.Name), fx: p.Kind == "fx"}
 	if !set.render(img, pl, u.ovValues(p, cm, comp.screenKeys()), touched, sc) {
 		u.say("MODULE UI OFF: " + set.failed)
 		return false

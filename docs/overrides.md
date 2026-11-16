@@ -43,7 +43,7 @@ The frame starts at the widget's top left. Nothing you draw can leave it.
 | `g.dot(x, y, r, color)` | a filled circle |
 | `g.poly(points, width, color)` | a curve through `[[x, y], ...]` (or `[x0, y0, x1, y1, ...]`) in one call |
 | `g.area(points, baseY, color)` | the area between such a curve and the line `y = baseY`, filled |
-| `g.envelope(x, y, w, h, {attack, decay, hold, sustain, slope, release, labels})` | Pung's envelope, the one the default view and the web page draw. Each stage is a key (its value and touch are read for you) or a number 0..1; a stage left out is not drawn; `slope` is a Virus-style sustain slope; `labels: true` adds the stage letters |
+| `g.envelope(x, y, w, h, {attack, decay, hold, sustain, slope, release, labels})` | Pung's envelope, the one the default view and the web page draw. Each stage is a key (its value and touch are read for you) or a number 0..1; a stage left out is not drawn; `slope` is a Virus-style sustain slope; `labels: true` adds the stage bar (a segment per stage, lit while a note is in it) |
 | `g.filter(x, y, w, h, {cutoff, resonance, type})` | Pung's filter response. `cutoff` and `resonance` are keys or numbers 0..1; `type` is a key or a name (`"LP 24 dB"`, `"HP"`, `"BandPass"`); without a type, a lowpass |
 | `g.lfo(x, y, w, h, {shape, rate})` | Pung's LFO: `shape` a key or a name (`"Sine"`, `"Saw Up"`, `"S&H"`), `rate` a key or a number 0..1 (1 to 5 cycles) |
 | `g.mix(x, y, w, h, [levels])` | Pung's mixer: a fader per level (a key or a number 0..1), and each one's share of the whole across the top |

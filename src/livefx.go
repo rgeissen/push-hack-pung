@@ -28,7 +28,7 @@ import (
 
 const (
 	liveSilentDB = -72.0                   // below this the sound has stopped
-	liveKeep     = 6 * time.Second         // a released note stays listed this long
+	liveKeep     = 12 * time.Second        // a released note stays listed this long (the longest release drawn is 10 s)
 	liveLinger   = 1500 * time.Millisecond // pictures keep moving this long after the sound stops
 	trailLen     = 9                       // positions a moving mark leaves behind
 )
@@ -47,6 +47,7 @@ type liveFX struct {
 	playing   bool
 	frame     uint64
 	used      bool // a picture asked for something live this frame
+	moving    bool // ... and something in it moves (an envelope's note is still in it)
 	synced    bool // ... one whose motion follows Live's beat
 }
 
@@ -56,7 +57,7 @@ func (f *liveFX) look(s *Slot) {
 		*f = liveFX{slot: s}
 	}
 	f.frame++
-	f.used, f.synced = false, false
+	f.used, f.synced, f.moving = false, false, false
 	if s == nil {
 		f.snap = liveSnap{Now: liveNow()}
 		f.lvl = 0
@@ -81,7 +82,7 @@ func (f *liveFX) active() bool {
 		return false
 	}
 	n := f.snap.Now
-	return f.snap.Held > 0 || n-f.lastSound < liveLinger || n-f.snap.LastOff < liveLinger || n-f.snap.LastOn < liveLinger
+	return f.moving || f.snap.Held > 0 || n-f.lastSound < liveLinger || n-f.snap.LastOff < liveLinger || n-f.snap.LastOn < liveLinger
 }
 
 func dbOf(lin float64) float64 {
@@ -206,251 +207,6 @@ func fft(a []complex128) {
 			}
 		}
 	}
-}
-
-// ---- envelopes ------------------------------------------------------------------
-
-// envLive: what a drawn envelope shows of the sound.
-type envLive struct {
-	Mode     string     // "measured" (the amplitude), "timed" (stage times known), "gate" (only the notes)
-	Stage    string     // measured: attack, hold, decay, sustain, release; "" at rest
-	Progress float64    // how far through that stage, 0..1
-	Trail    []envPoint // where it was, oldest first
-	Voices   []envPoint // timed: each sounding note
-	Held     bool       // a note is down
-	Ringing  bool       // let go, and still sounding
-	Retrig   float64    // 1 just as a note began, falling to 0
-}
-
-type envPoint struct {
-	Stage    string
-	Progress float64
-	Vel      float64 // 0..1 (timed voices)
-}
-
-type envTrack struct {
-	stage         string
-	peak, relFrom float64
-	notes         uint64
-	held          int
-	prev          float64
-	prog          float64 // how far through its stage last frame
-	steady        int
-	trail         []envPoint
-}
-
-// ampPrefixes: an envelope with one of these names shapes the amplitude, so
-// the output's level shows where it is.
-var ampEnv = regexp.MustCompile(`^(|amp|amp_env|ampenv|vca|vca_env|tva|tvaenv|aeg|env_amp|amp_eg|volume|vol|env)$`)
-
-// isAmpEnvelope: the envelope a group is, by its keys' shared prefix.
-func isAmpEnvelope(g picGroup) bool {
-	for _, k := range g.keys {
-		m := envRole.FindStringSubmatch(strings.ToLower(k))
-		if m == nil {
-			continue
-		}
-		return ampEnv.MatchString(strings.TrimSuffix(m[1], "_"))
-	}
-	return false
-}
-
-// stageSeconds: the stage times of an envelope in seconds, when every one
-// of them says its unit (250 ms, 1.2 s); else nil.
-func stageSeconds(g picGroup, vals map[string]ovValue) map[string]float64 {
-	out := map[string]float64{}
-	for _, role := range []string{"attack", "hold", "decay", "release"} {
-		k, ok := g.keys[role]
-		if !ok {
-			continue
-		}
-		v := vals[k]
-		if !v.Known {
-			return nil
-		}
-		s, ok := secondsOf(v)
-		if !ok {
-			return nil
-		}
-		out[role] = s
-	}
-	return out
-}
-
-var numRe = regexp.MustCompile(`^\s*(-?[0-9]*\.?[0-9]+)\s*(ms|s|sec|secs|seconds)?\s*$`)
-
-func secondsOf(v ovValue) (float64, bool) {
-	unit := strings.ToLower(strings.TrimSpace(v.Unit))
-	m := numRe.FindStringSubmatch(strings.ToLower(v.Display))
-	if m == nil {
-		return 0, false
-	}
-	if m[2] != "" {
-		unit = m[2]
-	}
-	f, err := strconv.ParseFloat(m[1], 64)
-	if err != nil {
-		return 0, false
-	}
-	switch unit {
-	case "ms":
-		return f / 1000, true
-	case "s", "sec", "secs", "seconds":
-		return f, true
-	}
-	return 0, false
-}
-
-// envelope: what the envelope of group g (keyed by key) shows this frame.
-func (f *liveFX) envelope(key string, g picGroup, e envShape, vals map[string]ovValue) *envLive {
-	if f.slot == nil {
-		return nil
-	}
-	f.used = true
-	if f.envs == nil {
-		f.envs = map[string]*envTrack{}
-	}
-	t := f.envs[key]
-	if t == nil {
-		t = &envTrack{notes: f.snap.Notes}
-		f.envs[key] = t
-	}
-	sounding := dbOf(f.lvl) > liveSilentDB
-	out := &envLive{Held: f.snap.Held > 0, Ringing: f.snap.Held == 0 && sounding && f.snap.LastOff > 0}
-	if since := f.snap.Now - f.snap.LastOn; f.snap.LastOn > 0 && since < 300*time.Millisecond {
-		out.Retrig = 1 - float64(since)/float64(300*time.Millisecond)
-	}
-	if secs := stageSeconds(g, vals); secs != nil {
-		out.Mode = "timed"
-		out.Voices = timedVoices(f.snap, secs, e)
-		return out
-	}
-	if !isAmpEnvelope(g) {
-		out.Mode = "gate"
-		return out
-	}
-	out.Mode = "measured"
-	lvl := f.lvl
-	newNote := f.snap.Notes != t.notes
-	t.notes = f.snap.Notes
-	switch {
-	case newNote:
-		t.stage, t.peak, t.steady = "attack", lvl, 0
-	case f.snap.Held == 0 && t.held > 0 && t.stage != "":
-		t.stage, t.relFrom = "release", math.Max(lvl, 1e-6)
-	}
-	t.held = f.snap.Held
-	prog := 0.0
-	before := t.stage // a stage entered in the switch below starts at its start
-	switch t.stage {
-	case "attack":
-		t.peak = math.Max(t.peak, lvl)
-		prog = lvl / math.Max(f.ref, 1e-6)
-		if t.peak > 1e-4 && lvl < t.peak*0.94 { // it turned: the attack is over
-			switch {
-			case e.HasH:
-				t.stage = "hold"
-			case e.HasD:
-				t.stage = "decay"
-			case e.HasS:
-				t.stage = "sustain"
-			default:
-				t.stage = "release"
-				t.relFrom = t.peak
-			}
-		}
-	case "hold":
-		prog = 0.5 // a hold has no level to measure: half way
-		if lvl < t.peak*0.9 {
-			t.stage = "decay"
-		}
-	case "decay":
-		target := 0.0
-		if e.HasS {
-			target = e.S * t.peak
-		}
-		prog = (t.peak - lvl) / math.Max(t.peak-target, 1e-6)
-		if math.Abs(lvl-t.prev) < 0.01*t.peak {
-			t.steady++
-		} else {
-			t.steady = 0
-		}
-		if e.HasS && (prog >= 0.97 || t.steady >= 5) {
-			t.stage = "sustain"
-		}
-		if !sounding && !e.HasS {
-			t.stage = ""
-		}
-	case "sustain":
-		prog = 0 // it rests at the sustain point while the key is held
-		if !e.HasS {
-			t.stage = "release"
-		}
-	case "release":
-		prog = 1 - lvl/math.Max(t.relFrom, 1e-6)
-		if !sounding {
-			t.stage = ""
-		}
-	}
-	t.prev = lvl
-	if t.stage != before { // a stage just began: it starts at its start
-		prog = 0
-		if t.stage == "hold" {
-			prog = 0.5
-		}
-	} else if prog < t.prog && t.stage != "sustain" {
-		prog = t.prog // within a stage the playhead only goes forward: the level's ripples are not the envelope going back
-	}
-	prog = math.Max(0, math.Min(1, prog))
-	t.prog = prog
-	if t.stage != "" {
-		t.trail = append(t.trail, envPoint{Stage: t.stage, Progress: prog})
-	} else if len(t.trail) > 0 {
-		t.trail = t.trail[1:] // the trail runs out after the sound
-	}
-	if len(t.trail) > trailLen {
-		t.trail = t.trail[len(t.trail)-trailLen:]
-	}
-	out.Stage, out.Progress = t.stage, prog
-	out.Trail = append([]envPoint(nil), t.trail...)
-	return out
-}
-
-// timedVoices: where each note is in an envelope whose stage times are
-// known, from when it went down and when it was let go.
-func timedVoices(s liveSnap, secs map[string]float64, e envShape) []envPoint {
-	var out []envPoint
-	for _, v := range s.Voices {
-		p := envPoint{Vel: float64(v.Vel) / 127}
-		if v.Off == 0 {
-			t := (s.Now - v.On).Seconds()
-			a, h, d := secs["attack"], secs["hold"], secs["decay"]
-			switch {
-			case t < a:
-				p.Stage, p.Progress = "attack", t/math.Max(a, 1e-6)
-			case e.HasH && t < a+h:
-				p.Stage, p.Progress = "hold", (t-a)/math.Max(h, 1e-6)
-			case e.HasD && t < a+h+d:
-				p.Stage, p.Progress = "decay", (t-a-h)/math.Max(d, 1e-6)
-			case e.HasS:
-				p.Stage, p.Progress = "sustain", 0.5
-			default:
-				continue // an AD envelope has ended
-			}
-		} else {
-			r := secs["release"]
-			t := (s.Now - v.Off).Seconds()
-			if !e.HasR || t >= r {
-				continue
-			}
-			p.Stage, p.Progress = "release", t/math.Max(r, 1e-6)
-		}
-		out = append(out, p)
-		if len(out) == 8 {
-			break
-		}
-	}
-	return out
 }
 
 // ---- LFOs -----------------------------------------------------------------------

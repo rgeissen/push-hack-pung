@@ -67,12 +67,37 @@
     return { pts, k, span, sus, lvl };
   }
 
+  // envAt: where a note is in an envelope dt seconds after its frame, as
+  // envclock.go. v = [age, off (< 0 held), vel, A, H, D, R], in seconds.
+  const TRAIL = 9, TRAIL_DT = 0.033;
+  function envAt(v, dt, e) {
+    const age = v[0] + dt, off = v[1] >= 0 ? v[1] + dt : -1, A = v[3], Hd = v[4], D = v[5], R = v[6];
+    const sus = e.HasS ? e.S : 0;
+    const frac = (t, d) => (d <= 1e-6 ? 1 : t / d);
+    const pre = (t) => {
+      if (t < A) { const p = frac(t, A); return { stage: "attack", prog: p, level: p }; }
+      t -= A;
+      if (e.HasH) { if (t < Hd) return { stage: "hold", prog: frac(t, Hd), level: 1 }; t -= Hd; }
+      if (e.HasD) { if (t < D) { const p = frac(t, D); return { stage: "decay", prog: p, level: 1 - (1 - sus) * p }; } t -= D; }
+      if (e.HasS) return { stage: "sustain", prog: 0, level: sus };
+      if (e.HasR && t < R) return { stage: "release", prog: frac(t, R), level: 0 };
+      return { done: true };
+    };
+    if (off < 0 || !e.HasS) return pre(age);
+    if (!e.HasR) return { done: true };
+    const was = pre(age - off);
+    if (was.done) return was;
+    const p0 = sus > 1e-3 && was.level < sus ? 1 - was.level / sus : 0;
+    const p = p0 + frac(off, R);
+    return p >= 1 ? { done: true } : { stage: "release", prog: p, level: sus * (1 - p) };
+  }
+
   // one figure: an envelope group drawn from live values, redrawn on change
   const figures = new Set();
 
   // envFigure(g, io): io = {meta(key) -> param, value(key) -> raw, set(key, raw), label(key) -> text}
   function envFigure(g, io) {
-    const W = 480, H = 110, x0 = 10, x1 = W - 10, top = 12, base = H - 26;
+    const W = 480, H = 112, x0 = 10, x1 = W - 10, top = 12, base = H - 30;
     const svg = document.createElementNS(NS, "svg");
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.setAttribute("class", "env");
@@ -121,7 +146,16 @@
       for (let i = 1; i < pts.length; i++) {
         const a = pts[i - 1], b = pts[i];
         h += `<line class="seg${isHot(b.role) ? " hot" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
-        h += `<text class="letter${isHot(b.role) ? " hot" : ""}" x="${(a.x + b.x) / 2}" y="${base + 18}">${LETTER[b.role]}</text>`;
+      }
+      // the stages as a bar under the shape, each as wide as it is drawn:
+      // lit while a note's dot is in it (liveEnv), outlined while its knob is touched
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        const sx = a.x + (i === 1 ? 0 : 1), ex = b.x - (i === pts.length - 1 ? 0 : 1), w = ex - sx;
+        if (w < 2) continue;
+        const hc = isHot(b.role) ? " hot" : "";
+        h += `<rect class="stage${hc}" data-stage="${b.role}" x="${sx.toFixed(1)}" y="${base + 5}" width="${w.toFixed(1)}" height="14" rx="1"/>`;
+        if (w >= 10) h += `<text class="sl${hc}" data-stage="${b.role}" x="${((sx + ex) / 2).toFixed(1)}" y="${base + 15.5}">${LETTER[b.role]}</text>`;
       }
       // the handles: every stage's end except the last at the baseline
       for (let i = 1; i < pts.length; i++) {
@@ -135,67 +169,70 @@
       h += `<g class="live"></g>`;
       svg.innerHTML = h;
       svg.setAttribute("aria-label", "Envelope: " + Object.entries(g.keys).map(([, k]) => io.label(k)).join(", "));
-      if (lastLive) liveEnv(lastLive);
+      if (lastLive) paintLive();
       return L;
     }
 
-    // the sound in it, as the Push draws it (visuals.go): the notes' gate
-    // along the base, the stage lit as far as it has gone with a playhead
-    // and a trail, or a mark per voice; the start flashes as a note begins
+    // the sound in it, as the Push draws it (visuals.go, envclock.go): the
+    // frame carries each note's clock (its age and its stage times), and the
+    // page runs it on every animation frame, so the dots move as smoothly as
+    // the screen: each along its lines, a short trail behind it; the newest
+    // note's stage lit up to its dot; the bar's segments lit where notes are
+    let liveAt = 0, raf = 0;
     function liveEnv(d) {
       lastLive = d;
+      liveAt = performance.now();
+      paintLive();
+    }
+    function paintLive() {
+      raf = 0;
+      const d = lastLive;
       const lay = svg.querySelector("g.live");
-      if (!lay || !lastL) return;
-      if (!d || svg.classList.contains("unknown")) { lay.innerHTML = ""; return; }
-      const pts = lastL.pts, e = shape();
-      const seg = (stage) => {
-        if (stage === "sustain" && e.HasSlope) stage = "slope";
-        return pts.findIndex((p, i) => i > 0 && p.role === stage);
-      };
-      const at = (stage, prog) => {
-        const i = seg(stage);
-        if (i < 1) return null;
-        const a = pts[i - 1], b = pts[i], t = Math.max(0, Math.min(1, prog));
-        return [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, i];
-      };
-      let h = "";
-      const rel = seg("release");
-      if (d.h) h += `<rect class="gate" x="${x0}" y="${base - 1.5}" width="${(rel > 0 ? pts[rel - 1].x : pts[pts.length - 1].x) - x0}" height="3"/>`;
-      else if (d.r && rel > 0) h += `<rect class="gate ringing" x="${pts[rel - 1].x}" y="${base - 1.5}" width="${pts[rel].x - pts[rel - 1].x}" height="3"/>`;
-      if (d.rt) h += `<line class="retrig" x1="${x0}" y1="${top}" x2="${x0}" y2="${base}" style="opacity:${d.rt}"/>`;
+      if (!lay || !lastL || !svg.isConnected) return;
       const lit = new Set();
-      if (d.m === "measured") {
-        (d.tr || []).slice(0, -1).forEach(([st, pr], i, arr) => {
-          const q = at(st, pr);
-          if (!q) return;
-          const k = (i + 1) / (arr.length + 1);
-          h += `<circle class="trail" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${(1.6 + 1.8 * k).toFixed(1)}" style="opacity:${(0.15 + 0.5 * k).toFixed(2)}"/>`;
-        });
-        if (d.s) {
-          const q = at(d.s, d.p);
-          if (q) {
+      let h = "";
+      if (d && !svg.classList.contains("unknown")) {
+        const pts = lastL.pts, e = shape();
+        const seg = (stage) => {
+          if (stage === "sustain" && e.HasSlope) stage = "slope";
+          return pts.findIndex((p, i) => i > 0 && p.role === stage);
+        };
+        const at = (p) => {
+          const i = seg(p.stage);
+          if (i < 1) return null;
+          const a = pts[i - 1], b = pts[i], t = Math.max(0, Math.min(1, p.prog));
+          return [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, i];
+        };
+        const dt = Math.min(0.25, (performance.now() - liveAt) / 1000);
+        if (d.rt) h += `<line class="retrig" x1="${x0}" y1="${top}" x2="${x0}" y2="${base}" style="opacity:${Math.max(0, d.rt - dt / 0.3).toFixed(2)}"/>`;
+        const vs = d.v || [];
+        for (let n = vs.length - 1; n >= 0; n--) { // the newest drawn last, on top
+          const v = vs[n], cur = envAt(v, dt, e);
+          if (cur.done) continue;
+          lit.add(cur.stage === "sustain" && e.HasSlope ? "slope" : cur.stage);
+          for (let k = TRAIL; k >= 1; k--) {
+            const back = dt - k * TRAIL_DT;
+            if (v[0] + back < 0) continue;
+            const q = at(envAt(v, back, e));
+            if (!q) continue;
+            const f = 1 - k / (TRAIL + 1);
+            h += `<circle class="trail" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${(1.4 + 1.8 * f).toFixed(1)}" style="opacity:${(0.12 + 0.45 * f).toFixed(2)}"/>`;
+          }
+          const q = at(cur);
+          if (!q) continue;
+          let r = 3.6 + 1.6 * v[2];
+          if (n === 0) {
             const a = pts[q[2] - 1];
             h += `<line class="lit" x1="${a.x}" y1="${a.y}" x2="${q[0].toFixed(1)}" y2="${q[1].toFixed(1)}"/>`;
             h += `<line class="hair" x1="${q[0].toFixed(1)}" y1="${(q[1] + 7).toFixed(1)}" x2="${q[0].toFixed(1)}" y2="${base - 2}"/>`;
-            h += `<circle class="ring" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="7.5"/><circle class="dot" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="5.2"/>`;
-            lit.add(d.s === "sustain" && e.HasSlope ? "slope" : d.s);
+            r = 5.2;
           }
+          h += `<circle class="ring" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${(r + 2.2).toFixed(1)}"/><circle class="dot" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${r.toFixed(1)}"/>`;
         }
-      } else if (d.m === "timed") {
-        (d.v || []).forEach(([st, pr, vel]) => {
-          const q = at(st, pr);
-          if (!q) return;
-          h += `<circle class="ring" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="7"/><circle class="dot" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${(3 + 2 * vel).toFixed(1)}"/>`;
-          lit.add(st === "sustain" && e.HasSlope ? "slope" : st);
-        });
-      } else {
-        pts.forEach((p, i) => { if (i > 0 && (p.role === "release" ? d.r : d.h)) lit.add(p.role); });
-      }
-      for (let i = 1; i < pts.length; i++) {
-        if (!lit.has(pts[i].role)) continue;
-        h += `<text class="letter live" x="${(pts[i - 1].x + pts[i].x) / 2}" y="${base + 18}">${LETTER[pts[i].role]}</text>`;
       }
       lay.innerHTML = h;
+      svg.querySelectorAll("[data-stage]").forEach((el) => el.classList.toggle("on", lit.has(el.dataset.stage)));
+      if (lit.size && !raf) raf = requestAnimationFrame(paintLive); // runs while a note is in it
     }
 
     // dragging: a handle moves the knobs that place it
@@ -619,5 +656,5 @@
     figures.forEach((f) => (f.alive() ? f.draw() : figures.delete(f)));
   }
 
-  window.PungVisuals = { envelopeGroups, pictureGroups, filterKind, filterDB, lfoWave, layout, figure, redrawAll, live };
+  window.PungVisuals = { envAt, envelopeGroups, pictureGroups, filterKind, filterDB, lfoWave, layout, figure, redrawAll, live };
 })();
