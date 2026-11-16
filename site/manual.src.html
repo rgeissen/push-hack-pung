@@ -37,21 +37,21 @@
   <div class="sec-head"><p class="eyebrow">Before you start</p><h2>What you need</h2></div>
   <div class="prose">
     <ul>
-      <li><strong>A Push 3 Standalone with Push Hack</strong>: push-manager, push-display and push-catalog, with the Live device extensions Pung is built on (see the note below).</li>
+      <li><strong>A Push 3 Standalone with Push Hack</strong>: push-manager, push-display and push-catalog, version 0.2.0-alpha or newer. That release brings the Live device extensions Pung is built on.</li>
       <li><strong>Push Hack's VST3 scan switched on</strong>: Push Manager, System tab.</li>
       <li><strong>The PushHack Remote Script in Live</strong>: Live's Settings › MIDI › Control Surface: <code>PushHack</code>. The Pung view follows Live's selection through it.</li>
       <li><strong>SSH access to the Push as root</strong>, as Push Hack's own setup gives you, for the install command.</li>
     </ul>
   </div>
   <div class="note">
-    <b class="k">Testing release</b>
-    <p>Pung needs Push Hack's Live device extensions, proposed to Push Hack in <a href="https://github.com/federico-pepe/ableton-push-hack/pull/102">pull request #102</a> (the <a href="{{LINK:vision}}#core">vision page</a> lists them). Until it is merged, they are on the <code>feat/live-devices</code> branch of <a href="https://github.com/rgeissen/ableton-push-hack/tree/feat/live-devices">rgeissen/ableton-push-hack</a>. Without them, Pung's view does not open in place of Push's device view, and the pads do not stay with Live while it is open.</p>
+    <b class="k">Which Push Hack</b>
+    <p>Pung needs Push Hack's Live device extensions (the <a href="{{LINK:vision}}#core">vision page</a> lists them). They are part of Push Hack since 0.2.0-alpha. With an older Push Hack, Pung's view does not open in place of Push's device view, and the pads do not stay with Live while it is open.</p>
   </div>
 </section>
 
 <section id="install">
   <div class="sec-head"><p class="eyebrow">Setup</p><h2>Install</h2></div>
-  <div class="prose"><p>Pung will be listed in Push Hack Catalog. Until then, Push Hack Catalog's own installer installs it from Pung's release on GitHub, with one command.</p></div>
+  <div class="prose"><p>Pung is proposed for Push Hack Catalog (<a href="https://github.com/federico-pepe/ableton-push-hack/pull/109">pull request #109</a>). Once it is listed, install it from the Catalog like any other hack. Until then, Push Hack Catalog's own installer installs it from Pung's release on GitHub, with one command.</p></div>
   <ol class="steps">
     <li><div><p>Open a shell on the Push as root.</p>
       <div class="cmd"><div class="bar"><span>On your computer</span><button class="copy" type="button" data-copy="c1">Copy</button></div><pre><code id="c1">ssh root@push.local</code></pre></div></div></li>
