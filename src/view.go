@@ -40,6 +40,9 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			rect(img, 0, botY, scrW, scrH-botY, cBlack)
 			rect(img, 0, 0, scrW, 2, sc)
 			drawBack(img, strings.ToUpper(p.Name), sc)
+			if u.hasSounds() {
+				drawSoundsButton(img, sc)
+			}
 			drawPageRow(img, y, h, cm, u.pageSlots(), u.bank, sc)
 		}
 		return
@@ -49,8 +52,13 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	// top bar: the track's devices, or the way back out of the open one
 	// (as on Push)
 	nb := 1
+	hdRight := scrW - 8
 	if u.open {
 		drawBack(img, strings.ToUpper(p.Name), sc)
+		if u.hasSounds() { // the device's own action, over upper button 8
+			drawSoundsButton(img, sc)
+			hdRight = soundsButton*colW - 8
+		}
 	} else {
 		nb = u.drawDeviceRow(img, sc)
 	}
@@ -79,6 +87,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	if set := u.ov.get(u.h.modulesDir, p.Module); set != nil && set.failed != "" && cm != nil && b != nil {
 		hd.warn = "MODULE UI OFF"
 	}
+	hd.right = hdRight
 	drawHeader(img, nb*colW+4, hd, sc)
 
 	// cells
@@ -222,6 +231,11 @@ func drawBack(img *image.NRGBA, name string, sc color.NRGBA) {
 	label(img, 22, 17, fitLabel(name, colW-30), sc, -1)
 }
 
+// drawSoundsButton: SOUNDS over the open device's last upper button.
+func drawSoundsButton(img *image.NRGBA, sc color.NRGBA) {
+	label(img, soundsButton*colW+colW/2, 17, "SOUNDS", sc, 0)
+}
+
 // arrowCell: a row's "more" arrow in column col (dir -1 left, 1 right).
 func arrowCell(img *image.NRGBA, col, cy, dir int, c color.NRGBA) {
 	cx := col*colW + colW/2
@@ -272,6 +286,7 @@ type header struct {
 	page, pages int    // the bank, of how many (one or none: no indicator)
 	meter       bool   // a level to show
 	peak        float64
+	right       int // where it ends (0: the screen's edge): an open device's SOUNDS takes the last column
 }
 
 // header layout, in pixels
@@ -289,6 +304,9 @@ const (
 // left out below three letters. Nothing crosses x0.
 func drawHeader(img *image.NRGBA, x0 int, hd header, sc color.NRGBA) {
 	xr := scrW - 8
+	if hd.right > 0 {
+		xr = hd.right
+	}
 	room := func() int { return xr - x0 }
 	if hd.pages > 1 {
 		if w := pageIndicatorWidth(hd.page, hd.pages); w <= room() {

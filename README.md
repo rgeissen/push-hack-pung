@@ -97,7 +97,7 @@ same buttons. A hand that knows Push knows Pung.
 | | Upper display buttons | Lower display buttons |
 |---|---|---|
 | **Chain level** | the track's devices, the selected one filled, then `+` (add a device: Push's own browser); an arrow at an end when there are more than fit | Live's tracks |
-| **Device open** | button 1 goes back (`< NAME`) | the device's pages, the shown one filled; an arrow when there are more |
+| **Device open** | button 1 goes back (`< NAME`); button 8 is `SOUNDS` | the device's pages, the shown one filled; an arrow when there are more |
 
 | Control | In Pung, as on Push |
 |---|---|
@@ -119,16 +119,18 @@ Pung's own, where Push has nothing:
 
 | Control | In Pung |
 |---|---|
-| Page < > | the previous / next page (a shortcut; Push's way is the jog wheel) |
-| Swap | the sound browser (see below) |
-| Jog press, device open | the sound browser |
+| Upper button 8, device open (`SOUNDS`) | the sound browser: the device's own sounds, yours, favourites and recent ones |
+| Jog press, device open | the sound browser, too |
 | Save | save the device's sound |
+| Page < > | the previous / next page (a shortcut; Push's way is the jog wheel) |
+
+**Add and Swap are Push's own**, in Pung's view as everywhere: Add opens Push's browser, and Swap is Push's
+Hot-Swap, which can replace the device itself (one Pung device with another, for example). Pung never
+takes them.
 
 A module's full-screen picture (Mini-JV's Macros, Dexed's Algorithm) shows while its device is open. The
-back button and the page row are drawn over it when you open the device, turn a page or touch the jog wheel.
-
-**Swap while Pung stands in for Push's device view** goes to Push, which opens its own Hot-Swap: that
-button is push-manager's then. Open the sounds with a jog press in the open device.
+back button, `SOUNDS` and the page row are drawn over it when you open the device, turn a page or touch
+the jog wheel.
 
 ## Install and update
 

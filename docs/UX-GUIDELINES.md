@@ -113,7 +113,7 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
 | | Upper display buttons | Lower display buttons |
 |---|---|---|
 | **Chain level** | the track's devices, the selected one filled, then `+` | Live's tracks |
-| **Device open** | button 1: `< NAME`, back | the device's pages, the shown one filled |
+| **Device open** | button 1: `< NAME`, back; button 8: `SOUNDS` | the device's pages, the shown one filled |
 
 - **A device's button selects it; the selected one's opens and closes it.** Another device or track
   selected: back at chain level.
@@ -133,8 +133,11 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
   (read off the Push): the chosen device, page or track white, every other option lit in a dimmed version
   of its track's colour, the arrows too. Never a colour so dark it reads as off: Pung's first version lit
   the options in the palette's near-black, and they looked dead.
-- **Pung's own additions**, where Push has nothing: Page < > step the pages (Push leaves them unused in
-  its device view); Swap and, in an open device, the jog press open the sounds; Save saves the sound.
+- **Pung's own additions**, where Push has nothing: in an open device, upper button 8 (`SOUNDS`) and the
+  jog press open the sounds (Push puts a device's own actions on those upper buttons); Save saves the
+  sound; Page < > step the pages (Push leaves them unused in its device view).
+- **Add and Swap are never Pung's.** Swap is Push's Hot-Swap, which can replace the device itself: a view
+  that took it for its sounds would take away the way to swap one Pung device for another.
 - **`+` after the last device**, as on Push: it hands the screen to Push and presses Add there (adding a
   device is Push's own browser); backing out of the browser returns to Pung's view.
 - **Not there yet**: the upper buttons 2 to 8 of an open device (Push puts a page's switches there), automation dots, moving a
@@ -270,8 +273,8 @@ What the user sees must always be one device, whole:
 
 ### Sounds
 
-Every module's sounds are browsed the same way (`docs/PRESETS.md`): Swap opens the sound browser, as
-Push's Swap offers another sound for a device (and a jog press in the open device does too). Its rules, which any screen that changes a device's sound
+Every module's sounds are browsed the same way (`docs/PRESETS.md`): in the open device, `SOUNDS` (upper
+button 8) or a jog press opens the sound browser. Its rules, which any screen that changes a device's sound
 follows:
 
 - **The jog is Push's.** Turn moves, press selects, a nudge left goes back, a nudge right opens the

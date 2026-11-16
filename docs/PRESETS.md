@@ -123,7 +123,7 @@ sound was loaded; a later state that differs marks the sound **edited** (`* Fat 
 - **The sound's name is always on screen**, in the header beside the device: `MINI-JV  POP PIANO 3`, with
   `*` when edited.
 
-### The browser (Swap, or a jog press in the open device)
+### The browser (SOUNDS, upper button 8 of the open device, or a jog press there)
 
 Built in phase 2 and tested on the Push with Mini-JV (`src/sounds_view.go`; the frames are in
 `TestSoundBrowserKeepsItsText`, `PUNG_GALLERY=dir` writes them).

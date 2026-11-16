@@ -24,7 +24,11 @@ package main
 //   Mute / Solo + a track     that track
 //   D-pad left / right        the previous / next track
 //   Page < >                  the previous / next page (Pung's own shortcut)
-//   Swap                      the sound browser; Save: save the sound
+//   upper button 8, open      SOUNDS: the device's sound browser (the jog
+//                             press in an open device opens it too)
+//   Save                      save the device's sound
+//   Add, Swap                 Push's own: its browser, and its Hot-Swap,
+//                             which can replace the device itself
 //
 // The pads and every button that plays, records or edits in Live stay
 // Live's (liveButtons).
@@ -797,10 +801,12 @@ func (u *surface) cc(n, v byte) {
 	switch {
 	case n == push3.CCSave:
 		u.saveButton() // the device's sound (sounds_view.go)
-	case n == push3.CCSwap:
-		u.openSounds() // as Push's Swap: another sound for this device
-	case n == push3.CCAdd || n == push3.CCNew:
-		u.say("ADD DEVICES WITH PUSH'S BROWSER|SHIFT + HELP, HELP GOES BACK TO PUSH'S VIEW")
+	case n == push3.CCAdd || n == push3.CCSwap || n == push3.CCNew:
+		// Push's own, never Pung's: its browser adds a device, and its Swap
+		// (Hot-Swap) can replace the device itself. As a stand-in for the
+		// device view these go on to Push (push-manager); opened from Home,
+		// Push is one press away
+		u.say("ADD AND SWAP ARE PUSH'S OWN|SHIFT + HELP, HELP GOES BACK TO PUSH'S VIEW")
 	case n >= push3.CCScreenTop1 && n < push3.CCScreenTop1+8:
 		u.top(int(n - push3.CCScreenTop1))
 	case n >= push3.CCScreenBot1 && n < push3.CCScreenBot1+8:
@@ -968,8 +974,11 @@ func selectedDeviceIndex(devs []liveDevSummary, sel int) int {
 // removed). Open: button 1 goes back.
 func (u *surface) top(i int) {
 	if u.open {
-		if i == 0 {
+		switch {
+		case i == 0:
 			u.open = false
+		case i == soundsButton && u.hasSounds():
+			u.openSounds() // the device's own action, where Push puts a device's (sounds_view.go)
 		}
 		return
 	}
@@ -1000,6 +1009,19 @@ func (u *surface) top(i int) {
 		u.focus = s
 		go liveCall("device", "select", map[string]any{"track": st.view().dev.Track, "path": []int{devs[s].I}}) //nolint:errcheck
 	}
+}
+
+// soundsButton: the upper button of an open device that opens its sounds
+// (the last one: Push puts a device's own actions on these buttons).
+const soundsButton = 7
+
+// hasSounds: the shown device is one of Pung's, with a sound browser.
+func (u *surface) hasSounds() bool {
+	if u.h == nil || u.h.sounds == nil || !u.liveActive() {
+		return false
+	}
+	d, _ := u.pungDevice()
+	return d != nil
 }
 
 // openDevice: the selected device's pages on the lower row (a Pung device,
@@ -1293,6 +1315,9 @@ func (u *surface) paintLEDs() {
 	case !live:
 	case u.open:
 		top[0] = ledChosen // the open device, and the way back
+		if u.hasSounds() {
+			top[soundsButton] = opt
+		}
 	default:
 		devs, sel := u.live.state().deviceRow()
 		for i, s := range u.deviceSlots() {
@@ -1334,17 +1359,13 @@ func (u *surface) paintLEDs() {
 		u.led(false, push3.CCScreenTop1+uint8(i), top[i])
 		u.led(false, push3.CCScreenBot1+uint8(i), bot[i])
 	}
-	// Swap and Save: the device's sounds, where there is a Pung device (as
-	// a stand-in for Push's device view, Swap is push-manager's)
+	// Save: the device's sound, where there is a Pung device
 	pung := false
 	if live {
 		d, _ := u.pungDevice()
 		pung = d != nil
 	}
 	u.led(false, push3.CCSave, on(pung))
-	if !u.standIn.Load() {
-		u.led(false, push3.CCSwap, on(pung))
-	}
 	// Page < >: lit where they go somewhere, as the header's arrows show
 	pl, pr := u.pageSteps()
 	u.led(false, push3.CCPageLeft, on(pl))

@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
@@ -241,9 +240,18 @@ func TestPushVerbs(t *testing.T) {
 	if fmt.Sprint(u.open, u.bank, u.focus) != before || u.combo {
 		t.Fatal("Mute or Solo alone did something in the view")
 	}
-	// Swap: the sounds (no sound library in this test: it stays in the view, without a fault)
+	// Swap is Push's own (its Hot-Swap can replace the device itself): never the sounds
 	press(u, push3.CCSwap)
-	time.Sleep(10 * time.Millisecond)
+	if u.view != "chain" || u.sb != nil {
+		t.Fatal("Swap opened Pung's sound browser: it is Push's button")
+	}
+	// the open device's upper button 8 is SOUNDS, where the device has a
+	// sound browser; this test's has none: the button does nothing
+	press(u, push3.CCScreenTop1+1)
+	press(u, push3.CCScreenTop1+soundsButton)
+	if !u.open || u.view != "chain" {
+		t.Fatal("upper button 8 without a sound browser did something")
+	}
 }
 
 // A button that does nothing is dark; one that does is lit.
