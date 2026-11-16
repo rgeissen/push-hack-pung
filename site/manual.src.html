@@ -40,8 +40,7 @@
       <li><strong>A Push 3 Standalone with Push Hack</strong>: push-manager, push-display and push-catalog, version 0.2.0-alpha or newer. That release brings the Live device extensions Pung is built on.</li>
       <li><strong>Push Hack's VST3 scan switched on</strong>: Push Manager, System tab.</li>
       <li><strong>The PushHack Remote Script in Live</strong>: Live's Settings › MIDI › Control Surface: <code>PushHack</code>. The Pung view follows Live's selection through it.</li>
-      <li><strong>SSH access to the Push as root</strong>, as Push Hack's own setup gives you, for the install command.</li>
-    </ul>
+          </ul>
   </div>
   <div class="note">
     <b class="k">Which Push Hack</b>
@@ -51,16 +50,14 @@
 
 <section id="install">
   <div class="sec-head"><p class="eyebrow">Setup</p><h2>Install</h2></div>
-  <div class="prose"><p>Pung is proposed for Push Hack Catalog (<a href="https://github.com/federico-pepe/ableton-push-hack/pull/109">pull request #109</a>). Once it is listed, install it from the Catalog like any other hack. Until then, Push Hack Catalog's own installer installs it from Pung's release on GitHub, with one command.</p></div>
+  <div class="prose"><p>Pung is in Push Hack Catalog. Install it there like any other hack.</p></div>
   <ol class="steps">
-    <li><div><p>Open a shell on the Push as root.</p>
-      <div class="cmd"><div class="bar"><span>On your computer</span><button class="copy" type="button" data-copy="c1">Copy</button></div><pre><code id="c1">ssh root@push.local</code></pre></div></div></li>
-    <li><div><p>Run Push Hack Catalog's installer with Pung's registry. It downloads <code>pung.tar.gz</code> (48 MB, every module inside), installs the service and starts it.</p>
-      <div class="cmd"><div class="bar"><span>On the Push</span><button class="copy" type="button" data-copy="c2">Copy</button></div><pre><code id="c2">python3 -c "import urllib.request,sys; sys.stdout.write(urllib.request.urlopen('https://raw.githubusercontent.com/federico-pepe/ableton-push-hack/main/hacks/push-catalog/src/push-catalog.sh').read().decode())" \
-  | PUSH_CATALOG_REGISTRY=https://raw.githubusercontent.com/rgeissen/push-hack-pung/main/push-catalog.json \
-    bash -s -- install pung</code></pre></div></div></li>
+    <li><div><p>Open Push Hack Catalog in a browser on your computer or phone.</p>
+      <div class="cmd"><div class="bar"><span>In your browser</span><button class="copy" type="button" data-copy="c1">Copy</button></div><pre><code id="c1">http://push.local:7702</code></pre></div></div></li>
+    <li><div><p>Find <strong>Pung</strong> and choose <strong>Install</strong>. The Catalog downloads <code>pung.tar.gz</code> (48 MB, every module inside), installs the service and starts it.</p></div></li>
     <li><div><p><strong>Restart the Push once.</strong> Live looks for new plugins only when it starts. After the restart, Pung's devices are in Push's browser and Pung is in Push Hack Home (<kbd>Shift</kbd> + <kbd>Help</kbd>).</p></div></li>
   </ol>
+  <div class="prose"><p>Later versions arrive the same way: the Catalog shows an update when Pung has a new release. Devices in an open Set keep their state through the update.</p></div>
 </section>
 
 <section id="first">

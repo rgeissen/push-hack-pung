@@ -134,7 +134,11 @@ the jog wheel.
 
 ## Install and update
 
-Build on a Mac or Linux computer with Docker:
+Pung is in Push Hack Catalog: open `http://push.local:7702`, choose **Pung** and **Install**, then restart
+the Push once so Live finds the new devices. Updates arrive the same way. The
+[Manual](https://rgeissen.github.io/push-hack-pung/manual.html#install) has the steps with pictures.
+
+To build it yourself, on a Mac or Linux computer with Docker:
 
 ```sh
 make image            # the builder (Ubuntu 22.04: the same glibc as the Push)
@@ -145,8 +149,9 @@ make deploy HOST=push.local
 ```
 
 `make deploy` copies the files to `/data/push-hack/hacks/pung` and installs the service
-`push-hack-pung` the way Push Hack Catalog does. Pung needs **push-audio-loopback** (install it from
-Push Hack Catalog) for audio, and **push-manager** and **push-display** for the Push screen.
+`push-hack-pung` the way Push Hack Catalog does. Pung needs **push-manager** and
+**push-display** (Push Hack 0.2.0-alpha or newer) for the Push screen. Its devices in Live carry their
+audio through Live; **push-audio-loopback** is needed only for a chain opened through the API.
 
 ### Releases: the modules come with Pung
 
