@@ -545,6 +545,8 @@ type device struct {
 	preview atomic.Pointer[previewVoice]
 	// previewFrames: frames of preview given to Live (Stats: was it heard?)
 	previewFrames atomic.Uint64
+	// Process timing, in ns, the worst since Stats last read them
+	procLast, procMax, procGapMax atomic.Int64
 
 	// the last MIDI messages Live delivered (Stats: "midi_recent"); written on
 	// the realtime thread, a fixed ring, read anywhere (a torn read shows a
@@ -658,6 +660,19 @@ func (h *heldMidi) flush(send func(msg []byte)) int {
 
 // Process runs one block on the device's realtime thread.
 func (d *device) Process(b *livedevice.Block) {
+	// how long a block takes here, and how long since the one before began:
+	// what tells a slow module from a stalled program (Stats)
+	t0 := time.Now().UnixNano()
+	if last := d.procLast.Swap(t0); last != 0 {
+		if gap := t0 - last; gap > d.procGapMax.Load() {
+			d.procGapMax.Store(gap)
+		}
+	}
+	defer func() {
+		if dur := time.Now().UnixNano() - t0; dur > d.procMax.Load() {
+			d.procMax.Store(dur)
+		}
+	}()
 	if b.TransportValid {
 		noteTransport(b.BPM, b.Beat, b.Playing)
 		setTempo(b.BPM)
@@ -1119,7 +1134,8 @@ func (d *device) Stats() map[string]any {
 		recent = append(recent, fmt.Sprintf("% X", e[:e[3]]))
 	}
 	return map[string]any{"module": d.c.module, "midi_fx": fx, "midi_recent": recent, "peak_db": peakDB(d.s.peak()),
-		"preview_frames": d.previewFrames.Load(), "previewing": d.previewing()}
+		"preview_frames": d.previewFrames.Load(), "previewing": d.previewing(),
+		"proc_max_us": d.procMax.Swap(0) / 1000, "gap_max_us": d.procGapMax.Swap(0) / 1000}
 }
 
 // sinkMIDI makes a chain's MIDI FX output the device's MIDI out: the

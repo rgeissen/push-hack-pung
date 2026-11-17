@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -81,6 +84,22 @@ func (h *Host) routes(mux *http.ServeMux) {
 				"overruns": h.stats.overruns.Load()},
 			"transport": map[string]any{"running": running, "bpm": bpm, "clock": clock},
 		})
+	})
+	// what stops the program: the garbage collector's pauses, newest first
+	// (a pause stops the devices' audio threads too: see "late" in /api/devices)
+	mux.HandleFunc("GET /api/debug/gc", func(w http.ResponseWriter, r *http.Request) {
+		var st debug.GCStats
+		debug.ReadGCStats(&st)
+		type p struct {
+			EndMS int64 `json:"end_ms"`
+			US    int64 `json:"us"`
+		}
+		var out []p
+		for i := 0; i < len(st.Pause) && i < len(st.PauseEnd) && i < 64; i++ {
+			out = append(out, p{st.PauseEnd[i].UnixMilli(), st.Pause[i].Microseconds()})
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "num": st.NumGC, "now_ms": time.Now().UnixMilli(), "pauses": out,
+			"gc_percent": gcPercent, "goroutines": runtime.NumGoroutine()})
 	})
 
 	mux.HandleFunc("GET /api/modules/screen", func(w http.ResponseWriter, r *http.Request) {
@@ -228,3 +247,6 @@ func (h *Host) notify(slot int, key, value string) {
 		notifyHook(slot, key, value)
 	}
 }
+
+// gcPercent: GOGC as set at start (main.go).
+var gcPercent = 100
