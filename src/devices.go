@@ -540,6 +540,11 @@ type device struct {
 	s *Slot
 
 	snd devSounds // which sound it is, and the browser's audition (sounds_device.go)
+	// preview: a file the file browser plays through this device's output
+	// (filesession.go); read on the realtime thread
+	preview atomic.Pointer[previewVoice]
+	// previewFrames: frames of preview given to Live (Stats: was it heard?)
+	previewFrames atomic.Uint64
 
 	// the last MIDI messages Live delivered (Stats: "midi_recent"); written on
 	// the realtime thread, a fixed ring, read anywhere (a torn read shows a
@@ -708,6 +713,7 @@ func (d *device) Process(b *livedevice.Block) {
 		for i := 0; i < n; i++ {
 			b.Out[0][i], b.Out[1][i] = o[i*2], o[i*2+1]
 		}
+		d.mixPreview(b.Out[0], b.Out[1], n)
 	}
 	if d.repMu.TryLock() { // never wait on the realtime thread: next block, then
 		for idx, n := range d.reports {
@@ -1112,7 +1118,8 @@ func (d *device) Stats() map[string]any {
 		e := d.recentMidi[(n-1-i)%16]
 		recent = append(recent, fmt.Sprintf("% X", e[:e[3]]))
 	}
-	return map[string]any{"module": d.c.module, "midi_fx": fx, "midi_recent": recent, "peak_db": peakDB(d.s.peak())}
+	return map[string]any{"module": d.c.module, "midi_fx": fx, "midi_recent": recent, "peak_db": peakDB(d.s.peak()),
+		"preview_frames": d.previewFrames.Load(), "previewing": d.previewing()}
 }
 
 // sinkMIDI makes a chain's MIDI FX output the device's MIDI out: the

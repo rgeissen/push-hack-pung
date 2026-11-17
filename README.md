@@ -121,6 +121,7 @@ Pung's own, where Push has nothing:
 |---|---|
 | Upper button 8, device open (`SOUNDS`) | the sound browser: the device's own sounds, yours, favourites and recent ones |
 | Jog press, device open | the sound browser, too |
+| The encoder of a sample's cell | the file browser (`docs/SAMPLES.md`): your User Library, Live's Core Library and Packs, Sets, recordings, favourites; a file plays where the cursor rests and is loaded only on Load |
 | Save | save the device's sound |
 | Page < > | the previous / next page (a shortcut; Push's way is the jog wheel) |
 

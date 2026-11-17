@@ -68,6 +68,8 @@ func main() {
 
 	if *probeModule == "" && *scoutJobPath == "" && !*survey {
 		ensureMovePungLink(base)
+		ensureMoveUserLibrary()
+		go tidyUserLibrary()
 		// what an earlier Pung's modules forked must not hold on (procs.go)
 		leadProcessGroup()
 		if real, err := filepath.EvalSymlinks(exe); err == nil {
@@ -87,6 +89,7 @@ func main() {
 	// sounds: Schwung's presets folder (Pung's own, through the link above);
 	// presets.json from Pung's overrides, the data folder's winning
 	h.sounds = newSoundLib(h, presetsDir(base), filepath.Join(base, "overrides"), filepath.Join(*data, "overrides"))
+	h.files = newFileLib(*data)
 	if *probeModule != "" {
 		probeModuleMain(h, *probeModule, *probeOut)
 		return
@@ -119,6 +122,7 @@ func main() {
 	h.settingsRoutes(mux)
 	h.mods.routes(mux)
 	h.sounds.routes(mux)
+	h.fileRoutes(mux)
 	h.sounds.libraryRoutes(mux)
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	ln, err := net.Listen("tcp", srv.Addr)

@@ -517,6 +517,7 @@
   function syncControl(k, v, force) {
     const el = document.querySelector(`.ctl[data-key="${CSS.escape(k)}"]`);
     if (!el || (!force && el.contains(document.activeElement))) return;
+    if (el.showValue) { if (el.dataset.value !== (v || "")) el.showValue(v); return; } // a file (files.js)
     const p = (state.info.chain_params || []).find((x) => `${state.comp}:${x.key}` === k);
     const input = el.querySelector("input,select");
     if (input && input.tagName === "INPUT") { input.value = v; const o = el.querySelector("output"); if (o && p) o.textContent = fmt(p, v); }
@@ -542,6 +543,10 @@
     d.className = "ctl";
     const id = "c_" + key.replace(/[^a-z0-9]/gi, "_");
     const v = state.values[key];
+    if ((p.type === "filepath" || p.type === "file") && window.PungFiles) {
+      // a file: its outline and name; a click opens the file browser (files.js)
+      return PungFiles.control(p, key, v, state.base, (nv) => { state.values[key] = nv; refreshScreens(); });
+    }
     if (p.type === "enum" && p.options) {
       d.innerHTML = `<label for="${id}">${esc(p.name || p.key)}</label>`;
       const s = document.createElement("select");

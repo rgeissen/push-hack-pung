@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 )
 
-const moveSchwungDir = "/data/UserData/schwung"
+var moveSchwungDir = "/data/UserData/schwung"
 
 func ensureMovePungLink(pungDir string) {
 	if fi, err := os.Lstat(moveSchwungDir); err == nil {

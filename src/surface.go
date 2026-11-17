@@ -132,6 +132,7 @@ type surface struct {
 	liveWritable                      bool              // the device is confirmed (liveView.writable)
 	bankMem                           map[string][2]int // a device's page, kept while others are shown (as Push does)
 	sb *sbState // the sound browser (sounds_view.go); nil when closed
+	fb *fbState // the file browser, open (files_view.go)
 	// the header's sound: whether the device's state is still the sound it
 	// became (read off the frame, every few seconds)
 	soundEdited bool
@@ -211,6 +212,7 @@ func (u *surface) run(done <-chan struct{}) {
 			OnBlur: func() {
 				u.mu.Lock()
 				u.closeSounds(false) // Push took the screen: the sound from before the browser
+				u.closeFiles(false)  // and the file
 				u.mu.Unlock()
 				u.focused.Store(false)
 				u.standIn.Store(false)
@@ -749,6 +751,23 @@ func (u *surface) cc(n, v byte) {
 		u.holdModifier(n == push3.CCMute, press)
 		return
 	}
+	if u.fb != nil && u.view == "files" {
+		switch {
+		case n >= push3.CCEncoder1 && n < push3.CCEncoder1+8:
+			if delta := push3.DecodeRel(v); n == push3.CCEncoder1 {
+				u.fbSibling(sign(delta)) // the folder beside this one
+			} else {
+				u.fbMove(sign(delta))
+			}
+			return
+		case n == push3.CCJogWheel:
+			u.fbTurn(push3.DecodeRel(v))
+			return
+		}
+		if u.fbButton(n, press) {
+			return
+		}
+	}
 	if u.sb != nil && (u.view == "sounds" || u.view == "name") {
 		switch {
 		case n >= push3.CCEncoder1 && n < push3.CCEncoder1+8:
@@ -1146,6 +1165,12 @@ func (u *surface) turn(enc, delta int) {
 	}
 	key := b.Keys[enc]
 	m := cm.Params[key]
+	if m != nil && m.Type == "file" && m.File != nil {
+		// a file is not turned through, it is chosen: the turn opens the
+		// browser at it, and from there nothing changes without Load
+		u.openFiles(key, m)
+		return
+	}
 	if m == nil || m.ReadOnly {
 		u.say("READ ONLY")
 		return
@@ -1293,6 +1318,10 @@ func ledOption(col int) uint8 {
 // the rest: a button that does nothing is dark, one that can be pressed is
 // never dark. Caller holds u.mu.
 func (u *surface) paintLEDs() {
+	if u.fb != nil && u.view == "files" {
+		u.paintFileLEDs()
+		return
+	}
 	if u.sb != nil && (u.view == "sounds" || u.view == "name") {
 		u.paintSoundLEDs()
 		return
@@ -1452,7 +1481,7 @@ const (
 // or lit for it. Each hold ends, and draws what there is, if the answer
 // does not come. Caller holds u.mu.
 func (u *surface) holdFrame() bool {
-	if !u.liveActive() || u.view == "sounds" || u.view == "name" || u.liveReady {
+	if !u.liveActive() || u.view == "sounds" || u.view == "name" || u.view == "files" || u.liveReady {
 		return false
 	}
 	age := time.Since(u.liveSince)
@@ -1475,6 +1504,9 @@ func (u *surface) enterSelection(v liveView) {
 	}
 	if u.sb != nil && v.key != u.sb.key {
 		u.closeSounds(false) // another device: the one browsed gets its sound back
+	}
+	if u.fb != nil && v.key != u.fb.key {
+		u.closeFiles(false) // and its file
 	}
 	u.soundEdited, u.editedAt = false, time.Time{} // the header's "*" was the last device's
 	u.liveKey, u.liveSince = v.key, time.Now()
@@ -1520,6 +1552,8 @@ func (u *surface) render(peak float64) *image.NRGBA {
 		return img
 	}
 	switch {
+	case u.view == "files" && u.fb != nil:
+		u.drawFiles(img)
 	case u.view == "sounds" && u.sb != nil:
 		u.drawSounds(img)
 	case u.view == "name" && u.sb != nil && u.sb.ed != nil:

@@ -2,7 +2,7 @@
 {{TOPBAR}}
 
 <section class="band hero"><div class="wrap">
-  <p class="eyebrow">Pung 0.1.17 · Manual</p>
+  <p class="eyebrow">Pung 0.2.0 · Manual</p>
   <h1>Play Schwung modules on Push 3.</h1>
   <p class="lead">How to install Pung, find its devices in Push's browser, play and edit them on the Push screen, and add more modules. Everything here works from the Push, with an optional web page beside it.</p>
   <dl class="facts">
@@ -21,6 +21,7 @@
   <li><a href="#screen">The Pung view</a></li>
   <li><a href="#controls">Controls</a></li>
   <li><a href="#sounds">Sounds</a></li>
+  <li><a href="#files">Samples and files</a></li>
   <li><a href="#pages">Pages and screens</a></li>
   <li><a href="#live">The sound, live</a></li>
   <li><a href="#push">Pung and Push's own view</a></li>
@@ -150,6 +151,54 @@
   </div>
 </section>
 
+<section id="files">
+  <div class="sec-head"><p class="eyebrow">On the Push</p><h2>Samples and files</h2></div>
+  <div class="prose">
+    <p>Some modules play your own material: MrSample and Granny a sample, MrDrums one per pad, Tablor its wavetables, Breakbeat its loops. On such a device, the file is the first thing on its page: its waveform, with the start and end drawn in, and its name. <strong>Turn that encoder to open the file browser.</strong> Turning only opens it; nothing changes until you load.</p>
+  </div>
+  [[screen img="files_cell" title="A sample on its page" alt="MrSample's Sample page: the first cell shows the loaded sample's waveform and its name, Clap 808 Reviv 2; beside it the dials Start, Loop, Loop Start, Loop End and Loop Xfade." up="0,7" upsel="0" lo="0-6" losel="1"]]MrSample's Sample page with a clap from Live's Core Library loaded. Captured from a Push 3.[[/screen]]
+  <div class="prose">
+    <p>The browser does not look in one folder, as on Move. It looks where your Push already has sound:</p>
+  </div>
+  <div class="t"><table>
+    <thead><tr><th>Place</th><th>What is there</th></tr></thead>
+    <tbody>
+      <tr><td>User Lib</td><td class="wrap1">Your own samples: Live's <em>User Library › Samples</em>. What you put there in Live, or add on Pung's web page, is here.</td></tr>
+      <tr><td>Core Lib</td><td class="wrap1">The samples Live ships with: one shots, loops, multisamples.</td></tr>
+      <tr><td>Packs</td><td class="wrap1">The samples of the Packs installed on your Push.</td></tr>
+      <tr><td>Sets, Recorded</td><td class="wrap1">What your own Sets and Live's recordings hold.</td></tr>
+      <tr><td>Favourites, Recent</td><td class="wrap1">The files you starred and the ones you chose lately, shared by every module.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="prose">
+    <p>A module with a folder of its own (Tablor's wavetables, Breakbeat's loops) has it first in the row. A place with nothing in it for this device is dim.</p>
+  </div>
+  [[screen img="files_browser" title="The file browser" alt="Pung's file browser on Core Lib: the folder Clap among its neighbours on the left with the number of samples in each; a list of claps in the middle with Clap 808 Reviv 1 highlighted and marked Playing; on the right that file's waveform, its length 0:00.58, 44.1 kHz, 16 bit, stereo, 104 KB, and its folder; along the bottom Fav, Preview On, Current, the device and parameter name, the position 5 of 141, Compare, Cancel and Load." up="0-6" upsel="1" lo="0-2,5-7" losel="7"]]Browsing Live's Core Library for MrSample. The highlighted file plays, and is already in the instrument. Captured from a Push 3.[[/screen]]
+  <div class="t keys"><table>
+    <thead><tr><th>Control</th><th>In the file browser</th></tr></thead>
+    <tbody>
+      <tr><td>Jog wheel, turn</td><td class="wrap1">Move through the list. A file plays once you stop on it. With <kbd>Shift</kbd>: ten at a time.</td></tr>
+      <tr><td>Jog wheel, press</td><td class="wrap1">Open the folder. On a file: load it and close the browser.</td></tr>
+      <tr><td>Jog wheel, nudge left</td><td class="wrap1">Up one folder, back on the row you came from. At the top of a place: on to the row of places, and from there out.</td></tr>
+      <tr><td>Jog wheel, nudge right</td><td class="wrap1">Open the folder.</td></tr>
+      <tr><td>Encoder 1</td><td class="wrap1">The folder beside this one (the panel on the left).</td></tr>
+      <tr><td>Encoders 2 to 8, <kbd>Page &lt;</kbd> <kbd>Page &gt;</kbd></td><td class="wrap1">The list, like the jog wheel; Page moves a screen at a time.</td></tr>
+      <tr><td>Upper row</td><td class="wrap1">Straight to a place.</td></tr>
+      <tr><td>Lower row</td><td class="wrap1">Fav stars the file. Preview switches the playback on or off. Current jumps to the file the device has. Hold Compare to hear the file you had before. Cancel, Load.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="prose">
+    <ul>
+      <li><strong>You hear a file two ways.</strong> Pung plays it through the device's track as you stop on it, like Push's own browser. And for most samplers the file is already in the instrument while you browse, so the pads play it with the device's settings.</li>
+      <li><strong>Nothing is lost by looking.</strong> <em>Cancel</em>, or leaving the browser any way but loading, brings back the file you had.</li>
+      <li><strong>Formats take care of themselves.</strong> Where a module reads only WAV, other audio files are still listed, marked <code>TO WAV</code>. Loading one makes a WAV copy in <em>User Library › Samples › Converted</em> and loads that.</li>
+      <li><strong>One library with Move.</strong> A sample in your User Library has the same path on a Move and on a Push, so a sound that uses it opens on both.</li>
+      <li>The right side shows the file under the cursor: its waveform, length, sample rate, bit depth, channels and size, and where it is.</li>
+      <li>To bring your own samples onto the Push, use <a href="#web">Pung's web page</a> (drop them into the file browser there), or Live's own ways of filling the User Library.</li>
+    </ul>
+  </div>
+</section>
+
 <section id="pages">
   <div class="sec-head"><p class="eyebrow">On the Push</p><h2>Pages and screens</h2></div>
   <div class="prose">
@@ -224,6 +273,7 @@
     <ul>
       <li><strong>Devices</strong>: every Pung device in the Set, by track. A device's sections are the same as its pages on the Push, under the same names. Change a value on either side and the other follows within half a second; click a section's title and the Push turns to it.</li>
       <li><strong>Sound</strong>: the device's sounds, as in the <a href="#sounds">sound browser</a> on the Push: Factory, User, Favourites and Recent, the bank, and a search over every name. Click a sound or use the arrow keys to hear it, <kbd>Enter</kbd> or a double click keeps it, <kbd>Esc</kbd> brings back the sound you had. Each sound has a star, and yours can be renamed and deleted. <em>Export</em> downloads your sounds as Schwung preset files; <em>Import</em> adds such files, from another Push or from a Move.</li>
+      <li><strong>Samples and files</strong>: a device that plays a sample shows it with its waveform; click it for the same <a href="#files">file browser</a> as on the Push, with three things added. <em>Search</em> finds a file by words in its name or folder. <em>Listen here</em>, or a click in the waveform, plays the file on this computer. And you can <strong>drop files from your computer onto the list</strong>: they go into the folder shown, inside your User Library, and are on the Push at once.</li>
       <li><strong>Sounds</strong> (top of the page): your sounds for every module in one place, with a search over all of them; star, rename, delete, and <em>Load on</em> any Pung device in your Set running that module. <em>Export all</em> is one zip in the folder layout a Move keeps; <em>Import</em> sorts every sound of such a zip into its module.</li>
       <li><strong>Compartment pills</strong>: the device's sections as pills above its panel. Click one to show or hide its section, double-click one to show only that one, <em>All</em> to show every one. With one on, the Push turns to it; a dot marks the one the Push shows.</li>
       <li><strong>A module's own panel</strong>: modules with a web panel of their own (JE-8086, Mini-JV) show it there; the pills show and hide its sections too where the module supports it (Mini-JV).</li>

@@ -71,6 +71,7 @@ type Host struct {
 	settings *settingsStore  // Pung's own settings (settings.go)
 	mods     *modMgr         // modules from the catalog (modmgr.go)
 	sounds   *soundLib       // every module's sounds (sounds_device.go)
+	files    *fileLib        // the files modules ask for: samples, wavetables (files.go)
 
 	selMu      sync.Mutex
 	selKey     string // Live's selection that selDev was worked out for

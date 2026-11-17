@@ -188,10 +188,13 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			if key == "" {
 				continue
 			}
-			if covered[i] {
-				u.drawUnderWidget(img, i, p, cm.Params[key], key, sc)
-			} else {
-				u.drawCell(img, i, p, cm.Params[key], key, sc)
+			switch m := cm.Params[key]; {
+			case covered[i]:
+				u.drawUnderWidget(img, i, p, m, key, sc)
+			case m != nil && m.Type == "file" && m.File != nil:
+				u.drawFileCell(img, i, p, cm, m, key, sc, b.Keys) // a file: its outline and name (files_view.go)
+			default:
+				u.drawCell(img, i, p, m, key, sc)
 			}
 		}
 		// the detail card, only when asked for (settings.go: on the Push the

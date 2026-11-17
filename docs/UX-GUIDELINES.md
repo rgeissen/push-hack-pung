@@ -288,6 +288,13 @@ follows:
 - **Never a guessed name.** A sound not heard yet is its number and a dash.
 - **A button with nothing to do is dim** and says why when pressed.
 
+### Files
+
+A parameter that holds a file (a sample, a wavetable, a kit) is chosen in the file browser
+(`docs/SAMPLES.md`), the sound browser's sibling: the same row of places on top, the same jog, the same
+rule that hearing is not choosing. Its cell on a page is the file's outline and name, never a knob, and
+turning its encoder only opens the browser.
+
 ## 5. Custom screens
 
 ### The bar

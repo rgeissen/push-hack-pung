@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -31,6 +32,18 @@ type paramMeta struct {
 	Default  *float64
 	ReadOnly bool
 	Bipolar  bool
+	// File: a file parameter (the module's "filepath"): a sample, a
+	// wavetable, a kit; chosen in the file browser, never turned (files.go)
+	File *fileSpec
+	// Pos: a position in a file parameter's sample (the module's
+	// "wav_position"): a number like any other, drawn on the waveform
+	Pos *posSpec
+}
+
+// posSpec: what a wav_position says: whose sample, and which edge it is.
+type posSpec struct {
+	Of   string // the file parameter's key
+	Mode string // position | start | end
 }
 
 type bank struct {
@@ -97,6 +110,34 @@ func metaFromObj(o map[string]any) *paramMeta {
 				m.Options = append(m.Options, s)
 			} else if mo, ok := x.(map[string]any); ok {
 				m.Options = append(m.Options, str(mo["label"])+str(mo["name"]))
+			}
+		}
+	}
+	switch m.Type {
+	case "filepath", "file":
+		m.Type, m.File = "file", fileSpecFrom(o)
+	case "wav_position":
+		// a number: normalized 0..1 shown as a percentage, or ms, or seconds
+		m.Pos = &posSpec{Of: str(o["filepath_param"]), Mode: str(o["mode"])}
+		switch m.Pos.Mode {
+		case "trim_front":
+			m.Pos.Mode = "start"
+		case "trim_end":
+			m.Pos.Mode = "end"
+		}
+		m.Type = "float"
+		switch strings.ToLower(str(o["display_unit"])) {
+		case "ms":
+			m.Unit = "ms"
+			if m.Step == 0 {
+				m.Step = 1
+			}
+		case "sec", "s":
+			m.Unit = "s"
+		default:
+			m.Unit = "%"
+			if m.Max <= m.Min {
+				m.Min, m.Max = 0, 1
 			}
 		}
 	}
@@ -215,16 +256,32 @@ func (cm *compMeta) keysOf(lvl map[string]any) []string {
 	if k, ok := lvl["knobs"]; ok && k != nil {
 		collect(k)
 		// a level that lists param objects also carries their metadata
+		var files []string
 		if p, ok := lvl["params"].([]any); ok {
 			for _, x := range p {
+				key, _ := x.(string)
 				if t, ok := x.(map[string]any); ok && str(t["key"]) != "" {
-					if _, known := cm.Params[str(t["key"])]; !known {
-						cm.Params[str(t["key"])] = metaFromObj(t)
+					key = str(t["key"])
+					if _, known := cm.Params[key]; !known {
+						cm.Params[key] = metaFromObj(t)
+					}
+				}
+				// the level's files. A module lists a sample among a level's
+				// parameters and not among its knobs (it is not turned), so
+				// it fell to a page of leftovers at the very end; it belongs
+				// first on its own page, beside the start and end it is cut by
+				if m := cm.Params[key]; key != "" && m != nil && m.Type == "file" {
+					inKnobs := false
+					for _, have := range keys {
+						inKnobs = inKnobs || have == key
+					}
+					if !inKnobs {
+						files = append(files, key)
 					}
 				}
 			}
 		}
-		return keys
+		return append(files, keys...)
 	}
 	collect(lvl["params"])
 	return keys
@@ -261,7 +318,7 @@ func (cm *compMeta) planFromHierarchy(levels map[string]map[string]any, modes []
 	cm.Presets.Name = str(browser["name_param"])
 	// root's own knobs first (the module's "main" page)
 	if k, ok := root["knobs"]; ok && k != nil {
-		cm.addBanks("MAIN", cm.keysOf(map[string]any{"knobs": k}))
+		cm.addBanks("MAIN", cm.keysOf(map[string]any{"knobs": k, "params": root["params"]}))
 	}
 	// then the levels root points to, in its order, under their labels
 	params, _ := root["params"].([]any)
@@ -376,6 +433,11 @@ func (m *paramMeta) display(v string, ok bool) (val, unit string) {
 		return v, ""
 	case "string":
 		return v, ""
+	case "file":
+		if strings.TrimSpace(v) == "" {
+			return "NONE", ""
+		}
+		return displayName(filepath.Base(v)), ""
 	}
 	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
 	if err != nil {
@@ -411,7 +473,7 @@ func (m *paramMeta) display(v string, ok bool) (val, unit string) {
 // step moves a value by delta encoder clicks. fine: Shift held.
 // fineApplies: Shift makes a turn finer for this parameter (step, below).
 func (m *paramMeta) fineApplies() bool {
-	if m.Type == "enum" || m.Type == "string" || m.ReadOnly {
+	if m.Type == "enum" || m.Type == "string" || m.Type == "file" || m.ReadOnly {
 		return false
 	}
 	if m.Type == "int" || (m.Step >= 1 && m.Step == math.Trunc(m.Step)) {
@@ -436,8 +498,8 @@ func (m *paramMeta) step(v string, delta int, fine bool) (string, bool) {
 			return strconv.Itoa(n), true
 		}
 		return m.Options[n], true
-	case "string":
-		return v, false
+	case "string", "file":
+		return v, false // a file is chosen in the browser, never turned
 	}
 	f, _ := strconv.ParseFloat(strings.TrimSpace(v), 64)
 	rng := m.Max - m.Min
