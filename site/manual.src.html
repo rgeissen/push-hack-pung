@@ -17,6 +17,7 @@
 <nav class="toc" aria-label="On this page"><p>On this page</p><ol>
   <li><a href="#need">What you need</a></li>
   <li><a href="#install">Install</a></li>
+  <li><a href="#update">Updating</a></li>
   <li><a href="#first">Your first Pung device</a></li>
   <li><a href="#screen">The Pung view</a></li>
   <li><a href="#controls">Controls</a></li>
@@ -58,7 +59,25 @@
     <li><div><p>Find <strong>Pung</strong> and choose <strong>Install</strong>. The Catalog downloads <code>pung.tar.gz</code> (76 MB, every module inside), installs the service and starts it.</p></div></li>
     <li><div><p><strong>Restart the Push once.</strong> Live looks for new plugins only when it starts. After the restart, Pung's devices are in Push's browser and Pung is in Push Hack Home (<kbd>Shift</kbd> + <kbd>Help</kbd>).</p></div></li>
   </ol>
-  <div class="prose"><p>Later versions arrive the same way: the Catalog shows an update when Pung has a new release. Devices in an open Set keep their state through the update.</p></div>
+  <div class="prose"><p>Later versions arrive the same way; see <a href="#update">Updating</a>.</p></div>
+</section>
+
+<section id="update">
+  <div class="sec-head"><p class="eyebrow">Setup</p><h2>Updating</h2></div>
+  <div class="prose"><p>An update has two parts: Pung itself, then the modules you installed. Both are done in a browser; nothing is copied by hand.</p></div>
+  <ol class="steps">
+    <li><div><p><strong>Update Pung.</strong> Open Push Hack Catalog (<code>http://push.local:7702</code>), find Pung and choose <strong>Update</strong>. Your installed modules, their firmware, your sounds and your favourites are kept: they are stored apart from the program. Devices in an open Set keep their state.</p></div></li>
+    <li><div><p><strong>Update your modules.</strong> Open Pung's web page (<code>http://push.local:7720</code>) and go to <strong>Modules</strong>; the tab shows how many updates there are. Press <strong>Update</strong> on each module that offers one.</p></div></li>
+    <li><div><p><strong>Apply.</strong> Save your Set first. Apply restarts Live once, in about 30 seconds, and Live recovers the Set.</p></div></li>
+  </ol>
+  <div class="prose">
+    <ul>
+      <li><strong>Update to 1.2.3</strong> means the module's author released a new version.</li>
+      <li><strong>Update (new build)</strong> means the version is the same, but Pung packed it again, usually because the first package left something out. The update to Pung 0.1.17 did this for twelve modules: Surge XT got its 674 factory patches, Helm its presets, Dexed its banks and Breakbeat its loops.</li>
+      <li>Module updates only show after step 1: the new list of modules comes with Pung.</li>
+      <li>The modules that come built into Pung (Braids, Dexed, Hera, OB-Xd) are updated by step 1 alone.</li>
+    </ul>
+  </div>
 </section>
 
 <section id="first">
@@ -293,7 +312,7 @@
     <li><div><p><strong>Apply.</strong> New devices need one Live restart, because Live looks for plugins only when it starts. Apply saves nothing for you: save your Set first. Live restarts in about 30 seconds and recovers the Set. Install several modules, then Apply once.</p></div></li>
     <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV and Osirus emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum.</p></div></li>
   </ol>
-  <div class="prose"><p>A new Pung release brings new modules and new versions; the Modules page shows updates. Removing a module needs Apply too.</p><p>During the test phase, modules come inside Pung's releases. After it, Pung's module pipeline, which is already built, will serve them directly, so updates arrive as Schwung publishes them.</p></div>
+  <div class="prose"><p>A new Pung release brings new modules and new versions; the Modules page shows them (see <a href="#update">Updating</a>). Removing a module needs Apply too.</p><p>During the test phase, modules come inside Pung's releases. After it, Pung's module pipeline, which is already built, will serve them directly, so updates arrive as Schwung publishes them.</p></div>
 </section>
 
 <section id="trouble">
