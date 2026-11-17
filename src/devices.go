@@ -483,6 +483,9 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 	p.gen.Add(1)
 	go p.reviveSiblings(sc.module) // a module that refused to start beside another
 	go d.adoptKept()
+	if lib := p.h.sounds; lib != nil {
+		go lib.warm(d)
+	}
 	return d, nil
 }
 

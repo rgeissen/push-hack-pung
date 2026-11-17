@@ -36,6 +36,9 @@ func main() {
 	writeClassesTo := flag.String("write-classes", "", "write the device classes to this file and exit (tests, packaging)")
 	probeModule := flag.String("probe-module", "", "probe this one module and exit (the start's crash screen, screen.go)")
 	probeOut := flag.String("probe-out", "", "with -probe-module: write its metadata here")
+	scoutJobPath := flag.String("scout-job", "", "walk one module's sound list and exit (scout.go)")
+	survey := flag.Bool("sounds-survey", false, "print how every module's sound list is named, and exit (scout.go)")
+	scoutOut := flag.String("scout-out", "", "with -scout-job: write the names here")
 	socket := flag.String("socket", "/data/push-hack/data/pung/devices.sock", "the device control socket")
 	flag.Parse()
 	if *showVersion {
@@ -63,7 +66,7 @@ func main() {
 		log.Fatalf("data dir: %v", err)
 	}
 
-	if *probeModule == "" {
+	if *probeModule == "" && *scoutJobPath == "" && !*survey {
 		ensureMovePungLink(base)
 		// what an earlier Pung's modules forked must not hold on (procs.go)
 		leadProcessGroup()
@@ -86,6 +89,14 @@ func main() {
 	h.sounds = newSoundLib(h, presetsDir(base), filepath.Join(base, "overrides"), filepath.Join(*data, "overrides"))
 	if *probeModule != "" {
 		probeModuleMain(h, *probeModule, *probeOut)
+		return
+	}
+	if *scoutJobPath != "" {
+		scoutMain(h, *scoutJobPath, *scoutOut)
+		return
+	}
+	if *survey {
+		soundsSurvey(h)
 		return
 	}
 	// modules from the catalog: their links in place before anything reads

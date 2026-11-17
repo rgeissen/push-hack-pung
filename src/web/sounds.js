@@ -122,7 +122,7 @@
     if (source === "factory" && f) {
       if (f.count < 0) return "The module is still loading its sounds.";
       const named = Object.keys(f.names || {}).length;
-      const tail = f.all_named || named >= f.count ? "" : ` · ${named} named so far: a sound's name appears once it has played`;
+      const tail = f.all_named || named >= f.count ? "" : ` · reading the names (${named} of ${f.count})`;
       const match = filter.trim() ? `${rows.length} of ` : "";
       return `${match}${f.count} sounds${f.mode ? " · " + f.mode + " mode" : ""}${tail}`;
     }

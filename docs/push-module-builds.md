@@ -40,8 +40,15 @@ third-party scripts was ruled out from the start.
    - **Include folders:** found by following the sources' `#include`s. A folder
      with its own `string.h` (or another libc name) is never added: it would
      shadow the system header.
-   - **Data:** the module folder minus sources, plus what the script copies into
+   - **Data:** the module folder minus sources, plus what the script puts into
      the module's folder, renames included (`src/ui_overtake.js` -> `ui.js`).
+     A script copies with `cp`, or with `cat file > dist/<id>/...` (often in a
+     `for` loop), and it removes again part of what it copied; all three are
+     read, in the script's own order. Until 2026-11-17 only `cp` from outside
+     the engine folder was: Surge and Helm were published without their factory
+     sounds, Dexed without its banks, Breakbeat without its loops, and many
+     modules without their licence texts. A compiled file in a repo is never
+     copied: those are ARM builds.
    - **CMake projects:** configured for this machine with no ARM toolchain
      file, built from a writable copy, with the targets the script names.
    - **Host headers:** Schwung's `src` and `src/host` (`plugin_api_v1.h`, ...)
@@ -71,6 +78,46 @@ third-party scripts was ruled out from the start.
 
 `scripts/recipes/not-for-push.json` lists the modules that cannot be built for
 the Push, and why.
+
+## Schwung's modules stay Schwung's; what Pung adds is a layer
+
+A module is rebuilt from its author's repository every time, so a new upstream
+version must never cost what Pung added to the old one. The rule: **nothing
+Pung adds lives in a built module.** Each addition has one home in this
+repository, and the build or Pung itself applies it again on every run:
+
+| What Pung adds | Where it lives | Applied |
+|---|---|---|
+| How a module is compiled for Push | `scripts/gen-recipes.py` (read from the module's own script each time), else a hand recipe in `scripts/recipes/` | every build |
+| A change to a module's source | a patch a hand recipe applies (capicola), or a fork named in `scripts/local-sources.json` | every build; a patch that no longer fits fails that module's build |
+| How Pung shows and reads a module (screens, preset lists, parameter fixes) | `overrides/` (presets.json and the screen overrides), read by Pung at run time | never part of the module: an update cannot touch it |
+| Sound names a module cannot list itself | Pung reads them from a hidden instance (`src/scout.go`) | on the device, per module and bank |
+| That a package was built again | `scripts/module-revisions.json` | the catalog build |
+
+So an upstream update is: `scripts/build-push-modules.sh fetch <id>`, then the
+catalog build. If the author changed what the build script copies, the recipe
+follows, because it is read from that script.
+
+A module that cannot be handled this way gets a hand recipe that says why in
+its header. Do not edit files under `build/`: the next build replaces them.
+
+### A package only changes with a version or a revision
+
+A device offers an update when the catalog's version is higher than the
+installed one. Pung also packs a version again without the author releasing
+anything (the day Surge got its factory sounds). That is a **revision**:
+`scripts/module-revisions.json` gives the module the next number and the
+reason, the package carries it (`PUNG-BUILD/REV`), the catalog entry says
+`pung_rev`, and a device offers the same version with a higher revision as
+"Update (new build)".
+
+`scripts/build-catalog.py` enforces it. It compares each package with the one
+in the catalog that is there: every file's name, the bytes of every file that
+is not a compiled program, and the source commit. A package that differs with
+the same version and revision stops the build and names the module. (A
+rebuilt program may differ bit for bit and be the same program, so compiled
+files count by name only; a change of compiler flags alone needs a revision by
+hand.)
 
 ## Known limits
 

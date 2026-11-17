@@ -314,6 +314,37 @@ def safe(s):
 
 
 published, withheld, problems = [], [], []
+
+# Pung's packaging revisions (scripts/module-revisions.json): a module's own
+# version says what its author released; the revision says Pung packed that
+# release again. A device shows the same version with a higher revision as
+# an update (modmgr.go), so a package may only change when one of them does.
+REVS = {k: v for k, v in json.load(open(os.path.join(ROOT, "scripts", "module-revisions.json"))).items() if not k.startswith("_")}
+OLD_CAT = {}
+if os.path.exists(os.path.join(args.out, "catalog.json")):
+    OLD_CAT = {e["id"]: e for e in json.load(open(os.path.join(args.out, "catalog.json")))["modules"]}
+unrevised = []
+
+
+def content_id(tar_path, commit=None):
+    """What a package holds, for comparing two builds of one version: every
+    file's name, the bytes of every file that is not a compiled program (a
+    rebuild's binary may differ bit for bit and be the same program), and the
+    source commit. The folders this script adds are left out."""
+    h = hashlib.sha256()
+    with tarfile.open(tar_path, "r:gz") as tf:
+        for ti in sorted(tf.getmembers(), key=lambda t: t.name):
+            rel = ti.name.split("/", 1)[1] if "/" in ti.name else ""
+            if rel.startswith("PUNG-BUILD/") and rel.endswith("SOURCE.json") and commit is None:
+                commit = json.load(tf.extractfile(ti)).get("commit")
+            if not ti.isfile() or rel.startswith(("LICENSES/", "PUNG-BUILD/")):
+                continue
+            data = tf.extractfile(ti).read()
+            h.update(ti.name.encode() + b"\0")
+            if data[:4] != b"\x7fELF":
+                h.update(hashlib.sha256(data).digest())
+    h.update(("commit:" + (commit or "")).encode())
+    return h.hexdigest()
 mods = [m for m in index["modules"] if not args.ids or m["id"] in args.ids]
 for m in mods:
     mid = m["id"]
@@ -336,7 +367,8 @@ for m in mods:
         spdx, how = "LicenseRef-permission", "policy: " + policy["publish"][mid]
     commit = (m["source"].get("commit") or "local")[:12]
     ver = safe(m["version"])
-    asset_name = f"{mid}-{ver}-push-x86_64.tar.gz"
+    rev = int(REVS.get(mid, {}).get("rev", 1))
+    asset_name = f"{mid}-{ver}-push-x86_64.tar.gz" if rev == 1 else f"{mid}-{ver}-r{rev}-push-x86_64.tar.gz"
     src_name = f"{mid}-{ver}-{commit}-src.tar.gz"
     m["_source_url"] = f"source/{src_name}"
     mj = module_json(src)
@@ -383,6 +415,20 @@ for m in mods:
         pkg_build_dir(tout, f"{mid}/PUNG-BUILD/", m, spdx, how)
         manifest = "\n".join(sorted(n for n in names if not n.endswith("/"))) + "\n"
         add_bytes(tout, f"{mid}/PUNG-BUILD/MANIFEST", manifest.encode())
+        add_bytes(tout, f"{mid}/PUNG-BUILD/REV", f"{rev}\n".encode())
+    # the same version and revision as the catalog that is there: then the
+    # same contents, or devices that have it would never be offered the change
+    content = content_id(orig, m["source"].get("commit") or "")
+    was = OLD_CAT.get(mid)
+    if was and was.get("version") == m["version"] and int(was.get("pung_rev", 1)) == rev:
+        before = was.get("content")
+        old_pkg = os.path.join(out, was.get("asset", ""))
+        if not before and os.path.isfile(old_pkg) and os.path.abspath(old_pkg) != os.path.abspath(pkg_path):
+            before = content_id(old_pkg)
+        elif not before and os.path.isfile(pkg_path):
+            before = content_id(pkg_path)
+        if before and before != content:
+            unrevised.append(mid)
     os.replace(tmp, pkg_path)
 
     entry = {k: m[k] for k in ("id", "name", "version", "component_type", "install_subdir", "description", "author", "requires", "requires_modules")}
@@ -401,6 +447,7 @@ for m in mods:
         "source_date": built,
     })
     entry.update({
+        "pung_rev": rev, "content": content,
         "asset": "modules/" + asset_name, "size": os.path.getsize(pkg_path), "sha256": sha256(pkg_path),
         "license": {"spdx": spdx, "noncommercial": nc, "from": how},
         "source": {"repo": "https://github.com/" + repo if repo else "", "commit": m["source"].get("commit", ""),
@@ -409,6 +456,14 @@ for m in mods:
     })
     published.append(entry)
     print(f"  {mid:20} {spdx:28} {entry['size'] // 1024:6} KB  source {entry['source']['archive_size'] // (1 << 20)} MB", flush=True)
+
+if unrevised:
+    print("\nThese packages changed (their files or their source commit) with the same version and\n"
+          "revision as the catalog that is there. A device that has one would never be offered the\n"
+          "change. Give each the next revision, and why, in scripts/module-revisions.json:\n  "
+          + " ".join(sorted(unrevised)), file=sys.stderr)
+    if not os.environ.get("PUNG_ALLOW_UNREVISED"):
+        sys.exit(2)
 
 # a partial build (ids given) merges into the catalog that is there
 cat_path = os.path.join(out, "catalog.json")

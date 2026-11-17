@@ -68,6 +68,15 @@ def repo_files(repo):
     return out
 
 
+def is_elf(path):
+    """A compiled program or library: built for this machine by a recipe,
+    never copied from a repo (those are ARM builds, for Move)."""
+    try:
+        return open(path, "rb").read(4) == b"\x7fELF"
+    except OSError:
+        return False
+
+
 def resolve(token, files, repo, prefer, want_dir=False):
     """A path as a build script writes it ($REPO_ROOT/src/dsp/x.c, "$DSP"/x.c,
     src/dsp/*.c) -> paths in the repo (relative), [] if none."""
@@ -367,7 +376,49 @@ def gen(m):
     # what the script copies into the module's folder besides the build output:
     # banks, presets, and renamed files (src/ui_overtake.js -> <id>/ui.js)
     idre = re.compile(r"(^|/)%s(/|$)" % re.escape(mid))
+    loops = {}  # a for loop's variable -> what it runs over (for f in banks/*.syx)
     for line in text.splitlines():
+        for lm in re.finditer(r"\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^;]+?)\s*(?:;|$)", line):
+            loops[lm.group(1)] = lm.group(2).split()
+        # cat <file> > dist/<id>/<to>: these scripts' other way to copy (it
+        # keeps the target's mode). Dexed's banks, Airwindows' plugins and
+        # most licence texts are packed so, many of them in a loop
+        cm_ = re.search(r"(?:^|&&|;|\bdo)\s*cat\s+(\"[^\"]+\"|\S+)\s*>\s*(.+?)\s*(?:;\s*done\s*)?$", line)
+        if cm_:
+            # the target ends where the command does (cat a > "b" || true)
+            to_ = re.split(r"\s+(?:\|\||&&)\s+|\s*;\s*", cm_.group(2))[0]
+            src_, to_ = cm_.group(1).strip("\"'"), to_.strip().strip("\"'")
+            for _ in range(4):
+                to_ = re.sub(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?", lambda v_: VARS.get(v_.group(1), v_.group(0)), to_)
+            hit = re.search(r"(^|/)dist/%s/(.+)$" % re.escape(mid), to_)
+            var = re.fullmatch(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?", src_)
+            if hit and var and var.group(1) in loops and re.search(r"/\$\(basename [^)]*\)$", hit.group(2)):
+                # a loop over files, each to the folder under its own name
+                folder = re.sub(r"/\$\(basename [^)]*\)$", "", hit.group(2))
+                for g_ in loops[var.group(1)]:
+                    got = [p_ for p_ in resolve(g_, files, repo, mdir) if os.path.isfile(os.path.join(repo, p_))
+                           and not p_.endswith(NOT_DATA) and not is_elf(os.path.join(repo, p_))]
+                    if got:
+                        L.append('mkdir -p "$D"/%s' % q(folder))
+                    for p_ in got:
+                        L.append('cp "$R"/%s "$D"/%s/' % (q(p_), q(folder)))
+            elif hit and not var and "$" not in hit.group(2):
+                for p_ in resolve(src_, files, repo, mdir)[:1]:
+                    if os.path.isfile(os.path.join(repo, p_)) and not p_.endswith(NOT_DATA) and not p_.startswith(mdir + "/dsp/") \
+                            and not is_elf(os.path.join(repo, p_)):
+                        L.append('mkdir -p "$(dirname "$D"/%s)"; cp "$R"/%s "$D"/%s' % (q(hit.group(2)), q(p_), q(hit.group(2))))
+            continue
+        # what the script removes from the module's folder, in the script's
+        # own order: before a copy it clears a stale folder (JE-8086's
+        # assets), after one it drops part of what was copied (Surge: the
+        # patch categories that need parts this build has not)
+        rm_ = re.match(r"\s*rm\s+-[rf]+\s+(\S+)\s*(#.*)?$", line)
+        if rm_:
+            gone = re.sub(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/?", "", rm_.group(1).strip("\"'")).rstrip("/")
+            hit = re.search(r"(^|/)dist/%s/(.+)$" % re.escape(mid), gone)
+            if hit and ".." not in hit.group(2):
+                L.append('rm -rf "$D"/%s' % q(hit.group(2)))
+            continue
         if not re.search(r"(^|\s)cp\s", line):
             continue
         try:
@@ -388,7 +439,12 @@ def gen(m):
         for a_ in args[:-1]:
             ps = resolve(a_, files, repo, mdir, want_dir=True) or resolve(a_, files, repo, mdir)
             for p_ in ps:
-                if p_.endswith((".so", ".o", ".a")) or p_.startswith(mdir + "/dsp/"):
+                if p_.endswith((".so", ".o", ".a")):
+                    continue
+                # under dsp/ the sources are not data; what the script copies
+                # out of it by name is (Surge's factory patches and wavetables
+                # live in its engine's tree: left out, the synth had no sounds)
+                if p_.startswith(mdir + "/dsp/") and (p_.endswith(NOT_DATA) or p_.rstrip("/") == mdir + "/dsp"):
                     continue
                 if rest and len(args) == 2 and os.path.isfile(os.path.join(repo, p_)) and not args[-1].endswith("/") \
                         and not os.path.isdir(os.path.join(repo, mdir, rest)):

@@ -163,7 +163,7 @@
         <span class="pstate">${esc(STATE[j.state] || j.state)}${pct !== null ? " " + pct + "%" : "…"}</span>`;
     }
     if (j && j.state === "failed") return `<button type="button" class="act retry" data-act="install">Try again</button>`;
-    if (x.status === "update") return `<button type="button" class="act primary" data-act="install">Update to ${esc(x.version)}</button>`;
+    if (x.status === "update") return `<button type="button" class="act primary" data-act="install"${x.repacked ? ' title="The same version, packed again by Pung with files the first package left out"' : ""}>${x.repacked ? "Update (new build)" : "Update to " + esc(x.version)}</button>`;
     if (x.status === "installed") return `<span class="done">Installed ${esc(x.installed || "")}</span>`;
     if (x.status === "builtin") return `<span class="done">Built into Pung</span>`;
     return `<button type="button" class="act" data-act="install">Install</button>`;
@@ -221,7 +221,7 @@
     const base = (m.data.catalog && m.data.catalog.base_url) || "";
     const src = x.source || {};
     const facts = [
-      ["Version", x.installed ? (x.status === "update" ? `${x.installed} installed, ${x.version} available` : x.installed) : x.version],
+      ["Version", x.installed ? (x.status === "update" ? (x.repacked ? `${x.installed} installed, a new build of it available` : `${x.installed} installed, ${x.version} available`) : x.installed) : x.version],
       ["Category", catLabel(x) || "—"],
       ["Released", x.released ? fmtDate(x.released) : "—"],
       ["Updated", x.updated ? fmtDate(x.updated) : "—"],

@@ -2,7 +2,7 @@
 {{TOPBAR}}
 
 <section class="band hero"><div class="wrap">
-  <p class="eyebrow">Pung 0.1.16 · Manual</p>
+  <p class="eyebrow">Pung 0.1.17 · Manual</p>
   <h1>Play Schwung modules on Push 3.</h1>
   <p class="lead">How to install Pung, find its devices in Push's browser, play and edit them on the Push screen, and add more modules. Everything here works from the Push, with an optional web page beside it.</p>
   <dl class="facts">
@@ -54,7 +54,7 @@
   <ol class="steps">
     <li><div><p>Open Push Hack Catalog in a browser on your computer or phone.</p>
       <div class="cmd"><div class="bar"><span>In your browser</span><button class="copy" type="button" data-copy="c1">Copy</button></div><pre><code id="c1">http://push.local:7702</code></pre></div></div></li>
-    <li><div><p>Find <strong>Pung</strong> and choose <strong>Install</strong>. The Catalog downloads <code>pung.tar.gz</code> (48 MB, every module inside), installs the service and starts it.</p></div></li>
+    <li><div><p>Find <strong>Pung</strong> and choose <strong>Install</strong>. The Catalog downloads <code>pung.tar.gz</code> (76 MB, every module inside), installs the service and starts it.</p></div></li>
     <li><div><p><strong>Restart the Push once.</strong> Live looks for new plugins only when it starts. After the restart, Pung's devices are in Push's browser and Pung is in Push Hack Home (<kbd>Shift</kbd> + <kbd>Help</kbd>).</p></div></li>
   </ol>
   <div class="prose"><p>Later versions arrive the same way: the Catalog shows an update when Pung has a new release. Devices in an open Set keep their state through the update.</p></div>
@@ -144,7 +144,7 @@
       <li><strong>Naming:</strong> <em>Save As</em> proposes a name. To change it, turn the jog wheel for the letter at the cursor and nudge it to move the cursor, or turn the eight encoders, one letter each. Press the jog wheel when done.</li>
       <li><strong>Your sounds are Schwung's own user presets,</strong> file for file: a sound saved on Move opens on Push, and the other way round.</li>
       <li><strong>Your sounds are in Push's own browser too:</strong> <em>User Library › Presets › Instruments › Pung › Mini-JV › your sound</em> (and the same for every module). Loading one brings the module with that sound, already named.</li>
-      <li>Where a module can name all its sounds, every name is there at once; otherwise a sound's name appears once you have heard it.</li>
+      <li>Every sound has its name from the start. Where a module can only name the sound it has loaded, Pung reads the other names in the background the first time, without changing your device's sound; that takes a few seconds, once per module and bank.</li>
       <li>The Pung view's header names the device's sound; a <code>*</code> in front means you changed it since.</li>
     </ul>
   </div>

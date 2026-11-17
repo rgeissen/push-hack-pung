@@ -110,6 +110,18 @@ that reports a name) and keeps them. A module that can name any index (`patch_na
 `plugin_N_name`, `preset_list`, `kit_names_all`, a knob's options) fills the whole list at once. A row
 whose name is not known yet shows its number, never a guess.
 
+**A module that names only the sound it has loaded is read by a hidden instance** (`src/scout.go`,
+since 0.1.17). Hera, Braids, Dexed, OB-Xd, Osirus and nine more are of this kind, and a new device's
+list was rows of numbers with one name until each row had been played (issue #1). Stepping the device
+itself through its list would change its sound, so a second instance of the module, in a child process
+no audio is taken from, chooses the device's mode and bank, steps the list and writes the names down.
+That takes under a second for most modules (Osirus: 4 s, its emulated DSP boots first). It runs when a
+device is made and when its bank changes, once per module and bank: the names are kept in the index.
+The names are used only if the hidden instance's bank has the device's name and length and it names the
+device's current sound as the device does; otherwise the list is learned as it is heard, as before.
+A bank picked by a plain parameter (Osirus: `bank_index`) keeps its own names, as a bank chooser's does.
+`pung -sounds-survey -modules <tree>` prints how every module's list is named; it needs no device.
+
 ### The current sound
 
 Each Pung device remembers, in its own state (saved with the Live Set), which sound it is:

@@ -156,7 +156,7 @@ audio through Live; **push-audio-loopback** is needed only for a chain opened th
 ### Releases: the modules come with Pung
 
 A release (`scripts/release.sh`, after `make build`) is one file, `pung.tar.gz`, in Push Hack Catalog's
-layout, with the module catalog inside it: `catalog/catalog.json` and every package it lists (48 MB for
+layout, with the module catalog inside it: `catalog/catalog.json` and every package it lists (76 MB for
 102 modules). The Modules page installs from that copy, from the Push's own disk: nothing is downloaded
 from anywhere, and a new Pung release brings the new module versions. Firmware for JV-880 and Osirus is
 never in it: you add it yourself on the Modules page, as before. A catalog address set in Pung's settings

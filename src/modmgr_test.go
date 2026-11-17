@@ -144,7 +144,7 @@ func TestBundledCatalog(t *testing.T) {
 	dir := t.TempDir()
 	pkg := []byte("a package")
 	sum := sha256.Sum256(pkg)
-	os.MkdirAll(filepath.Join(dir, "modules"), 0o755) //nolint:errcheck
+	os.MkdirAll(filepath.Join(dir, "modules"), 0o755)                   //nolint:errcheck
 	os.WriteFile(filepath.Join(dir, "modules", "x.tar.gz"), pkg, 0o644) //nolint:errcheck
 	doc := map[string]any{"catalog_version": 1, "base_url": "", "modules": []map[string]any{
 		{"id": "x", "asset": "modules/x.tar.gz", "size": len(pkg), "sha256": hex.EncodeToString(sum[:])}}}
@@ -193,5 +193,39 @@ func TestPendingCancels(t *testing.T) {
 	mm.addPending("OB-Xd removed")
 	if got := strings.Join(mm.pending, ", "); got != "Filter updated, OB-Xd removed" {
 		t.Fatalf("pending: %s", got)
+	}
+}
+
+// The same version packed again by Pung (a higher revision) is an update; an
+// older catalog, or the same package, is not.
+func TestUpdateForCountsPungsRevision(t *testing.T) {
+	entry := func(v string, rev int) catalogEntry { return catalogEntry{Version: v, Rev: rev} }
+	cases := []struct {
+		inst    string
+		instRev int
+		e       catalogEntry
+		want    bool
+	}{
+		{"1.0.0", 1, entry("1.0.1", 0), true},  // a newer version
+		{"1.0.0", 1, entry("1.0.0", 0), false}, // the same, a catalog with no revisions
+		{"1.0.0", 1, entry("1.0.0", 1), false},
+		{"1.0.0", 1, entry("1.0.0", 2), true}, // packed again
+		{"1.0.0", 2, entry("1.0.0", 2), false},
+		{"1.0.1", 1, entry("1.0.0", 5), false}, // never back to an older version
+		{"1.0.0", 3, entry("1.0.1", 1), true},  // a new version starts over
+	}
+	for _, c := range cases {
+		if got := updateFor(c.inst, c.instRev, c.e); got != c.want {
+			t.Errorf("installed %s r%d, catalog %s r%d: update %v, want %v", c.inst, c.instRev, c.e.Version, c.e.Rev, got, c.want)
+		}
+	}
+	dir := t.TempDir()
+	if moduleRev(dir) != 1 {
+		t.Fatal("a module that names no revision is revision 1")
+	}
+	os.MkdirAll(filepath.Join(dir, "PUNG-BUILD"), 0o755)
+	os.WriteFile(filepath.Join(dir, "PUNG-BUILD", "REV"), []byte("3\n"), 0o644)
+	if moduleRev(dir) != 3 {
+		t.Fatalf("revision %d, want 3", moduleRev(dir))
 	}
 }

@@ -270,33 +270,9 @@ func probeModuleMain(h *Host, id, out string) {
 	cSet(probe, prefix+":module", m.ID)
 	get := func(k string) (string, bool) { return cGet(probe, prefix+":"+k) }
 
-	// Ready: Schwung's own signal first, is_loading "1" while a module loads
-	// (the shadow UI's component gate waits on it; JV-880 and JP-8000 answer
-	// it, and a load ERROR is not loading). Else a loading_status that says it
-	// is done (Osirus: "Ready: ..."). And the parameter list the same twice in
-	// a row: a module that answers -1 until it is up has no list yet.
-	start := time.Now()
-	status := ""
-	prev, _ := get("chain_params")
-	for time.Since(start) < probeReadyWait {
-		time.Sleep(500 * time.Millisecond)
-		cur, curOK := get("chain_params")
-		settled := true
-		if il, ok := get("is_loading"); ok && strings.TrimSpace(il) == "1" {
-			settled = false
-		} else if st, ok := get("loading_status"); ok && st != "" {
-			status = st
-			l := strings.ToLower(st)
-			settled = strings.Contains(l, "ready") || strings.Contains(l, "loaded") || strings.Contains(l, "error") ||
-				strings.Contains(l, "fail") || strings.Contains(l, "not found") || strings.Contains(l, "missing")
-		}
-		if settled && curOK && cur == prev {
-			break
-		}
-		prev = cur
-	}
+	waited, status := waitModuleReady(get)
 	rec := probeRecord{Meta: map[string]string{}, Initial: map[string]string{},
-		Waited: time.Since(start).Seconds(), Status: status}
+		Waited: waited, Status: status}
 	cm := buildMeta(m.ID, func(k string) (string, bool) {
 		v, ok := get(k)
 		if ok {
@@ -323,6 +299,37 @@ func probeModuleMain(h *Host, id, out string) {
 	}
 	fmt.Printf("ok: %d parameters, ready after %.1f s (%s)\n", n, rec.Waited, status)
 	os.Exit(0)
+}
+
+// waitModuleReady waits until a module in a hidden instance has finished
+// loading, and says how long that took and its last loading status.
+func waitModuleReady(get func(string) (string, bool)) (float64, string) {
+	// Ready: Schwung's own signal first, is_loading "1" while a module loads
+	// (the shadow UI's component gate waits on it; JV-880 and JP-8000 answer
+	// it, and a load ERROR is not loading). Else a loading_status that says it
+	// is done (Osirus: "Ready: ..."). And the parameter list the same twice in
+	// a row: a module that answers -1 until it is up has no list yet.
+	start := time.Now()
+	status := ""
+	prev, _ := get("chain_params")
+	for time.Since(start) < probeReadyWait {
+		time.Sleep(500 * time.Millisecond)
+		cur, curOK := get("chain_params")
+		settled := true
+		if il, ok := get("is_loading"); ok && strings.TrimSpace(il) == "1" {
+			settled = false
+		} else if st, ok := get("loading_status"); ok && st != "" {
+			status = st
+			l := strings.ToLower(st)
+			settled = strings.Contains(l, "ready") || strings.Contains(l, "loaded") || strings.Contains(l, "error") ||
+				strings.Contains(l, "fail") || strings.Contains(l, "not found") || strings.Contains(l, "missing")
+		}
+		if settled && curOK && cur == prev {
+			break
+		}
+		prev = cur
+	}
+	return time.Since(start).Seconds(), status
 }
 
 func probePrefix(m ModuleInfo) string {

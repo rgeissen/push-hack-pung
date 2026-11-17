@@ -113,6 +113,34 @@ type catalogEntry struct {
 	Tags        []string        `json:"tags,omitempty"`
 	Released    string          `json:"released,omitempty"`
 	Updated     string          `json:"updated,omitempty"`
+	// Rev: Pung's packaging revision of this version (scripts/
+	// module-revisions.json; absent: 1). The module's own version says what
+	// its author released; this says Pung packed that release again (Surge
+	// 2: with the factory patches the first package left out). The same
+	// version with a higher revision is an update.
+	Rev int `json:"pung_rev,omitempty"`
+}
+
+// moduleRev: the packaging revision an installed module came with
+// (<module>/PUNG-BUILD/REV, written by the catalog build); 1 if it says none.
+func moduleRev(dir string) int {
+	raw, err := os.ReadFile(filepath.Join(dir, "PUNG-BUILD", "REV"))
+	if err != nil {
+		return 1
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil && n > 0 {
+		return n
+	}
+	return 1
+}
+
+// updateFor: the catalog's entry is newer than what is installed: a higher
+// version, or the same version packed again by Pung.
+func updateFor(installedVersion string, installedRev int, e catalogEntry) bool {
+	if versionLess(installedVersion, e.Version) {
+		return true
+	}
+	return !versionLess(e.Version, installedVersion) && installedRev < max(1, e.Rev)
 }
 
 type catalogDoc struct {
@@ -979,11 +1007,13 @@ func writeFileAtomic(p string, raw []byte) {
 
 type moduleRow struct {
 	catalogEntry
-	InCatalog   bool         `json:"in_catalog"`
-	Supported   bool         `json:"supported"`
-	Installed   string       `json:"installed,omitempty"` // its version
-	Managed     bool         `json:"managed"`
-	Status      string       `json:"status"` // available | installed | update | builtin
+	InCatalog bool   `json:"in_catalog"`
+	Supported bool   `json:"supported"`
+	Installed string `json:"installed,omitempty"` // its version
+	Managed   bool   `json:"managed"`
+	Status    string `json:"status"` // available | installed | update | builtin
+	// Repacked: the update is the same version, packed again by Pung
+	Repacked    bool         `json:"repacked,omitempty"`
 	InUse       int          `json:"in_use"`
 	AssetsReady bool         `json:"assets_ready"`
 	AssetsNeed  int          `json:"assets_missing"`
@@ -1025,8 +1055,15 @@ func (mm *modMgr) view() map[string]any {
 		r := moduleRow{catalogEntry: e, InCatalog: true, Supported: sup, Status: "available", InUse: inUse[e.ID], Job: jobs[e.ID]}
 		if i, ok := inst[e.ID]; ok {
 			r.Installed, r.Managed, r.Status = i.Version, i.Managed, "installed"
-			if versionLess(i.Version, e.Version) {
+			// a module built into Pung comes with Pung, in the build Pung
+			// ships: only a catalog install is compared by its revision
+			rev := max(1, e.Rev)
+			if i.Managed {
+				rev = moduleRev(i.Dir)
+			}
+			if updateFor(i.Version, rev, e) {
 				r.Status = "update"
+				r.Repacked = !versionLess(i.Version, e.Version)
 			}
 			r.AssetState = assetStates(i.Dir)
 		}

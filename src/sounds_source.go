@@ -41,6 +41,10 @@ type presetList struct {
 	// Jump: the chooser moves within one list (Surge's categories, Mini-JV's
 	// expansion cards: jump_to_*) rather than changing it
 	Jump bool `json:"jump,omitempty"`
+	// BankKeys: a module with no bank chooser that picks its bank with a
+	// plain parameter (Osirus: bank_index, 0 or 1, beside the list). The
+	// bank changes the list, as a chooser's does.
+	BankKeys []string `json:"bank_keys,omitempty"`
 }
 
 // presetQuirk: a row of overrides/presets.json.
@@ -105,6 +109,11 @@ func factoryLists(cm *compMeta, q presetQuirk) []presetList {
 			}
 		}
 	}
+	for i := range out {
+		if out[i].BankItems == "" && len(out[i].Options) == 0 {
+			out[i].BankKeys = bankParams(cm, out[i].List)
+		}
+	}
 	if q.Patch != nil {
 		for i := range out {
 			p := *q.Patch
@@ -119,6 +128,25 @@ func factoryLists(cm *compMeta, q presetQuirk) []presetList {
 			}
 			if p.BankName != "" {
 				out[i].BankName = p.BankName
+			}
+		}
+	}
+	return out
+}
+
+// bankParams: the parameters that pick a bank by number: a key with the
+// word "bank" in it (bank, bank_index, bank_select), an int or an enum.
+func bankParams(cm *compMeta, list string) []string {
+	var out []string
+	for _, k := range cm.Order {
+		m := cm.Params[k]
+		if m == nil || k == list || m.ReadOnly || (m.Type != "int" && m.Type != "enum") {
+			continue
+		}
+		for _, w := range strings.Split(strings.ToLower(k), "_") {
+			if w == "bank" {
+				out = append(out, k)
+				break
 			}
 		}
 	}

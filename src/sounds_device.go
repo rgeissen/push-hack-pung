@@ -32,6 +32,9 @@ type soundLib struct {
 
 	namesMu sync.Mutex
 	named   map[string]bool // a list whose names were asked of the module (module|list|count)
+	// scouted: a list a hidden instance walks or walked (scout.go): when it
+	// was last tried, and how often
+	scouted map[string]scoutTry
 	// onNames: a list's names arrived (read in the background)
 	onNames func(d *device)
 	// racks: user sounds as racks in Push's browser (sounds_racks.go); nil: none
@@ -215,9 +218,11 @@ func (lib *soundLib) fillNames(d *device, pl presetList, fv *factoryView, key st
 		}
 	}
 	if pl.NameAt == "" || fv.Index < 0 || fv.Name == "" {
+		lib.scoutSoon(d, pl, fv, key, tag)
 		return false
 	}
 	if n, ok := pl.nameAt(fv.Index, get); !ok || !agrees(n) {
+		lib.scoutSoon(d, pl, fv, key, tag)
 		return false
 	}
 	mark()
@@ -238,6 +243,49 @@ func (lib *soundLib) fillNames(d *device, pl presetList, fv *factoryView, key st
 	return false
 }
 
+type scoutTry struct {
+	at    time.Time
+	tries int
+	busy  bool
+}
+
+// scoutSoon: the module names only the sound it has loaded, so a hidden
+// instance walks the list (scout.go), in the background, once. Only a list
+// whose current sound is known is walked: that is what the walk is checked
+// against.
+func (lib *soundLib) scoutSoon(d *device, pl presetList, fv *factoryView, key, tag string) {
+	if pl.Name == "" || fv.Count <= 0 || fv.Count > scoutMaxCount || fv.Index < 0 || fv.Name == "" {
+		return
+	}
+	lib.namesMu.Lock()
+	if lib.scouted == nil {
+		lib.scouted = map[string]scoutTry{}
+	}
+	t := lib.scouted[tag]
+	if t.busy || t.tries >= scoutTries || (t.tries > 0 && time.Since(t.at) < scoutRetry) {
+		lib.namesMu.Unlock()
+		return
+	}
+	t.busy, t.tries, t.at = true, t.tries+1, time.Now()
+	lib.scouted[tag] = t
+	lib.namesMu.Unlock()
+	view := *fv
+	go func() {
+		ok := lib.scout(d, pl, &view, key)
+		lib.namesMu.Lock()
+		t := lib.scouted[tag]
+		t.busy, t.at = false, time.Now()
+		if ok {
+			t.tries = scoutTries // done: the index has them now
+		}
+		lib.scouted[tag] = t
+		lib.namesMu.Unlock()
+		if ok && lib.onNames != nil {
+			lib.onNames(d)
+		}
+	}()
+}
+
 func (lib *soundLib) storeNames(module, key string, first int, names []string) {
 	lib.store.Update(module, func(ix *soundIndex) { //nolint:errcheck
 		for i, n := range names {
@@ -251,7 +299,7 @@ func (lib *soundLib) storeNames(module, key string, first int, names []string) {
 // one list of 4,133 across Preset A, B, ...) does not, and is not part of it.
 func (lib *soundLib) listBank(pl presetList, fv *factoryView) string {
 	key := pl.Mode
-	if pl.BankItems != "" && !pl.Jump {
+	if (pl.BankItems != "" && !pl.Jump) || len(pl.BankKeys) > 0 {
 		key += "|" + fv.Bank
 	}
 	return key
