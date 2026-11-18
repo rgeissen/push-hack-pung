@@ -1,15 +1,55 @@
 {
  "_about": "Pung's packaging revisions. A module's version is its author's; a revision here says Pung packed that same version again, and why. A device offers the same version with a higher revision as an update. scripts/build-catalog.py refuses a package whose contents changed with neither a new version nor a new revision. A module not listed is revision 1. When the module's own version moves on, its row may stay: revisions only count between packages of one version.",
- "surge": {"rev": 2, "why": "2026-11-17: its factory patches (674), the LinnStrument MPE patches, wavetables and configuration.xml were left out; the synth had no sounds"},
- "helm": {"rev": 2, "why": "2026-11-17: its 274 factory presets were left out; it had one sound"},
- "dexed": {"rev": 2, "why": "2026-11-17: its 33 banks were left out (one sound), and the MSFA licence text"},
- "breakbeat": {"rev": 2, "why": "2026-11-17: its 23 break loops were left out"},
- "hank": {"rev": 2, "why": "2026-11-17: canvas.js was left out"},
- "granny": {"rev": 2, "why": "2026-11-17: README.md, as its own package has it"},
- "mrdrums": {"rev": 2, "why": "2026-11-17: README.md, as its own package has it"},
- "mrsample": {"rev": 2, "why": "2026-11-17: README.md, as its own package has it"},
- "midiverb": {"rev": 2, "why": "2026-11-17: THIRD_PARTY_LICENSES.md was left out"},
- "minijv": {"rev": 2, "why": "2026-11-17: the Nuked-SC55 and libresample licence texts were left out"},
- "obxd": {"rev": 2, "why": "2026-11-17: the OB-Xd engine's GPL text was left out"},
- "osirus": {"rev": 2, "why": "2026-11-17: the libresample and asmjit licence texts were left out"}
+ "surge": {
+  "rev": 2,
+  "why": "2026-11-17: its factory patches (674), the LinnStrument MPE patches, wavetables and configuration.xml were left out; the synth had no sounds"
+ },
+ "helm": {
+  "rev": 2,
+  "why": "2026-11-17: its 274 factory presets were left out; it had one sound"
+ },
+ "dexed": {
+  "rev": 2,
+  "why": "2026-11-17: its 33 banks were left out (one sound), and the MSFA licence text"
+ },
+ "breakbeat": {
+  "rev": 2,
+  "why": "2026-11-17: its 23 break loops were left out"
+ },
+ "hank": {
+  "rev": 2,
+  "why": "2026-11-17: canvas.js was left out"
+ },
+ "granny": {
+  "rev": 2,
+  "why": "2026-11-17: README.md, as its own package has it"
+ },
+ "mrdrums": {
+  "rev": 2,
+  "why": "2026-11-17: README.md, as its own package has it"
+ },
+ "mrsample": {
+  "rev": 2,
+  "why": "2026-11-17: README.md, as its own package has it"
+ },
+ "midiverb": {
+  "rev": 2,
+  "why": "2026-11-17: THIRD_PARTY_LICENSES.md was left out"
+ },
+ "minijv": {
+  "rev": 2,
+  "why": "2026-11-17: the Nuked-SC55 and libresample licence texts were left out"
+ },
+ "obxd": {
+  "rev": 2,
+  "why": "2026-11-17: the OB-Xd engine's GPL text was left out"
+ },
+ "osirus": {
+  "rev": 2,
+  "why": "2026-11-17: the libresample and asmjit licence texts were left out"
+ },
+ "nodalred": {
+  "rev": 2,
+  "why": "2026-11-18: slots as the synth's (the edit slot among the slots that are on, held notes let go), screens tidied; the first build that was on a Push was never in a release"
+ }
 }
