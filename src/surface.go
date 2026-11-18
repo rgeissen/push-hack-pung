@@ -119,6 +119,7 @@ type surface struct {
 	ov        *overrides
 	// what the last Live refresh read from Pung's own device (state: "fallback")
 	fallbackDev, fallbackRead int
+	lastTurn                  string // the last encoder turn, and what it found (state: "write_state")
 	lvIdx                     map[string]int     // module key -> Live parameter index
 	lvDef                     map[string]float64 // module key -> Live's default for it, 0..1 (where Live has one)
 
@@ -379,6 +380,9 @@ func (u *surface) routes(mux *http.ServeMux) {
 				return out
 			}(),
 			"fallback":      map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
+			// why a turn would not write (turn, writeParam)
+			"write_state": map[string]any{"ready": u.liveReady, "writable": u.liveWritable, "resolved": u.liveResolved,
+				"pung": u.livePung, "values": len(u.vals), "last_turn": u.lastTurn},
 			"frame_draw_us": u.frameStats.drawUS.Load(), "frame_push_us": u.frameStats.pushUS.Load(), "frames": u.frameStats.n.Load(),
 			"module_ui_draw_us": u.overlayDrawUS(p.Module),
 			"position":          p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
@@ -1161,10 +1165,13 @@ func (u *surface) turn(enc, delta int) {
 	}
 	p, cm, b := u.currentBank()
 	if b == nil || enc >= len(b.Keys) || b.Keys[enc] == "" {
+		u.lastTurn = fmt.Sprintf("enc %d: no key on this page", enc)
 		return
 	}
 	key := b.Keys[enc]
 	m := cm.Params[key]
+	_, has := u.vals[u.valKey(p, key)]
+	u.lastTurn = fmt.Sprintf("enc %d: %s meta=%t readonly=%t value=%t", enc, key, m != nil, m != nil && m.ReadOnly, has)
 	if m != nil && m.Type == "file" && m.File != nil {
 		// a file is not turned through, it is chosen: the turn opens the
 		// browser at it, and from there nothing changes without Load

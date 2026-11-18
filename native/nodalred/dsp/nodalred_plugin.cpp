@@ -1027,8 +1027,9 @@ void v2_set_param(void *instance, const char *key, const char *val) {
 
 int build_chain_params(Instance *in, char *buf, int len) {
     int off = 0;
-    AP("[{\"key\":\"preset\",\"name\":\"Sound\",\"type\":\"int\",\"min\":0,\"max\":%d},",
-       std::max(0, int(in->banks[size_t(in->bank)].sounds.size()) - 1));
+    // 0 to 99 always: the list is read once, when the module is probed with
+    // its one built-in sound, and a range of 0 to 0 made the knob read-only
+    AP("[{\"key\":\"preset\",\"name\":\"Sound\",\"type\":\"int\",\"min\":0,\"max\":99},");
     AP("{\"key\":\"slot\",\"name\":\"Edit Slot\",\"type\":\"enum\",\"selector\":true,\"options\":[\"A\",\"B\",\"C\",\"D\"]}");
     for (int i = 0; i < 4; i++)
         AP(",{\"key\":\"slot_%c\",\"name\":\"Slot %c\",\"type\":\"enum\",\"options\":[\"Off\",\"On\"]}", 'a' + i, 'A' + i);
