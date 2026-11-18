@@ -49,7 +49,7 @@
   "why": "2026-11-17: the libresample and asmjit licence texts were left out"
  },
  "nodalred": {
-  "rev": 2,
-  "why": "2026-11-18: slots as the synth's (the edit slot among the slots that are on, held notes let go), screens tidied; the first build that was on a Push was never in a release"
+  "rev": 3,
+  "why": "2026-11-18: the output clipped on loud sounds (crackling): 6 dB of headroom and a soft limiter"
  }
 }
