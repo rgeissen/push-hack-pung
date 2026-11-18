@@ -46,6 +46,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,7 +62,8 @@ const (
 	ovBudget = 8 * time.Millisecond // a frame's draw, held over time (ovOverruns)
 	// a takeover draws what Pung's own elements would have drawn as well
 	ovTakeoverBudget = 14 * time.Millisecond
-	ovHardBudget     = 40 * time.Millisecond // a draw is stopped here, once is enough
+	ovHardBudget     = 40 * time.Millisecond  // a draw that used this much processor time is stopped, once is enough
+	ovStuck          = 400 * time.Millisecond // the wall's clock: when a draw is looked at for being stuck
 	ovOverruns       = 3
 )
 
@@ -626,8 +628,17 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	// The budget is 8 ms a frame, kept over time: one slow frame (curves
 	// computed the first time, a cache filled) is allowed, three in a row
 	// switch the picture off. A draw is stopped outright at ovHardBudget.
+	//
+	// What is measured is the script's own processor time, on its thread,
+	// not the wall's clock: Pung draws at the lowest priority beside
+	// emulators at realtime priority, and a 3 ms draw that the system set
+	// aside for 40 ms was taken for a slow script and switched off (Nodal
+	// Red's screens, 2026-11-18). The wall's clock only stops a script that
+	// never returns, and by then it has to have used its time too.
+	runtime.LockOSThread()
+	cpu0 := threadCPU()
 	start := time.Now()
-	timer := time.AfterFunc(ovHardBudget, func() { vm.Interrupt("draw took longer than 40 ms") })
+	timer := time.AfterFunc(ovStuck, func() { vm.Interrupt("draw took longer than 40 ms") })
 	// the time is handed over as an object that says when it is read: a
 	// screen that never looks at it does not move by itself
 	clock := vm.NewObject()
@@ -636,14 +647,26 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	_, err := p.w.draw(goja.Undefined(), g, v, clock)
 	timer.Stop()
 	vm.ClearInterrupt()
+	used := threadCPU() - cpu0
+	runtime.UnlockOSThread()
+	if err != nil && strings.Contains(err.Error(), "draw took longer") && used < ovHardBudget {
+		// stopped by the wall's clock without having used its time: the
+		// system kept it waiting. Not the script's doing: this frame keeps
+		// the last picture, and nothing is counted against it
+		if k := s.kept[slot]; k != nil {
+			putFrame(dst, k.img, p, w, h)
+		}
+		return true
+	}
 	if !p.offline {
-		s.lastDrawUS = time.Since(start).Microseconds()
+		s.lastDrawUS = used.Microseconds()
 	}
 	budget := ovBudget
 	if p.full {
 		budget = ovTakeoverBudget
 	}
-	if took := time.Since(start); p.offline && err == nil {
+	_ = start
+	if took := used; p.offline && err == nil {
 		// a web render runs beside the Push's, on a busy device: it is
 		// stopped at ovHardBudget like any draw, but never switches the
 		// Push's picture off for being slow

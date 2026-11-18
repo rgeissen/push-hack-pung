@@ -356,3 +356,24 @@ function counts() { return still + "/" + clocked; }
 		t.Fatalf("draws still/clocked = %s, want 2/5: a still screen once per value, a clocked one every frame", v)
 	}
 }
+
+// A script that never returns is still stopped, and is off for good: it used
+// its time, the system did not keep it waiting.
+func TestStuckScriptIsStopped(t *testing.T) {
+	initFaces()
+	root := t.TempDir()
+	dir := filepath.Join(root, "sound_generators", "x")
+	os.MkdirAll(dir, 0o755)                                                                                                                   //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"x","component_type":"sound_generator"}`), 0o644)                           //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "push_ui.js"), []byte(`push.widget({ keys: ["a"], draw: function (g, v) { while (true) {} } });`), 0o644) //nolint:errcheck
+	set := newOverrides(root).get(root, "x")
+	img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+	t0 := time.Now()
+	ok := set.render(img, placement{w: set.widgets[0], span: 1}, map[string]ovValue{"a": {Known: true}}, "", slotColor(0))
+	if ok || set.failed == "" {
+		t.Fatal("a script that loops for ever drew")
+	}
+	if d := time.Since(t0); d > 2*time.Second {
+		t.Fatalf("it ran for %v before it was stopped", d)
+	}
+}
