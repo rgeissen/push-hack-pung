@@ -10,8 +10,9 @@
 // read back from the emulator.
 //
 // Slots. The Nord has one panel and four slots: `slot` picks the slot the
-// parameters edit, slot_a..slot_d switch slots into the layer. Notes play
-// every slot that is on.
+// parameters edit and, as the synth's slot buttons do, plays it alone unless
+// it is already part of the layer; slot_a..slot_d switch slots into the
+// layer. Notes play every slot that is on.
 
 #include <algorithm>
 #include <array>
@@ -1013,7 +1014,11 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         if (n < 0) n = atoi(val);
         if (n < 0 || n > 3 || n == in->slot) return;
         in->slot = n;
-        if (!in->on[n]) in->on[n] = true; // the slot being edited is heard
+        // As the synth's slot buttons: a slot of the layer takes the panel and
+        // the layer stays; any other slot plays alone, and the others' lights
+        // go out. (Switching a slot on beside it is slot_a..slot_d's.)
+        if (!in->on[n])
+            for (int i = 0; i < 4; i++) in->on[i] = i == n;
         in->multiDirty = true;
     } else if (!strncmp(key, "slot_", 5) && key[5] >= 'a' && key[5] <= 'd' && !key[6]) {
         const int i = key[5] - 'a';
@@ -1021,6 +1026,9 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         if (in->on[i] == v) return;
         in->on[i] = v;
         if (!in->on[0] && !in->on[1] && !in->on[2] && !in->on[3]) in->on[i] = true; // never all off
+        if (!in->on[in->slot]) // the panel never edits a slot that is silent
+            for (int k = 0; k < 4; k++)
+                if (in->on[k]) { in->slot = k; break; }
         in->multiDirty = true;
     } else if (!strcmp(key, "gain")) {
         in->gain = std::max(1, std::min(200, atoi(val)));

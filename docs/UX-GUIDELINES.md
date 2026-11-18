@@ -117,6 +117,9 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
 
 - **A device's button selects it; the selected one's opens and closes it.** Another device or track
   selected: back at chain level.
+- **A front panel opens with its device**: when the page shown is a module's full-panel screen
+  (`takeover`), selecting the device opens it at once, so the panel is what you see first. Button 1
+  still goes back to chain level, and it stays there until another device is selected.
 - **The encoders edit at both levels**: at chain level they show the selected device's last page.
 - **Rows scroll as Push's do**: an arrow on the last button while more follow, on the first once
   scrolled, one step a press (`rowSlots`).

@@ -89,6 +89,7 @@ type surface struct {
 	// device's pages and upper button 1 goes back; closed, the upper row is
 	// the track's devices and the lower row Live's tracks
 	open    bool
+	autoOpen bool // the selection is new: open it if its page is a front panel
 	bankOff int // open: how far the page row is scrolled (pageSlots)
 	devOff  int // closed: how far the device row is scrolled (deviceSlots)
 	focus   int // closed: the device under the jog wheel (index in the track's devices), -1 none
@@ -1559,6 +1560,7 @@ func (u *surface) enterSelection(v liveView) {
 	u.vals = map[string]string{}
 	u.lvIdx = map[string]int{}
 	u.open, u.focus = false, -1 // another device: the chain level, as on Push
+	u.autoOpen = true           // ... unless its page is a front panel (refreshLive)
 	u.peekUntil = time.Time{}
 	m := u.bankMem[v.key]
 	u.bank, u.bankOff = m[0], m[1]
@@ -1689,6 +1691,17 @@ func (u *surface) refreshLive() {
 	cm := u.metaFor(sel)
 	if cm == nil {
 		return
+	}
+	if u.autoOpen {
+		// a page that is the module's whole front panel is what the device
+		// looks like: selecting the device shows it, once (Back still leaves)
+		u.autoOpen = false
+		if p, _, b := u.currentBank(); b != nil && p.Module != "" && u.ov != nil {
+			set := u.ov.get(u.h.modulesDir, p.Module)
+			if comp := set.compartment(b.Compartment); comp != nil && comp.takeover && set.failed == "" && !set.off {
+				u.openDevice()
+			}
+		}
 	}
 	for _, lp := range dev.Params {
 		if lp.Max <= lp.Min {

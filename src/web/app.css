@@ -22,7 +22,8 @@
 }
 * { box-sizing: border-box; }
 html { background: var(--ink); }
-body { margin: 0; min-height: 100vh; color: var(--fg); font: 14px/1.5 var(--sans); background: var(--ink);
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; min-height: 100vh; min-height: 100dvh; color: var(--fg); font: 14px/1.5 var(--sans); background: var(--ink);
   display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); }
 h1, h2, h3, h4, p, dl, ol, ul { margin: 0; }
 button, input, select { font: inherit; color: inherit; }
@@ -40,7 +41,7 @@ a { color: var(--amber); text-underline-offset: 3px; }
 .kicker { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 
 /* ---- the rail ---------------------------------------------------------------- */
-.rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; background: var(--panel);
+.rail { position: sticky; top: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--panel);
   border-right: 1px solid var(--line); z-index: 6; }
 .brand { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 12px; padding: 22px 20px 20px;
   border-bottom: 1px solid var(--line); }
@@ -272,7 +273,7 @@ select { appearance: none; padding-right: 28px; max-width: 100%; text-overflow: 
 .envrow .ctl { background: var(--raise); }
 .envrow .ctl:hover, .envrow .ctl:focus-within { background: var(--raise2); }
 
-@media (max-width: 1180px) {
+@media (max-width: 900px) {
   .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .envcard { grid-column: span min(var(--n, 4), 4); }
   .envrow { grid-template-columns: repeat(min(var(--n), 4), minmax(0, 1fr)); }
@@ -388,7 +389,7 @@ body.drawer-open .drawer { transform: none; visibility: visible; transition: tra
 .pstate { font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
 .mod-foot { color: var(--muted); font-size: 13px; }
 
-.mod-sheet { width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 48px); margin: auto; padding: 0; background: var(--panel); color: var(--fg);
+.mod-sheet { width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); margin: auto; padding: 0; background: var(--panel); color: var(--fg);
   border: 1px solid var(--line2); border-radius: var(--r); box-shadow: 0 30px 80px #000c; }
 .mod-sheet::backdrop { background: #000b; }
 .mod-sheet .close { position: absolute; top: 14px; right: 14px; z-index: 2; }
@@ -430,7 +431,7 @@ body.drawer-open .drawer { transform: none; visibility: visible; transition: tra
 .card h2 { font-size: 18px; }
 
 /* ---- narrow: the rail becomes a bar -------------------------------------------- */
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
   body { display: block; }
   .rail { position: sticky; height: auto; flex-direction: row; align-items: stretch; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
   .brand { padding: 10px 14px; border-bottom: 0; border-right: 1px solid var(--line); column-gap: 8px; }
@@ -443,7 +444,6 @@ body.drawer-open .drawer { transform: none; visibility: visible; transition: tra
   .views button[aria-current="page"] { border-bottom-color: var(--amber); }
   .rail-foot { display: none; }
   main { padding: 18px 12px 56px; }
-  .unit-head { grid-template-columns: 1fr; }
   .toast { left: 12px; right: 12px; bottom: 12px; }
   .compartments { top: 45px; }
 }
@@ -513,7 +513,7 @@ body.drawer-open .drawer { transform: none; visibility: visible; transition: tra
 .ctl.file canvas { grid-column: 1 / -1; width: 100%; height: 54px; display: block; }
 .ctl.file .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ctl.file .go { color: var(--muted); font-size: 13px; }
-dialog.files { margin: auto; width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line);
+dialog.files { margin: auto; width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--line);
   border-top: 2px solid var(--slot); border-radius: 8px; background: var(--raise); color: var(--fg); }
 dialog.files[open] { display: flex; flex-direction: column; }
 dialog.files::backdrop { background: rgba(0,0,0,.6); }
@@ -587,3 +587,25 @@ dialog.files { background: var(--panel); border: 1px solid var(--line2); color: 
 .offline[hidden] { display: none; }
 .offline > div { flex: 1; }
 body.down #devices-view .unit, body.down #devices-view .rack, body.down #no-devices { opacity: .35; pointer-events: none; }
+
+@media (max-width: 760px) { .unit-head { grid-template-columns: 1fr; } }
+@media (max-width: 1200px) {
+  .rail { top: 0; z-index: 12; padding-top: env(safe-area-inset-top); }
+  main { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+}
+
+/* a finger, not a pointer: bigger things to hit, and text fields at 16px
+   (below that, Safari on an iPad zooms the page in on every tap into one) */
+@media (pointer: coarse) {
+  input[type=search], input[type=text], input:not([type]), select, textarea { font-size: 16px !important; }
+  .btn, .seg button, .views button, .compartments button { min-height: 40px; }
+  .ctl { min-height: 96px; }
+  .ctl input[type=range] { height: 34px; touch-action: pan-y; }
+  .ctl input[type=range]::-webkit-slider-runnable-track { height: 6px; }
+  .ctl input[type=range]::-webkit-slider-thumb { width: 14px; height: 30px; margin-top: -12px; }
+  .ctl select { min-height: 38px; }
+  .ctl .opts button { min-height: 38px; }
+  .ctl .tgl { min-height: 38px; }
+  .ico { min-width: 40px; height: 36px; }
+  .snd-row .ico:not(.star):not(.yes):not(#snd-no) { visibility: visible; }
+}
