@@ -7,6 +7,7 @@ R=/modsrc/pung-nodalred; D=/out/sound_generators/nodalred; T=/tmp/b-nodalred
 rm -rf "$D" "$T"; mkdir -p "$D" "$T"
 A="-march=x86-64-v2 -mtune=generic"
 mkdir -p "$T/g"; cp -a "$R/libs/gearmulator/source" "$T/g/source"
+for p in "$R"/patches/*.patch; do patch -d "$T/g" -p1 < "$p"; done
 cmake -S "$R" -B "$T/build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DGEARMULATOR_SOURCE="$T/g/source" \
     -DSCHWUNG_SRC=/schwung/src -DCMAKE_C_FLAGS="$A" -DCMAKE_CXX_FLAGS="$A"
 cmake --build "$T/build" --target nodalred-dsp -j"${BUILD_JOBS:-4}"

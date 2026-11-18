@@ -1,8 +1,8 @@
 # Pung-native modules
 
-Status: 2026-11-18. The first one, Nodal Red 2X, builds, packages and loads in Pung's host. It has not
-made a sound yet: that needs a Nord Lead 2X firmware, which was not at hand. It is not in the published
-catalog.
+Status: 2026-11-18. The first one, Nodal Red 2X, builds, packages, loads in Pung's host and plays on
+the Push in a test harness, with the firmware. It has not run inside Live yet, and it is not in the
+published catalog.
 
 ## Two kinds of module
 
@@ -81,10 +81,42 @@ python3 scripts/build-catalog.py --base-url "" nodalred      # into the catalog 
 - **Incoming controllers** other than the wheel, the pedals and all-notes-off are dropped: every other
   controller is a knob of the synth and would change the sound behind the parameters.
 
-### Not verified, for want of the firmware
+- **A controller right after a dump is lost** (measured): the synth is still receiving the dump, at MIDI
+  speed, and the dump's value wins. So while a dump is on its way, or waiting, a change goes out in the
+  next dump instead of as a controller, and dumps are sent one at a time.
+- **The emulator's logs are switched off:** the 68k core writes every register access to stderr.
 
-- Any sound at all, and the CPU load on the Push.
-- The option names of the enums (filter types, LFO waves and destinations, voice modes): written from the
-  Nord Lead 2 documentation as remembered, to be checked by ear.
-- Whether the firmware takes an edit-buffer dump as sent here in every mode.
-- Boot time, and the ring's 7 ms against real block times.
+### Measured on a Push 3 (i3-1115G4, 2 cores, 4 threads), 2026-11-18
+
+In a harness that calls `render_block` every 2.9 ms, beside a running Live:
+
+| | |
+|---|---|
+| Boot | 1.8 s |
+| DSP A, DSP B threads | 50 to 58 % of a logical core each, whether 0 or 20 voices sound |
+| Emulator thread | about 11 % |
+| A 64-frame block (1.45 ms of audio) | 0.78 to 1.06 ms, at most 1.51 ms |
+| Underruns, 20 voices in 4 slots | 0 |
+| C4 | 261.5 Hz |
+
+The emulator runs about 1.5 times as fast as it must. The DSP clock setting gearmulator offers changed
+nothing here (tried 30 to 100 %), so it is not a parameter.
+
+Checked by spectrum: the four waveforms of each oscillator, the mix, filter types 1 to 4 (LP 12, LP 24,
+HP 24, BP), cutoff, a program and a performance loaded from a bank file, state save and restore. Filter
+type 5 looks like notch plus low pass; type 6 can only be set by a dump and is not on the real panel.
+
+### The shutdown crash
+
+On the Push the module crashed in `~JitBlockChain` on 6 of 8 shutdowns. gearmulator's `MmuArray` unmapped
+a block and mapped it again; another thread's `mmap` could take the address in between. The Nord has two
+DSP threads. `native/nodalred/patches/0001-mmu-remap-atomically.patch` replaces the mapping in one step:
+18 of 18 shutdowns clean. The patch is applied by the recipe and has not been sent upstream.
+
+### Not verified yet
+
+- Inside Live: a device on a track, the Push's screens, SOUNDS, a saved Set.
+- The option names of the LFO waves and destinations, the voice modes, the mod envelope and mod wheel
+  destinations: written from the Nord Lead 2 documentation as remembered, to be checked by ear.
+- Real Nord Lead bank files (a synthetic bank was used).
+- Four slots layered at full level clip; whether the default output gain should be lower.

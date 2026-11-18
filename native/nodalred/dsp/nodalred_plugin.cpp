@@ -34,6 +34,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
+#include "dsp56kBase/logging.h"
 #include "n2xLib/n2xdevice.h"
 #include "n2xLib/n2xmiditypes.h"
 #include "n2xLib/n2xstate.h"
@@ -46,6 +47,13 @@
 extern "C" {
 #include "host/plugin_api_v1.h"
 }
+
+// The 68k emulator writes every register access to stderr through this
+// function, which would fill the host's log. Defined here, the linker takes
+// this one and leaves the library's (cpu/mc68k/logging.cpp) out.
+namespace mc68k {
+void logToConsole(const std::string &) {}
+} // namespace mc68k
 
 namespace {
 
@@ -367,7 +375,7 @@ struct Instance {
     int gain = 100; // percent
     bool singleDirty[4] = {false, false, false, false};
     bool multiDirty = false;
-    int64_t lastDump = 0;
+    int64_t busyUntil = 0; // a dump is on its way into the synth until then
 
     // the library, under mu
     std::vector<Bank> banks;
@@ -415,11 +423,16 @@ void compose_multi(Instance *in, Multi &out) {
     out[n2x::IdxMsgSpec] = 0;
 }
 
-// mu held. Dumps are slow on the synth's MIDI input (a multi is a third of a
-// second of bytes), so a turning knob sends at most one every 120 ms.
+// How long the synth takes to receive n bytes at MIDI speed (3125 a second)
+// and act on them. Measured 2026-11-18: a controller sent while a dump was
+// still arriving was lost, the dump's value won.
+int64_t dump_time(size_t n) { return int64_t(n) * 320 + 150000; }
+
+// mu held. One dump at a time: the next waits until the synth has taken the
+// last. That also keeps a turning knob from sending more than a few a second.
 void flush_dumps(Instance *in, bool force) {
     const int64_t t = now_us();
-    if (!force && t - in->lastDump < 120000) return;
+    if (!force && t < in->busyUntil) return;
     if (in->multiDirty) {
         Multi m;
         compose_multi(in, m);
@@ -427,7 +440,7 @@ void flush_dumps(Instance *in, bool force) {
         send_sysex(in, m.data(), n2x::g_multiDumpSize);
         in->multiDirty = false;
         for (bool &d : in->singleDirty) d = false;
-        in->lastDump = t;
+        in->busyUntil = t + dump_time(n2x::g_multiDumpSize);
         return;
     }
     for (int i = 0; i < 4; i++) {
@@ -438,7 +451,7 @@ void flush_dumps(Instance *in, bool force) {
         s[n2x::g_singleDumpSize - 1] = 0xf7;
         send_sysex(in, s.data(), n2x::g_singleDumpSize);
         in->singleDirty[i] = false;
-        in->lastDump = t;
+        in->busyUntil = t + dump_time(n2x::g_singleDumpSize);
         return;
     }
 }
@@ -679,6 +692,12 @@ bool parse_value(const Param *p, const char *val, int &out) {
     return true;
 }
 
+// A controller would be lost, or undone: a dump is still arriving, or one
+// for this slot is waiting to be sent. The change then goes out as a dump.
+bool dump_pending(const Instance *in, int slot) {
+    return in->multiDirty || in->singleDirty[slot] || now_us() < in->busyUntil;
+}
+
 void apply_param(Instance *in, const Param *p, int v) {
     const int s = in->slot;
     switch (p->kind) {
@@ -686,7 +705,10 @@ void apply_param(Instance *in, const Param *p, int v) {
         const uint8_t raw = uint8_t(v + p->offset);
         if (s_get(in->single[s], p->index) == raw) return;
         s_set(in->single[s], p->index, raw);
-        send_slot_cc(in, s, p->cc, raw);
+        if (dump_pending(in, s))
+            in->singleDirty[s] = true;
+        else
+            send_slot_cc(in, s, p->cc, raw);
         break;
     }
     case kDump: {
@@ -701,7 +723,9 @@ void apply_param(Instance *in, const Param *p, int v) {
         const uint8_t nb = uint8_t((b & ~(1 << p->cc)) | ((v ? 1 : 0) << p->cc));
         if (nb == b) return;
         s_set(in->single[s], p->index, nb);
-        if (p->cc == 4)
+        if (dump_pending(in, s))
+            in->singleDirty[s] = true;
+        else if (p->cc == 4)
             send_slot_cc(in, s, n2x::CCDistortion, v ? 1 : 0);
         else
             send_slot_cc(in, s, n2x::CCSync, nb & 3);
@@ -953,6 +977,8 @@ plugin_api_v2_t g_api;
 
 extern "C" __attribute__((visibility("default"))) plugin_api_v2_t *move_plugin_init_v2(const host_api_v1_t *host) {
     g_host = host;
+    // the emulator logs every hardware register it touches: not into the host's log
+    Logging::setLogFunc([](const std::string &) {});
     memset(&g_api, 0, sizeof(g_api));
     g_api.api_version = 2;
     g_api.create_instance = v2_create;
