@@ -38,6 +38,7 @@ package main
 
 import (
 	"fmt"
+	"hash/fnv"
 	"image"
 	"image/color"
 	"image/draw"
@@ -128,6 +129,8 @@ type overrideSet struct {
 	// slow script is tried again, after 3 s, then 6, 12, up to a minute.
 	slowAt time.Time
 	slowN  int
+	// kept: each screen's last picture and what it was drawn from (render)
+	kept map[string]*keptFrame
 	// layers: what a screen drew once and keeps (g.layer), by size, colour and key
 	layers     map[string]*image.NRGBA
 	lastDrawUS int64         // the last Push draw, in microseconds (/api/surface/state)
@@ -376,6 +379,19 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	if p.full {
 		w, h = scrW, scrH
 	}
+	// A screen is a function of its values: while they are the same, so is
+	// the picture, and the script does not run. A frame in which nothing
+	// changed costs a copy, less than Pung's own page costs to draw; only a
+	// picture that moves by itself (it read the time, or shows a sounding
+	// envelope) is drawn every frame. UX-GUIDELINES.md, "A custom screen
+	// costs no more than Pung's own".
+	slot := fmt.Sprintf("%v|%d|%d|%t", p.w.keys, p.col, p.span, p.full)
+	sig := frameSig(w, h, sc, p, vals, touched)
+	if k := s.kept[slot]; k != nil && k.sig == sig && !k.moving && s.failed == "" {
+		putFrame(dst, k.img, p, w, h)
+		return true
+	}
+	moving := false
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	vm := s.vm
 	g := vm.NewObject()
@@ -473,6 +489,9 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 			key := p.liveKey + "/env/" + ks[0]
 			p.live.want(key, picGroup{kind: "env", keys: keys, fx: p.fx, secs: s.envSecsLocked(keys, vv, nil)}, vv)
 			e.Live = p.liveOut.Envs[key]
+			if e.Live != nil && (len(e.Live.Voices) > 0 || e.Live.Retrig > 0) {
+				moving = true // notes on the envelope: the next frame differs
+			}
 		}
 		drawEnvelope(img, image.Rect(int(x), int(y), int(x+ww), int(y+hh)), e, sc)
 		return vm.ToValue(true)
@@ -609,7 +628,12 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	// switch the picture off. A draw is stopped outright at ovHardBudget.
 	start := time.Now()
 	timer := time.AfterFunc(ovHardBudget, func() { vm.Interrupt("draw took longer than 40 ms") })
-	_, err := p.w.draw(goja.Undefined(), g, v, vm.ToValue(t))
+	// the time is handed over as an object that says when it is read: a
+	// screen that never looks at it does not move by itself
+	clock := vm.NewObject()
+	clock.Set("valueOf", func() float64 { moving = true; return t })             //nolint:errcheck
+	clock.Set("toString", func() string { moving = true; return fmt.Sprint(t) }) //nolint:errcheck
+	_, err := p.w.draw(goja.Undefined(), g, v, clock)
 	timer.Stop()
 	vm.ClearInterrupt()
 	if !p.offline {
@@ -643,16 +667,52 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	if s.slowN > 0 && time.Since(s.slowAt) > 2*time.Minute {
 		s.slowN = 0 // it has drawn in time for two minutes: the next slow frame starts from 3 s again
 	}
+	if s.kept == nil || len(s.kept) >= 8 {
+		s.kept = map[string]*keptFrame{}
+	}
+	s.kept[slot] = &keptFrame{sig: sig, img: img, moving: moving}
+	putFrame(dst, img, p, w, h)
+	return true
+}
+
+// keptFrame: a screen's last picture, what it was drawn from, and whether it
+// moves by itself.
+type keptFrame struct {
+	sig    uint64
+	img    *image.NRGBA
+	moving bool
+}
+
+// frameSig: everything a screen's picture depends on.
+func frameSig(w, h int, sc color.NRGBA, p placement, vals map[string]ovValue, touched string) uint64 {
+	hh := fnv.New64a()
+	fmt.Fprint(hh, w, h, sc, p.full, p.offline, touched, "|")
+	for _, k := range p.w.keys {
+		e := vals[k]
+		fmt.Fprint(hh, k, "=", e.Value, "\x00", e.Display, "\x00", e.Frac, e.Known, e.Name, ";")
+	}
+	fmt.Fprint(hh, p.info, p.liveOut.Keys) // fmt prints a map in key order
+	// a sounding envelope moves: every tick of the live session is a new picture
+	for _, e := range p.liveOut.Envs {
+		if e != nil && (len(e.Voices) > 0 || e.Retrig > 0) {
+			fmt.Fprint(hh, "live", p.liveOut.Seq)
+			break
+		}
+	}
+	return hh.Sum64()
+}
+
+// putFrame copies a screen's picture into the frame, at its place.
+func putFrame(dst, img *image.NRGBA, p placement, w, h int) {
 	x, y := p.col*colW+4, ovTop
 	if p.full {
 		x, y = 0, 0
 	}
 	if p.full && dst.Bounds() == img.Bounds() && len(dst.Pix) == len(img.Pix) {
 		copy(dst.Pix, img.Pix) // a takeover is the whole screen: no blending, pixel by pixel
-		return true
+		return
 	}
 	draw.Draw(dst, image.Rect(x, y, x+w, y+h), img, image.Point{}, draw.Over)
-	return true
 }
 
 func ovColor(s string, slot color.NRGBA) color.NRGBA {

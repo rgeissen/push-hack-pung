@@ -316,3 +316,43 @@ func TestSlowOverlayComesBack(t *testing.T) {
 		t.Fatal("a script that threw was tried again")
 	}
 }
+
+// A screen is drawn when what it shows changes, and copied otherwise: a
+// custom screen costs no more than Pung's own (UX-GUIDELINES.md).
+func TestScreenIsDrawnOnlyWhenItChanges(t *testing.T) {
+	initFaces()
+	root := t.TempDir()
+	dir := filepath.Join(root, "sound_generators", "x")
+	os.MkdirAll(dir, 0o755)                                                                                         //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"x","component_type":"sound_generator"}`), 0o644) //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "push_ui.js"), []byte(`
+var still = 0, clocked = 0;
+push.widget({ keys: ["a"], draw: function (g, v) { still++; g.fill(0, 0, 10 + still, 4, "fg"); } });
+push.widget({ keys: ["b"], draw: function (g, v, t) { clocked++; g.fill(0, 0, 10 + Math.floor(t) % 3, 4, "fg"); } });
+function counts() { return still + "/" + clocked; }
+`), 0o644) //nolint:errcheck
+	set := newOverrides(root).get(root, "x")
+	if set == nil || set.failed != "" {
+		t.Fatalf("%+v", set)
+	}
+	val := func(f float64) map[string]ovValue {
+		return map[string]ovValue{"a": {Value: fmt.Sprint(f), Frac: f, Known: true}, "b": {Value: "0", Known: true}}
+	}
+	frame := func(w int, f float64) {
+		img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+		if !set.render(img, placement{w: set.widgets[w], col: w, span: 1}, val(f), "", slotColor(0)) {
+			t.Fatal(set.failed)
+		}
+	}
+	for i := 0; i < 5; i++ {
+		frame(0, 0.5) // the same value five times
+		frame(1, 0.5) // a picture that reads the time
+	}
+	frame(0, 0.6) // the value changed
+	got := set.vm.Get("counts").ToObject(set.vm)
+	fn, _ := goja.AssertFunction(got)
+	v, _ := fn(goja.Undefined())
+	if v.String() != "2/5" {
+		t.Fatalf("draws still/clocked = %s, want 2/5: a still screen once per value, a clocked one every frame", v)
+	}
+}

@@ -319,6 +319,15 @@ If it only restyles the default page, it does not ship.
    Pung.
 3. **Show the touch.** Whatever is under a finger (`v.$touched`) is drawn in slot colour, as in §4.
 4. **Show unknown honestly.** Check `v[key].known`; draw a neutral shape until values arrive.
+0. **A custom screen costs no more than Pung's own.** It is a principle of the design, and Pung keeps it
+   for the author (`override.go`, `render`): a screen is a function of its values, so its script runs
+   only when a value it shows, the touched knob or the page changes. Every other frame is a copy of the
+   last picture. Only a picture that moves by itself is drawn every frame: one that reads the time (the
+   draw's third argument), or shows an envelope while notes sound. Measured on a Push 3 with an emulator
+   running, while a knob turns: Pung's own pages 0.1 to 0.5 ms a frame, Nodal Red's panel 1.3 ms, its
+   oscillator screen 0.8 ms, its filter screen 2.5 ms, JE-8086's Patch takeover 2.5 ms. While nothing
+   turns: no script runs at all. Keep a changing frame cheap too: what never changes goes into
+   `g.layer`, curves are cached, and nothing is computed that the frame does not show.
 5. **Fit the budget**: 8 ms a frame, 14 ms for a takeover (§7). One `g.poly` per curve; cache what does
    not change. What a screen draws the same every frame (a panel's ground, frames, legends) goes into
    `g.layer(key, fn)`: drawn once, copied after that. Nodal Red's panel went from 26 ms to 3 ms a frame. `/api/surface/state` reports `module_ui_draw_us`: measure on the device.
