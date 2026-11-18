@@ -177,6 +177,7 @@ function panel(g, v) {
   g.value(42, 62, e, "#ff3b30", 0);
   for (var j = 0; j < 4; j++) {
     var s = sl[j] || { on: j === 0, edit: j === 0 }, bx = 12 + j * 33;
+    if (!s.on && !s.edit) continue; // a slot that is off is not there to choose: its button is not drawn
     led(g, bx + 13, 79, s.on);
     g.fill(bx, 84, 27, 12, s.edit ? INK : KNOB);
     g.text(bx + 13, 94, "ABCD".charAt(j), s.edit ? "black" : (s.on ? INK : "#777777"), 0);
