@@ -106,13 +106,16 @@ var A0 = Math.PI * 0.75, SWEEP = Math.PI * 1.5; // a dial: from 7 o'clock, three
 // a page: the sound can be read at a glance, as on the instrument itself. The
 // encoders play the eight things a hand reaches for first.
 var RED = "#b3101d", RED_DK = "#7d0b15", RED_ROW = "#3a060b", KNOB = "#141414", INK = "#ffffff", SOFT = "#f2b8bd", LED_ON = "#ffe08a", LED_OFF = "#6d0912";
-function pknob(g, v, key, cx, cy, label, bipolar) {
-  var f = frac(v, key, bipolar ? 0.5 : 0), a = A0 + f * SWEEP, on = hot(v, key);
-  if (on) g.dot(cx, cy, 11, INK);
-  g.dot(cx, cy, 8.5, KNOB);
-  g.line(cx + Math.cos(a) * 2, cy + Math.sin(a) * 2, cx + Math.cos(a) * 8, cy + Math.sin(a) * 8, 2, INK);
-  if (label) g.text(cx, cy + 19, label, on ? INK : SOFT, 0);
-}
+// A knob is drawn in two parts: its body and its legend never change (the
+// kept layer), its pointer does.
+var KNOBS = [ // key, x, y, legend under it, bipolar
+  ["lfo1_rate", 172, 47, "", 0], ["lfo1_amount", 200, 47, "", 0], ["lfo2_rate", 216, 85, "", 0], ["lfo2_amount", 244, 85, "", 0],
+  ["modenv_attack", 326, 47, "ATK", 0], ["modenv_decay", 356, 47, "DEC", 0], ["modenv_amount", 388, 47, "AMT", 1],
+  ["osc2_semi", 542, 47, "SEMI", 1], ["osc2_fine", 574, 47, "FINE", 1], ["mix", 614, 47, "MIX", 1], ["fm", 440, 83, "", 0], ["pw", 494, 83, "", 0],
+  ["amp_attack", 668, 47, "A", 0], ["amp_decay", 698, 47, "D", 0], ["amp_sustain", 728, 47, "S", 0], ["amp_release", 758, 47, "R", 0], ["amp_gain", 668, 83, "", 0],
+  ["flt_attack", 812, 47, "A", 0], ["flt_decay", 840, 47, "D", 0], ["flt_sustain", 868, 47, "S", 0], ["flt_release", 896, 47, "R", 0],
+  ["cutoff", 810, 83, "", 0], ["resonance", 866, 83, "", 0], ["filter_env", 915, 83, "", 0]
+];
 function section(g, x, w, title) {
   g.fill(x, 22, w, 11, "black");
   g.text(x + 5, 31, title, INK, -1);
@@ -129,80 +132,84 @@ function short(s) {
   return String(s).toUpperCase().replace("TRIANGLE", "TRI").replace("SOFT RANDOM", "SOFT RND").replace("RANDOM", "RND")
     .replace("SQUARE", "SQR").replace("OSC 1+2", "OSC1+2").replace("LFO ", "").replace("ARP ", "");
 }
+// everything on the panel that never changes: drawn once, kept (g.layer)
+function panelGround(g) {
+  g.fill(0, 0, 960, 104, RED);
+  g.value(10, 17, "NODAL RED 2X", INK, -1);
+  section(g, 6, 140, "SLOT");
+  g.fill(12, 38, 60, 34, "black");
+  section(g, 152, 150, "LFO 1");
+  g.text(172, 66, "RATE", SOFT, 0); g.text(202, 66, "AMT", SOFT, 0);
+  section(g, 308, 104, "MOD ENV");
+  section(g, 418, 226, "OSCILLATORS");
+  g.fill(424, 38, 44, 20, "black"); g.fill(474, 38, 44, 20, "black");
+  g.text(446, 68, "OSC 1", SOFT, 0); g.text(496, 68, "OSC 2", SOFT, 0);
+  g.text(456, 87, "FM", SOFT, -1); g.text(510, 87, "PW", SOFT, -1);
+  section(g, 650, 138, "AMPLIFIER");
+  g.text(684, 87, "GAIN", SOFT, -1);
+  section(g, 794, 160, "FILTER");
+  g.text(823, 87, "FREQ", SOFT, -1); g.text(879, 87, "RES", SOFT, -1); g.text(928, 87, "ENV", SOFT, -1);
+  for (var i = 0; i < KNOBS.length; i++) {
+    var k = KNOBS[i];
+    g.dot(k[1], k[2], 8.5, KNOB);
+    if (k[3]) g.text(k[1], k[2] + 19, k[3], SOFT, 0);
+  }
+  // the encoder row's ground
+  g.fill(0, 104, 960, 56, RED_ROW);
+  g.fill(0, 104, 960, 2, "black");
+  for (var c = 1; c < 8; c++) g.fill(c * 120, 112, 1, 42, RED_DK);
+}
 function panel(g, v) {
   var t = v.$touched || "", sl = slots(v);
-  g.fill(0, 0, 960, 104, RED);
-  // the name plate
-  g.value(10, 17, "NODAL RED 2X", INK, -1);
+  g.layer("panel", function () { panelGround(g); });
+  // the pointers
+  for (var i = 0; i < KNOBS.length; i++) {
+    var k = KNOBS[i], f = frac(v, k[0], k[4] ? 0.5 : 0), a = A0 + f * SWEEP;
+    if (k[0] === t) g.arc(k[1], k[2], 10.5, 0, Math.PI * 2, 2, INK);
+    g.line(k[1] + Math.cos(a) * 2, k[2] + Math.sin(a) * 2, k[1] + Math.cos(a) * 8, k[2] + Math.sin(a) * 8, 2, INK);
+  }
   var nm = disp(v, "preset_name");
   var nw = nm ? g.measure(nm.toUpperCase()) : 0;
   g.text(950, 15, nm ? nm.toUpperCase() : "", INK, 1, 420);
   g.text(950 - nw - 14, 15, (disp(v, "bank_name") || "").toUpperCase(), SOFT, 1, 300);
   // slots: the display and the four buttons
-  section(g, 6, 140, "SLOT");
-  g.fill(12, 38, 60, 34, "black");
   var e = disp(v, "slot") || "A";
   g.value(42, 62, e, "#ff3b30", 0);
-  for (var i = 0; i < 4; i++) {
-    var s = sl[i] || { on: i === 0, edit: i === 0 }, bx = 12 + i * 33;
+  for (var j = 0; j < 4; j++) {
+    var s = sl[j] || { on: j === 0, edit: j === 0 }, bx = 12 + j * 33;
     led(g, bx + 13, 79, s.on);
     g.fill(bx, 84, 27, 12, s.edit ? INK : KNOB);
-    g.text(bx + 13, 94, "ABCD".charAt(i), s.edit ? "black" : (s.on ? INK : "#777777"), 0);
+    g.text(bx + 13, 94, "ABCD".charAt(j), s.edit ? "black" : (s.on ? INK : "#777777"), 0);
   }
-  var mode = disp(v, "voice_mode").toUpperCase() || "POLY";
-  pill(g, 80, 48, mode, true);
+  pill(g, 80, 48, disp(v, "voice_mode").toUpperCase() || "POLY", true);
   pill(g, 80, 62, "UNISON", isOn(v, "unison"));
   pill(g, 80, 76, "PORTA", frac(v, "portamento", 0) > 0.01);
   // LFO 1 over LFO 2 / arpeggiator
-  section(g, 152, 150, "LFO 1");
-  pknob(g, v, "lfo1_rate", 172, 47, "", false); pknob(g, v, "lfo1_amount", 200, 47, "", false);
-  g.text(172, 66, "RATE", SOFT, 0); g.text(202, 66, "AMT", SOFT, 0);
-  var x = pill(g, 220, 44, short(disp(v, "lfo1_wave") || "TRI"), true);
+  pill(g, 220, 44, short(disp(v, "lfo1_wave") || "TRI"), true);
   pill(g, 220, 58, short(disp(v, "lfo1_dest") || ""), frac(v, "lfo1_amount", 0) > 0.005);
   var d2 = disp(v, "lfo2_dest"), arp = d2 && !/^LFO |off/i.test(d2);
   g.text(157, 78, arp ? "ARP" : "LFO 2", INK, -1);
-  pknob(g, v, "lfo2_rate", 216, 85, "", false); pknob(g, v, "lfo2_amount", 244, 85, "", false);
   pill(g, 258, 89, short(d2 || "OFF").slice(0, 6), !!d2 && !/off/i.test(d2));
   // the mod envelope, and the wheel
-  section(g, 308, 104, "MOD ENV");
-  pknob(g, v, "modenv_attack", 326, 47, "ATK", false); pknob(g, v, "modenv_decay", 356, 47, "DEC", false); pknob(g, v, "modenv_amount", 388, 47, "AMT", true);
   pill(g, 314, 82, short(disp(v, "modenv_dest") || "NONE"), Math.abs(frac(v, "modenv_amount", 0.5) - 0.5) > 0.01);
   g.text(314, 96, "WHEEL " + short(disp(v, "modwheel_dest") || ""), SOFT, -1, 94);
   // oscillators
-  section(g, 418, 226, "OSCILLATORS");
   var w1 = WAVES1[waveIndex(v, "osc1_wave", 4)], w2 = WAVES2[waveIndex(v, "osc2_wave", 4)];
-  g.fill(424, 38, 44, 20, "black"); g.fill(474, 38, 44, 20, "black");
   g.poly(cached("p1|" + w1, function () { return wavePts(426, 39, 40, 18, function (q) { return osc(w1, q * 2, 0); }); }), 1.5, t === "osc1_wave" ? LED_ON : INK);
   g.poly(cached("p2|" + w2, function () { return wavePts(476, 39, 40, 18, function (q) { return osc(w2, q * 2, 0); }); }), 1.5, t === "osc2_wave" ? LED_ON : INK);
-  g.text(446, 68, "OSC 1", SOFT, 0); g.text(496, 68, "OSC 2", SOFT, 0);
-  pknob(g, v, "osc2_semi", 542, 47, "SEMI", true); pknob(g, v, "osc2_fine", 574, 47, "FINE", true); pknob(g, v, "mix", 614, 47, "MIX", true);
-  pknob(g, v, "fm", 440, 83, "", false); g.text(456, 87, "FM", SOFT, -1);
-  pknob(g, v, "pw", 494, 83, "", false); g.text(510, 87, "PW", SOFT, -1);
   led(g, 548, 83, isOn(v, "sync")); g.text(555, 87, "SYNC", isOn(v, "sync") ? INK : SOFT, -1);
   led(g, 598, 83, isOn(v, "ringmod")); g.text(605, 87, "RING", isOn(v, "ringmod") ? INK : SOFT, -1);
-  // amplifier
-  section(g, 650, 138, "AMPLIFIER");
-  pknob(g, v, "amp_attack", 668, 47, "A", false); pknob(g, v, "amp_decay", 698, 47, "D", false); pknob(g, v, "amp_sustain", 728, 47, "S", false); pknob(g, v, "amp_release", 758, 47, "R", false);
-  pknob(g, v, "amp_gain", 668, 83, "", false); g.text(684, 87, "GAIN", SOFT, -1);
+  // amplifier, filter
   var oc = disp(v, "octave");
   if (oc && oc !== "0") pill(g, 730, 87, "OCT " + oc, true);
-  // filter
-  section(g, 794, 160, "FILTER");
-  pknob(g, v, "flt_attack", 812, 47, "A", false); pknob(g, v, "flt_decay", 840, 47, "D", false); pknob(g, v, "flt_sustain", 868, 47, "S", false); pknob(g, v, "flt_release", 896, 47, "R", false);
   pill(g, 912, 44, short(disp(v, "filter_type") || "LP 12").replace("NOTCH+LP", "NOTCH").replace(" ", ""), true);
   led(g, 918, 56, isOn(v, "distortion")); g.text(925, 60, "DIST", isOn(v, "distortion") ? INK : SOFT, -1);
-  pknob(g, v, "cutoff", 810, 83, "", false); g.text(823, 87, "FREQ", SOFT, -1);
-  pknob(g, v, "resonance", 866, 83, "", false); g.text(879, 87, "RES", SOFT, -1);
-  pknob(g, v, "filter_env", 915, 83, "", false); g.text(928, 87, "ENV", SOFT, -1);
 }
 // the encoder row, in the panel's colours: names and values where the hands expect them
 function panelRow(g, v) {
   var knobs = v.$knobs || [], t = v.$touched;
-  g.fill(0, 104, 960, 56, RED_ROW);
-  g.fill(0, 104, 960, 2, "black");
   for (var i = 0; i < 8; i++) {
     var k = knobs[i], cx = i * 120 + 60;
-    if (i) g.fill(i * 120, 112, 1, 42, RED_DK);
     if (!k || !v[k]) continue;
     var on = k === t;
     if (on) g.fill(i * 120 + 4, 108, 112, 48, RED);

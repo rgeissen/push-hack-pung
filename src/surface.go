@@ -120,6 +120,10 @@ type surface struct {
 	// what the last Live refresh read from Pung's own device (state: "fallback")
 	fallbackDev, fallbackRead int
 	lastTurn                  string // the last encoder turn, and what it found (state: "write_state")
+	// turnAt: when the oldest turn not yet on the screen came in; lagMS: the
+	// last 16 turn-to-screen times, with what each frame's parts took
+	turnAt time.Time
+	lagMS  []string
 	lvIdx                     map[string]int     // module key -> Live parameter index
 	lvDef                     map[string]float64 // module key -> Live's default for it, 0..1 (where Live has one)
 
@@ -383,6 +387,7 @@ func (u *surface) routes(mux *http.ServeMux) {
 			// why a turn would not write (turn, writeParam)
 			"write_state": map[string]any{"ready": u.liveReady, "writable": u.liveWritable, "resolved": u.liveResolved,
 				"pung": u.livePung, "values": len(u.vals), "last_turn": u.lastTurn},
+			"turn_to_screen_ms": u.lagMS,
 			"frame_draw_us": u.frameStats.drawUS.Load(), "frame_push_us": u.frameStats.pushUS.Load(), "frames": u.frameStats.n.Load(),
 			"module_ui_draw_us": u.overlayDrawUS(p.Module),
 			"position":          p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
@@ -1163,6 +1168,9 @@ func (u *surface) turn(enc, delta int) {
 	if u.touched != enc {
 		u.peekUntil = time.Now().Add(1200 * time.Millisecond)
 	}
+	if u.turnAt.IsZero() {
+		u.turnAt = time.Now()
+	}
 	p, cm, b := u.currentBank()
 	if b == nil || enc >= len(b.Keys) || b.Keys[enc] == "" {
 		u.lastTurn = fmt.Sprintf("enc %d: no key on this page", enc)
@@ -1419,7 +1427,10 @@ func (u *surface) paintLEDs() {
 // ---- frames ---------------------------------------------------------------------
 
 func (u *surface) frames(done <-chan struct{}) {
-	t := time.NewTicker(33 * time.Millisecond)
+	// 16 ms: a turn waits half a tick on average for its frame, and at 33 ms
+	// that wait was most of what was left between a knob and the screen. A
+	// tick with nothing to draw costs nothing.
+	t := time.NewTicker(16 * time.Millisecond)
 	defer t.Stop()
 	var lastPeak float64 = -999
 	for {
@@ -1450,10 +1461,14 @@ func (u *surface) frames(done <-chan struct{}) {
 			continue
 		}
 		lastPeak = peak
+		turnAt := u.turnAt
+		u.turnAt = time.Time{}
 		t0 := time.Now()
 		img := u.render(peak)
-		u.frameStats.draw(time.Since(t0))
+		drawT := time.Since(t0)
+		u.frameStats.draw(drawT)
 		u.paintLEDs()
+		ledT := time.Since(t0) - drawT
 		first := !u.focusAt.IsZero()
 		since := time.Since(u.focusAt)
 		u.focusAt = time.Time{}
@@ -1461,6 +1476,15 @@ func (u *surface) frames(done <-chan struct{}) {
 		t1 := time.Now()
 		err := u.pm.PushFrame(img)
 		u.frameStats.push(time.Since(t1))
+		if !turnAt.IsZero() {
+			u.mu.Lock()
+			u.lagMS = append(u.lagMS, fmt.Sprintf("%d (wait %d draw %d leds %d push %d)", time.Since(turnAt).Milliseconds(),
+				t0.Sub(turnAt).Milliseconds(), drawT.Milliseconds(), ledT.Milliseconds(), time.Since(t1).Milliseconds()))
+			if len(u.lagMS) > 16 {
+				u.lagMS = u.lagMS[len(u.lagMS)-16:]
+			}
+			u.mu.Unlock()
+		}
 		if err != nil {
 			// not on the screen (push-manager not yet handing it over, or
 			// already taking it back): again next tick, never left stale

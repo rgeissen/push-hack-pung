@@ -4,6 +4,7 @@ package main
 // them; inside the host they are 0-based.
 
 import (
+	"net/http/pprof"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -87,6 +88,8 @@ func (h *Host) routes(mux *http.ServeMux) {
 	})
 	// what stops the program: the garbage collector's pauses, newest first
 	// (a pause stops the devices' audio threads too: see "late" in /api/devices)
+	// a CPU profile of Pung itself, for go tool pprof: ?seconds=10
+	mux.HandleFunc("GET /api/debug/profile", pprof.Profile)
 	mux.HandleFunc("GET /api/debug/gc", func(w http.ResponseWriter, r *http.Request) {
 		var st debug.GCStats
 		debug.ReadGCStats(&st)

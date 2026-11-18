@@ -162,6 +162,21 @@ Three things it needed:
   already using, and Pung switched it off (the limit is 8 ms). Every curve is now computed when what it
   shows changes: 2 to 5 ms a frame.
 
+### A knob and the screen
+
+Reported 2026-11-18: a turn showed on the screen with a long lag. Measured on the Push, from the turn
+to the frame sent (`/api/surface/state`, `turn_to_screen_ms`): 60 to 110 ms. A CPU profile of Pung
+(`/api/debug/profile`) named three causes, none of them the emulator:
+
+| Cause | Fix | Share |
+|---|---|---|
+| Pung read and parsed every module's `module.json` many times a frame (`findModule`) | the list is kept while the module folders are unchanged (`scanModules`) | over half of Pung's own processor time |
+| the panel drew its ground, frames and legends every frame, in JavaScript | `g.layer`: drawn once, copied after that | 26 ms a frame down to 3 |
+| a frame waited for a 33 ms clock, and filling rectangles blended pixel by pixel | a 16 ms clock; solid fills written straight into the pixels | 25 ms and 5 ms |
+
+After: 8 to 16 ms on the panel, 13 to 23 ms on the filter page. The first cause slowed every module's
+view, and grew with every module installed.
+
 ### The firmware's own sounds
 
 Program banks 4 to 9 and performance banks 1 to 3 are part of the firmware. The synth sends any of them

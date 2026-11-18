@@ -320,7 +320,8 @@ If it only restyles the default page, it does not ship.
 3. **Show the touch.** Whatever is under a finger (`v.$touched`) is drawn in slot colour, as in §4.
 4. **Show unknown honestly.** Check `v[key].known`; draw a neutral shape until values arrive.
 5. **Fit the budget**: 8 ms a frame, 14 ms for a takeover (§7). One `g.poly` per curve; cache what does
-   not change. `/api/surface/state` reports `module_ui_draw_us`: measure on the device.
+   not change. What a screen draws the same every frame (a panel's ground, frames, legends) goes into
+   `g.layer(key, fn)`: drawn once, copied after that. Nodal Red's panel went from 26 ms to 3 ms a frame. `/api/surface/state` reports `module_ui_draw_us`: measure on the device.
 6. **A takeover replaces Pung's elements, so it owns their jobs**: every encoder's name and value
    (`v.$knobs`), the touched one in slot colour, which page of how many. The bottom 56 pixels are the
    encoder row, by convention (y 104 to 160), so that the hands find their values where they always are.

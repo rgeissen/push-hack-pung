@@ -147,3 +147,28 @@ func TestScreenKeyFollowsALinkedModule(t *testing.T) {
 		t.Fatal("a module's key differs by how its folder is reached")
 	}
 }
+
+// The module tree is asked for many times a frame: it is read once while
+// nothing changes, and again when a module is added.
+func TestScanModulesIsKept(t *testing.T) {
+	root := t.TempDir()
+	add := func(id string) {
+		d := filepath.Join(root, "sound_generators", id)
+		os.MkdirAll(d, 0o755)                                                                                     //nolint:errcheck
+		os.WriteFile(filepath.Join(d, "module.json"), []byte(`{"id":"`+id+`","name":"`+id+`"}`), 0o644)           //nolint:errcheck
+	}
+	add("one")
+	if n := len(scanModules(root)); n != 1 {
+		t.Fatalf("%d modules, want 1", n)
+	}
+	a := scanModules(root)
+	a[0].ID = "changed by the caller"
+	if scanModules(root)[0].ID != "one" {
+		t.Fatal("a caller could change the kept list")
+	}
+	time.Sleep(5 * time.Millisecond) // a folder's time has to move
+	add("two")
+	if n := len(scanModules(root)); n != 2 {
+		t.Fatalf("%d modules after one was added, want 2", n)
+	}
+}

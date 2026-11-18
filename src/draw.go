@@ -90,7 +90,7 @@ func spyText(x, baseline, w int, face font.Face, s string) {
 
 func newFrame() *image.NRGBA {
 	img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
-	gfx.FillRect(img, 0, 0, scrW, scrH, cBlack)
+	rect(img, 0, 0, scrW, scrH, cBlack)
 	return img
 }
 
@@ -328,7 +328,29 @@ func gauge(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.N
 	disc(img, x+math.Cos(a)*(knobR-8), y+math.Sin(a)*(knobR-8), 2.2, cFg)
 }
 
-func rect(img *image.NRGBA, x, y, w, h int, c color.NRGBA) { gfx.FillRect(img, x, y, w, h, c) }
+// rect fills a rectangle. A solid colour is written straight into the
+// pixels: the library's fill blends pixel by pixel through interfaces, and a
+// frame's ground alone took 5 % of Pung's processor time that way (profiled
+// on a Push, 2026-11-18).
+func rect(img *image.NRGBA, x, y, w, h int, c color.NRGBA) {
+	if c.A != 255 {
+		gfx.FillRect(img, x, y, w, h, c)
+		return
+	}
+	r := image.Rect(x, y, x+w, y+h).Intersect(img.Rect)
+	if r.Empty() {
+		return
+	}
+	row := img.Pix[img.PixOffset(r.Min.X, r.Min.Y):]
+	n := r.Dx() * 4
+	for i := 0; i < n; i += 4 {
+		row[i], row[i+1], row[i+2], row[i+3] = c.R, c.G, c.B, 255
+	}
+	first := row[:n]
+	for yy := r.Min.Y + 1; yy < r.Max.Y; yy++ {
+		copy(img.Pix[img.PixOffset(r.Min.X, yy):], first)
+	}
+}
 
 func frameRect(img *image.NRGBA, x, y, w, h int, c color.NRGBA) {
 	gfx.FillRect(img, x, y, w, 1, c)

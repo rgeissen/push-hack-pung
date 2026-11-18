@@ -121,6 +121,8 @@ type overrideSet struct {
 	compartments []*ovCompartment // in the order declared
 	failed       string           // why it is off; "" while it works
 	overruns     int              // frames in a row over ovBudget
+	// layers: what a screen drew once and keeps (g.layer), by size, colour and key
+	layers map[string]*image.NRGBA
 	lastDrawUS   int64            // the last Push draw, in microseconds (/api/surface/state)
 	off          bool             // the user chose the native UI
 	envTimes     goja.Callable    // push.envelopeTimes: the module's engine's stage times (nil: from the knobs)
@@ -348,6 +350,35 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	g.Set("w", w)
 	g.Set("h", h)
 	col := func(v goja.Value) color.NRGBA { return ovColor(v.String(), sc) }
+	// g.layer(key, fn): the part of a screen that does not change. fn draws
+	// it once; from then on the kept picture is copied in, which costs
+	// nothing next to drawing it (a panel's ground, its frames and legends:
+	// Nodal Red's took 26 to 43 ms a frame on a Push busy with its emulator).
+	// It replaces what the frame holds so far, so it comes first. A new key
+	// (a page, a mode) draws again; a handful are kept.
+	g.Set("layer", func(call goja.FunctionCall) goja.Value {
+		fn, ok := goja.AssertFunction(call.Argument(1))
+		if !ok {
+			panic(vm.NewTypeError("g.layer(key, fn): fn must be a function"))
+		}
+		key := fmt.Sprintf("%dx%d|%v|%s", w, h, sc, call.Argument(0).String())
+		layer := s.layers[key]
+		if layer == nil {
+			keep := img
+			img = image.NewNRGBA(keep.Bounds())
+			_, err := fn(goja.Undefined())
+			layer, img = img, keep
+			if err != nil {
+				panic(err)
+			}
+			if s.layers == nil || len(s.layers) >= 12 {
+				s.layers = map[string]*image.NRGBA{}
+			}
+			s.layers[key] = layer
+		}
+		copy(img.Pix, layer.Pix)
+		return goja.Undefined()
+	})
 	g.Set("fill", func(x, y, ww, hh float64, c goja.Value) { rect(img, int(x), int(y), int(ww), int(hh), col(c)) })
 	g.Set("line", func(x1, y1, x2, y2, width float64, c goja.Value) { aaLine(img, x1, y1, x2, y2, width, col(c)) })
 	g.Set("arc", func(cx, cy, r, from, sweep, width float64, c goja.Value) {
@@ -575,6 +606,10 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	x, y := p.col*colW+4, ovTop
 	if p.full {
 		x, y = 0, 0
+	}
+	if p.full && dst.Bounds() == img.Bounds() && len(dst.Pix) == len(img.Pix) {
+		copy(dst.Pix, img.Pix) // a takeover is the whole screen: no blending, pixel by pixel
+		return true
 	}
 	draw.Draw(dst, image.Rect(x, y, x+w, y+h), img, image.Point{}, draw.Over)
 	return true

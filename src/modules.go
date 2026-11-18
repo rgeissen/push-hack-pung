@@ -6,10 +6,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
 type ModuleInfo struct {
@@ -36,7 +39,45 @@ var moduleCategories = map[string]string{
 	"midi_fx":          "midi_fx",
 }
 
+// scanModules: the modules under root. The view asks for a module many times
+// a frame (findModule), and reading the tree means a ReadDir and a JSON
+// parse per module: with 30 modules installed that was more than half of
+// Pung's own processor time, and the lag between a knob and the screen
+// (profiled on a Push, 2026-11-18). The answer is kept while the category
+// folders are unchanged (a module added or removed changes one), and read
+// again after two seconds in any case (a module.json edited in place).
 func scanModules(root string) []ModuleInfo {
+	sig := ""
+	for _, cat := range []string{"audio_fx", "midi_fx", "sound_generators"} { // in one order: a map's changes
+		if fi, err := os.Stat(filepath.Join(root, cat)); err == nil {
+			sig += fmt.Sprintf("%s:%d;", cat, fi.ModTime().UnixNano())
+		}
+	}
+	scanMu.Lock()
+	defer scanMu.Unlock()
+	if c, ok := scanCache[root]; ok && c.sig == sig && time.Since(c.at) < 2*time.Second {
+		return append([]ModuleInfo(nil), c.mods...)
+	}
+	mods := scanModulesNow(root)
+	if scanCache == nil || len(scanCache) > 32 {
+		scanCache = map[string]scanned{}
+	}
+	scanCache[root] = scanned{sig: sig, at: time.Now(), mods: mods}
+	return append([]ModuleInfo(nil), mods...)
+}
+
+type scanned struct {
+	sig  string
+	at   time.Time
+	mods []ModuleInfo
+}
+
+var (
+	scanMu    sync.Mutex
+	scanCache map[string]scanned
+)
+
+func scanModulesNow(root string) []ModuleInfo {
 	var out []ModuleInfo
 	for cat, typ := range moduleCategories {
 		entries, _ := os.ReadDir(filepath.Join(root, cat))
