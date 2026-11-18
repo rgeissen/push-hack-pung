@@ -91,21 +91,22 @@ enum Kind {
     kDump,  // a single parameter the synth only takes in a dump
     kBits,  // a bit field in the Sync byte (sync, ring mod: CC 35; distortion: CC 80)
     kMulti, // a performance parameter, one per slot (index + slot)
-    kGlobal // a performance parameter, one for the synth
+    kGlobal, // a performance parameter, one for the synth
+    kNibble  // the low half of a performance byte (the output mode of slots A and B)
 };
 
 const char *o_wave1[] = {"Pulse", "Saw", "Triangle", "Sine"};
 const char *o_wave2[] = {"Pulse", "Saw", "Triangle", "Noise"};
 const char *o_offon[] = {"Off", "On"};
-const char *o_ftype[] = {"LP 12", "LP 24", "HP 24", "BP", "Notch+LP", "Type 6"};
+const char *o_ftype[] = {"LP 12", "LP 24", "HP 24", "BP", "Notch+LP"};
 const char *o_fkbt[] = {"Off", "1/3", "2/3", "Full"};
-const char *o_lfo1wave[] = {"Soft Random", "Random", "Triangle", "Saw", "Square"};
-const char *o_lfo1dest[] = {"Osc 1+2", "Osc 2", "Filter", "FM", "PW"};
-const char *o_lfo2dest[] = {"Amp", "Osc 1+2", "Filter", "Arp Up", "Arp Down", "Arp Up/Down", "Arp Random", "Echo", "Arp Hold"};
+const char *o_lfo1wave[] = {"Random", "Saw", "Triangle", "Square", "Soft Random"};
+const char *o_lfo1dest[] = {"PW", "Filter", "Osc 2", "Osc 1+2", "FM"};
+const char *o_lfo2dest[] = {"Arp Down", "Arp Up", "Arp Up/Down", "LFO Amp", "LFO Osc 1+2", "Arp Random", "Echo", "LFO Filter", "Off"};
 const char *o_mode[] = {"Mono", "Legato", "Poly"};
 const char *o_mwdest[] = {"Filter", "FM", "Osc 2", "LFO 1", "Morph"};
-const char *o_medest[] = {"Osc 2", "FM", "PW", "Dest 4", "Dest 5"};
-const char *o_auto[] = {"Off", "Auto", "Mode 3", "Mode 4", "Mode 5"};
+const char *o_medest[] = {"Osc 2", "FM", "PW", "None"};
+const char *o_outmode[] = {"Unison Stereo", "Mono", "Stereo", "Slot A left, B right"};
 const char *o_sync[] = {"Off", "2/1", "1/1", "1/2", "1/4", "1/8", "1/8.", "1/16"};
 const char *o_slot[] = {"A", "B", "C", "D"};
 const char *o_prdest[] = {"LFO 1 Amount", "LFO 2 Amount", "Filter Cutoff", "FM Amount", "Osc 2 Pitch"};
@@ -142,7 +143,7 @@ const Param g_params[] = {
     {"cutoff", "Cutoff", "filter", kCC, n2x::Cutoff, n2x::CCCutoff, 0, 127, 0, NOOPT},
     {"resonance", "Resonance", "filter", kCC, n2x::Resonance, n2x::CCResonance, 0, 127, 0, NOOPT},
     {"filter_env", "Env Amount", "filter", kCC, n2x::FilterEnvAmount, n2x::CCFilterEnvAmount, 0, 127, 0, NOOPT},
-    {"filter_type", "Filter Type", "filter", kDump, n2x::FilterType, -1, 0, 5, 0, OPT(o_ftype)},
+    {"filter_type", "Filter Type", "filter", kDump, n2x::FilterType, -1, 0, 4, 0, OPT(o_ftype)},
     {"filter_kbt", "Kbd Track", "filter", kCC, n2x::FilterKeytrack, n2x::CCFilterKeytrack, 0, 3, 0, OPT(o_fkbt)},
     {"filter_velo", "Velocity", "filter", kCC, n2x::FilterVelocity, n2x::CCFilterVelocity, 0, 1, 0, OPT(o_offon)},
     {"distortion", "Distortion", "filter", kBits, n2x::Sync, 4, 0, 1, 0, OPT(o_offon)},
@@ -169,16 +170,18 @@ const Param g_params[] = {
     {"modenv_attack", "Mod Env Attack", "mod", kCC, n2x::ModEnvA, n2x::CCModEnvA, 0, 127, 0, NOOPT},
     {"modenv_decay", "Mod Env Decay", "mod", kCC, n2x::ModEnvD, n2x::CCModEnvD, 0, 127, 0, NOOPT},
     {"modenv_amount", "Mod Env Amount", "mod", kCC, n2x::ModEnvLevel, n2x::CCModEnvLevel, -64, 63, 64, NOOPT},
-    {"modenv_dest", "Mod Env Dest", "mod", kCC, n2x::ModEnvDest, n2x::CCModEnvDest, 0, 4, 0, OPT(o_medest)},
+    {"modenv_dest", "Mod Env Dest", "mod", kCC, n2x::ModEnvDest, n2x::CCModEnvDest, 0, 3, 0, OPT(o_medest)},
     // voice
     {"voice_mode", "Voice Mode", "voice", kCC, n2x::VoiceMode, n2x::CCVoiceMode, 0, 2, 0, OPT(o_mode)},
     {"unison", "Unison", "voice", kCC, n2x::Unison, n2x::CCUnison, 0, 1, 0, OPT(o_offon)},
     {"portamento", "Portamento", "voice", kCC, n2x::Portamento, n2x::CCPortamento, 0, 127, 0, NOOPT},
-    {"porta_auto", "Porta Auto", "voice", kCC, n2x::Auto, n2x::CCAuto, 0, 4, 0, OPT(o_auto)},
+    {"porta_auto", "Porta Auto", "voice", kCC, n2x::Auto, n2x::CCAuto, 0, 1, 0, OPT(o_offon)},
     {"octave", "Octave", "voice", kCC, n2x::OctaveShift, n2x::CCOctaveShift, -2, 2, 2, NOOPT},
     {"modwheel_dest", "Mod Wheel Dest", "voice", kCC, n2x::ModWheelDest, n2x::CCModWheelDest, 0, 4, 0, OPT(o_mwdest)},
     {"pressure_amount", "Pressure Amt", "voice", kMulti, n2x::SlotAChannelPressureAmount, -1, 0, 7, 0, NOOPT},
     {"pressure_dest", "Pressure Dest", "voice", kMulti, n2x::SlotAChannelPressureDest, -1, 0, 4, 0, OPT(o_prdest)},
+    {"pedal_amount", "Pedal Amt", "voice", kMulti, n2x::SlotAExpressionPedalAmount, -1, 0, 7, 0, NOOPT},
+    {"pedal_dest", "Pedal Dest", "voice", kMulti, n2x::SlotAExpressionPedalDest, -1, 0, 4, 0, OPT(o_prdest)},
     // morph: how far velocity or the mod wheel moves each knob
     {"morph_cutoff", "Cutoff", "morph", kDump, 28, -1, -128, 127, 0, NOOPT},
     {"morph_resonance", "Resonance", "morph", kDump, 29, -1, -128, 127, 0, NOOPT},
@@ -209,6 +212,7 @@ const Param g_params[] = {
     {"bend_range", "Bend Range", "global", kGlobal, n2x::BendRange, -1, 0, 8, 0, NOOPT},
     {"unison_detune", "Unison Detune", "global", kGlobal, n2x::UnisonDetune, -1, 0, 8, 0, NOOPT},
     {"master_tune", "Master Tune", "global", kGlobal, n2x::MasterTune, -1, -99, 99, 0, NOOPT},
+    {"out_mode", "Output Mode", "global", kNibble, n2x::OutModeABCD, -1, 0, 3, 0, OPT(o_outmode)},
 };
 const int NPARAMS = int(sizeof(g_params) / sizeof(g_params[0]));
 
@@ -267,7 +271,7 @@ void parse_bank(const std::vector<uint8_t> &d, Bank &bank) {
         const bool single = State::isSingleDump(msg);
         if (!single && !State::isMultiDump(msg)) continue;
         const uint8_t type = msg[n2x::IdxMsgType];
-        if (single && type > n2x::SingleDumpBankD) continue;                   // a request, not a dump
+        if (single && type > 10) continue;                                     // a request, not a dump (banks are 1 to 10)
         if (!single && (type < n2x::MultiDumpBankEditBuffer || type >= n2x::MultiRequestBankEditBuffer)) continue;
         Sound s;
         s.multi = !single;
@@ -394,6 +398,10 @@ struct Instance {
     bool multiDirty = false;
     int64_t busyUntil = 0; // a dump is on its way into the synth until then
 
+    // what the synth sent (dumps it was asked for), under outMu
+    std::mutex outMu;
+    std::vector<std::vector<uint8_t>> midiOut;
+
     // the library, under mu
     std::vector<Bank> banks;
     int bank = 0, preset = 0;
@@ -513,6 +521,60 @@ void load_sound(Instance *in, const Sound &s) {
     }
 }
 
+// ---- the sounds in the firmware -------------------------------------------------
+// Program banks 4 to 9 and performance banks 1 to 3 are part of the firmware.
+// The synth sends any of them when asked (a dump request), so on its first
+// start the module asks for them all, one at a time, and writes them into
+// banks/ as ordinary bank files. That takes about two minutes of the synth's
+// MIDI and happens once; the synth plays meanwhile.
+//
+// A request's type is the dump's plus 14 for a program, plus 10 for a
+// performance. Type 20 is also "send all controllers" for slots 0 to 3, so
+// the first four programs of bank 5 cannot be asked for.
+
+struct RomRead {
+    struct Ask { uint8_t type, spec, wantType; uint32_t wantSize; int file; };
+    std::vector<Ask> todo;
+    std::vector<std::vector<uint8_t>> files; // the dumps of each bank file, one after the other
+    std::vector<std::string> names;
+    size_t at = 0;
+    int64_t sentAt = 0;
+    bool waiting = false, active = false;
+    int got = 0;
+};
+
+bool has_rom_banks(const std::string &dir) {
+    DIR *d = opendir(dir.c_str());
+    if (!d) return false;
+    bool found = false;
+    while (dirent *e = readdir(d))
+        if (!strncmp(e->d_name, "ROM ", 4)) found = true;
+    closedir(d);
+    return found;
+}
+
+void rom_read_plan(RomRead &r) {
+    for (int bank = 4; bank <= 9; bank++) { // dump types 5 to 10
+        char n[64];
+        snprintf(n, sizeof(n), "ROM Programs %d", bank);
+        r.names.push_back(n);
+        r.files.emplace_back();
+        for (int p = 0; p < 99; p++) {
+            if (bank == 5 && p < 4) continue;
+            r.todo.push_back({uint8_t(15 + bank), uint8_t(p), uint8_t(1 + bank), n2x::g_singleDumpSize, int(r.files.size()) - 1});
+        }
+    }
+    for (int bank = 1; bank <= 3; bank++) { // dump types 32 to 34
+        char n[64];
+        snprintf(n, sizeof(n), "ROM Performances %d", bank);
+        r.names.push_back(n);
+        r.files.emplace_back();
+        for (int p = 0; p < 100; p++)
+            r.todo.push_back({uint8_t(41 + bank), uint8_t(p), uint8_t(31 + bank), n2x::g_multiDumpSize, int(r.files.size()) - 1});
+    }
+    r.active = true;
+}
+
 void set_status(Instance *in, const char *s) {
     std::lock_guard<std::mutex> l(in->mu);
     snprintf(in->status, sizeof(in->status), "%s", s);
@@ -567,6 +629,10 @@ void emu_main(Instance *in) {
     in->loading = 0;
     plog("running, ROM %s", romName.c_str());
 
+    std::vector<synthLib::SMidiEvent> midiEv;
+    RomRead rr;
+    mkdir((in->dir + "/banks").c_str(), 0755);
+    if (!has_rom_banks(in->dir + "/banks")) rom_read_plan(rr);
     float buf[4][BLOCK];
     synthLib::TAudioInputs ins{};
     synthLib::TAudioOutputs outs{};
@@ -578,6 +644,24 @@ void emu_main(Instance *in) {
             const int64_t t0 = now_us();
             for (auto &b : buf) memset(b, 0, sizeof(b));
             in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
+            midiEv.clear();
+            in->plugin->getMidiOut(midiEv);
+            for (auto &e : midiEv) {
+                if (e.sysex.size() < 8) continue;
+                if (rr.active && rr.waiting) {
+                    const auto &a = rr.todo[rr.at];
+                    if (e.sysex.size() == a.wantSize && e.sysex[n2x::IdxMsgType] == a.wantType && e.sysex[n2x::IdxMsgSpec] == a.spec) {
+                        auto &f = rr.files[size_t(a.file)];
+                        f.insert(f.end(), e.sysex.begin(), e.sysex.end());
+                        rr.got++;
+                        rr.waiting = false;
+                        rr.at++;
+                        continue;
+                    }
+                }
+                std::lock_guard<std::mutex> l(in->outMu);
+                if (in->midiOut.size() < 2048) in->midiOut.emplace_back(e.sysex.begin(), e.sysex.end());
+            }
             float g;
             {
                 // not worth a lock: an int read
@@ -601,6 +685,47 @@ void emu_main(Instance *in) {
         if (in->mu.try_lock()) {
             flush_dumps(in, false);
             in->mu.unlock();
+        }
+        if (rr.active) {
+            const int64_t t = now_us();
+            if (rr.waiting && t - rr.sentAt > 1500000) { // no answer: on to the next
+                rr.waiting = false;
+                rr.at++;
+            }
+            if (!rr.waiting && rr.at < rr.todo.size()) {
+                const auto &a = rr.todo[rr.at];
+                const uint8_t req[] = {0xf0, n2x::IdClavia, n2x::DefaultDeviceId, n2x::IdN2X, a.type, a.spec, 0xf7};
+                send_sysex(in, req, sizeof(req));
+                rr.waiting = true;
+                rr.sentAt = t;
+                if (rr.at % 16 == 0) {
+                    char st[96];
+                    snprintf(st, sizeof(st), "Reading the firmware's sounds: %d of %d", int(rr.at), int(rr.todo.size()));
+                    set_status(in, st);
+                }
+            } else if (!rr.waiting) {
+                rr.active = false;
+                std::vector<Bank> found;
+                for (size_t i = 0; i < rr.files.size(); i++) {
+                    if (rr.files[i].empty()) continue;
+                    const std::string path = in->dir + "/banks/" + rr.names[i] + ".syx";
+                    if (FILE *f = fopen((path + ".part").c_str(), "wb")) {
+                        const bool ok = fwrite(rr.files[i].data(), 1, rr.files[i].size(), f) == rr.files[i].size();
+                        fclose(f);
+                        if (ok) rename((path + ".part").c_str(), path.c_str());
+                    }
+                    Bank b;
+                    b.name = rr.names[i];
+                    parse_bank(rr.files[i], b);
+                    if (!b.sounds.empty()) found.push_back(std::move(b));
+                }
+                plog("read %d of %d sounds from the firmware", rr.got, int(rr.todo.size()));
+                std::lock_guard<std::mutex> l(in->mu);
+                for (auto &b : found)
+                    if (in->banks.size() < 64) in->banks.push_back(std::move(b));
+                snprintf(in->status, sizeof(in->status), "Ready");
+                rr = RomRead();
+            }
         }
         timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -688,6 +813,9 @@ int shown(const Instance *in, const Param *p) {
         raw = m_get(in->multi, p->index);
         if (p->min < 0) raw = int8_t(uint8_t(raw));
         break;
+    case kNibble:
+        raw = m_get(in->multi, p->index) & 0x0f;
+        break;
     }
     int v = raw - p->offset;
     return v < p->min ? p->min : (v > p->max ? p->max : v);
@@ -758,6 +886,13 @@ void apply_param(Instance *in, const Param *p, int v) {
         m_set(in->multi, p->index, uint8_t(v));
         in->multiDirty = true;
         break;
+    case kNibble: {
+        const uint8_t old = m_get(in->multi, p->index);
+        if ((old & 0x0f) == v) return;
+        m_set(in->multi, p->index, uint8_t((old & 0xf0) | v));
+        in->multiDirty = true;
+        break;
+    }
     }
 }
 
@@ -848,6 +983,21 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         in->multiDirty = true;
     } else if (!strcmp(key, "gain")) {
         in->gain = std::max(1, std::min(200, atoi(val)));
+    } else if (!strcmp(key, "debug_midi_send")) { // hex: one message, straight to the synth
+        std::vector<uint8_t> m;
+        for (const char *c = val; c[0] && c[1]; c += 2) {
+            if (*c == ' ') { c--; continue; }
+            const int a = hexval(c[0]), b = hexval(c[1]);
+            if (a < 0 || b < 0) return;
+            m.push_back(uint8_t(a << 4 | b));
+        }
+        if (m.size() >= 2 && m[0] == 0xf0) {
+            send_sysex(in, m.data(), m.size());
+        } else if (m.size() >= 2) {
+            synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, m[0], m[1], m.size() > 2 ? m[2] : 0);
+            synthLib::MidiTranslator::createPacketSkipTranslation(ev);
+            send(in, ev);
+        }
     } else if (!strcmp(key, "all_notes_off")) {
         synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, 0xb0, 123, 0);
         send(in, ev);
@@ -889,9 +1039,9 @@ int build_hierarchy(char *buf, int len) {
         {"filter", "Filter", "\"cutoff\",\"resonance\",\"filter_env\",\"filter_type\",\"flt_attack\",\"flt_decay\",\"flt_sustain\",\"flt_release\""},
         {"amp", "Amplifier", "\"amp_attack\",\"amp_decay\",\"amp_sustain\",\"amp_release\",\"amp_gain\""},
         {"mod", "Modulation", "\"lfo1_rate\",\"lfo1_amount\",\"lfo1_wave\",\"lfo1_dest\",\"lfo2_rate\",\"lfo2_amount\",\"lfo2_dest\",\"modenv_amount\""},
-        {"voice", "Voice", "\"voice_mode\",\"unison\",\"portamento\",\"porta_auto\",\"octave\",\"modwheel_dest\",\"pressure_amount\",\"pressure_dest\""},
+        {"voice", "Voice", "\"voice_mode\",\"unison\",\"portamento\",\"porta_auto\",\"octave\",\"modwheel_dest\",\"pressure_amount\",\"pedal_amount\""},
         {"morph", "Morph", "\"morph_cutoff\",\"morph_resonance\",\"morph_filter_env\",\"morph_mix\",\"morph_fm\",\"morph_pw\",\"morph_lfo1_amount\",\"morph_gain\""},
-        {"global", "Synth", "\"bend_range\",\"unison_detune\",\"master_tune\",\"gain\""},
+        {"global", "Synth", "\"bend_range\",\"unison_detune\",\"master_tune\",\"out_mode\",\"gain\""},
     };
     int off = 0;
     AP("{\"modes\":null,\"levels\":{\"root\":{\"list_param\":\"preset\",\"count_param\":\"preset_count\","
@@ -929,6 +1079,17 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     if (!strcmp(key, "debug_info"))
         return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u", in->underruns.load(), in->blockUs.load(),
                         in->blockMaxUs.exchange(0), in->wr.load() - in->rd.load());
+    if (!strcmp(key, "debug_midi_out")) { // what the synth sent since the last read: count, sizes, the first bytes of each
+        std::lock_guard<std::mutex> l(in->outMu);
+        int off = 0;
+        AP("%d:", int(in->midiOut.size()));
+        for (auto &m : in->midiOut) {
+            AP(" [%d]", int(m.size()));
+            for (size_t i = 0; i < m.size() && i < 12; i++) AP("%02x", m[i]);
+        }
+        in->midiOut.clear();
+        return off < len ? off : -1;
+    }
     std::lock_guard<std::mutex> l(in->mu);
     const Bank &b = in->banks[size_t(in->bank)];
     if (!strcmp(key, "loading_status")) return snprintf(buf, size_t(len), "%s", in->status);
