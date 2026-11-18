@@ -413,6 +413,7 @@ struct Instance {
     int gain = 100; // percent
     bool singleDirty[4] = {false, false, false, false};
     bool multiDirty = false;
+    std::atomic<uint64_t> held[2] = {{0}, {0}}; // keys down now, a bit a note (release_held)
     int64_t busyUntil = 0; // a dump is on its way into the synth until then
     std::string slotName[4]; // the sound each slot was given (the Nord keeps no names)
 
@@ -812,13 +813,36 @@ void v2_destroy(void *instance) {
     delete in;
 }
 
+// A slot is about to leave the layer: let go of what it plays first. A slot
+// that is off listens on no channel, so the key's own note-off would never
+// reach it, and the note played on for ever. Sent before the multi that
+// switches the slot off (flush_dumps waits for the synth; this does not).
+void release_held(Instance *in) {
+    synthLib::SMidiEvent pedal(synthLib::MidiEventSource::Host, 0xb0, 64, 0);
+    send(in, pedal);
+    for (int w = 0; w < 2; w++) {
+        uint64_t bits = in->held[w].load();
+        for (int b = 0; b < 64; b++)
+            if (bits & (uint64_t(1) << b)) {
+                synthLib::SMidiEvent off(synthLib::MidiEventSource::Host, 0x80, uint8_t(w * 64 + b), 0);
+                send(in, off);
+            }
+    }
+}
+
 void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || len < 2 || in->loading.load()) return;
     const uint8_t st = msg[0] & 0xf0;
     const uint8_t d1 = msg[1] & 0x7f, d2 = len > 2 ? (msg[2] & 0x7f) : 0;
     switch (st) {
-    case 0x80: case 0x90: case 0xa0: case 0xd0: case 0xe0:
+    case 0x90: case 0x80: {
+        const uint64_t bit = uint64_t(1) << (d1 & 63);
+        if (st == 0x90 && d2 > 0) in->held[d1 >> 6].fetch_or(bit);
+        else in->held[d1 >> 6].fetch_and(~bit);
+        break;
+    }
+    case 0xa0: case 0xd0: case 0xe0:
         break;
     case 0xb0:
         // The wheel, the pedals and the panic controllers only: every other
@@ -1017,13 +1041,16 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         // As the synth's slot buttons: a slot of the layer takes the panel and
         // the layer stays; any other slot plays alone, and the others' lights
         // go out. (Switching a slot on beside it is slot_a..slot_d's.)
-        if (!in->on[n])
+        if (!in->on[n]) {
+            release_held(in);
             for (int i = 0; i < 4; i++) in->on[i] = i == n;
+        }
         in->multiDirty = true;
     } else if (!strncmp(key, "slot_", 5) && key[5] >= 'a' && key[5] <= 'd' && !key[6]) {
         const int i = key[5] - 'a';
         const bool v = !strcasecmp(val, "on") || atoi(val) != 0;
         if (in->on[i] == v) return;
+        if (!v) release_held(in);
         in->on[i] = v;
         if (!in->on[0] && !in->on[1] && !in->on[2] && !in->on[3]) in->on[i] = true; // never all off
         if (!in->on[in->slot]) // the panel never edits a slot that is silent
