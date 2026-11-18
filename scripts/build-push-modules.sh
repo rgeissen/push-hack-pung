@@ -54,6 +54,8 @@ EOF
     scripts/fetch-deps.sh
 fi
 scripts/sync-local-sources.sh # scripts/local-sources.json: forks built from their working copy
+scripts/sync-native.sh        # native/catalog.json: Pung's own modules; writes build/catalog-merged.json
+CATALOG=build/catalog-merged.json
 
 rm -rf build/recipes
 python3 scripts/gen-recipes.py "$CATALOG" build/modsrc build/recipes
@@ -64,4 +66,4 @@ docker run --rm --platform linux/amd64 --network none \
     -v "$PWD/$OUT/modules:/out" -v "$PWD/$OUT/logs:/logs" \
     "$IMAGE" bash /s/build-all.sh "$@"
 docker run --rm --platform linux/amd64 --network none -v "$PWD:/w" -v "$SCHWUNG:/schwung:ro" -w /w "$IMAGE" \
-    python3 scripts/package-push-modules.py /schwung/module-catalog.json build/modsrc "$OUT"
+    python3 scripts/package-push-modules.py build/catalog-merged.json build/modsrc "$OUT"

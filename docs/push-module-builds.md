@@ -21,6 +21,9 @@ Output, in `build/push-modules/`:
 | `modules/<subdir>/<id>/` | the installed tree |
 | `logs/<id>.log`, `logs/status.tsv` | each module's build log |
 
+Modules that are not in Schwung's catalog at all, written for the Push only, are **Pung-native**:
+`native/`, `docs/NATIVE-MODULES.md`. They go through the same steps with a hand recipe.
+
 ## How a module is built
 
 A module repo's own `scripts/build.sh` is **read, never run**. Those scripts

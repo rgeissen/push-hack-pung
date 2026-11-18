@@ -149,6 +149,10 @@ def script_text(repo, mdir):
 
 def gen(m):
     mid = m["id"]
+    if m.get("native"):
+        # a Pung-native module (native/catalog.json): built by its hand recipe
+        return {"id": mid, "status": "skip", "repo": m["modsrc"],
+                "why": "a Pung-native module without scripts/recipes/%s.sh" % mid}
     repo_name = m["github_repo"].split("/")[1]
     repo = os.path.join(modsrc, repo_name)
     mj = module_json(repo, mid)

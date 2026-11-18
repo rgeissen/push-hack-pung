@@ -146,7 +146,10 @@ for mid, m in sorted(cat.items()):
         "component_type": m["component_type"], "install_subdir": sub,
         "description": m.get("description", ""), "author": m.get("author", ""),
         "asset": asset, "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
-        "source": {"github_repo": FORKS.get(m["github_repo"].split("/")[1], m["github_repo"]), "commit": commit(repo)},
+        # a Pung-native module is built from this repository (native/<id>)
+        "source": ({"github_repo": m["github_repo"], "commit": commit("."), "modsrc": m["modsrc"], "native": True}
+                   if m.get("native") else
+                   {"github_repo": FORKS.get(m["github_repo"].split("/")[1], m["github_repo"]), "commit": commit(repo)}),
         "requires": m.get("requires", ""), "requires_modules": m.get("requires_modules", []),
     })
     built.append(mid)

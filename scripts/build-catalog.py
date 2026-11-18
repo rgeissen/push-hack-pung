@@ -66,6 +66,12 @@ try:
     SCHWUNG_TAXONOMY = _sc.get("taxonomy", {})
 except (OSError, ValueError, KeyError):
     pass
+# Pung-native modules (native/catalog.json) carry their category and tags themselves
+try:
+    for _x in json.load(open(os.path.join(ROOT, "native", "catalog.json")))["modules"]:
+        SCHWUNG_CAT[_x["id"]] = _x
+except (OSError, ValueError, KeyError):
+    pass
 RELEASES = {}
 _rel = os.path.join(WORK, "schwung-release-metadata.json")
 try:
@@ -181,6 +187,8 @@ def asset_dirs(mid, moddir_json):
 def git_files(src):
     """The files of a checkout as git knows them (tracked and new, not ignored),
     submodules included; None when src is not a git checkout."""
+    if not os.path.exists(os.path.join(src, ".git")):
+        return None  # a folder inside another checkout (a native module in build/): git would answer for that one
     try:
         top = subprocess.run(["git", "-C", src, "ls-files", "-co", "--exclude-standard", "-z"],
                              check=True, capture_output=True).stdout.split(b"\0")
@@ -349,7 +357,7 @@ mods = [m for m in index["modules"] if not args.ids or m["id"] in args.ids]
 for m in mods:
     mid = m["id"]
     repo = m["source"].get("github_repo", "")
-    src = os.path.join(MODSRC, repo.split("/")[-1]) if repo else ""
+    src = os.path.join(MODSRC, m["source"].get("modsrc") or repo.split("/")[-1]) if repo else ""
     if not src or not os.path.isdir(src):
         withheld.append((mid, "its source is not here (build/modsrc)"))
         continue

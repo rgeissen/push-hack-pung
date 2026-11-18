@@ -1,0 +1,40 @@
+{
+    "id": "nodalred",
+    "name": "Nodal Red 2X",
+    "abbrev": "NR",
+    "version": "0.1.0",
+    "description": "Clavia Nord Lead 2X emulator (Gearmulator Nodal Red 2x): 4 slots, 20 voices, morphing",
+    "author": "dsp56300/gearmulator (Pung module: rgeissen)",
+    "license": "GPL-3.0",
+    "origin": "pung",
+    "dsp": "dsp.so",
+    "api_version": 2,
+    "assets": [
+        {
+            "path": "roms",
+            "label": "ROM",
+            "extensions": [".bin", ".BIN"],
+            "description": "Requires a Nord Lead 2X firmware: one .bin file of 524,288 bytes (a dump of the synth's flash). The loader finds it by size and content, so the name is free.",
+            "hint": "The emulator runs two DSPs and a 68k at 98.2 kHz on its own threads, off the audio thread.",
+            "files": [
+                {"filename": "nordlead2x.bin", "label": "Nord Lead 2X firmware", "size": 524288, "required": true}
+            ]
+        },
+        {
+            "path": "banks",
+            "label": "Banks",
+            "extensions": [".syx", ".SYX", ".mid", ".MID"],
+            "description": "Program and performance banks as SysEx dumps. Each file becomes a bank in SOUNDS. The emulated synth has no sounds of its own.",
+            "optional": true,
+            "allowFolders": true
+        }
+    ],
+    "capabilities": {
+        "audio_out": true,
+        "audio_in": false,
+        "midi_in": true,
+        "midi_out": false,
+        "chainable": true,
+        "component_type": "sound_generator"
+    }
+}

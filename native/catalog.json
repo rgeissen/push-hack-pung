@@ -1,0 +1,26 @@
+{
+ "_about": "Pung-native modules: built for the Push only, from native/<id>/ in this repository. Same entry shape as Schwung's module-catalog.json, plus native, modsrc (the folder under build/modsrc) and deps (source trees a module is built with, synced beside it). docs/NATIVE-MODULES.md.",
+ "modules": [
+  {
+   "id": "nodalred",
+   "name": "Nodal Red 2X",
+   "description": "Clavia Nord Lead 2X emulator (Gearmulator Nodal Red 2x): 4 slots, 20 voices, morphing",
+   "author": "dsp56300/gearmulator (Pung module: rgeissen)",
+   "component_type": "sound_generator",
+   "github_repo": "rgeissen/push-hack-pung",
+   "default_branch": "main",
+   "native": true,
+   "modsrc": "pung-nodalred",
+   "subcategory": "polysynth",
+   "tags": ["needs-assets", "vintage-emulation"],
+   "requires": "A Nord Lead 2X firmware: one .bin file of 524,288 bytes in the module's roms/ folder",
+   "deps": {
+    "libs/gearmulator": {
+     "local": "../schwung-je8086/libs/gearmulator",
+     "repo": "https://github.com/rgeissen/gearmulator.git",
+     "commit": "e72bedbc94682c4e0eaf000513ce03d7c75e0375"
+    }
+   }
+  }
+ ]
+}
