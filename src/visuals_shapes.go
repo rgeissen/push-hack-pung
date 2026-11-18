@@ -146,8 +146,8 @@ func filterGroups(keys []string) []picGroup {
 	var out []picGroup
 	for _, p := range order {
 		q := by[p]
-		if q.cut < 0 || strings.Contains(p, "macro") {
-			continue // a macro's cutoff moves the filter by so much: it is not one
+		if q.cut < 0 || strings.Contains(p, "macro") || strings.Contains(p, "morph") {
+			continue // a macro's cutoff moves the filter by so much: it is not one. Nor is a morph range (Nodal Red)
 		}
 		g := picGroup{kind: "filter", keys: map[string]string{"cutoff": keys[q.cut]}, start: q.cut, end: q.cut + 1}
 		near := func(c int) bool { return c >= 0 && (c == g.start-1 || c == g.end) }

@@ -443,7 +443,7 @@
     });
     const out = [];
     by.forEach((q, p) => {
-      if (q.cut < 0 || p.includes("macro")) return;
+      if (q.cut < 0 || p.includes("macro") || p.includes("morph")) return;
       const g = { kind: "filter", keys: { cutoff: keys[q.cut] }, start: q.cut, end: q.cut + 1 };
       const near = (c) => c >= 0 && (c === g.start - 1 || c === g.end);
       if (near(q.res)) { g.keys.resonance = keys[q.res]; g.start = Math.min(g.start, q.res); g.end = Math.max(g.end, q.res + 1); }

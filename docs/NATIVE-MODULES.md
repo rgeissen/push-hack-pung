@@ -1,8 +1,8 @@
 # Pung-native modules
 
-Status: 2026-11-18. The first one, Nodal Red 2X, builds, packages, loads in Pung's host and plays on
-the Push in a test harness, with the firmware. It has not run inside Live yet, and it is not in the
-published catalog.
+Status: 2026-11-18. The first one, Nodal Red 2X, runs as a device in Live on a Push 3, with the
+firmware and Clavia's factory library: notes, SOUNDS with its banks and names, the parameter pages, and
+its state across a restart of Pung. It is not in the published catalog yet.
 
 ## Two kinds of module
 
@@ -38,6 +38,12 @@ It is not a new plugin format. Only where the source lives and what it may assum
 3. **Keep `dsp.so` unloadable:** `-fno-gnu-unique`, `-Wl,--exclude-libs,ALL`, static libstdc++.
 4. **No firmware in the package.** ROMs are the user's; `module.json` `assets` says which files.
 5. **Ship every licence text** of what is linked in, in `licenses/`.
+6. **The parameter list is fixed once released.** Live keeps a device by its class, and the class is
+   made from `chain_params`. Taking a parameter out (Nodal Red's bank knob, before its release) made the
+   device vanish from the open Set at Live's next start.
+7. **Sounds by the contract:** a bank chooser is a level with `items_param` and `select_param`, and the
+   list answers `preset_names` (every name of the bank) and `preset_name_<n>`. Then SOUNDS shows banks and
+   names without loading a sound. A bank as a plain knob gives a list of one bank.
 
 ## Layout
 
@@ -118,9 +124,16 @@ a block and mapped it again; another thread's `mmap` could take the address in b
 DSP threads. `native/nodalred/patches/0001-mmu-remap-atomically.patch` replaces the mapping in one step:
 18 of 18 shutdowns clean. The patch is applied by the recipe and has not been sent upstream.
 
+### In Live on the Push, 2026-11-18
+
+Loaded on a MIDI track through the Remote Script. Notes sound (-14 dB for a four-note chord), the audio
+thread's part takes 0.06 to 0.6 ms a block, no late blocks while playing. SOUNDS lists six banks and a
+bank's 99 names; a sound auditioned and cancelled comes back. The seven parameter pages draw with Pung's
+standard pictures (filter curve, envelopes). An edit and the chosen sound survive a restart of Pung.
+
 ### Not verified yet
 
-- Inside Live: a device on a track, the Push's screens, SOUNDS, a saved Set.
+- A Set saved in Live and opened again.
 - The option names of the LFO waves and destinations, the voice modes, the mod envelope and mod wheel
   destinations: written from the Nord Lead 2 documentation as remembered, to be checked by ear.
 - Four slots layered at full level clip; whether the default output gain should be lower.

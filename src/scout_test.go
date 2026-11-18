@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -122,5 +124,26 @@ func TestBankParamsAndTheirNamesKey(t *testing.T) {
 	}
 	if one := lib.listBank(presetList{List: "preset"}, &factoryView{Bank: "Bank A"}); one != lib.listBank(presetList{List: "preset"}, &factoryView{Bank: "Bank B"}) {
 		t.Fatal("a list with no bank parameter keyed by its bank's name")
+	}
+}
+
+// A catalog module is a link to its folder: its key must follow the link, or
+// an update is never probed again.
+func TestScreenKeyFollowsALinkedModule(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	os.MkdirAll(real, 0o755)                                                  //nolint:errcheck
+	os.WriteFile(filepath.Join(real, "dsp.so"), []byte("one"), 0o644)         //nolint:errcheck
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip(err)
+	}
+	a := screenKey(ModuleInfo{ID: "x", Dir: link})
+	os.WriteFile(filepath.Join(real, "dsp.so"), []byte("another build"), 0o644) //nolint:errcheck
+	if b := screenKey(ModuleInfo{ID: "x", Dir: link}); a == b {
+		t.Fatal("the key of a linked module did not change with its files")
+	}
+	if screenKey(ModuleInfo{ID: "x", Dir: link}) != screenKey(ModuleInfo{ID: "x", Dir: real}) {
+		t.Fatal("a module's key differs by how its folder is reached")
 	}
 }

@@ -817,7 +817,7 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         if (n < 0 || n >= int(b.sounds.size())) return;
         in->preset = n;
         load_sound(in, b.sounds[size_t(n)]);
-    } else if (!strcmp(key, "bank_index")) {
+    } else if (!strcmp(key, "bank_index") || !strcmp(key, "bank_select")) {
         int n = -1;
         for (size_t i = 0; i < in->banks.size(); i++)
             if (in->banks[i].name == val) n = int(i);
@@ -828,7 +828,8 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         }
         if (n < 0 || n >= int(in->banks.size()) || n == in->bank) return;
         in->bank = n;
-        in->preset = 0;
+        in->preset = 0; // as on the synth: a bank's first sound, so the list and the sound agree
+        load_sound(in, in->banks[size_t(n)].sounds[0]);
     } else if (!strcmp(key, "slot")) {
         int n = -1;
         for (int i = 0; i < 4; i++)
@@ -863,9 +864,7 @@ int build_chain_params(Instance *in, char *buf, int len) {
     int off = 0;
     AP("[{\"key\":\"preset\",\"name\":\"Sound\",\"type\":\"int\",\"min\":0,\"max\":%d},",
        std::max(0, int(in->banks[size_t(in->bank)].sounds.size()) - 1));
-    AP("{\"key\":\"bank_index\",\"name\":\"Bank\",\"type\":\"enum\",\"options\":[");
-    for (size_t i = 0; i < in->banks.size(); i++) AP("%s\"%s\"", i ? "," : "", in->banks[i].name.c_str());
-    AP("]},{\"key\":\"slot\",\"name\":\"Edit Slot\",\"type\":\"enum\",\"options\":[\"A\",\"B\",\"C\",\"D\"]}");
+    AP("{\"key\":\"slot\",\"name\":\"Edit Slot\",\"type\":\"enum\",\"options\":[\"A\",\"B\",\"C\",\"D\"]}");
     for (int i = 0; i < 4; i++)
         AP(",{\"key\":\"slot_%c\",\"name\":\"Slot %c\",\"type\":\"enum\",\"options\":[\"Off\",\"On\"]}", 'a' + i, 'A' + i);
     AP(",{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}");
@@ -898,11 +897,14 @@ int build_hierarchy(char *buf, int len) {
     AP("{\"modes\":null,\"levels\":{\"root\":{\"list_param\":\"preset\",\"count_param\":\"preset_count\","
        "\"name_param\":\"preset_name\",\"children\":null,"
        "\"knobs\":[\"cutoff\",\"resonance\",\"filter_env\",\"mix\",\"amp_attack\",\"amp_release\",\"lfo1_amount\",\"slot\"],"
-       "\"params\":[{\"key\":\"bank_index\",\"label\":\"Bank\"},{\"key\":\"slot\",\"label\":\"Edit Slot\"},"
+       "\"params\":[{\"level\":\"banks\",\"label\":\"Bank\"},{\"key\":\"slot\",\"label\":\"Edit Slot\"},"
        "{\"key\":\"slot_a\",\"label\":\"Slot A\"},{\"key\":\"slot_b\",\"label\":\"Slot B\"},"
        "{\"key\":\"slot_c\",\"label\":\"Slot C\"},{\"key\":\"slot_d\",\"label\":\"Slot D\"}");
     for (auto &lv : levels) AP(",{\"level\":\"%s\",\"label\":\"%s\"}", lv.id, lv.label);
     AP("]}");
+    // the bank chooser: a row per bank file, picking one returns to the list
+    AP(",\"banks\":{\"label\":\"Bank\",\"items_param\":\"bank_list\",\"select_param\":\"bank_select\","
+       "\"navigate_to\":\"root\",\"children\":null,\"knobs\":[],\"params\":[]}");
     for (auto &lv : levels) {
         AP(",\"%s\":{\"label\":\"%s\",\"children\":null,\"knobs\":[%s],\"params\":[", lv.id, lv.label, lv.knobs);
         bool first = true;
@@ -937,7 +939,27 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     if (!strcmp(key, "preset_count")) return snprintf(buf, size_t(len), "%d", int(b.sounds.size()));
     if (!strcmp(key, "preset_name"))
         return snprintf(buf, size_t(len), "%s", in->preset < int(b.sounds.size()) ? b.sounds[size_t(in->preset)].name.c_str() : "");
-    if (!strcmp(key, "bank_index")) return snprintf(buf, size_t(len), "%d", in->bank);
+    if (!strcmp(key, "bank_index") || !strcmp(key, "bank_select")) return snprintf(buf, size_t(len), "%d", in->bank);
+    if (!strcmp(key, "bank_list")) {
+        int off = 0;
+        AP("[");
+        for (size_t i = 0; i < in->banks.size(); i++) AP("%s\"%s\"", i ? "," : "", in->banks[i].name.c_str());
+        AP("]");
+        return off < len ? off : -1;
+    }
+    // every name of the bank at once, and any one of them: SOUNDS shows a
+    // bank's names without loading its sounds
+    if (!strcmp(key, "preset_names")) {
+        int off = 0;
+        AP("[");
+        for (size_t i = 0; i < b.sounds.size(); i++) AP("%s\"%s\"", i ? "," : "", b.sounds[i].name.c_str());
+        AP("]");
+        return off < len ? off : -1;
+    }
+    if (!strncmp(key, "preset_name_", 12)) {
+        const int i = atoi(key + 12);
+        return snprintf(buf, size_t(len), "%s", i >= 0 && i < int(b.sounds.size()) ? b.sounds[size_t(i)].name.c_str() : "");
+    }
     if (!strcmp(key, "bank_count")) return snprintf(buf, size_t(len), "%d", int(in->banks.size()));
     if (!strcmp(key, "bank_name")) return snprintf(buf, size_t(len), "%s", b.name.c_str());
     if (!strcmp(key, "slot")) return snprintf(buf, size_t(len), "%d", in->slot);

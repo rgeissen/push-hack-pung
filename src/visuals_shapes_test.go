@@ -42,6 +42,7 @@ func TestPictureGroups(t *testing.T) {
 		{"an osc freq is no cutoff", []string{"osc1_freq", "osc1_res"}, ""},
 		{"eq band", []string{"lm_freq", "lm_gain", "lm_q"}, ""},
 		{"a macro is no filter", []string{"macro_cutoff", "macro_resonance"}, ""},
+		{"a morph range is no filter", []string{"morph_cutoff", "morph_resonance", "morph_filter_env"}, ""},
 		{"mode is not a filter's", []string{"cutoff", "mode"}, ""},
 		{"two filters", []string{"filter1_cutoff", "filter1_resonance", "filter2_cutoff", "filter2_resonance"}, "filter[0,2) filter[2,4)"},
 		// LFOs

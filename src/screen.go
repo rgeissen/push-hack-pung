@@ -73,11 +73,19 @@ func screenKey(m ModuleInfo) string {
 	// published less), probe it again
 	h := fnv.New64a()
 	fmt.Fprint(h, buildVersion, "/p", probeFormat)
-	filepath.WalkDir(m.Dir, func(p string, e fs.DirEntry, err error) error { //nolint:errcheck
+	// A module installed from the catalog is a link to its folder, and
+	// WalkDir does not follow the link it starts at: the key was the same
+	// whatever the folder held, so an updated module was never probed again
+	// and kept the parameters of the version before (found 2026-11-18).
+	dir := m.Dir
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
+	filepath.WalkDir(dir, func(p string, e fs.DirEntry, err error) error { //nolint:errcheck
 		if err != nil {
 			return nil
 		}
-		rel, _ := filepath.Rel(m.Dir, p)
+		rel, _ := filepath.Rel(dir, p)
 		if e.IsDir() && rel != "." && strings.Count(rel, string(filepath.Separator)) >= 1 {
 			return filepath.SkipDir
 		}
