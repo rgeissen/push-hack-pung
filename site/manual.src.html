@@ -2,7 +2,7 @@
 {{TOPBAR}}
 
 <section class="band hero"><div class="wrap">
-  <p class="eyebrow">Pung 0.2.0 · Manual</p>
+  <p class="eyebrow">Pung 0.3.0 · Manual</p>
   <h1>Play Schwung modules on Push 3.</h1>
   <p class="lead">How to install Pung, find its devices in Push's browser, play and edit them on the Push screen, and add more modules. Everything here works from the Push, with an optional web page beside it.</p>
   <dl class="facts">
@@ -236,6 +236,22 @@
   </div>
   [[screen img="osi_filters" title="Osirus: the filters as a signal path" alt="Osirus's Filters screen: the oscillators run through filter 1, a saturation stage and filter 2 to the amp, with both filter responses drawn on the right; the six encoders' names and values below." up="0" upsel="0" lo="0-4" losel="0"]]Filter 1, the saturation stage and filter 2 in the order the sound passes them, which filter the encoders edit, and both responses. Captured from a Push 3.[[/screen]]
   [[screen img="minijv_macros" title="Mini-JV: the patch at a glance" alt="Mini-JV's Macros screen: a JV-880-style LCD reading #001 A.PIANO 1 with tones 1 and 2 on; four tone cards with their waves, levels, pans and envelopes; the eight macro encoders below." up="0" upsel="0" lo="0-4" losel="4"]]A full-screen view: the JV-880's display and its four tones, while the encoders play the patch's macros. Rendered by Pung's own code from a Push 3's device.[[/screen]]
+
+  <div class="prose">
+    <h3>Nodal Red 2X: a whole front panel</h3>
+    <p>Nodal Red 2X emulates the Clavia Nord Lead 2X. It is the first module written for the Push alone: it runs two emulated signal processors, more than a Move could. Its first page is the instrument's front panel in its red. Every knob stands where the sound has it, so you read a sound as you would on the hardware, and the eight encoders play what a hand reaches for first: the slot, cutoff, resonance, envelope amount, mix, attack, release and portamento.</p>
+  </div>
+  [[screen img="nord_panel" title="Nodal Red 2X: the panel" alt="Nodal Red 2X's Panel screen: a red front panel with the sections Slot, LFO 1, Mod Env, Oscillators, Amplifier and Filter, each knob drawn at its value, lit legends for the selectors, and the eight encoders' names and values on a dark red row below." up="0" upsel="0" lo="0-4" losel="0"]]The whole screen is the instrument. A Push 3 capture.[[/screen]]
+  <div class="prose">
+    <p>The Nord is played by its four <strong>slots</strong>. <strong>Edit Slot</strong> picks the slot the knobs edit, and Slot A to D switch slots into the layer; the letters A B C D at the top right of every screen show which are layered and which one you are editing. A sound from SOUNDS loads into the edited slot; a performance replaces all four.</p>
+    <p>Its other pages follow the panel's sections: both oscillators as waveforms, the filter with its envelope, the amplifier, and who modulates what. <strong>Morph</strong> is the Nord's own idea: velocity or the mod wheel moves many knobs at once, each by its own range. On the Morph pages every range is drawn on its knob: the line is where the knob stands, the arc is where full morph takes it.</p>
+  </div>
+  [[screen img="nord_mod" title="Who moves what" alt="Nodal Red 2X's Modulation screen: LFO 1, LFO 2, the mod envelope and the wheel on the left, their destinations on the right, joined by lines as thick as each amount." up="0" upsel="0" lo="0-4" losel="1"]]LFO 1 on the filter, the mod envelope on FM, the wheel on morph: each line is as thick as its amount.[[/screen]]
+  [[screen img="nord_morph" title="Morph, on the knobs" alt="Nodal Red 2X's Morph Filter page: seven dials for cutoff, resonance, envelope amount and the filter envelope's stages, each with a line at its value and a coloured arc to where full morph moves it." up="0" upsel="0" lo="0-4" losel="5"]]The filter's morph ranges. Turn an encoder to set how far velocity or the wheel takes that knob.[[/screen]]
+  <div class="prose">
+    <p><strong>Firmware and sounds.</strong> The module needs a Nord Lead 2X firmware file, which Pung never ships; add it on the module's card. On its first start it reads the 890 sounds stored inside that firmware and keeps them as banks. That takes about three minutes, once, and the sound stutters while it runs. The Nord stores no names: a bank file's sounds can be named by a text file of the same name beside it, one name a line. Sound banks of your own (<code>.syx</code>) go into the module's Banks folder.</p>
+    <p><strong>One at a time.</strong> The emulator needs most of a Push's processor. A second Nodal Red 2X in a Set stays silent and says it is waiting; it starts when the first one is removed.</p>
+  </div>
 </section>
 
 <section id="live">
@@ -310,7 +326,7 @@
   <ol class="steps">
     <li><div><p><strong>Install</strong> the modules you want. They install from the copy inside Pung's release, on the Push itself: nothing is downloaded.</p></div></li>
     <li><div><p><strong>Apply.</strong> New devices need one Live restart, because Live looks for plugins only when it starts. Apply saves nothing for you: save your Set first. Live restarts in about 30 seconds and recovers the Set. Install several modules, then Apply once.</p></div></li>
-    <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV and Osirus emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum.</p></div></li>
+    <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV, Osirus and Nodal Red 2X emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum.</p></div></li>
   </ol>
   <div class="prose"><p>A new Pung release brings new modules and new versions; the Modules page shows them (see <a href="#update">Updating</a>). Removing a module needs Apply too.</p><p>During the test phase, modules come inside Pung's releases. After it, Pung's module pipeline, which is already built, will serve them directly, so updates arrive as Schwung publishes them.</p></div>
 </section>
