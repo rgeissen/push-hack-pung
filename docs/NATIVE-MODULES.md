@@ -133,6 +133,8 @@ standard pictures (filter curve, envelopes). An edit and the chosen sound surviv
 
 ### Its screens (`native/nodalred/push_ui.js`)
 
+![The panel](shots/nodalred-panel.png)
+
 ![The Nord's screens on the Push](shots/nodalred-design.png)
 
 The Nord has no menus, its panel is the instrument, so the compartments are the panel's sections, each
@@ -140,12 +142,16 @@ with a picture of what its knobs do together:
 
 | Compartment | The picture |
 |---|---|
+| Panel | the whole Push screen as the instrument's front panel, in its red: every knob where the hardware has it, standing where the sound has it; the slot display and buttons, the selectors as lit legends. A takeover; the encoders play slot, cutoff, resonance, envelope amount, mix, attack, release, portamento |
 | Slots | the four slots as tiles over their on/off knobs: the sound, the waves, the filter, which are layered, which one the knobs edit |
 | Oscillators | both waveforms as they are (pulse width, the interval, hard sync, FM), and their mix or ring modulation |
 | Filter | the response of the chosen type, where the envelope takes the cutoff, the envelope |
 | Amplifier | the envelope, and how keys are played, in words |
 | Modulation | who moves what: LFO 1, LFO 2 or the arpeggiator, the mod envelope and the wheel on the left, their destinations on the right, a line as strong as the amount |
 | Morph | every morph range on its own knob: the line is where the knob stands, the arc where velocity or the wheel takes it |
+
+Every other screen carries the red as a bar at its left edge. The name on the panel is the emulator's
+(Nodal Red 2X), never Clavia's.
 
 Three things it needed:
 

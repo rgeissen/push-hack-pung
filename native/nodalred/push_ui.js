@@ -98,6 +98,134 @@ function frame(g, x, y, w, h, on) {
 }
 function waveIndex(v, k, n) { return Math.round(frac(v, k, 0) * (n - 1)); }
 
+var A0 = Math.PI * 0.75, SWEEP = Math.PI * 1.5; // a dial: from 7 o'clock, three quarters round
+
+// ---- PANEL: the instrument, in its red -----------------------------------------------
+// The whole Push screen as the Nord's front panel: every knob where the
+// hardware has it, standing where the sound has it. Nothing is hidden behind
+// a page: the sound can be read at a glance, as on the instrument itself. The
+// encoders play the eight things a hand reaches for first.
+var RED = "#b3101d", RED_DK = "#7d0b15", RED_ROW = "#3a060b", KNOB = "#141414", INK = "#ffffff", SOFT = "#f2b8bd", LED_ON = "#ffe08a", LED_OFF = "#6d0912";
+function pknob(g, v, key, cx, cy, label, bipolar) {
+  var f = frac(v, key, bipolar ? 0.5 : 0), a = A0 + f * SWEEP, on = hot(v, key);
+  if (on) g.dot(cx, cy, 11, INK);
+  g.dot(cx, cy, 8.5, KNOB);
+  g.line(cx + Math.cos(a) * 2, cy + Math.sin(a) * 2, cx + Math.cos(a) * 8, cy + Math.sin(a) * 8, 2, INK);
+  if (label) g.text(cx, cy + 19, label, on ? INK : SOFT, 0);
+}
+function section(g, x, w, title) {
+  g.fill(x, 22, w, 11, "black");
+  g.text(x + 5, 31, title, INK, -1);
+  g.fill(x, 33, 1, 66, RED_DK); g.fill(x + w - 1, 33, 1, 66, RED_DK);
+}
+function pill(g, x, y, s, lit) { // a selector's choice, as the lit LED's legend
+  var w = s.length * 7 + 8;
+  g.fill(x, y - 9, w, 12, lit ? "black" : RED_DK);
+  g.text(x + 4, y, s, lit ? LED_ON : SOFT, -1);
+  return x + w + 4;
+}
+function led(g, x, y, on) { g.dot(x, y, 2.5, on ? LED_ON : LED_OFF); }
+function short(s) {
+  return String(s).toUpperCase().replace("TRIANGLE", "TRI").replace("SOFT RANDOM", "SOFT RND").replace("RANDOM", "RND")
+    .replace("SQUARE", "SQR").replace("OSC 1+2", "OSC1+2").replace("LFO ", "").replace("ARP ", "");
+}
+function panel(g, v) {
+  var t = v.$touched || "", sl = slots(v);
+  g.fill(0, 0, 960, 104, RED);
+  // the name plate
+  g.value(10, 17, "NODAL RED 2X", INK, -1);
+  var nm = disp(v, "preset_name");
+  var nw = nm ? g.measure(nm.toUpperCase()) : 0;
+  g.text(950, 15, nm ? nm.toUpperCase() : "", INK, 1, 420);
+  g.text(950 - nw - 14, 15, (disp(v, "bank_name") || "").toUpperCase(), SOFT, 1, 300);
+  // slots: the display and the four buttons
+  section(g, 6, 140, "SLOT");
+  g.fill(12, 38, 60, 34, "black");
+  var e = disp(v, "slot") || "A";
+  g.value(42, 62, e, "#ff3b30", 0);
+  for (var i = 0; i < 4; i++) {
+    var s = sl[i] || { on: i === 0, edit: i === 0 }, bx = 12 + i * 33;
+    led(g, bx + 13, 79, s.on);
+    g.fill(bx, 84, 27, 12, s.edit ? INK : KNOB);
+    g.text(bx + 13, 94, "ABCD".charAt(i), s.edit ? "black" : (s.on ? INK : "#777777"), 0);
+  }
+  var mode = disp(v, "voice_mode").toUpperCase() || "POLY";
+  pill(g, 80, 48, mode, true);
+  pill(g, 80, 62, "UNISON", isOn(v, "unison"));
+  pill(g, 80, 76, "PORTA", frac(v, "portamento", 0) > 0.01);
+  // LFO 1 over LFO 2 / arpeggiator
+  section(g, 152, 150, "LFO 1");
+  pknob(g, v, "lfo1_rate", 172, 47, "", false); pknob(g, v, "lfo1_amount", 200, 47, "", false);
+  g.text(172, 66, "RATE", SOFT, 0); g.text(202, 66, "AMT", SOFT, 0);
+  var x = pill(g, 220, 44, short(disp(v, "lfo1_wave") || "TRI"), true);
+  pill(g, 220, 58, short(disp(v, "lfo1_dest") || ""), frac(v, "lfo1_amount", 0) > 0.005);
+  var d2 = disp(v, "lfo2_dest"), arp = d2 && !/^LFO |off/i.test(d2);
+  g.text(157, 78, arp ? "ARP" : "LFO 2", INK, -1);
+  pknob(g, v, "lfo2_rate", 216, 85, "", false); pknob(g, v, "lfo2_amount", 244, 85, "", false);
+  pill(g, 258, 89, short(d2 || "OFF").slice(0, 6), !!d2 && !/off/i.test(d2));
+  // the mod envelope, and the wheel
+  section(g, 308, 104, "MOD ENV");
+  pknob(g, v, "modenv_attack", 326, 47, "ATK", false); pknob(g, v, "modenv_decay", 356, 47, "DEC", false); pknob(g, v, "modenv_amount", 388, 47, "AMT", true);
+  pill(g, 314, 82, short(disp(v, "modenv_dest") || "NONE"), Math.abs(frac(v, "modenv_amount", 0.5) - 0.5) > 0.01);
+  g.text(314, 96, "WHEEL " + short(disp(v, "modwheel_dest") || ""), SOFT, -1, 94);
+  // oscillators
+  section(g, 418, 226, "OSCILLATORS");
+  var w1 = WAVES1[waveIndex(v, "osc1_wave", 4)], w2 = WAVES2[waveIndex(v, "osc2_wave", 4)];
+  g.fill(424, 38, 44, 20, "black"); g.fill(474, 38, 44, 20, "black");
+  g.poly(cached("p1|" + w1, function () { return wavePts(426, 39, 40, 18, function (q) { return osc(w1, q * 2, 0); }); }), 1.5, t === "osc1_wave" ? LED_ON : INK);
+  g.poly(cached("p2|" + w2, function () { return wavePts(476, 39, 40, 18, function (q) { return osc(w2, q * 2, 0); }); }), 1.5, t === "osc2_wave" ? LED_ON : INK);
+  g.text(446, 68, "OSC 1", SOFT, 0); g.text(496, 68, "OSC 2", SOFT, 0);
+  pknob(g, v, "osc2_semi", 542, 47, "SEMI", true); pknob(g, v, "osc2_fine", 574, 47, "FINE", true); pknob(g, v, "mix", 614, 47, "MIX", true);
+  pknob(g, v, "fm", 440, 83, "", false); g.text(456, 87, "FM", SOFT, -1);
+  pknob(g, v, "pw", 494, 83, "", false); g.text(510, 87, "PW", SOFT, -1);
+  led(g, 548, 83, isOn(v, "sync")); g.text(555, 87, "SYNC", isOn(v, "sync") ? INK : SOFT, -1);
+  led(g, 598, 83, isOn(v, "ringmod")); g.text(605, 87, "RING", isOn(v, "ringmod") ? INK : SOFT, -1);
+  // amplifier
+  section(g, 650, 138, "AMPLIFIER");
+  pknob(g, v, "amp_attack", 668, 47, "A", false); pknob(g, v, "amp_decay", 698, 47, "D", false); pknob(g, v, "amp_sustain", 728, 47, "S", false); pknob(g, v, "amp_release", 758, 47, "R", false);
+  pknob(g, v, "amp_gain", 668, 83, "", false); g.text(684, 87, "GAIN", SOFT, -1);
+  var oc = disp(v, "octave");
+  if (oc && oc !== "0") pill(g, 730, 87, "OCT " + oc, true);
+  // filter
+  section(g, 794, 160, "FILTER");
+  pknob(g, v, "flt_attack", 812, 47, "A", false); pknob(g, v, "flt_decay", 840, 47, "D", false); pknob(g, v, "flt_sustain", 868, 47, "S", false); pknob(g, v, "flt_release", 896, 47, "R", false);
+  pill(g, 912, 44, short(disp(v, "filter_type") || "LP 12").replace("NOTCH+LP", "NOTCH").replace(" ", ""), true);
+  led(g, 918, 56, isOn(v, "distortion")); g.text(925, 60, "DIST", isOn(v, "distortion") ? INK : SOFT, -1);
+  pknob(g, v, "cutoff", 810, 83, "", false); g.text(823, 87, "FREQ", SOFT, -1);
+  pknob(g, v, "resonance", 866, 83, "", false); g.text(879, 87, "RES", SOFT, -1);
+  pknob(g, v, "filter_env", 915, 83, "", false); g.text(928, 87, "ENV", SOFT, -1);
+}
+// the encoder row, in the panel's colours: names and values where the hands expect them
+function panelRow(g, v) {
+  var knobs = v.$knobs || [], t = v.$touched;
+  g.fill(0, 104, 960, 56, RED_ROW);
+  g.fill(0, 104, 960, 2, "black");
+  for (var i = 0; i < 8; i++) {
+    var k = knobs[i], cx = i * 120 + 60;
+    if (i) g.fill(i * 120, 112, 1, 42, RED_DK);
+    if (!k || !v[k]) continue;
+    var on = k === t;
+    if (on) g.fill(i * 120 + 4, 108, 112, 48, RED);
+    g.text(cx, 124, String(v[k].name).toUpperCase(), on ? INK : SOFT, 0, 112);
+    g.value(cx, 149, disp(v, k) || "--", INK, 0, 112);
+  }
+  var ps = v.$pages || [];
+  if (ps.length > 1) g.text(950, 31, String(ps[v.$page] || "").toUpperCase() + "  " + ((v.$page || 0) + 1) + "/" + ps.length, SOFT, 1);
+}
+push.compartment({
+  id: "panel", label: "Panel", takeover: true,
+  pages: [
+    { label: "Panel", keys: ["slot", "cutoff", "resonance", "filter_env", "mix", "amp_attack", "amp_release", "portamento"] }
+  ],
+  extra_keys: ["slots_info", "preset_name", "bank_name", "voice_mode", "unison", "lfo1_rate", "lfo1_amount", "lfo1_wave", "lfo1_dest",
+    "lfo2_rate", "lfo2_amount", "lfo2_dest", "modenv_attack", "modenv_decay", "modenv_amount", "modenv_dest", "modwheel_dest",
+    "osc1_wave", "osc2_wave", "osc2_semi", "osc2_fine", "fm", "pw", "sync", "ringmod", "amp_decay", "amp_sustain", "amp_gain",
+    "octave", "flt_attack", "flt_decay", "flt_sustain", "flt_release", "filter_type", "distortion"],
+  screen: function (g, v) { panel(g, v); panelRow(g, v); }
+});
+// every other screen carries the red at its left edge
+function red(g) { g.fill(0, 0, 3, g.h, RED); }
+
 // ---- SLOTS ---------------------------------------------------------------------------
 function slotTile(g, x, w, s, letter, touched) {
   var y = 2, h = 82;
@@ -125,6 +253,7 @@ push.compartment({
   ],
   extra_keys: ["slots_info", "preset_name", "bank_name"],
   screen: function (g, v) {
+    red(g);
     var sl = slots(v), t = v.$touched || "";
     // over the Edit Slot knob: the letter the panel edits
     var e = disp(v, "slot") || "A";
@@ -155,6 +284,7 @@ push.compartment({
   ],
   extra_keys: ["slots_info"],
   screen: function (g, v) {
+    red(g);
     var t = v.$touched || "";
     var w1 = WAVES1[waveIndex(v, "osc1_wave", 4)], w2 = WAVES2[waveIndex(v, "osc2_wave", 4)];
     var pw = frac(v, "pw", 0), semi = num(v, "osc2_semi", 0) + (num(v, "osc2_fine", 0)) / 64 * 0.5;
@@ -211,6 +341,7 @@ push.compartment({
   ],
   extra_keys: ["slots_info"],
   screen: function (g, v) {
+    red(g);
     var half = 480;
     g.filter(4, 2, half - 12, 82, { cutoff: "cutoff", resonance: "resonance", type: "filter_type" });
     // where the envelope takes the cutoff: a mark on the frequency axis
@@ -241,6 +372,7 @@ push.compartment({
   ],
   extra_keys: ["slots_info"],
   screen: function (g, v) {
+    red(g);
     var half = 480;
     g.envelope(4, 2, half - 12, 82, { attack: "amp_attack", decay: "amp_decay", sustain: "amp_sustain", release: "amp_release", labels: true });
     g.line(half, 6, half, 82, 1, "line");
@@ -284,6 +416,7 @@ push.compartment({
   ],
   extra_keys: ["slots_info"],
   screen: function (g, v) {
+    red(g);
     var t = v.$touched || "", srcX = 250, dstX = 640, rows = [12, 32, 52, 72];
     // destinations
     var used = [0, 0, 0, 0, 0, 0, 0];
@@ -336,7 +469,6 @@ push.compartment({
 // ---- MORPH: every range on its knob ---------------------------------------------------------
 // A range is in the knob's own steps (-128..127): at full morph the knob
 // stands at its value plus the range, kept on the dial.
-var A0 = Math.PI * 0.75, SWEEP = Math.PI * 1.5;
 function morphDial(g, col, v, key, base, steps) {
   var cx = col * 120 + 60, cy = 50, r = 27;
   var b = frac(v, base, 0), range = num(v, key, 0) / steps, to = Math.max(0, Math.min(1, b + range)), on = hot(v, key);
@@ -357,6 +489,7 @@ function morphPage(label, pairs) {
   return {
     label: "Morph " + label, keys: keys,
     screen: function (g, v) {
+    red(g);
       g.text(8, 12, "MORPH", "dim", -1);
       g.text(g.w - 84, 12, "LINE: THE KNOB   ARC: WHERE VELOCITY OR THE WHEEL TAKES IT", "dim", 1);
       for (var i = 0; i < pairs.length; i++) morphDial(g, i, v, keys[i], bases[i], pairs[i][1] || 127);
