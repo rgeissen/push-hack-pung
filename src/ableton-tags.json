@@ -37,6 +37,7 @@
     "nusaw":            ["Devices|Synthesizer|Virtual Analog"],
     "hera":             ["Devices|Synthesizer|Virtual Analog", "Devices|Vintage Emulation"],
     "jp8000":           ["Devices|Synthesizer|Virtual Analog", "Devices|Vintage Emulation"],
+    "nodalred":         ["Devices|Synthesizer|Virtual Analog", "Devices|Vintage Emulation"],
     "obxd":             ["Devices|Synthesizer|Virtual Analog", "Devices|Vintage Emulation"],
     "osirus":           ["Devices|Synthesizer|Virtual Analog", "Devices|Vintage Emulation"],
     "breakbeat":        ["Devices|Sampling", "Devices|Drums", "Devices|Generative"],
