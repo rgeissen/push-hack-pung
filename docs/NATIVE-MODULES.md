@@ -75,9 +75,14 @@ python3 scripts/build-catalog.py --base-url "" nodalred      # into the catalog 
   have a MIDI controller and are sent as one. The filter type and the 25 morph ranges exist only in a
   dump: the slot's single dump is sent, at most one every 120 ms. The 7 performance parameters send the
   multi dump.
-- **Sounds:** the emulated synth has none of its own. `banks/*.syx` (and `.mid`) are read at start; each
-  file is a bank, each program or performance dump in it a sound. A program loads into the edited slot, a
-  performance replaces all four.
+- **Sounds:** the emulated synth has none of its own. `banks/*.syx` are read at start; each file is a
+  bank, each program or performance dump in it a sound. A program loads into the edited slot, a
+  performance replaces all four. The Nord stores no names: `<file>.txt` beside a bank names its sounds,
+  one a line. Percussion kits (1063-byte dumps) are skipped.
+- **Clavia's factory library** (4 program banks, 100 performances, as `.syx`) was played through on the
+  Push, two notes per sound: 494 of 496 sound, the other two want the mod wheel. A sound change costs one
+  or two short underruns. Program banks 4 to 9 and performance banks 1 to 3 are in the firmware itself
+  and cannot be reached yet.
 - **Incoming controllers** other than the wheel, the pedals and all-notes-off are dropped: every other
   controller is a knob of the synth and would change the sound behind the parameters.
 
@@ -118,5 +123,4 @@ DSP threads. `native/nodalred/patches/0001-mmu-remap-atomically.patch` replaces 
 - Inside Live: a device on a track, the Push's screens, SOUNDS, a saved Set.
 - The option names of the LFO waves and destinations, the voice modes, the mod envelope and mod wheel
   destinations: written from the Nord Lead 2 documentation as remembered, to be checked by ear.
-- Real Nord Lead bank files (a synthetic bank was used).
 - Four slots layered at full level clip; whether the default output gain should be lower.

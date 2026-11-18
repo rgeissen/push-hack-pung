@@ -248,8 +248,8 @@ bool read_file(const std::string &path, std::vector<uint8_t> &out) {
 
 std::string trim(const std::string &s) {
     size_t a = 0, b = s.size();
-    while (a < b && (s[a] == ' ' || s[a] == 0)) a++;
-    while (b > a && (s[b - 1] == ' ' || s[b - 1] == 0)) b--;
+    while (a < b && (s[a] == ' ' || s[a] == 0 || s[a] == '\r')) a++;
+    while (b > a && (s[b - 1] == ' ' || s[b - 1] == 0 || s[b - 1] == '\r')) b--;
     return s.substr(a, b - a);
 }
 
@@ -308,7 +308,7 @@ void scan_banks(const std::string &dir, std::vector<Bank> &banks, int depth = 0)
         if (dot == std::string::npos) continue;
         std::string ext = n.substr(dot);
         for (auto &c : ext) c = char(tolower(c));
-        if (ext != ".syx" && ext != ".mid") continue;
+        if (ext != ".syx") continue;
         std::vector<uint8_t> data;
         if (!read_file(p, data)) continue;
         Bank b;
@@ -316,6 +316,23 @@ void scan_banks(const std::string &dir, std::vector<Bank> &banks, int depth = 0)
         for (auto &c : b.name)
             if (c == '"' || c == '\\' || c < 32) c = ' ';
         parse_bank(data, b);
+        // The Nord stores no names. "<file>.txt" beside a bank names its
+        // sounds, one a line, in the file's order.
+        std::vector<uint8_t> txt;
+        if (read_file(dir + "/" + n.substr(0, dot) + ".txt", txt)) {
+            size_t i = 0, at = 0;
+            while (at < txt.size() && i < b.sounds.size()) {
+                size_t e = at;
+                while (e < txt.size() && txt[e] != '\n') e++;
+                std::string name = trim(std::string(txt.begin() + long(at), txt.begin() + long(e)));
+                for (auto &c : name)
+                    if (c == '"' || c == '\\' || (unsigned char)c < 32) c = ' ';
+                if (name.size() > 40) name.resize(40);
+                if (!name.empty()) b.sounds[i].name = trim(name);
+                i++;
+                at = e + 1;
+            }
+        }
         if (!b.sounds.empty() && banks.size() < 64) banks.push_back(std::move(b));
     }
 }

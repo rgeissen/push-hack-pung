@@ -23,8 +23,8 @@
         {
             "path": "banks",
             "label": "Banks",
-            "extensions": [".syx", ".SYX", ".mid", ".MID"],
-            "description": "Program and performance banks as SysEx dumps. Each file becomes a bank in SOUNDS. The emulated synth has no sounds of its own.",
+            "extensions": [".syx", ".SYX", ".txt"],
+            "description": "Program and performance banks as SysEx files (.syx). Each file becomes a bank in SOUNDS. The Nord stores no names: a .txt file with the bank file's name gives its sounds names, one a line. The emulated synth has no sounds of its own.",
             "optional": true,
             "allowFolders": true
         }
