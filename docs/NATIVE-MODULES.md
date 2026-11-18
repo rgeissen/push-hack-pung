@@ -1,8 +1,8 @@
 # Pung-native modules
 
-Status: 2026-11-18. The first one, Nodal Red 2X, runs as a device in Live on a Push 3, with the
-firmware and Clavia's factory library: notes, SOUNDS with its banks and names, the parameter pages, and
-its state across a restart of Pung. It is not in the published catalog yet.
+Status: 2026-11-18. The first one, Nodal Red 2X, runs as a device in Live on a Push 3 with the firmware:
+notes, SOUNDS with its banks and names, its own screens, the firmware's own sounds, and its state across
+a restart of Pung. It is not in the published catalog yet.
 
 ## Two kinds of module
 
@@ -131,9 +131,53 @@ thread's part takes 0.06 to 0.6 ms a block, no late blocks while playing. SOUNDS
 bank's 99 names; a sound auditioned and cancelled comes back. The seven parameter pages draw with Pung's
 standard pictures (filter curve, envelopes). An edit and the chosen sound survive a restart of Pung.
 
+### Its screens (`native/nodalred/push_ui.js`)
+
+![The Nord's screens on the Push](shots/nodalred-design.png)
+
+The Nord has no menus, its panel is the instrument, so the compartments are the panel's sections, each
+with a picture of what its knobs do together:
+
+| Compartment | The picture |
+|---|---|
+| Slots | the four slots as tiles over their on/off knobs: the sound, the waves, the filter, which are layered, which one the knobs edit |
+| Oscillators | both waveforms as they are (pulse width, the interval, hard sync, FM), and their mix or ring modulation |
+| Filter | the response of the chosen type, where the envelope takes the cutoff, the envelope |
+| Amplifier | the envelope, and how keys are played, in words |
+| Modulation | who moves what: LFO 1, LFO 2 or the arpeggiator, the mod envelope and the wheel on the left, their destinations on the right, a line as strong as the amount |
+| Morph | every morph range on its own knob: the line is where the knob stands, the arc where velocity or the wheel takes it |
+
+Three things it needed:
+
+- **`slots_info`**: one read that says all four slots (the parameters only say the edited one).
+- **A selector** (`"selector": true` on `slot` in `chain_params`): turning it from Live changes what the
+  other parameters read, so Pung reads them back within 60 ms (`devices.go`, `wantResync`).
+- **Cached curves.** The first version took 9 ms a frame on the Push, whose processor the emulator is
+  already using, and Pung switched it off (the limit is 8 ms). Every curve is now computed when what it
+  shows changes: 2 to 5 ms a frame.
+
+### The firmware's own sounds
+
+Program banks 4 to 9 and performance banks 1 to 3 are part of the firmware. The synth sends any of them
+when asked (a dump request), so on its first start the module asks for all 890, one at a time, and writes
+them into `banks/` as `ROM Programs 4.syx` and so on. In Live on the Push that took 200 seconds, with
+dropouts while it ran; it happens once. A request's type is the dump's plus 14 (a program) or plus 10 (a
+performance); type 20 also means "send all controllers" for slots 0 to 3, so the first four programs of
+bank 5 cannot be asked for.
+
+### Every option name, measured
+
+The manual lists a selector's options top to bottom and the synth counts them from the bottom. Each was
+checked on the Push by spectrum or pitch track: the oscillator waves, the filter types and key tracking,
+the LFO 1 waves (Random, Saw, Triangle, Square, Soft Random) and destinations (PW, Filter, Osc 2, Osc 1+2,
+FM), LFO 2 and the arpeggiator in one parameter (Arp Down, Arp Up, Arp Up/Down, LFO Amp, LFO Osc 1+2, Arp
+Random, Echo, LFO Filter, Off), the mod envelope's destinations (Osc 2, FM, PW, None), the voice modes
+(Mono, Legato, Poly). LFO 2's mode only settles when it arrives in a dump, not as a controller after an
+arpeggiator mode.
+
 ### Not verified yet
 
 - A Set saved in Live and opened again.
-- The option names of the LFO waves and destinations, the voice modes, the mod envelope and mod wheel
-  destinations: written from the Nord Lead 2 documentation as remembered, to be checked by ear.
+- The pressure and pedal destinations' names (taken from gearmulator's list).
+- Turning Edit Slot on a Push encoder (the selector's read-back), by hand.
 - Four slots layered at full level clip; whether the default output gain should be lower.

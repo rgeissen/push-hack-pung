@@ -422,12 +422,21 @@ func newProvider(h *Host, classes []*sclass) *provider {
 // only Tone 2 is (2026-11-15). Only what moved is reported.
 const liveResyncEvery = 3 * time.Second
 
+// selectorResync: how soon after a selector was turned from Live (Nodal
+// Red's Edit Slot on a Push encoder) the device's values are read back.
+const selectorResync = 60 * time.Millisecond
+
 func (p *provider) keepLiveInSync() {
-	t := time.NewTicker(liveResyncEvery)
+	t := time.NewTicker(selectorResync)
 	defer t.Stop()
-	for range t.C {
+	every := int(liveResyncEvery / selectorResync)
+	for n := 1; ; n++ {
+		<-t.C
 		for _, d := range p.list() {
-			if !d.loading.Load() {
+			if d.loading.Load() {
+				continue
+			}
+			if d.wantResync.Swap(false) || n%every == 0 {
 				d.reportValues(false)
 			}
 		}
@@ -570,6 +579,8 @@ type device struct {
 	reports map[int]float64
 	resync  *time.Timer // under repMu
 	closed  bool        // under repMu: its chain slot may belong to another device now
+	// wantResync: a selector was turned from Live; set on the audio thread
+	wantResync atomic.Bool
 
 	lastChain json.RawMessage // the last state given (SetState), to load again (revive)
 
@@ -779,6 +790,9 @@ func (d *device) applyParam(idx int, norm float64) {
 	}
 	if m := d.c.meta[idx]; m != nil {
 		cSet(d.s.Index, d.c.Params[idx].Key, m.fromNorm(norm))
+		if m.Selector {
+			d.wantResync.Store(true) // the other parameters read something else now (keepLiveInSync)
+		}
 	}
 }
 

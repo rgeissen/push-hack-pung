@@ -32,6 +32,10 @@ type paramMeta struct {
 	Default  *float64
 	ReadOnly bool
 	Bipolar  bool
+	// Selector: turning it changes what the other parameters read (Nodal
+	// Red's Edit Slot: one panel, four slots). Live has their values of
+	// before; they are read back at once (devices.go, wantResync)
+	Selector bool
 	// File: a file parameter (the module's "filepath"): a sample, a
 	// wavetable, a kit; chosen in the file browser, never turned (files.go)
 	File *fileSpec
@@ -98,6 +102,7 @@ func metaFromObj(o map[string]any) *paramMeta {
 	if m.Name == "" {
 		m.Name = m.Key
 	}
+	m.Selector, _ = o["selector"].(bool)
 	m.Min, _ = num(o["min"])
 	m.Max, _ = num(o["max"])
 	m.Step, _ = num(o["step"])

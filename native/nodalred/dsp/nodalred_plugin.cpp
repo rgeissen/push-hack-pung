@@ -292,6 +292,25 @@ void parse_bank(const std::vector<uint8_t> &d, Bank &bank) {
     }
 }
 
+// The Nord stores no names. "<file>.txt" beside a bank names its sounds, one
+// a line, in the file's order.
+void name_sounds(const std::string &path, Bank &b) {
+    std::vector<uint8_t> txt;
+    if (!read_file(path, txt)) return;
+    size_t i = 0, at = 0;
+    while (at < txt.size() && i < b.sounds.size()) {
+        size_t e = at;
+        while (e < txt.size() && txt[e] != '\n') e++;
+        std::string name = trim(std::string(txt.begin() + long(at), txt.begin() + long(e)));
+        for (auto &c : name)
+            if (c == '"' || c == '\\' || (unsigned char)c < 32) c = ' ';
+        if (name.size() > 40) name.resize(40);
+        if (!name.empty()) b.sounds[i].name = trim(name);
+        i++;
+        at = e + 1;
+    }
+}
+
 void scan_banks(const std::string &dir, std::vector<Bank> &banks, int depth = 0) {
     DIR *d = opendir(dir.c_str());
     if (!d) return;
@@ -320,23 +339,7 @@ void scan_banks(const std::string &dir, std::vector<Bank> &banks, int depth = 0)
         for (auto &c : b.name)
             if (c == '"' || c == '\\' || c < 32) c = ' ';
         parse_bank(data, b);
-        // The Nord stores no names. "<file>.txt" beside a bank names its
-        // sounds, one a line, in the file's order.
-        std::vector<uint8_t> txt;
-        if (read_file(dir + "/" + n.substr(0, dot) + ".txt", txt)) {
-            size_t i = 0, at = 0;
-            while (at < txt.size() && i < b.sounds.size()) {
-                size_t e = at;
-                while (e < txt.size() && txt[e] != '\n') e++;
-                std::string name = trim(std::string(txt.begin() + long(at), txt.begin() + long(e)));
-                for (auto &c : name)
-                    if (c == '"' || c == '\\' || (unsigned char)c < 32) c = ' ';
-                if (name.size() > 40) name.resize(40);
-                if (!name.empty()) b.sounds[i].name = trim(name);
-                i++;
-                at = e + 1;
-            }
-        }
+        name_sounds(dir + "/" + n.substr(0, dot) + ".txt", b);
         if (!b.sounds.empty() && banks.size() < 64) banks.push_back(std::move(b));
     }
 }
@@ -397,6 +400,7 @@ struct Instance {
     bool singleDirty[4] = {false, false, false, false};
     bool multiDirty = false;
     int64_t busyUntil = 0; // a dump is on its way into the synth until then
+    std::string slotName[4]; // the sound each slot was given (the Nord keeps no names)
 
     // what the synth sent (dumps it was asked for), under outMu
     std::mutex outMu;
@@ -487,6 +491,7 @@ void init_sound(Instance *in) {
     in->on[0] = true;
     in->on[1] = in->on[2] = in->on[3] = false;
     in->slot = 0;
+    for (auto &n : in->slotName) n = "Init Program";
     in->multiDirty = true;
 }
 
@@ -509,6 +514,7 @@ void load_sound(Instance *in, const Sound &s) {
                     in->slot = i;
                     break;
                 }
+        for (auto &n : in->slotName) n = s.name;
         in->multiDirty = true;
     } else {
         if (s.dump.size() < n2x::g_singleDumpSize) return;
@@ -517,6 +523,7 @@ void load_sound(Instance *in, const Sound &s) {
         std::copy_n(s.dump.begin(), n2x::g_singleDumpSize, d.begin());
         d[n2x::IdxMsgType] = n2x::SingleDumpBankEditBuffer;
         d[n2x::IdxMsgSpec] = uint8_t(in->slot);
+        in->slotName[in->slot] = s.name;
         in->singleDirty[in->slot] = true;
     }
 }
@@ -547,8 +554,10 @@ bool has_rom_banks(const std::string &dir) {
     DIR *d = opendir(dir.c_str());
     if (!d) return false;
     bool found = false;
-    while (dirent *e = readdir(d))
-        if (!strncmp(e->d_name, "ROM ", 4)) found = true;
+    while (dirent *e = readdir(d)) {
+        const size_t n = strlen(e->d_name);
+        if (!strncmp(e->d_name, "ROM ", 4) && n > 4 && !strcasecmp(e->d_name + n - 4, ".syx")) found = true; // not a names file
+    }
     closedir(d);
     return found;
 }
@@ -717,6 +726,7 @@ void emu_main(Instance *in) {
                     Bank b;
                     b.name = rr.names[i];
                     parse_bank(rr.files[i], b);
+                    name_sounds(in->dir + "/banks/" + rr.names[i] + ".txt", b);
                     if (!b.sounds.empty()) found.push_back(std::move(b));
                 }
                 plog("read %d of %d sounds from the firmware", rr.got, int(rr.todo.size()));
@@ -929,6 +939,11 @@ void set_state(Instance *in, const char *val) {
         snd.dump.push_back(uint8_t(a << 4 | b));
     }
     load_sound(in, snd);
+    for (int i = 0; i < 4; i++) {
+        char k[8];
+        snprintf(k, sizeof(k), "name%d", i);
+        in->slotName[i] = json_field(val, k, s) ? s : std::string();
+    }
     if (json_field(val, "slot", s)) in->slot = std::max(0, std::min(3, atoi(s.c_str())));
     if (json_field(val, "gain", s)) in->gain = std::max(1, std::min(200, atoi(s.c_str())));
     if (json_field(val, "preset", s)) in->preset = std::max(0, atoi(s.c_str()));
@@ -1014,7 +1029,7 @@ int build_chain_params(Instance *in, char *buf, int len) {
     int off = 0;
     AP("[{\"key\":\"preset\",\"name\":\"Sound\",\"type\":\"int\",\"min\":0,\"max\":%d},",
        std::max(0, int(in->banks[size_t(in->bank)].sounds.size()) - 1));
-    AP("{\"key\":\"slot\",\"name\":\"Edit Slot\",\"type\":\"enum\",\"options\":[\"A\",\"B\",\"C\",\"D\"]}");
+    AP("{\"key\":\"slot\",\"name\":\"Edit Slot\",\"type\":\"enum\",\"selector\":true,\"options\":[\"A\",\"B\",\"C\",\"D\"]}");
     for (int i = 0; i < 4; i++)
         AP(",{\"key\":\"slot_%c\",\"name\":\"Slot %c\",\"type\":\"enum\",\"options\":[\"Off\",\"On\"]}", 'a' + i, 'A' + i);
     AP(",{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}");
@@ -1127,11 +1142,28 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     if (!strncmp(key, "slot_", 5) && key[5] >= 'a' && key[5] <= 'd' && !key[6])
         return snprintf(buf, size_t(len), "%d", in->on[key[5] - 'a'] ? 1 : 0);
     if (!strcmp(key, "gain")) return snprintf(buf, size_t(len), "%d", in->gain);
+    // the four slots at a glance, for a screen: on, edited, osc 1, osc 2,
+    // cutoff, resonance, filter type, mix, voice mode, unison, name
+    if (!strcmp(key, "slots_info")) {
+        int off = 0;
+        for (int i = 0; i < 4; i++) {
+            const Single &sg = in->single[i];
+            std::string nm = in->slotName[i];
+            for (auto &c : nm)
+                if (c == ';' || c == '"' || c == '\\') c = ' ';
+            AP("%s%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s", i ? ";" : "", in->on[i] ? 1 : 0, in->slot == i ? 1 : 0, s_get(sg, n2x::O1Waveform) & 3,
+               s_get(sg, n2x::O2Waveform) & 3, s_get(sg, n2x::Cutoff), s_get(sg, n2x::Resonance), std::min<int>(4, s_get(sg, n2x::FilterType)),
+               s_get(sg, n2x::Mix), std::min<int>(2, s_get(sg, n2x::VoiceMode)), s_get(sg, n2x::Unison) ? 1 : 0, nm.c_str());
+        }
+        return off < len ? off : -1;
+    }
     if (!strcmp(key, "state")) {
         Multi m;
         compose_multi(in, m);
         int off = 0;
-        AP("{\"v\":1,\"slot\":%d,\"gain\":%d,\"bank\":\"%s\",\"preset\":%d,\"multi\":\"", in->slot, in->gain, b.name.c_str(), in->preset);
+        AP("{\"v\":1,\"slot\":%d,\"gain\":%d,\"bank\":\"%s\",\"preset\":%d,", in->slot, in->gain, b.name.c_str(), in->preset);
+        for (int i = 0; i < 4; i++) AP("\"name%d\":\"%s\",", i, in->slotName[i].c_str());
+        AP("\"multi\":\"");
         for (uint32_t i = 0; i < n2x::g_multiDumpSize && off < len - 4; i++) AP("%02x", i == n2x::g_multiDumpSize - 1 ? 0xf7 : m[i]);
         AP("\"}");
         return off < len ? off : -1;

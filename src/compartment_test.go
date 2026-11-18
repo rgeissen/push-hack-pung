@@ -56,15 +56,25 @@ push.compartment({ id: "env", label: "Envelope", keys: ["a","d","s","r","a2","d2
 // without an error. (The 8 ms budget is checked on the device; this machine's
 // timing says nothing about the Push's.)
 func TestShippedOverlaysDraw(t *testing.T) {
-	ovDir, _ := filepath.Abs("../overrides")
+	initFaces()
+	// Pung's overlays, and the screens its native modules bring themselves
+	for _, d := range []string{"../overrides", "../native"} {
+		overlaysDraw(t, d)
+	}
+}
+
+func overlaysDraw(t *testing.T, rel string) {
+	ovDir, _ := filepath.Abs(rel)
 	ents, err := os.ReadDir(ovDir)
 	if err != nil {
-		t.Skip("no overrides folder")
+		t.Skip("no " + rel + " folder")
 	}
-	initFaces()
 	for _, e := range ents {
 		if !e.IsDir() {
 			continue // presets.json and the like: not a module's overrides
+		}
+		if _, err := os.Stat(filepath.Join(ovDir, e.Name(), "push_ui.js")); err != nil {
+			continue
 		}
 		root := t.TempDir()
 		dir := filepath.Join(root, "sound_generators", e.Name())
