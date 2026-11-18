@@ -162,6 +162,21 @@ Three things it needed:
   already using, and Pung switched it off (the limit is 8 ms). Every curve is now computed when what it
   shows changes: 2 to 5 ms a frame.
 
+### One emulator at a time
+
+2026-11-18: after a restart of Live, its recovery brought back a Set with two Nodal Red devices. Two
+emulators are six threads at realtime priority wanting three cores; the Push has two. It stood still
+for seven minutes, until it was switched off and on.
+
+The module now takes a system lock (`flock` on `/dev/shm/pung-nodalred.lock`) before it starts the
+emulator. An instance that finds it taken stays silent, says "Waiting: another Nodal Red 2X is running",
+and starts when the other is gone. The lock also holds between Pung and the child processes that probe a
+module. Checked on the Push with two instances at once: one set of emulator threads, the second started
+the moment the first closed.
+
+Rule 8 for a native module: **what cannot run twice must refuse to run twice by itself.** A Set, Live's
+recovery or a duplicated track can always ask for a second one.
+
 ### A knob and the screen
 
 Reported 2026-11-18: a turn showed on the screen with a long lag. Measured on the Push, from the turn

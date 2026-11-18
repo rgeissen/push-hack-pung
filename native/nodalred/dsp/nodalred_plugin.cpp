@@ -28,6 +28,9 @@
 #include <vector>
 
 #include <dirent.h>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <sched.h>
 #include <semaphore.h>
@@ -379,6 +382,16 @@ struct Instance {
     std::thread emu;
     std::atomic<bool> quit{false};
     std::atomic<int> loading{1};
+    // One emulator on the machine at a time. Its three threads run at
+    // realtime priority and take a core and a half; two of them took all four
+    // logical cores of a Push and it stood still until it was switched off
+    // (2026-11-18: Live's recovery had brought back a Set with two of these).
+    // An instance that finds the emulator taken waits for it, silent, and
+    // says so; it starts when the other is gone. The lock is the system's
+    // (flock), so it also holds between Pung and the processes that probe a
+    // module, and is gone with whoever held it.
+    std::atomic<int> waiting{0};
+    int lockFd = -1;
     sem_t wake;
     std::unique_ptr<n2x::Device> device;
     std::unique_ptr<synthLib::Plugin> plugin;
@@ -607,6 +620,18 @@ void emu_main(Instance *in) {
         in->loading = 0;
         return;
     }
+    in->lockFd = open("/dev/shm/pung-nodalred.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+    if (in->lockFd < 0) in->lockFd = open("/tmp/pung-nodalred.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+    while (in->lockFd >= 0 && flock(in->lockFd, LOCK_EX | LOCK_NB) != 0) {
+        if (!in->waiting.exchange(1)) {
+            set_status(in, "Waiting: another Nodal Red 2X is running, and one is all a Push can run");
+            plog("another instance has the emulator; waiting for it");
+        }
+        if (in->quit.load()) return;
+        usleep(300000);
+    }
+    in->waiting = 0;
+    if (in->quit.load()) return;
     set_status(in, "Booting the Nord Lead 2X");
     try {
         synthLib::DeviceCreateParams p;
@@ -781,6 +806,7 @@ void v2_destroy(void *instance) {
         in->plugin.reset();
     }
     in->device.reset();
+    if (in->lockFd >= 0) close(in->lockFd); // the emulator is gone: the next instance may start
     sem_destroy(&in->wake);
     delete in;
 }
@@ -1089,7 +1115,8 @@ int build_hierarchy(char *buf, int len) {
 int v2_get_param(void *instance, const char *key, char *buf, int len) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !buf || len < 2) return -1;
-    if (!strcmp(key, "is_loading")) return snprintf(buf, size_t(len), "%d", in->loading.load() ? 1 : 0);
+    // waiting for the emulator is not loading: the module answers, it is only silent
+    if (!strcmp(key, "is_loading")) return snprintf(buf, size_t(len), "%d", in->loading.load() && !in->waiting.load() ? 1 : 0);
     if (!strcmp(key, "name")) return snprintf(buf, size_t(len), "Nodal Red 2X");
     if (!strcmp(key, "ui_hierarchy")) return build_hierarchy(buf, len);
     if (!strcmp(key, "debug_info"))
