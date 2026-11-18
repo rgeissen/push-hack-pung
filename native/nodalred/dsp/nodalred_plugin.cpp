@@ -466,6 +466,17 @@ void compose_multi(Instance *in, Multi &out) {
     out[n2x::IdxMsgSpec] = 0;
 }
 
+// What still goes past the headroom bends instead of breaking: straight up
+// to 3/4 of full scale, then a curve that only reaches full scale at infinity.
+// A hard corner here is a click on every peak.
+inline float soft_limit(float v) {
+    const float knee = 24576.f, room = 32767.f - knee;
+    const float a = v < 0 ? -v : v;
+    if (a <= knee) return v;
+    const float o = knee + room * std::tanh((a - knee) / room);
+    return v < 0 ? -o : o;
+}
+
 // How long the synth takes to receive n bytes at MIDI speed (3125 a second)
 // and act on them. Measured 2026-11-18: a controller sent while a dump was
 // still arriving was lost, the dump's value won.
@@ -700,13 +711,17 @@ void emu_main(Instance *in) {
             float g;
             {
                 // not worth a lock: an int read
-                g = float(in->gain) * 0.01f * 32767.0f;
+                // 6 dB of headroom: the synth's two output pairs are summed
+                // here, and a layer of slots at full level went past full
+                // scale (measured 2026-11-18: 18 clipped bursts in 10 s of
+                // playing, heard as crackling)
+                g = float(in->gain) * 0.01f * 0.5f * 32767.0f;
             }
             uint32_t w = in->wr.load(std::memory_order_relaxed);
             for (int i = 0; i < BLOCK; i++) {
                 float l = (buf[0][i] + buf[2][i]) * g, r = (buf[1][i] + buf[3][i]) * g;
-                l = l > 32767.f ? 32767.f : (l < -32768.f ? -32768.f : l);
-                r = r > 32767.f ? 32767.f : (r < -32768.f ? -32768.f : r);
+                l = soft_limit(l);
+                r = soft_limit(r);
                 const uint32_t k = (w + uint32_t(i)) & (RING - 1);
                 in->ring[k * 2] = int16_t(lrintf(l));
                 in->ring[k * 2 + 1] = int16_t(lrintf(r));

@@ -557,6 +557,12 @@ type device struct {
 	// Process timing, in ns, the worst since Stats last read them
 	procLast, procMax, procGapMax atomic.Int64
 
+	// capture: the last seconds this device gave Live, kept while armed (a
+	// test door: GET /api/devices/{n}/capture.wav). Preallocated when armed;
+	// the realtime thread only copies into it.
+	capBuf atomic.Pointer[[]float32]
+	capPos atomic.Uint64 // frames written since armed
+
 	// the last MIDI messages Live delivered (Stats: "midi_recent"); written on
 	// the realtime thread, a fixed ring, read anywhere (a torn read shows a
 	// mixed message, never a crash)
@@ -736,6 +742,17 @@ func (d *device) Process(b *livedevice.Block) {
 		o := d.out[:n*2]
 		d.s.setPeak(cRender(d.s.Index, o, input)) // the meter (surface.level)
 		d.s.live.feedAudio(o)
+		if cb := d.capBuf.Load(); cb != nil {
+			buf := *cb
+			pos := int(d.capPos.Load() * 2 % uint64(len(buf)))
+			for i := 0; i < n*2; i++ {
+				buf[pos] = o[i]
+				if pos++; pos == len(buf) {
+					pos = 0
+				}
+			}
+			d.capPos.Add(uint64(n))
+		}
 		for i := 0; i < n; i++ {
 			b.Out[0][i], b.Out[1][i] = o[i*2], o[i*2+1]
 		}

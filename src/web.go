@@ -11,11 +11,13 @@ package main
 
 import (
 	"embed"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"image/png"
 	"io"
 	"io/fs"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -315,6 +317,57 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 	})
 	// a note played into a device as if Live sent it: for testing what the
 	// sound does (the live pictures) without a hand on the pads
+	// what the device gave Live, sample for sample: ?arm=20 starts keeping the
+	// last 20 s, a plain GET answers them as a WAV (32-bit float) and stops
+	mux.HandleFunc("GET /api/devices/{n}/capture.wav", func(w http.ResponseWriter, r *http.Request) {
+		d, ok := h.deviceFromPath(w, r)
+		if !ok {
+			return
+		}
+		if a := r.URL.Query().Get("arm"); a != "" {
+			sec, _ := strconv.Atoi(a)
+			sec = max(1, min(120, sec))
+			buf := make([]float32, sec*44100*2)
+			d.capPos.Store(0)
+			d.capBuf.Store(&buf)
+			writeJSON(w, 200, map[string]any{"ok": true, "seconds": sec})
+			return
+		}
+		cb := d.capBuf.Swap(nil)
+		if cb == nil {
+			fail(w, 409, "not armed: ?arm=20 first")
+			return
+		}
+		time.Sleep(20 * time.Millisecond) // a block that was copying finishes
+		buf, frames := *cb, d.capPos.Load()
+		var out []float32
+		if total := uint64(len(buf) / 2); frames <= total {
+			out = buf[:frames*2]
+		} else {
+			at := int(frames * 2 % uint64(len(buf)))
+			out = append(append([]float32{}, buf[at:]...), buf[:at]...)
+		}
+		hdr := make([]byte, 44)
+		copy(hdr, "RIFF")
+		binary.LittleEndian.PutUint32(hdr[4:], uint32(36+len(out)*4))
+		copy(hdr[8:], "WAVEfmt ")
+		binary.LittleEndian.PutUint32(hdr[16:], 16)
+		binary.LittleEndian.PutUint16(hdr[20:], 3)
+		binary.LittleEndian.PutUint16(hdr[22:], 2)
+		binary.LittleEndian.PutUint32(hdr[24:], 44100)
+		binary.LittleEndian.PutUint32(hdr[28:], 44100*8)
+		binary.LittleEndian.PutUint16(hdr[32:], 8)
+		binary.LittleEndian.PutUint16(hdr[34:], 32)
+		copy(hdr[36:], "data")
+		binary.LittleEndian.PutUint32(hdr[40:], uint32(len(out)*4))
+		w.Header().Set("Content-Type", "audio/wav")
+		w.Write(hdr)
+		raw := make([]byte, len(out)*4)
+		for i, f := range out {
+			binary.LittleEndian.PutUint32(raw[i*4:], math.Float32bits(f))
+		}
+		w.Write(raw)
+	})
 	mux.HandleFunc("POST /api/devices/{n}/note", func(w http.ResponseWriter, r *http.Request) {
 		d, ok := h.deviceFromPath(w, r)
 		if !ok {
