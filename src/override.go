@@ -121,12 +121,41 @@ type overrideSet struct {
 	compartments []*ovCompartment // in the order declared
 	failed       string           // why it is off; "" while it works
 	overruns     int              // frames in a row over ovBudget
+	// slowAt, slowN: it was switched off for being slow, when, and how often.
+	// Slow is not broken: the clock is the wall's, and on a Push busy with an
+	// emulator one draw was stopped at 40 ms that takes 3 (Nodal Red's Slots
+	// screen, 2026-11-18). The screens were gone until Pung started again. A
+	// slow script is tried again, after 3 s, then 6, 12, up to a minute.
+	slowAt time.Time
+	slowN  int
 	// layers: what a screen drew once and keeps (g.layer), by size, colour and key
-	layers map[string]*image.NRGBA
-	lastDrawUS   int64            // the last Push draw, in microseconds (/api/surface/state)
-	off          bool             // the user chose the native UI
-	envTimes     goja.Callable    // push.envelopeTimes: the module's engine's stage times (nil: from the knobs)
-	mu           sync.Mutex       // the VM is one goroutine's at a time: the Push's draw, a web page's
+	layers     map[string]*image.NRGBA
+	lastDrawUS int64         // the last Push draw, in microseconds (/api/surface/state)
+	off        bool          // the user chose the native UI
+	envTimes   goja.Callable // push.envelopeTimes: the module's engine's stage times (nil: from the knobs)
+	mu         sync.Mutex    // the VM is one goroutine's at a time: the Push's draw, a web page's
+}
+
+// slowWait: how long a script switched off for being slow stays off.
+func (s *overrideSet) slowWait() time.Duration {
+	n := s.slowN
+	if n < 1 {
+		n = 1
+	}
+	if n > 5 {
+		n = 5
+	}
+	return 3 * time.Second << (n - 1)
+}
+
+// retrySlow puts a script that was only slow back to work once its wait is over.
+func (s *overrideSet) retrySlow() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failed != "" && !s.slowAt.IsZero() && strings.Contains(s.failed, "draw took") && time.Since(s.slowAt) > s.slowWait() {
+		s.failed, s.overruns = "", 0
+		log.Printf("override %s: trying the screen again", s.source)
+	}
 }
 
 type overrides struct {
@@ -160,6 +189,9 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if s, ok := o.sets[id]; ok {
+		if s != nil {
+			s.retrySlow()
+		}
 		return s
 	}
 	o.sets[id] = nil
@@ -332,7 +364,7 @@ type ovValue struct {
 	Frac                       float64
 	Type                       string  // the parameter's (float, int, enum, ...)
 	Min, Max                   float64 // its range, as the module states it
-	Known                      bool // a value has been read (else Frac is 0 and means nothing)
+	Known                      bool    // a value has been read (else Frac is 0 and means nothing)
 }
 
 // render draws one widget into its own image (so it cannot draw outside its
@@ -600,8 +632,16 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	}
 	if err != nil {
 		s.failed = firstLine(err.Error())
-		log.Printf("override %s: %s; the native page is back for this session", s.source, s.failed)
+		if strings.Contains(s.failed, "draw took") { // too slow, by either limit
+			s.slowAt, s.slowN = time.Now(), s.slowN+1
+			log.Printf("override %s: %s; the native page is back, the screen is tried again in %v", s.source, s.failed, s.slowWait())
+		} else {
+			log.Printf("override %s: %s; the native page is back for this session", s.source, s.failed)
+		}
 		return false
+	}
+	if s.slowN > 0 && time.Since(s.slowAt) > 2*time.Minute {
+		s.slowN = 0 // it has drawn in time for two minutes: the next slow frame starts from 3 s again
 	}
 	x, y := p.col*colW+4, ovTop
 	if p.full {

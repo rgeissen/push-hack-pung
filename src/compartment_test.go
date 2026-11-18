@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/federico-pepe/ableton-push-hack/core/livedevice"
 )
@@ -294,5 +295,24 @@ func TestDexedRealValues(t *testing.T) {
 			png.Encode(f, img)
 			f.Close()
 		}
+	}
+}
+
+// A script switched off for being slow comes back; one that threw does not.
+func TestSlowOverlayComesBack(t *testing.T) {
+	s := &overrideSet{source: "x", failed: "draw took longer than 40 ms", slowAt: time.Now().Add(-4 * time.Second), slowN: 1}
+	s.retrySlow()
+	if s.failed != "" {
+		t.Fatalf("a slow script was not tried again after its wait: %q", s.failed)
+	}
+	s = &overrideSet{source: "x", failed: "draw took longer than 40 ms", slowAt: time.Now().Add(-4 * time.Second), slowN: 2}
+	s.retrySlow()
+	if s.failed == "" {
+		t.Fatal("the second time it waits 6 s, not 3")
+	}
+	s = &overrideSet{source: "x", failed: "ReferenceError: y is not defined"}
+	s.retrySlow()
+	if s.failed == "" {
+		t.Fatal("a script that threw was tried again")
 	}
 }

@@ -132,8 +132,8 @@ func TestBankParamsAndTheirNamesKey(t *testing.T) {
 func TestScreenKeyFollowsALinkedModule(t *testing.T) {
 	dir := t.TempDir()
 	real := filepath.Join(dir, "real")
-	os.MkdirAll(real, 0o755)                                                  //nolint:errcheck
-	os.WriteFile(filepath.Join(real, "dsp.so"), []byte("one"), 0o644)         //nolint:errcheck
+	os.MkdirAll(real, 0o755)                                          //nolint:errcheck
+	os.WriteFile(filepath.Join(real, "dsp.so"), []byte("one"), 0o644) //nolint:errcheck
 	link := filepath.Join(dir, "link")
 	if err := os.Symlink(real, link); err != nil {
 		t.Skip(err)
@@ -154,8 +154,8 @@ func TestScanModulesIsKept(t *testing.T) {
 	root := t.TempDir()
 	add := func(id string) {
 		d := filepath.Join(root, "sound_generators", id)
-		os.MkdirAll(d, 0o755)                                                                                     //nolint:errcheck
-		os.WriteFile(filepath.Join(d, "module.json"), []byte(`{"id":"`+id+`","name":"`+id+`"}`), 0o644)           //nolint:errcheck
+		os.MkdirAll(d, 0o755)                                                                           //nolint:errcheck
+		os.WriteFile(filepath.Join(d, "module.json"), []byte(`{"id":"`+id+`","name":"`+id+`"}`), 0o644) //nolint:errcheck
 	}
 	add("one")
 	if n := len(scanModules(root)); n != 1 {

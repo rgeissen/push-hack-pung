@@ -81,7 +81,7 @@ type surface struct {
 	// (pmclient.FocusInfo.DeviceView); its leaving buttons are push-manager's
 	standIn atomic.Bool
 
-	mu       sync.Mutex
+	mu   sync.Mutex
 	slot int // the colour the view is drawn in (always the first: one view)
 	pos  int // the selected device, in positions
 	bank int // the page shown
@@ -104,11 +104,11 @@ type surface struct {
 	// wheel is touched), so the way back and the pages are never hidden for good
 	rowsUntil time.Time
 	touched   int // encoder under a finger, -1 none
-	peekUntil       time.Time
-	peekEnc         int
-	toast           string
-	toastAt         time.Time
-	lastEnum        [8]time.Time
+	peekUntil time.Time
+	peekEnc   int
+	toast     string
+	toastAt   time.Time
+	lastEnum  [8]time.Time
 
 	meta      map[string]*compMeta // slot|prefix|module
 	vals      map[string]string    // slot|prefix:key
@@ -124,8 +124,8 @@ type surface struct {
 	// last 16 turn-to-screen times, with what each frame's parts took
 	turnAt time.Time
 	lagMS  []string
-	lvIdx                     map[string]int     // module key -> Live parameter index
-	lvDef                     map[string]float64 // module key -> Live's default for it, 0..1 (where Live has one)
+	lvIdx  map[string]int     // module key -> Live parameter index
+	lvDef  map[string]float64 // module key -> Live's default for it, 0..1 (where Live has one)
 
 	// live mode: the selection the view is built for (liveView.key), since
 	// when, and what is known of it; a frame is drawn only for a selection
@@ -136,8 +136,8 @@ type surface struct {
 	liveReady, liveResolved, livePung bool
 	liveWritable                      bool              // the device is confirmed (liveView.writable)
 	bankMem                           map[string][2]int // a device's page, kept while others are shown (as Push does)
-	sb *sbState // the sound browser (sounds_view.go); nil when closed
-	fb *fbState // the file browser, open (files_view.go)
+	sb                                *sbState          // the sound browser (sounds_view.go); nil when closed
+	fb                                *fbState          // the file browser, open (files_view.go)
 	// the header's sound: whether the device's state is still the sound it
 	// became (read off the frame, every few seconds)
 	soundEdited bool
@@ -383,12 +383,12 @@ func (u *surface) routes(mux *http.ServeMux) {
 				}
 				return out
 			}(),
-			"fallback":      map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
+			"fallback": map[string]int{"device": u.fallbackDev, "read": u.fallbackRead},
 			// why a turn would not write (turn, writeParam)
 			"write_state": map[string]any{"ready": u.liveReady, "writable": u.liveWritable, "resolved": u.liveResolved,
 				"pung": u.livePung, "values": len(u.vals), "last_turn": u.lastTurn},
 			"turn_to_screen_ms": u.lagMS,
-			"frame_draw_us": u.frameStats.drawUS.Load(), "frame_push_us": u.frameStats.pushUS.Load(), "frames": u.frameStats.n.Load(),
+			"frame_draw_us":     u.frameStats.drawUS.Load(), "frame_push_us": u.frameStats.pushUS.Load(), "frames": u.frameStats.n.Load(),
 			"module_ui_draw_us": u.overlayDrawUS(p.Module),
 			"position":          p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
 			"toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,

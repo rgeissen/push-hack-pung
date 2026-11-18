@@ -4,11 +4,11 @@ package main
 // them; inside the host they are 0-based.
 
 import (
-	"net/http/pprof"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/pprof"
 	"runtime"
 	"runtime/debug"
 	"strconv"
