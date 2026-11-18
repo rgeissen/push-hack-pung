@@ -258,6 +258,7 @@ select { appearance: none; padding-right: 28px; max-width: 100%; text-overflow: 
   font: 10.5px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctl .opts button:last-child { border-right: 0; }
 .ctl .opts button:hover { color: var(--fg); }
+.ctl .opts button:disabled { color: var(--line2); cursor: not-allowed; background: repeating-linear-gradient(135deg, transparent 0 4px, #ffffff08 4px 5px); }
 .ctl .opts button[aria-pressed="true"] { background: var(--amber); color: #000; font-weight: 700; }
 .ctl .tgl { margin-top: auto; display: flex; align-items: center; gap: 10px; min-height: 28px; padding: 0; background: none; border: 0; font: 600 13px var(--mono); color: var(--muted); text-transform: uppercase; }
 .ctl .tgl i { position: relative; width: 38px; height: 20px; background: var(--ink); border: 1px solid var(--line2); flex: none; }

@@ -217,3 +217,11 @@ arpeggiator mode.
 - The pressure and pedal destinations' names (taken from gearmulator's list).
 - Turning Edit Slot on a Push encoder (the selector's read-back), by hand.
 - Four slots layered at full level clip; whether the default output gain should be lower.
+
+## Options that cannot be chosen now
+
+A list parameter may name a key that says which of its options can be chosen at the moment:
+`"available_param": "slot_available"` in its `chain_params` entry, and the module answers that key with
+one character an option (`"1010"`). A turn on the Push passes over the others, so the value never shows
+one of them, and the web page greys their buttons. Nodal Red 2X uses it for the edit slot: only the slots
+that are on.

@@ -43,6 +43,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1215,6 +1216,29 @@ func (u *surface) turn(enc, delta int) {
 	cur, ok := u.vals[u.valKey(p, key)]
 	if !ok {
 		return // no value read yet: never step from a guess
+	}
+	if m.Type == "enum" && m.Avail != "" {
+		// only what the module offers now: the turn goes to the next option
+		// that can be chosen, or nowhere (and the value shown never shows
+		// one that cannot)
+		if d, prefix := u.pungDevice(); d != nil {
+			if mask, ok := d.s.Get(prefix + ":" + m.Avail); ok && mask != "" {
+				i, _ := m.enumIndex(cur)
+				n := i + sign(delta)
+				for n >= 0 && n < len(m.Options) && n < len(mask) && mask[n] == '0' {
+					n += sign(delta)
+				}
+				if n < 0 || n >= len(m.Options) {
+					return
+				}
+				nv := m.Options[n]
+				if _, err := strconv.Atoi(strings.TrimSpace(cur)); err == nil || cur == "" {
+					nv = strconv.Itoa(n)
+				}
+				u.writeParam(p, key, m, nv)
+				return
+			}
+		}
 	}
 	if nv, changed := m.step(cur, delta, u.shift); changed {
 		u.writeParam(p, key, m, nv)

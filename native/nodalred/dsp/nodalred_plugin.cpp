@@ -1090,7 +1090,7 @@ int build_chain_params(Instance *in, char *buf, int len) {
     // 0 to 99 always: the list is read once, when the module is probed with
     // its one built-in sound, and a range of 0 to 0 made the knob read-only
     AP("[{\"key\":\"preset\",\"name\":\"Sound\",\"type\":\"int\",\"min\":0,\"max\":99},");
-    AP("{\"key\":\"slot\",\"name\":\"Edit Slot\",\"type\":\"enum\",\"selector\":true,\"options\":[\"A\",\"B\",\"C\",\"D\"]}");
+    AP("{\"key\":\"slot\",\"name\":\"Edit Slot\",\"type\":\"enum\",\"selector\":true,\"available_param\":\"slot_available\",\"options\":[\"A\",\"B\",\"C\",\"D\"]}");
     for (int i = 0; i < 4; i++)
         AP(",{\"key\":\"slot_%c\",\"name\":\"Slot %c\",\"type\":\"enum\",\"options\":[\"Off\",\"On\"]}", 'a' + i, 'A' + i);
     AP(",{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}");
@@ -1201,6 +1201,8 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     if (!strcmp(key, "bank_count")) return snprintf(buf, size_t(len), "%d", int(in->banks.size()));
     if (!strcmp(key, "bank_name")) return snprintf(buf, size_t(len), "%s", b.name.c_str());
     if (!strcmp(key, "slot")) return snprintf(buf, size_t(len), "%d", in->slot);
+    if (!strcmp(key, "slot_available")) // which slots the panel can go to: the ones that are on
+        return snprintf(buf, size_t(len), "%d%d%d%d", in->on[0] ? 1 : 0, in->on[1] ? 1 : 0, in->on[2] ? 1 : 0, in->on[3] ? 1 : 0);
     if (!strncmp(key, "slot_", 5) && key[5] >= 'a' && key[5] <= 'd' && !key[6])
         return snprintf(buf, size_t(len), "%d", in->on[key[5] - 'a'] ? 1 : 0);
     if (!strcmp(key, "gain")) return snprintf(buf, size_t(len), "%d", in->gain);

@@ -36,6 +36,10 @@ type paramMeta struct {
 	// Red's Edit Slot: one panel, four slots). Live has their values of
 	// before; they are read back at once (devices.go, wantResync)
 	Selector bool
+	// Avail: a key of the module's that says which options can be chosen
+	// now, a character an option ("1010"): a turn passes over the others
+	// (Nodal Red 2X: the edit slot, among the slots that are on)
+	Avail string
 	// File: a file parameter (the module's "filepath"): a sample, a
 	// wavetable, a kit; chosen in the file browser, never turned (files.go)
 	File *fileSpec
@@ -103,6 +107,7 @@ func metaFromObj(o map[string]any) *paramMeta {
 		m.Name = m.Key
 	}
 	m.Selector, _ = o["selector"].(bool)
+	m.Avail = str(o["available_param"])
 	m.Min, _ = num(o["min"])
 	m.Max, _ = num(o["max"])
 	m.Step, _ = num(o["step"])

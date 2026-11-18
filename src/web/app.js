@@ -610,6 +610,11 @@
         show(idx);
         d.appendChild(g);
         d.showValue = (nv) => show(enumIndex(p, nv));
+        // the module says which options can be chosen now ("1010"): the others are there, and not to press
+        if (p.available_param) {
+          d.dataset.avail = p.available_param;
+          d.setAvail = (mask) => g.querySelectorAll("button").forEach((b, bi) => { b.disabled = mask[bi] === "0"; });
+        }
       } else {
         d.dataset.kind = "select";
         d.innerHTML = `<label for="${id}">${name}</label>`;
@@ -643,6 +648,15 @@
 
   // syncControl: a control shows a value that changed elsewhere (the Push,
   // a dragged handle). A control being edited keeps its own, unless forced.
+  // which options a control offers now: asked when a value changed, and for a control just built
+  function refreshAvail(all) {
+    document.querySelectorAll(".ctl[data-avail]").forEach((el) => {
+      if (!all && el.dataset.availRead) return;
+      el.dataset.availRead = "1";
+      api(`${state.base}/param?key=${encodeURIComponent(state.comp + ":" + el.dataset.avail)}`)
+        .then((r) => { if (r && typeof r.value === "string" && el.setAvail) el.setAvail(r.value); }).catch(() => {});
+    });
+  }
   function syncControl(k, v, force) {
     const el = document.querySelector(`.ctl[data-key="${CSS.escape(k)}"]`);
     if (!el || (!force && el.contains(document.activeElement) && el.dataset.kind === "range")) return;
@@ -678,6 +692,7 @@
     Object.entries(r.values || {}).forEach(([k, v]) => {
       if (state.values[k] !== v && !(k in pending)) { state.values[k] = v; changed[k] = v; }
     });
+    refreshAvail(Object.keys(changed).length > 0);
     if (!Object.keys(changed).length) return;
     if (frame && frameSubscribed) toFrame({ type: "paramUpdate", params: changed });
     Object.entries(changed).forEach(([k, v]) => syncControl(k, v, false));
