@@ -3,110 +3,133 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Pung</title>
 <link rel="stylesheet" href="/app.css">
 </head>
-<body>
-<header class="top">
-  <div class="brand">Pung <span class="sub">Schwung modules on Push</span></div>
-  <nav class="views" aria-label="Pung">
-    <button type="button" data-view="devices" aria-current="page">Devices</button>
-    <button type="button" data-view="library" aria-current="false">Sounds</button>
-    <button type="button" data-view="modules" aria-current="false">Modules <span class="count" id="view-modules-badge" hidden title="Updates"></span></button>
+<body data-view="devices">
+<a class="skip" href="#main">Skip to the content</a>
+
+<aside class="rail" aria-label="Pung">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span class="word">PUNG</span>
+    <span class="ver" id="rail-version"></span>
+  </div>
+  <nav class="views" aria-label="Sections">
+    <button type="button" data-view="devices" aria-current="page"><span class="ix">01</span><span class="lb">Devices</span><span class="count" id="view-devices-count" hidden></span></button>
+    <button type="button" data-view="library" aria-current="false"><span class="ix">02</span><span class="lb">Sounds</span></button>
+    <button type="button" data-view="modules" aria-current="false"><span class="ix">03</span><span class="lb">Modules</span><span class="count" id="view-modules-badge" hidden title="Updates"></span></button>
+    <button type="button" data-view="setup" aria-current="false"><span class="ix">04</span><span class="lb">Setup</span></button>
   </nav>
-  <nav class="slots" id="slots" aria-label="Pung tracks" data-view-of="devices"></nav>
-  <div class="health" id="health" aria-live="polite"></div>
-</header>
+  <div class="rail-foot">
+    <div class="health" id="health" aria-live="polite"></div>
+    <a class="rail-link" href="https://rgeissen.github.io/push-hack-pung/manual.html" target="_blank" rel="noopener">Manual <span aria-hidden="true">↗</span></a>
+  </div>
+</aside>
 
-<main>
-  <section class="chain" aria-label="Signal chain" data-view-of="devices">
-    <div class="chain-row" id="chain"></div>
-  </section>
-
-  <section class="picker" id="picker" hidden data-view-of="devices">
-    <div class="picker-head">
-      <h2 id="picker-title">Add a module</h2>
-      <div class="kinds" role="tablist">
-        <button type="button" data-kind="midi_fx">MIDI FX</button>
-        <button type="button" data-kind="sound_generator">Synths</button>
-        <button type="button" data-kind="audio_fx">Audio FX</button>
-      </div>
-      <button type="button" class="ghost" id="picker-close">Cancel</button>
-    </div>
-    <div class="cards" id="picker-cards"></div>
-  </section>
-
-  <section class="sounds" id="sounds" hidden data-view-of="devices" aria-labelledby="snd-title">
-    <div class="snd-head">
-      <h2 id="snd-title">Sound</h2>
-      <span class="snd-cur" id="snd-cur" aria-live="polite"></span>
+<main id="main">
+  <div class="offline" id="offline" role="status" hidden><i class="led bad"></i><div><b>Pung is not answering.</b> The Push may be off, starting, or off the network. This page keeps trying and comes back by itself.</div><span class="spin" aria-hidden="true"></span></div>
+  <!-- ============ 01 DEVICES ============ -->
+  <section class="view" id="devices-view" aria-labelledby="dev-h">
+    <header class="view-head">
+      <p class="kicker">01 / Devices</p>
+      <h1 id="dev-h">Devices in your Live Set</h1>
       <span class="grow"></span>
-      <button type="button" class="tool" id="snd-save" title="Write the device's sound over the user sound it is">Save</button>
-      <button type="button" class="tool" id="snd-saveas">Save As…</button>
-      <a class="tool" id="snd-export" download hidden>Export</a>
-      <label class="tool file">Import…<input type="file" id="snd-import" accept=".zip,.json,application/zip,application/json" multiple></label>
+      <label class="switch" title="The page shows the device selected in Live, and follows when you select another">
+        <input type="checkbox" role="switch" id="follow-live" checked>
+        <span class="track" aria-hidden="true"></span>
+        <span class="lb">Follow Live</span>
+      </label>
+    </header>
+
+    <nav class="rack slots" id="slots" aria-label="Pung devices"></nav>
+
+    <div class="empty-state" id="no-devices" hidden>
+      <p class="kicker">No device yet</p>
+      <h2>Load a Pung device on the Push</h2>
+      <ol class="steps">
+        <li>On the Push, open the browser on a MIDI track.</li>
+        <li>Go to <b>User Library</b>, <b>Presets</b>, <b>Instruments</b>, <b>Pung</b>.</li>
+        <li>Load an instrument. It appears here, and this page edits it live.</li>
+      </ol>
+      <p class="hint">Modules you have not installed yet are under <a href="#modules" data-goto="modules">Modules</a>.</p>
     </div>
-    <form class="snd-form" id="snd-form" hidden>
-      <label for="snd-name" id="snd-form-label">Save as</label>
-      <input type="text" id="snd-name" autocomplete="off" maxlength="64" required>
-      <button type="submit" class="primary" id="snd-form-ok">Save</button>
-      <button type="button" class="tool" id="snd-form-cancel">Cancel</button>
-    </form>
+
+    <article class="unit" id="unit" hidden>
+      <header class="unit-head">
+        <div class="unit-id">
+          <p class="kicker" id="unit-kicker"></p>
+          <h2 id="panel-title"></h2>
+          <p class="unit-meta" id="unit-meta"></p>
+        </div>
+        <div class="unit-sound" id="unit-sound" hidden>
+          <p class="kicker">Sound</p>
+          <p class="sound-name" id="unit-sound-name"></p>
+          <p class="sound-bank" id="unit-sound-bank"></p>
+          <div class="sound-acts">
+            <button type="button" class="btn icon" id="snd-prev" aria-label="Previous sound" title="Previous sound">◀</button>
+            <button type="button" class="btn icon" id="snd-next" aria-label="Next sound" title="Next sound">▶</button>
+            <button type="button" class="btn primary" id="snd-open">Browse sounds</button>
+          </div>
+        </div>
+      </header>
+      <div class="panel-tools" id="panel-tools"></div>
+      <div id="panel-body"></div>
+    </article>
+  </section>
+
+  <!-- the sound browser: a drawer over the device -->
+  <div class="drawer-back" id="drawer-back" hidden></div>
+  <aside class="drawer sounds" id="sounds" hidden aria-labelledby="snd-title">
+    <header class="snd-head">
+      <div class="snd-title">
+        <p class="kicker">Sound browser</p>
+        <h2 id="snd-title">Sound</h2>
+        <span class="snd-cur" id="snd-cur" aria-live="polite"></span>
+      </div>
+      <button type="button" class="btn icon" id="snd-close" aria-label="Close the sound browser">✕</button>
+    </header>
     <div class="snd-tools">
       <div class="seg" id="snd-sources" role="group" aria-label="Source"></div>
       <select id="snd-bank" aria-label="Bank" hidden></select>
       <input type="search" id="snd-search" placeholder="Search sounds" aria-label="Search sounds" autocomplete="off">
     </div>
+    <form class="snd-form" id="snd-form" hidden>
+      <label for="snd-name" id="snd-form-label">Save as</label>
+      <input type="text" id="snd-name" autocomplete="off" maxlength="64" required>
+      <button type="submit" class="btn primary" id="snd-form-ok">Save</button>
+      <button type="button" class="btn" id="snd-form-cancel">Cancel</button>
+    </form>
     <div class="snd-list" id="snd-list" role="listbox" tabindex="0" aria-label="Sounds: arrows play, Enter keeps, Escape puts back the sound from before">
       <div class="snd-inner" id="snd-inner"></div>
     </div>
-    <div class="snd-foot">
-      <span class="snd-status" id="snd-status" aria-live="polite"></span>
-      <button type="button" class="tool" id="snd-compare" aria-pressed="false" title="Hold: the sound from before">Compare</button>
-      <button type="button" class="tool" id="snd-cancel">Cancel</button>
-      <button type="button" class="primary" id="snd-load">Load</button>
+    <p class="snd-status" id="snd-status" aria-live="polite"></p>
+    <div class="snd-file">
+      <button type="button" class="btn" id="snd-save" title="Write the device's sound over the user sound it is">Save</button>
+      <button type="button" class="btn" id="snd-saveas">Save as…</button>
+      <a class="btn" id="snd-export" download hidden>Export</a>
+      <label class="btn file">Import…<input type="file" id="snd-import" accept=".zip,.json,application/zip,application/json" multiple></label>
     </div>
-  </section>
-
-  <section class="panel" id="panel" aria-live="polite" data-view-of="devices">
-    <div class="panel-head">
-      <h2 id="panel-title"></h2>
-      <div class="panel-tools" id="panel-tools"></div>
-    </div>
-    <div id="panel-body"></div>
-  </section>
-
-  <section class="prefs" aria-labelledby="prefs-title" data-view-of="devices">
-    <h2 id="prefs-title">Push display</h2>
-    <label class="pref">
-      <input type="checkbox" role="switch" id="pref-touch-card">
-      <span><b>Detail card on touch</b><br>
-      A large card over three columns while an encoder is touched or turned. Off, the touched column shows the
-      range, the neighbouring options and fine adjustment in place. Move needs the card; the Push's columns are
-      wide enough.</span>
-    </label>
-  </section>
-
-  <section class="howto" id="howto" data-view-of="devices">
-    <h2>Play a Pung track from Live</h2>
-    <ol>
-      <li>In Live's settings on the Push, MIDI: turn on <b>Track</b> (and <b>Sync</b>, for arpeggiators) for the output port <b>Pung</b>.</li>
-      <li>Turn on Link and Link Audio in Live.</li>
-      <li>Make a MIDI track and send its MIDI to <b>Pung</b>, on the channel of the Pung track (channel 1 is track 1). Or press <b>Make Live MIDI track</b> above.</li>
-      <li>Make an audio track with the input <b>PushHack</b>, channel <b>Pung N</b>, Monitor <b>In</b>.</li>
-    </ol>
-    <p>On the Push itself: Shift + Help opens Home, then <b>Pung</b>.</p>
-  </section>
-  <section class="library" id="library-view" hidden aria-labelledby="lib-title">
-    <div class="mod-head">
-      <h2 id="lib-title">Sounds</h2>
-      <span class="mod-status" id="lib-status" aria-live="polite"></span>
+    <footer class="snd-foot">
+      <button type="button" class="btn" id="snd-compare" aria-pressed="false" title="Hold: the sound from before">Hold to compare</button>
       <span class="grow"></span>
-      <a class="tool" id="lib-export" href="/api/library/export" download>Export all</a>
-      <label class="tool file">Import…<input type="file" id="lib-import" accept=".zip,application/zip"></label>
-    </div>
-    <p class="lib-intro">Your sounds for every module: Schwung's own user presets, so a Move opens them too. Export all is the folder a Move keeps (<code>presets/&lt;module&gt;/</code>); Import takes such a zip and sorts every sound into its module.</p>
-    <div class="mod-tools">
+      <button type="button" class="btn" id="snd-cancel">Cancel</button>
+      <button type="button" class="btn primary" id="snd-load">Load</button>
+    </footer>
+  </aside>
+
+  <!-- ============ 02 SOUNDS ============ -->
+  <section class="view library" id="library-view" hidden aria-labelledby="lib-title">
+    <header class="view-head">
+      <p class="kicker">02 / Sounds</p>
+      <h1 id="lib-title">Your sound library</h1>
+      <span class="grow"></span>
+      <a class="btn" id="lib-export" href="/api/library/export" download>Export all</a>
+      <label class="btn file">Import…<input type="file" id="lib-import" accept=".zip,application/zip"></label>
+    </header>
+    <p class="lede">Every sound you saved, by module. They are Schwung's own user presets, so a Move opens them too. <span class="mod-status" id="lib-status" aria-live="polite"></span></p>
+    <div class="toolbar">
       <input type="search" id="lib-search" placeholder="Search all sounds" aria-label="Search all sounds" autocomplete="off">
       <div class="seg" id="lib-shows" role="group" aria-label="Show">
         <button type="button" data-show="mine" aria-pressed="true">With sounds</button>
@@ -115,20 +138,33 @@
     </div>
     <div class="lib-list" id="lib-list"></div>
   </section>
-  <section class="modules" id="modules-view" hidden aria-labelledby="mod-title">
-    <div class="mod-head">
-      <h2 id="mod-title">Modules</h2>
+
+  <!-- ============ 03 MODULES ============ -->
+  <section class="view modules" id="modules-view" hidden aria-labelledby="mod-title">
+    <header class="view-head">
+      <p class="kicker">03 / Modules</p>
+      <h1 id="mod-title">Modules</h1>
+      <span class="grow"></span>
       <span class="mod-status" id="mod-status" aria-live="polite"></span>
-      <button type="button" class="ghost" id="mod-refresh">Check for updates</button>
+      <button type="button" class="btn" id="mod-refresh">Check for updates</button>
+    </header>
+    <div class="origin-legend" aria-label="Where a module comes from">
+      <div><span class="origin pung">Pung native</span><p>Written for the Push alone. It may use all of the Push's processor and screen, and would not run on a Move.</p></div>
+      <div><span class="origin schwung">Schwung</span><p>Built from a Schwung module for Ableton Move. It follows its author's releases; Pung adds its screens and sound browser.</p></div>
     </div>
     <div class="mod-banner" id="mod-banner" hidden aria-live="polite"></div>
-    <div class="mod-tools">
+    <div class="toolbar">
       <input type="search" id="mod-search" placeholder="Search modules" aria-label="Search modules" autocomplete="off">
       <div class="seg" id="mod-types" role="group" aria-label="Kind">
-        <button type="button" data-type="all" aria-pressed="true">All</button>
+        <button type="button" data-type="all" aria-pressed="true">All kinds</button>
         <button type="button" data-type="sound_generator" aria-pressed="false">Instruments</button>
         <button type="button" data-type="audio_fx" aria-pressed="false">Audio effects</button>
         <button type="button" data-type="midi_fx" aria-pressed="false">MIDI effects</button>
+      </div>
+      <div class="seg" id="mod-origins" role="group" aria-label="Origin">
+        <button type="button" data-origin="all" aria-pressed="true">Any origin</button>
+        <button type="button" data-origin="pung" aria-pressed="false">Pung native <span class="count" id="mod-count-pung"></span></button>
+        <button type="button" data-origin="schwung" aria-pressed="false">Schwung <span class="count" id="mod-count-schwung"></span></button>
       </div>
       <div class="seg" id="mod-shows" role="group" aria-label="Show">
         <button type="button" data-show="installed" aria-pressed="false">Installed <span class="count" id="mod-count-installed"></span></button>
@@ -138,11 +174,52 @@
     <div class="mod-grid" id="mod-grid" aria-live="polite"></div>
     <p class="mod-foot" id="mod-foot"></p>
   </section>
+
+  <!-- ============ 04 SETUP ============ -->
+  <section class="view setup" id="setup-view" hidden aria-labelledby="setup-title">
+    <header class="view-head">
+      <p class="kicker">04 / Setup</p>
+      <h1 id="setup-title">Setup</h1>
+    </header>
+    <div class="setup-grid">
+      <section class="card" aria-labelledby="prefs-title">
+        <p class="kicker">Push display</p>
+        <h2 id="prefs-title">Detail card on touch</h2>
+        <label class="switch wide">
+          <input type="checkbox" role="switch" id="pref-touch-card">
+          <span class="track" aria-hidden="true"></span>
+          <span class="lb">Show a large card while an encoder is touched</span>
+        </label>
+        <p class="note">On: a card over three columns shows the touched parameter. Off: the touched column shows its range, the neighbouring options and fine adjustment in place. The Push's columns are wide enough for off.</p>
+        <p class="note" id="pref-msg" role="status"></p>
+      </section>
+      <section class="card" aria-labelledby="sys-title">
+        <p class="kicker">System</p>
+        <h2 id="sys-title">This Pung</h2>
+        <dl class="facts" id="sys-facts"></dl>
+      </section>
+      <section class="card" aria-labelledby="how-title">
+        <p class="kicker">How it fits together</p>
+        <h2 id="how-title">Pung devices are Live devices</h2>
+        <p class="note">A Pung device sits on a track like any instrument or effect. Live adds, removes, bypasses and saves it. This page and the Pung view on the Push edit the same device: a change here reaches Live, Push's own device view and automation.</p>
+        <p class="note">On the Push: Shift + Help opens Home, then <b>Pung</b>.</p>
+      </section>
+    </div>
+  </section>
 </main>
+
 <dialog class="mod-sheet" id="mod-sheet" aria-labelledby="mod-sheet-title">
-  <button type="button" class="ghost close" id="mod-sheet-close" aria-label="Close">✕</button>
+  <button type="button" class="btn icon close" id="mod-sheet-close" aria-label="Close">✕</button>
   <div id="mod-sheet-body"></div>
 </dialog>
+<dialog class="confirm" id="confirm" aria-labelledby="confirm-text">
+  <p id="confirm-text"></p>
+  <div class="confirm-acts">
+    <button type="button" class="btn" id="confirm-no">Cancel</button>
+    <button type="button" class="btn primary" id="confirm-yes">OK</button>
+  </div>
+</dialog>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script src="/visuals.js"></script>
 <script src="/files.js"></script>
 <script src="/app.js"></script>

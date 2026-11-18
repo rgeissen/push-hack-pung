@@ -27,6 +27,10 @@ type ModuleInfo struct {
 	WebUI       bool   `json:"web_ui"`
 	Help        bool   `json:"help"`
 	Loadable    bool   `json:"loadable"` // its DSP file is present
+	// Origin: "pung" for a module written for the Push (native/, its
+	// module.json says "origin": "pung"), else "schwung": one built from a
+	// Schwung module. The web page shows which is which.
+	Origin string `json:"origin"`
 	// Forks: its sound is computed in processes of its own
 	// (capabilities.forks_processes: JE-8086). They take their scheduling
 	// from the thread that loads the module (engine.go: cSet)
@@ -94,6 +98,7 @@ func scanModulesNow(root string) []ModuleInfo {
 			var m struct {
 				ID, Name, Abbrev, Version, Author, Description string
 				DSP                                            string `json:"dsp"`
+				Origin                                         string `json:"origin"`
 				ComponentType                                  string `json:"component_type"`
 				Capabilities                                   struct {
 					Forks bool `json:"forks_processes"`
@@ -109,6 +114,10 @@ func scanModulesNow(root string) []ModuleInfo {
 				Author: m.Author, Description: m.Description, Dir: dir, Forks: m.Capabilities.Forks}
 			if info.Name == "" {
 				info.Name = m.ID
+			}
+			info.Origin = "schwung"
+			if m.Origin == "pung" {
+				info.Origin = "pung"
 			}
 			info.WebUI = exists(filepath.Join(dir, "web_ui.html"))
 			info.Help = exists(filepath.Join(dir, "help.json"))

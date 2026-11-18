@@ -172,3 +172,22 @@ func TestScanModulesIsKept(t *testing.T) {
 		t.Fatalf("%d modules after one was added, want 2", n)
 	}
 }
+
+// A file a module declares by its size alone is there under any name.
+func TestAssetBySizeUnderAnyName(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "roms"), 0o755)                                                                                                                                    //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"x","assets":{"path":"roms","files":[{"filename":"fw.bin","label":"Firmware","size":5,"required":true}]}}`), 0o644) //nolint:errcheck
+	if st := assetStates(dir); len(st) != 1 || st[0].Missing != 1 {
+		t.Fatalf("an empty folder: %+v", st)
+	}
+	os.WriteFile(filepath.Join(dir, "roms", "another name.bin"), []byte("12345"), 0o644) //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "roms", "notes.txt"), []byte("x"), 0o644)            //nolint:errcheck
+	st := assetStates(dir)
+	if st[0].Missing != 0 || !st[0].Files[0].OK || st[0].Files[0].Filename != "another name.bin" {
+		t.Fatalf("the firmware under another name is not seen: %+v", st[0])
+	}
+	if len(st[0].Others) != 1 || st[0].Others[0] != "notes.txt" {
+		t.Fatalf("others = %v", st[0].Others)
+	}
+}

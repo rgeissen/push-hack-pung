@@ -86,13 +86,16 @@ func openURL(ctx context.Context, url string) (io.ReadCloser, error) {
 var installSubdirs = map[string]string{"sound_generator": "sound_generators", "audio_fx": "audio_fx", "midi_fx": "midi_fx"}
 
 type catalogEntry struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Version         string   `json:"version"`
-	ComponentType   string   `json:"component_type"`
-	Description     string   `json:"description"`
-	Author          string   `json:"author"`
-	Requires        string   `json:"requires"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Version       string `json:"version"`
+	ComponentType string `json:"component_type"`
+	Description   string `json:"description"`
+	Author        string `json:"author"`
+	Requires      string `json:"requires"`
+	// Origin: "pung" (a Pung-native module) or "schwung"; from the catalog,
+	// else from the installed module (view)
+	Origin          string   `json:"origin,omitempty"`
 	RequiresModules []string `json:"requires_modules"`
 	Asset           string   `json:"asset"`
 	Size            int64    `json:"size"`
@@ -465,12 +468,31 @@ func assetStates(dir string) []assetState {
 					}
 				}
 			}
-			if f.Required && !fs.OK {
-				st.Missing++
-			}
 			st.Files = append(st.Files, fs)
 		}
 		ents, _ := os.ReadDir(filepath.Join(dir, a.Path))
+		// A file declared by its size alone (no checksum: the module finds
+		// it by what it is, under any name, as Nodal Red finds its
+		// firmware) is there when a file of that size is: the page said
+		// "missing" beside a firmware that was in the folder and running.
+		for i := range st.Files {
+			fs := &st.Files[i]
+			if fs.Present || fs.Size <= 0 || fs.CRC32 != "" {
+				continue
+			}
+			for _, e := range ents {
+				if fi, err := e.Info(); err == nil && !e.IsDir() && fi.Size() == fs.Size && !named[e.Name()] && !strings.HasPrefix(e.Name(), ".") {
+					fs.Present, fs.OK, fs.Filename = true, true, e.Name()
+					named[e.Name()] = true
+					break
+				}
+			}
+		}
+		for _, fs := range st.Files {
+			if fs.Required && !fs.OK {
+				st.Missing++
+			}
+		}
 		for _, e := range ents {
 			if !named[e.Name()] && !strings.HasPrefix(e.Name(), ".") {
 				st.Others = append(st.Others, e.Name())
@@ -1066,6 +1088,12 @@ func (mm *modMgr) view() map[string]any {
 				r.Repacked = !versionLess(i.Version, e.Version)
 			}
 			r.AssetState = assetStates(i.Dir)
+			if r.Origin == "" {
+				r.Origin = i.Origin
+			}
+		}
+		if r.Origin != "pung" {
+			r.Origin = "schwung"
 		}
 		rows = append(rows, r)
 		seen[e.ID] = true
@@ -1080,6 +1108,7 @@ func (mm *modMgr) view() map[string]any {
 		}
 		r.ID, r.Name, r.Version, r.Description, r.Author = id, i.Name, i.Version, i.Description, i.Author
 		r.ComponentType = i.Type
+		r.Origin = i.Origin
 		rows = append(rows, r)
 	}
 	for i := range rows {

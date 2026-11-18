@@ -612,6 +612,16 @@ type compartmentInfo struct {
 	Custom   bool     `json:"custom"`              // it has its own screen on the Push
 	Takeover bool     `json:"takeover"`            // ... and that screen is all of the panel
 	LiveKeys []string `json:"live_keys,omitempty"` // values the module drives, for live pictures
+	// Pages: its encoder pages, eight keys each, as the Push turns through
+	// them (the web page lays its controls out by them)
+	Pages []compartmentPage `json:"pages,omitempty"`
+}
+
+type compartmentPage struct {
+	Label string   `json:"label"`
+	Keys  []string `json:"keys"`
+	// Screen: the page has a screen of its own on the Push (screen.png?page=)
+	Screen bool `json:"screen,omitempty"`
 }
 
 // compartmentsOf: a module's compartments, declared ones else its banks (a
@@ -623,7 +633,11 @@ func (u *surface) compartmentsOf(module string) ([]compartmentInfo, string) {
 	var out []compartmentInfo
 	if set := u.ov.get(u.h.modulesDir, module); set != nil && set.failed == "" && len(set.compartments) > 0 {
 		for _, c := range set.compartments {
-			out = append(out, compartmentInfo{ID: c.id, Label: c.label, Keys: c.keys, Custom: c.screen != nil, Takeover: c.takeover, LiveKeys: c.liveKeys})
+			ci := compartmentInfo{ID: c.id, Label: c.label, Keys: c.keys, Custom: c.screen != nil, Takeover: c.takeover, LiveKeys: c.liveKeys}
+			for _, pg := range c.pages {
+				ci.Pages = append(ci.Pages, compartmentPage{Label: pg.label, Keys: pg.keys, Screen: pg.screen != nil})
+			}
+			out = append(out, ci)
 			// (a page's own screen does not make the compartment's web section a screen)
 		}
 	} else if m, ok := findModule(u.h.modulesDir, module); ok {
@@ -1773,14 +1787,28 @@ func (u *surface) pungDevice() (*device, string) {
 // it, from a device's own values: the web page shows the same picture
 // (UX-GUIDELINES.md, 1.2). A takeover is the whole panel, a band screen its
 // band. The same overlay as the Push's draws it, so it is drawn under u.mu.
-func (u *surface) compartmentScreen(module, id string, get func(string) (string, bool)) (*image.NRGBA, error) {
+// page: a page of the compartment with a screen of its own (Nodal Red's
+// Morph pages), or -1 for the compartment's.
+func (u *surface) compartmentScreen(module, id string, page int, get func(string) (string, bool)) (*image.NRGBA, error) {
 	m, ok := findModule(u.h.modulesDir, module)
 	if !ok {
 		return nil, fmt.Errorf("no module %s", module)
 	}
 	set := u.ov.get(u.h.modulesDir, module)
 	comp := set.compartment(id)
-	if comp == nil || comp.screen == nil {
+	if comp == nil {
+		return nil, fmt.Errorf("%s has no screen %q", module, id)
+	}
+	scr, skeys := comp.screen, comp.screenKeys()
+	var pageKeys []string
+	if page >= 0 {
+		if page >= len(comp.pages) || comp.pages[page].screen == nil {
+			return nil, fmt.Errorf("%s: page %d of %q has no screen", module, page, id)
+		}
+		scr, skeys = comp.pageScreen(page)
+		pageKeys = comp.pages[page].keys
+	}
+	if scr == nil {
 		return nil, fmt.Errorf("%s has no screen %q", module, id)
 	}
 	cm, _ := u.h.probeMeta(m)
@@ -1789,7 +1817,7 @@ func (u *surface) compartmentScreen(module, id string, get func(string) (string,
 	}
 	cm = withCompartments(liveBanks(cm), set.compartments)
 	// values first, without the lock: a read is a call into the chain
-	vals := ovValuesOf(cm, comp.screenKeys(), get)
+	vals := ovValuesOf(cm, skeys, get)
 
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -1805,14 +1833,17 @@ func (u *surface) compartmentScreen(module, id string, get func(string) (string,
 			break
 		}
 	}
-	pl := placement{w: &ovWidget{keys: comp.screenKeys(), draw: comp.screen}, span: 8, full: comp.takeover, offline: true}
+	pl := placement{w: &ovWidget{keys: skeys, draw: scr}, span: 8, full: comp.takeover && page < 0, offline: true}
 	if b != nil {
 		pl.info = u.takeoverInfo(position{Module: module, Name: m.Name}, cm, b, comp)
+	}
+	if page >= 0 {
+		pl.info = map[string]any{"$knobs": pageKeys, "$page": page}
 	}
 	if !set.render(img, pl, vals, "", sc) {
 		return nil, fmt.Errorf("the screen failed: %s", set.failed)
 	}
-	if !comp.takeover {
+	if !comp.takeover || page >= 0 {
 		return img.SubImage(image.Rect(4, ovTop, scrW-4, ovTop+ovHeight)).(*image.NRGBA), nil
 	}
 	return img, nil

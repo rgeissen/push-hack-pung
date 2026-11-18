@@ -63,11 +63,11 @@
         if (renaming === k) {
           line = `<input class="rename" data-k="${esc(k)}" value="${esc(r.name)}" aria-label="New name for ${esc(r.name)}"><button type="button" class="tool small" data-act="rename-ok" data-k="${esc(k)}">Rename</button><button type="button" class="tool small" data-act="rename-no">Cancel</button>`;
         } else if (ask === k) {
-          line = `<span class="nm">${esc(r.name)}</span><span class="ask">Delete for good?</span><button type="button" class="ico" data-act="delete-yes" data-k="${esc(k)}">Yes</button><button type="button" class="ico" data-act="delete-no" id="lib-no">No</button>`;
+          line = `<span class="nm">${esc(r.name)}</span><span class="ask">Delete for good?</span><button type="button" class="ico" data-act="delete-no" id="lib-no">No</button><button type="button" class="ico yes" data-act="delete-yes" data-k="${esc(k)}">Yes</button>`;
         } else {
           line = `<span class="nm">${esc(r.name)}${r.src ? `<span class="src">${esc(r.src)}</span>` : ""}</span>${loadBtns}` +
-            (r.kind === "user" ? `<button type="button" class="ico" data-act="rename" data-k="${esc(k)}" title="Rename" aria-label="Rename ${esc(r.name)}">✎</button>` +
-                                 `<button type="button" class="ico" data-act="delete" data-k="${esc(k)}" title="Delete" aria-label="Delete ${esc(r.name)}">🗑</button>` : "") +
+            (r.kind === "user" ? `<button type="button" class="ico" data-act="rename" data-k="${esc(k)}" title="Rename" aria-label="Rename ${esc(r.name)}">Ren</button>` +
+                                 `<button type="button" class="ico" data-act="delete" data-k="${esc(k)}" title="Delete" aria-label="Delete ${esc(r.name)}">Del</button>` : "") +
             `<button type="button" class="ico star" data-act="fav" data-k="${esc(k)}" aria-pressed="${r.fav}" aria-label="Favourite ${esc(r.name)}">${r.fav ? "★" : "☆"}</button>`;
         }
         html += `<li>${line}</li>`;

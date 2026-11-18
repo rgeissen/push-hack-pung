@@ -440,6 +440,8 @@ for m in mods:
     os.replace(tmp, pkg_path)
 
     entry = {k: m[k] for k in ("id", "name", "version", "component_type", "install_subdir", "description", "author", "requires", "requires_modules")}
+    # a module written for the Push (native/), or one built from a Schwung module
+    entry["origin"] = "pung" if m["source"].get("native") else "schwung"
     sc = SCHWUNG_CAT.get(mid, {})
     rel = RELEASES.get(mid, {})
     try:

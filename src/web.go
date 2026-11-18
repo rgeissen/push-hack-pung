@@ -216,6 +216,12 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 				if d.s.Index == sel {
 					e["track"] = track
 				}
+				// for the page's device header: whose module it is, its
+				// version, and how loud it is now
+				e["peak_db"] = peakDB(d.s.peak())
+				if m, ok := findModule(h.modulesDir, d.c.module); ok {
+					e["origin"], e["version"], e["author"] = m.Origin, m.Version, m.Author
+				}
 				out = append(out, e)
 			}
 		}
@@ -265,7 +271,11 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 			return
 		}
 		comp := d.c.component()
-		img, err := h.ui.compartmentScreen(d.c.module, r.PathValue("id"), func(k string) (string, bool) {
+		page := -1
+		if p := r.URL.Query().Get("page"); p != "" {
+			page, _ = strconv.Atoi(p)
+		}
+		img, err := h.ui.compartmentScreen(d.c.module, r.PathValue("id"), page, func(k string) (string, bool) {
 			return d.s.Get(comp + ":" + k)
 		})
 		if err != nil {

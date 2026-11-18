@@ -11,7 +11,8 @@
     midi_fx: { label: "MIDI effect", plural: "MIDI effects", cls: "midi" },
   };
   const STATE = { queued: "Waiting", downloading: "Downloading", verifying: "Checking", unpacking: "Unpacking", testing: "Testing on the Push" };
-  const m = { data: null, filter: "all", show: "all", q: "", open: null, timer: null, down: false, busy: {} };
+  const ORIGIN = { pung: "Pung native", schwung: "Schwung" };
+  const m = { data: null, filter: "all", origin: "all", show: "all", q: "", open: null, timer: null, down: false, busy: {} };
 
   async function api(path, opts) {
     const r = await fetch(path, opts);
@@ -30,7 +31,7 @@
       schedule(1000);
       return;
     }
-    m.down = false;
+    m.down = false; if (!d.restarting) m.applying = false;
     m.data = d;
     if (m.wantOpen && d.modules.some((x) => x.id === m.wantOpen)) { const id = m.wantOpen; m.wantOpen = null; render(); openSheet(id); }
     render();
@@ -50,9 +51,13 @@
     const q = m.q.trim().toLowerCase();
     return all.filter((x) =>
       (m.filter === "all" || x.component_type === m.filter) &&
+      (m.origin === "all" || originOf(x) === m.origin) &&
       (m.show === "all" || (m.show === "installed" && x.installed) || (m.show === "updates" && x.status === "update")) &&
       (!q || [x.name, x.id, x.author, x.description, x.license && x.license.spdx].join(" ").toLowerCase().includes(q)));
   }
+
+  const originOf = (x) => (x.origin === "pung" ? "pung" : "schwung");
+  const originChip = (x) => `<span class="origin ${originOf(x)}" title="${originOf(x) === "pung" ? "Written for the Push alone" : "Built from a Schwung module for Ableton Move"}">${ORIGIN[originOf(x)]}</span>`;
 
   function render() {
     const root = $("modules-view");
@@ -64,6 +69,8 @@
     const all = (d && d.modules || []).filter((x) => x.supported);
     const counts = { installed: all.filter((x) => x.installed).length, updates: all.filter((x) => x.status === "update").length };
     $("mod-count-installed").textContent = counts.installed;
+    $("mod-count-pung").textContent = all.filter((x) => originOf(x) === "pung").length;
+    $("mod-count-schwung").textContent = all.filter((x) => originOf(x) === "schwung").length;
     $("mod-count-updates").textContent = counts.updates;
     $("mod-search").placeholder = `Search ${all.length} modules`;
     const grid = $("mod-grid");
@@ -96,7 +103,7 @@
 
   function renderStatus(d) {
     const s = $("mod-status");
-    if (m.down) { s.innerHTML = `<span class="warn">Pung is starting again…</span>`; return; }
+    if (m.down) { s.innerHTML = m.applying ? `<span class="warn">Pung is starting again…</span>` : ""; return; }
     if (!d) { s.textContent = ""; return; }
     const c = d.catalog || {};
     const when = c.fetched_at ? ago(new Date(c.fetched_at)) : "";
@@ -108,6 +115,7 @@
   function renderBanner(d) {
     const b = $("mod-banner");
     const ap = d && d.apply;
+    if (m.down && !m.applying) { b.hidden = true; return; } // the page's own bar says Pung is not answering
     if (m.down || (d && d.restarting)) {
       b.hidden = false;
       b.className = "mod-banner busy";
@@ -181,8 +189,8 @@
     const err = x.job && x.job.state === "failed" ? `<p class="err" role="alert">${esc(x.job.error)}</p>` : "";
     const cat = catLabel(x);
     const tags = (x.tags || []).filter((g) => g !== "needs-assets").slice(0, 3);
-    return `<article class="mod ${t.cls}" data-id="${esc(x.id)}" tabindex="0" aria-label="${esc(x.name)}, ${esc(t.label)}">
-      <h3>${esc(x.name)}</h3>
+    return `<article class="mod ${t.cls}${originOf(x) === "pung" ? " native" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-label="${esc(x.name)}, ${esc(t.label)}, ${ORIGIN[originOf(x)]}">
+      <div class="top"><h3>${esc(x.name)}</h3>${originChip(x)}</div>
       <span class="badges"><span class="badge kind">${esc(t.label)}</span>${cat ? `<span class="badge cat">${esc(cat)}</span>` : ""}</span>
       <p class="desc" title="${esc(x.description || "")}">${esc(x.description || "")}</p>
       ${tags.length ? `<div class="pills">${tags.map((g) => `<span class="pill">${esc(g)}</span>`).join("")}</div>` : ""}
@@ -226,16 +234,16 @@
       ["Released", x.released ? fmtDate(x.released) : "—"],
       ["Updated", x.updated ? fmtDate(x.updated) : "—"],
       ["Licence", x.license && x.license.spdx ? `${x.license.spdx}${x.license.noncommercial && !/commercial/i.test(x.license.spdx) ? " (non-commercial)" : ""}` : "—"],
-      ["Size", x.size ? `${(x.size / 1024).toFixed(0)} KB` : "—"],
+      ["Size", x.size ? bytes(x.size) : "—"],
     ];
     const links = [];
     if (src.repo) links.push(`<a href="${esc(src.repo)}" target="_blank" rel="noopener">Repository</a>`);
     // a full address (a bundled catalog keeps its sources on GitHub), or one under the catalog's
     const srcURL = /^https?:\/\//.test(src.archive || "") ? src.archive : base + "/" + src.archive;
-    if (src.archive) links.push(`<a href="${esc(srcURL)}">Source of this build${src.archive_size ? ` (${(src.archive_size / 1048576).toFixed(1)} MB)` : ""}</a>`);
+    if (src.archive) links.push(`<a href="${esc(srcURL)}">Source of this build${src.archive_size ? ` (${bytes(src.archive_size)})` : ""}</a>`);
     body.innerHTML = `
       <header class="sheet-head ${t.cls}">
-        <span class="kind">${esc(t.label)}</span>
+        <span class="kind">${esc(t.label)} ${originChip(x)}</span>
         <h2 id="mod-sheet-title">${esc(x.name)}</h2>
         <p class="by">${esc(x.author || "")}</p>
       </header>
@@ -321,7 +329,7 @@
   }
 
   async function delAsset(x, path, name) {
-    if (!confirm(`Remove ${name} from ${x.name}?`)) return;
+    if (!(await PungConfirm(`Remove ${name} from ${x.name}?`, "Remove", true))) return;
     const r = await api(`/api/catalog/${encodeURIComponent(x.id)}/assets/${encodeURIComponent(path)}/${encodeURIComponent(name)}`, { method: "DELETE" });
     if (!r.ok) say(r.error, true);
     await load(false);
@@ -338,11 +346,11 @@
   // ---- actions ---------------------------------------------------------------------
   async function install(id) {
     const r = await api(`/api/catalog/${encodeURIComponent(id)}/install`, { method: "POST" });
-    if (!r.ok) alert(r.error);
+    if (!r.ok) PungToast(r.error || "It could not be installed.", true);
     load(false);
   }
   async function remove(x) {
-    if (!confirm(`Remove ${x.name}? Its files (ROMs, banks) are kept, and come back if you install it again.`)) return;
+    if (!(await PungConfirm(`Remove ${x.name}? Its files (ROMs, banks) are kept, and come back if you install it again.`, "Remove", true))) return;
     const r = await api(`/api/catalog/${encodeURIComponent(x.id)}/remove`, { method: "POST" });
     if (!r.ok) { say(r.error, true); return; }
     load(false);
@@ -351,8 +359,8 @@
     const btn = $("mod-apply");
     if (btn) btn.disabled = true;
     const r = await api("/api/catalog/apply", { method: "POST" });
-    if (!r.ok) { alert(r.error); if (btn) btn.disabled = false; return; }
-    m.down = true;
+    if (!r.ok) { PungToast(r.error || "Live could not be restarted.", true); if (btn) btn.disabled = false; return; }
+    m.down = true; m.applying = true;
     render();
     schedule(1500);
   }
@@ -366,6 +374,7 @@
     if (s < 86400 * 2) return `${Math.round(s / 3600)} h ago`;
     return `${Math.round(s / 86400)} days ago`;
   }
+  function bytes(n) { return n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`; }
   function shortLicence(s) { return s.replace(/^LicenseRef-/, "").replace(/-only$|-or-later$/, ""); }
 
   // ---- the view switch ---------------------------------------------------------------
@@ -375,9 +384,9 @@
     // un-hid what the devices view keeps hidden (the module picker, a sound
     // browser with no device) on every switch back
     document.body.dataset.view = view;
-    $("modules-view").hidden = !mods;
-    const libv = $("library-view");
-    if (libv) libv.hidden = view !== "library";
+    ["devices", "library", "modules", "setup"].forEach((v) => { const el = $(v + "-view"); if (el) el.hidden = v !== view; });
+    if (view !== "devices" && window.PungDrawer) PungDrawer.close();
+    document.title = { devices: "Pung", library: "Sounds · Pung", modules: "Modules · Pung", setup: "Setup · Pung" }[view] || "Pung";
     document.querySelectorAll(".views button").forEach((b) => b.setAttribute("aria-current", b.dataset.view === view ? "page" : "false"));
     const want = view === "devices" ? "" : "#" + view;
     if (!(want && location.hash.startsWith(want)) && !(!want && !location.hash)) history.replaceState(null, "", want || location.pathname);
@@ -385,8 +394,22 @@
     window.dispatchEvent(new CustomEvent("pung:view", { detail: { view } }));
   }
 
+  function route() {
+    const h = location.hash.match(/^#modules(?:\/(.+))?$/);
+    if (h && h[1]) { m.wantOpen = decodeURIComponent(h[1]); if (m.data && m.data.modules.some((x) => x.id === m.wantOpen)) { const id = m.wantOpen; m.wantOpen = null; openSheet(id); } }
+    show(h ? "modules" : location.hash.startsWith("#library") ? "library" : location.hash.startsWith("#setup") ? "setup" : "devices");
+    return h;
+  }
+
   function boot() {
-    document.querySelectorAll(".views button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
+    // a view is a place in the history: Back leaves it, a link opens it
+    document.querySelectorAll(".views button").forEach((b) => (b.onclick = () => {
+      const v = b.dataset.view, want = v === "devices" ? location.pathname : "#" + v;
+      if (document.body.dataset.view !== v) history.pushState(null, "", want);
+      show(v);
+    }));
+    window.addEventListener("popstate", route);
+    window.addEventListener("hashchange", route);
     $("mod-search").oninput = (e) => { m.q = e.target.value; render(); };
     document.querySelectorAll("#mod-types button").forEach((b) => (b.onclick = () => {
       m.filter = b.dataset.type;
@@ -398,14 +421,17 @@
       document.querySelectorAll("#mod-shows button").forEach((o) => o.setAttribute("aria-pressed", String(o.dataset.show === m.show)));
       render();
     }));
+    document.querySelectorAll("#mod-origins button").forEach((b) => (b.onclick = () => {
+      m.origin = b.dataset.origin;
+      document.querySelectorAll("#mod-origins button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+      render();
+    }));
     $("mod-refresh").onclick = () => load(true);
     $("mod-sheet-close").onclick = () => $("mod-sheet").close();
     $("mod-sheet").addEventListener("close", () => (m.open = null));
     $("mod-sheet").addEventListener("click", (e) => { if (e.target === $("mod-sheet")) $("mod-sheet").close(); });
     // #modules, or #modules/<id>: a module's sheet, to link to
-    const h = location.hash.match(/^#modules(?:\/(.+))?$/);
-    if (h && h[1]) m.wantOpen = decodeURIComponent(h[1]);
-    show(h ? "modules" : location.hash.startsWith("#library") ? "library" : "devices");
+    const h = route();
     // the updates badge, even while the Devices view is shown
     if (!h) api("/api/catalog").then((d) => {
       const n = (d.modules || []).filter((x) => x.supported && x.status === "update").length;

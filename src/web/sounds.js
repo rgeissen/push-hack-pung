@@ -13,7 +13,7 @@
   const ROW = 32, AUDITION_MS = 150;
   const SOURCES = [["factory", "Factory"], ["user", "User"], ["favourites", "Favourites"], ["recent", "Recent"]];
 
-  let dev = -1, v = null, source = "factory", filter = "", cursor = 0, sig = "", timer = null, compare = false;
+  let dev = -1, devName = "", v = null, source = "factory", filter = "", cursor = 0, sig = "", timer = null, compare = false;
   let rows = [];
   let askDelete = -1; // the row asking "Delete?"
   let formDo = null;  // what the name form does on Save
@@ -60,13 +60,17 @@
     render(first || !keepCursor);
   }
 
-  function hide() { $("sounds").hidden = true; }
+  function hide() { $("sounds").hidden = true; tell(null); }
+  // the device's sound, for the unit's header (app.js)
+  function tell(view) { window.dispatchEvent(new CustomEvent("pung:sound", { detail: { v: view } })); }
 
   // ---- drawing -----------------------------------------------------------
   function render(placeCursor) {
     const sec = $("sounds");
-    if (!v || (!v.factory && !v.has_state)) { sec.hidden = true; return; }
+    if (!v || (!v.factory && !v.has_state)) { sec.hidden = true; tell(null); return; }
     sec.hidden = false;
+    tell(v);
+    $("snd-title").textContent = devName || "Sound";
     const cur = v.current;
     $("snd-cur").innerHTML = cur && cur.name ? `${v.edited ? '<span class="edited" title="Changed since">*</span> ' : ""}${esc(cur.name)}` : '<span class="muted">no sound chosen yet</span>';
     // the sources
@@ -166,10 +170,10 @@
         `<span class="nm${r.name ? "" : " unknown"}">${r.name ? esc(r.name) : "–"}</span>` +
         (r.tag ? `<span class="tg">${esc(r.tag)}</span>` : "") +
         (st ? `<span class="st">${st}</span>` : "") +
-        (r.user && askDelete === i ? `<span class="ask">Delete?</span><button type="button" class="ico yes" data-act="delete-yes" data-i="${i}">Yes</button>` +
-                  `<button type="button" class="ico" data-act="delete-no" data-i="${i}" id="snd-no">No</button>` :
-         r.user ? `<button type="button" class="ico" data-act="rename" data-i="${i}" title="Rename" aria-label="Rename ${esc(r.name)}">✎</button>` +
-                  `<button type="button" class="ico" data-act="delete" data-i="${i}" title="Delete" aria-label="Delete ${esc(r.name)}">🗑</button>` : "") +
+        (r.user && askDelete === i ? `<span class="ask">Delete?</span><button type="button" class="ico" data-act="delete-no" data-i="${i}" id="snd-no">No</button>` +
+                  `<button type="button" class="ico yes" data-act="delete-yes" data-i="${i}">Yes</button>` :
+         r.user ? `<button type="button" class="ico" data-act="rename" data-i="${i}" title="Rename" aria-label="Rename ${esc(r.name)}">Ren</button>` +
+                  `<button type="button" class="ico" data-act="delete" data-i="${i}" title="Delete" aria-label="Delete ${esc(r.name)}">Del</button>` : "") +
         `<button type="button" class="ico star" data-act="fav" data-i="${i}" aria-pressed="${r.fav}" title="Favourite" aria-label="Favourite ${esc(r.name || "#" + r.num)}">${r.fav ? "★" : "☆"}</button>` +
         `</div>`;
     }
@@ -208,13 +212,40 @@
   async function keep() {
     clearTimeout(timer);
     const r = rows[cursor];
-    await act("keep", r ? r.ref : null, r && r.name ? `Kept: ${r.name}` : "Kept");
+    const res = await act("keep", r ? r.ref : null, r && r.name ? `Kept: ${r.name}` : "Kept");
+    if (res && res.ok) {
+      if (window.PungDrawer) PungDrawer.close();
+      if (window.PungToast && r) PungToast(`Loaded ${r.name || "sound " + r.num}`);
+    }
   }
+
+  // step: the next or the previous factory sound, from the unit's header
+  let stepping = false;
+  async function step(d) {
+    if (!v || !v.factory || v.factory.count < 2 || stepping) return;
+    const f = v.factory;
+    const from = f.index >= 0 ? f.index : (d > 0 ? -1 : 0);
+    const i = ((from + d) % f.count + f.count) % f.count;
+    const ref = { source: "factory", bank: f.bank || "", index: i, name: (f.names || {})[i] || "" };
+    stepping = true;
+    try {
+      await post(`/api/devices/${dev}/sounds/try`, ref);
+      const r = await post(`/api/devices/${dev}/sounds/keep`, ref);
+      if (r.ok && r.sounds) { v = r.sounds; source = "factory"; render(true); }
+      else if (!r.ok && window.PungToast) PungToast(r.error || "That sound could not be loaded.", true);
+    } catch (e) { if (window.PungToast) PungToast("Pung did not answer.", true); }
+    stepping = false;
+    setTimeout(() => load(true), 600); // its name, learned as it loads
+  }
+  window.PungSounds = { step };
 
   async function cancel() {
     clearTimeout(timer);
+    const had = v && v.browsing;
     await act("cancel", {}, "The sound from before is back.");
     render(true);
+    if (window.PungDrawer) PungDrawer.close();
+    if (had && window.PungToast) PungToast("The sound from before is back.");
   }
 
   // the name form: Save As and Rename, in place (no browser dialog)
@@ -231,8 +262,7 @@
 
   function saveAs() {
     // as the Push: the sound it came from, else the device and the date
-    const dname = (document.querySelector(".slots .dev[aria-current=true]") || {}).firstChild;
-    const suggest = (v.current && v.current.name) || `${dname ? dname.textContent : v.module} ${new Date().toISOString().slice(0, 10)}`;
+    const suggest = (v.current && v.current.name) || `${devName || v.module} ${new Date().toISOString().slice(0, 10)}`;
     askName("Save the device's sound as", suggest, "Save", async (name) => {
       const r = await act("save", { as: true, name });
       if (r.ok && r.sounds) {
@@ -291,7 +321,7 @@
       if (e.key === "Home") { e.preventDefault(); move(0, true); }
       else if (e.key === "End") { e.preventDefault(); move(rows.length - 1, true); }
       else if (e.key === "Enter") { e.preventDefault(); keep(); }
-      else if (e.key === "Escape") { e.preventDefault(); cancel(); }
+      else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); }
       else if (e.key === "f" || e.key === "*") { e.preventDefault(); rowAction("fav", cursor); }
     });
     $("snd-search").addEventListener("input", (e) => { filter = e.target.value; cursor = 0; rows = buildRows(); drawList(true); $("snd-status").textContent = status(); });
@@ -324,8 +354,11 @@
     // the device the page shows (app.js)
     window.addEventListener("pung:device", (e) => {
       if (e.detail.mode !== "devices" || e.detail.n < 0) { dev = -1; v = null; hide(); return; }
+      devName = e.detail.name || devName;
       if (e.detail.n !== dev) { dev = e.detail.n; v = null; load(false); }
     });
+    // the drawer opens on the sound the device has
+    window.addEventListener("pung:drawer", (e) => { if (e.detail.open) { askDelete = -1; load(false); } });
     // the Push browses too: follow what it does, unless the hands are here
     setInterval(() => {
       if (dev < 0 || document.hidden || $("sounds").hidden) return;

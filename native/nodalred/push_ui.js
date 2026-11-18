@@ -329,12 +329,12 @@ push.compartment({
       });
     }), 2, "slot");
     // the balance, as the panel's knob says it
-    var bx = 840, bwid = 112;
+    var bx = 836, bwid = 108;
     g.text(bx, y + 12, "1", mix < 0.5 ? "fg" : "dim", -1); g.text(bx + bwid, y + 12, "2", mix > 0.5 ? "fg" : "dim", 1);
     g.fill(bx, y + 20, bwid, 3, "line");
     g.fill(bx + Math.round((bwid - 6) * mix), y + 16, 6, 11, "slot");
-    g.text(bx, y + 44, "FM", "dim", -1); g.fill(bx + 28, y + 38, 84, 3, "line"); g.fill(bx + 28, y + 38, Math.round(84 * fm), 3, fm > 0 ? "mod" : "line");
-    g.text(bx, y + 60, "PW", "dim", -1); g.fill(bx + 28, y + 54, 84, 3, "line"); g.fill(bx + 28, y + 54, Math.round(84 * pw), 3, "fg");
+    g.text(bx, y + 44, "FM", "dim", -1); g.fill(bx + 28, y + 38, 80, 3, "line"); g.fill(bx + 28, y + 38, Math.round(80 * fm), 3, fm > 0 ? "mod" : "line");
+    g.text(bx, y + 60, "PW", "dim", -1); g.fill(bx + 28, y + 54, 80, 3, "line"); g.fill(bx + 28, y + 54, Math.round(80 * pw), 3, "fg");
     g.text(bx, y + 76, isOn(v, "osc2_kbt") || !known(v, "osc2_kbt") ? "OSC 2: KEYS" : "OSC 2: FIXED", "faint", -1, bwid);
   }
 });
@@ -356,7 +356,10 @@ push.compartment({
     if (env > 0.01) {
       var x0 = 10 + (half - 24) * cut, x1 = 10 + (half - 24) * Math.min(1, cut + env * (1 - cut));
       g.fill(x0, 80, Math.max(2, x1 - x0), 2, "mod");
-      g.text(x1 + 4, 84, "ENV", "mod", -1);
+      // the label on its own ground: the curve's floor runs through here
+      var lx = x1 + 4 > half - 34 ? x0 - 30 : x1 + 4;
+      g.fill(lx - 2, 76, 28, 10, "#000000");
+      g.text(lx, 84, "ENV", "mod", -1);
     }
     g.line(half, 6, half, 82, 1, "line");
     g.envelope(half + 8, 2, half - 16, 82, { attack: "flt_attack", decay: "flt_decay", sustain: "flt_sustain", release: "flt_release", labels: true });

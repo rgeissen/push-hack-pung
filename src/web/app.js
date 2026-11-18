@@ -1,4 +1,9 @@
-/* Pung on Push: the web page.
+/* Pung on Push: the web page, the Devices view.
+ *
+ * A Pung device in Live is a unit in a rack here: its name and where it
+ * comes from, its sound, and its compartments, one at a time, as the Push
+ * shows them. Each compartment is its Push screen and its encoders' controls,
+ * eight to a row.
  *
  * It is also the PARENT of a module's own web_ui.html: the iframe includes
  * /static/schwung-remote-api.js (schwung-manager's, unmodified) and talks
@@ -7,176 +12,158 @@
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const SLOT_COLORS = ["#ff8a1f", "#5ab0ff", "#ff5fa2", "#7bd88f", "#ffd23f", "#a48cff", "#3cc8e6", "#ff5a4e"];
-  const KIND = { midi: "MIDI FX", synth: "Synth", fx: "Audio FX" };
-  const KCOL = { midi: "var(--midi)", synth: "var(--inst)", fx: "var(--afx)" };
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const KIND = { instrument: "Instrument", effect: "Audio effect", audio_fx: "Audio effect", midi_fx: "MIDI effect", midi: "MIDI effect" };
+  const ORIGIN = { pung: "Pung native", schwung: "Schwung" };
+  const ORIGIN_TIP = {
+    pung: "Written for the Push alone",
+    schwung: "Built from a Schwung module for Ableton Move",
+  };
 
-  // mode "devices": Pung's devices in Live (/api/pung-devices), the
-  // panel on /api/devices/<n>; mode "slots": version 1's Pung tracks.
-  let state = { slot: 1, comp: "synth", slots: [], info: null, values: {}, modules: [],
-                mode: "slots", base: "/api/slots/1", devices: [], dev: -1, follow: true };
+  let state = { comp: "synth", info: null, values: {}, base: "", devices: [], dev: -1, follow: true,
+                comps: null, enabled: null, shown: "", pics: {}, status: null };
   let frame = null, frameComp = null, frameSubscribed = false;
-  let pickerMode = "add", pickerKind = "audio_fx";
 
   const api = (path, opts) => fetch(path, opts).then((r) => r.json());
   const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-  function setSlotColor() {
-    document.documentElement.style.setProperty("--slot", SLOT_COLORS[(state.slot - 1) % SLOT_COLORS.length]);
+  // ---- a word to the user, where the hands are ---------------------------------
+  let toastTimer = null;
+  function toast(text, bad) {
+    const t = $("toast");
+    t.textContent = text;
+    t.className = "toast" + (bad ? " bad" : "");
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (t.hidden = true), bad ? 7000 : 3500);
   }
+  window.PungToast = toast;
 
-  // ---- status, slots, chain ------------------------------------------------
+  // a question that needs a yes: asked in the page, never by the browser's box
+  window.PungConfirm = (text, yes, danger) => new Promise((done) => {
+    const dlg = $("confirm"), ok = $("confirm-yes"), no = $("confirm-no");
+    $("confirm-text").textContent = text;
+    ok.textContent = yes || "OK";
+    ok.className = "btn " + (danger ? "danger" : "primary");
+    const end = (v) => { dlg.removeEventListener("close", onClose); ok.onclick = no.onclick = null; if (dlg.open) dlg.close(); done(v); };
+    const onClose = () => end(false);
+    dlg.addEventListener("close", onClose);
+    ok.onclick = () => end(true);
+    no.onclick = () => end(false);
+    dlg.showModal();
+    no.focus();
+  });
+
+  // ---- status: Pung, Live, the devices ------------------------------------------
   async function refreshStatus() {
     let st;
-    try { st = await api("/api/status"); } catch (e) { $("health").innerHTML = '<span class="bad">Pung is not answering</span>'; return; }
-    state.slots = st.slots || [];
+    try { st = await api("/api/status"); } catch (e) {
+      $("health").innerHTML = `<span class="row"><i class="led bad"></i>Pung is not answering</span>`;
+      // twice in a row: one missed answer is a restart passing by, not an outage
+      state.missed = (state.missed || 0) + 1;
+      if (state.missed >= 2) { $("offline").hidden = false; document.body.classList.add("down"); }
+      return;
+    }
+    state.missed = 0;
+    $("offline").hidden = true; document.body.classList.remove("down");
+    state.status = st;
+    $("rail-version").textContent = st.version ? "v" + st.version : "";
     let dv = { devices: [], selected: -1 };
     try { dv = await api("/api/pung-devices"); } catch (e) { /* an older Pung */ }
     state.devices = dv.devices || [];
-    if (state.devices.length || !state.slots.length) return refreshDevices(dv.selected);
-    const e = st.engine, t = st.transport;
-    const bus = state.slots.some((s) => s.bus);
-    $("health").innerHTML = `${bus ? "audio bus on" : '<span class="bad">no audio bus</span>'} · ` +
-      `DSP ${Math.round((e.avg_us / Math.max(1, e.budget_us)) * 100)}% · ` +
-      (t.clock ? `${t.running ? "playing" : "stopped"} ${t.bpm ? t.bpm.toFixed(1) + " BPM" : ""}` : "no clock");
-    renderSlots();
-    const cur = state.slots.find((s) => s.slot === state.slot);
-    if (cur) renderChain(cur);
-  }
-
-  // ---- Pung's devices in Live ---------------------------------------------
-  function refreshDevices(selected) {
-    if (state.mode !== "devices") {
-      state.mode = "devices";
-      $("chain").parentElement.hidden = true;
-      $("howto").innerHTML = "<h2>Pung devices in your Live Set</h2><p>Select a Pung device in Live, " +
-        "or here. Changes here reach Live too: Push's device view, the Pung view, automation.</p>";
-    }
-    $("health").textContent = state.devices.length ? `${state.devices.length} Pung devices in Live` +
-      (state.follow ? " · following Live's selection" : "") : "No Pung device in your Live Set yet";
+    const n = state.devices.length;
+    const e = st.engine || {};
+    const load = e.budget_us ? Math.round((e.avg_us / e.budget_us) * 100) : 0;
+    $("health").innerHTML =
+      `<span class="row"><i class="led on"></i>Pung running</span>` +
+      `<span class="row"><i class="led ${n ? "on" : ""}"></i>${n ? n + " device" + (n > 1 ? "s" : "") + " in Live" : "No device in Live"}</span>` +
+      (load ? `<span class="row"><i class="led ${load > 80 ? "warn" : "on"}"></i>Engine ${load}%</span>` : "");
+    const cnt = $("view-devices-count");
+    cnt.textContent = n || ""; cnt.hidden = !n;
+    renderSystem(st);
     let want = state.dev;
-    if (state.follow && selected >= 0) want = selected;
-    if (!state.devices.some((d) => d.n === want)) want = state.devices.length ? state.devices[0].n : -1;
-    if (want !== state.dev) selectDevice(want, false);
-    renderDevices();
+    if (state.follow && dv.selected >= 0) want = dv.selected;
+    if (!state.devices.some((d) => d.n === want)) want = n ? state.devices[0].n : -1;
+    if (want !== state.dev) selectDevice(want);
+    renderRack();
+    $("no-devices").hidden = n > 0;
+    $("unit").hidden = n === 0;
+    if (!n) window.dispatchEvent(new CustomEvent("pung:device", { detail: { n: -1, mode: "devices" } }));
   }
 
-  function renderDevices() {
+  function renderSystem(st) {
+    const el = $("sys-facts");
+    if (!el) return;
+    const e = st.engine || {};
+    const rows = [
+      ["Version", st.version || "?"],
+      ["Devices in Live", String(state.devices.length)],
+      ["Audio", e.rate ? `${e.rate} Hz, ${e.period} frames a block` : "?"],
+      ["Web page", location.host],
+    ];
+    el.innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  }
+
+  // ---- the rack: one unit per device ----------------------------------------------
+  let rackSig = "";
+  function renderRack() {
     const nav = $("slots");
-    nav.innerHTML = "";
+    const sig = JSON.stringify(state.devices.map((d) => [d.n, d.name, d.track, d.origin, d.selected, d.n === state.dev]));
+    if (sig !== rackSig) {
+      rackSig = sig;
+      nav.innerHTML = "";
+      state.devices.forEach((d) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "dev";
+        b.dataset.n = d.n;
+        b.dataset.name = d.name;
+        b.setAttribute("aria-current", d.n === state.dev ? "true" : "false");
+        const o = d.origin === "pung" ? "pung" : "schwung";
+        b.innerHTML = `<span class="meter" aria-hidden="true">${"<i></i>".repeat(6)}</span>` +
+          `<span class="nm">${esc(d.name)}</span>` +
+          `<span class="sub"><i class="dot ${o}" title="${esc(ORIGIN[o])}"></i><span class="where">${esc(d.track || KIND[d.kind] || "")}</span>` +
+          (d.selected ? `<span class="sel" title="Selected in Live">● Live</span>` : "") + `</span>`;
+        b.setAttribute("aria-label", `${d.name}, ${ORIGIN[o]}${d.track ? ", on " + d.track : ""}${d.selected ? ", selected in Live" : ""}`);
+        b.onclick = () => { setFollow(false); selectDevice(d.n); renderRack(); };
+        nav.appendChild(b);
+      });
+    }
+    // the meters: how loud each device is now
     state.devices.forEach((d) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "dev";
-      b.setAttribute("aria-current", d.n === state.dev ? "true" : "false");
-      b.innerHTML = `${esc(d.name)}${d.track ? `<span class="where">${esc(d.track)}</span>` : ""}`;
-      b.title = d.selected ? "Selected in Live" : "";
-      b.onclick = () => { state.follow = false; selectDevice(d.n, true); };
-      nav.appendChild(b);
+      const b = nav.querySelector(`.dev[data-n="${d.n}"]`);
+      if (!b) return;
+      const lit = Math.max(0, Math.min(6, Math.round(((d.peak_db ?? -120) + 48) / 8)));
+      b.querySelectorAll(".meter i").forEach((seg, i) => seg.classList.toggle("on", i < lit));
     });
   }
 
-  function selectDevice(n, user) {
+  function setFollow(on) {
+    state.follow = on;
+    $("follow-live").checked = on;
+  }
+
+  function selectDevice(n) {
     const d = state.devices.find((x) => x.n === n);
     state.dev = n;
     state.base = `/api/devices/${n}`;
     state.comp = d ? d.component : "synth";
-    // the Sounds section (sounds.js) follows the device shown
-    window.dispatchEvent(new CustomEvent("pung:device", { detail: { n, mode: state.mode } }));
+    closeDrawer();
+    // the sound browser (sounds.js) follows the device shown
+    window.dispatchEvent(new CustomEvent("pung:device", { detail: { n, mode: "devices", name: d ? d.name : "" } }));
     if (n >= 0) loadPanel();
-    if (user) renderDevices();
   }
 
-  function renderSlots() {
-    const nav = $("slots");
-    nav.innerHTML = "";
-    state.slots.forEach((s) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.style.color = s.slot === state.slot ? "#000" : SLOT_COLORS[(s.slot - 1) % 8];
-      b.setAttribute("aria-current", s.slot === state.slot ? "true" : "false");
-      const lvl = Math.max(0, Math.min(1, (s.peak_db + 48) / 48));
-      b.innerHTML = `${s.slot}<span class="meter"><i style="width:${(lvl * 100).toFixed(0)}%"></i></span>`;
-      b.title = `Track ${s.slot}: ${s.chain.synth || "no synth"}`;
-      b.onclick = () => selectSlot(s.slot);
-      nav.appendChild(b);
-    });
-  }
-
-  function positionsOf(slot) {
-    const c = slot.chain, out = [];
-    c.midi_fx.forEach((m, i) => m && out.push({ kind: "midi", comp: "midi_fx" + (i + 1), n: i + 1, module: m }));
-    out.push({ kind: "synth", comp: "synth", n: 1, module: c.synth });
-    c.fx.forEach((m, i) => m && out.push({ kind: "fx", comp: "fx" + (i + 1), n: i + 1, module: m }));
-    return out;
-  }
-
-  function moduleName(id) {
-    const m = state.modules.find((x) => x.id === id);
-    return m ? m.name : id;
-  }
-
-  let chainSig = "";
-  function renderChain(slot) {
-    const ps = positionsOf(slot);
-    const sig = JSON.stringify([state.slot, state.comp, ps]);
-    if (sig === chainSig) return;
-    chainSig = sig;
-    const row = $("chain");
-    row.innerHTML = "";
-    ps.forEach((p, i) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "pos";
-      b.style.setProperty("--k", KCOL[p.kind]);
-      b.setAttribute("aria-pressed", p.comp === state.comp ? "true" : "false");
-      b.innerHTML = `<span class="kind">${KIND[p.kind]}</span><span class="name">${p.module ? esc(moduleName(p.module)) : "No synth"}</span>`;
-      b.onclick = () => (p.module ? selectComp(p.comp) : openPicker("swap", "sound_generator"));
-      row.appendChild(b);
-      const a = document.createElement("span");
-      a.className = "arrow";
-      a.textContent = "›";
-      row.appendChild(a);
-    });
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "pos add";
-    add.textContent = "+ Add";
-    add.onclick = () => openPicker("add", "audio_fx");
-    row.appendChild(add);
-  }
-
-  function selectSlot(n) {
-    state.slot = n;
-    state.base = `/api/slots/${n}`;
-    setSlotColor();
-    state.comp = "synth";
-    chainSig = "";
-    refreshStatus().then(() => loadPanel());
-  }
-
-  function selectComp(comp) {
-    state.comp = comp;
-    chainSig = "";
-    refreshStatus();
-    loadPanel();
-  }
-
-  // ---- the component panel ------------------------------------------------
-  // loadPanel: only the newest call draws. Two in flight (a device change and
-  // the status poll) each cleared the panel, waited, then appended: the page
-  // showed the module twice.
-  let panelGen = 0;
-  // ---- the sound, live: one stream per open panel (GET <base>/live) ----------
+  // ---- the sound, live: one stream per open panel (GET <base>/live) ----------------
   // Frames arrive about 30 times a second while the sound moves and now and
   // then while it rests; the server drops a frame the page is too slow for.
-  // Only the pictures of the sections shown are asked for, only while the
+  // Only the pictures of the compartment shown are asked for, only while the
   // page is visible; a module's own page gets each frame as {type:"live"}.
   let liveES = null, liveURL = "";
   function liveConnect() {
     const info = state.info || {};
     let url = "";
-    if (!document.hidden && info.module && state.base) {
+    if (!document.hidden && info.module && state.base && document.body.dataset.view === "devices") {
       const pics = {};
       Object.entries(state.pics || {}).forEach(([k, p]) => {
         if (!p.section || !state.enabled || state.enabled.has(p.section)) pics[k] = { kind: p.kind, keys: p.keys };
@@ -199,49 +186,49 @@
     };
   }
   document.addEventListener("visibilitychange", liveConnect);
+  window.addEventListener("pung:view", liveConnect);
 
+  // ---- the unit ----------------------------------------------------------------------
+  // loadPanel: only the newest call draws. Two in flight (a device change and
+  // the status poll) each cleared the panel, waited, then appended: the page
+  // showed the module twice.
+  let panelGen = 0;
   async function loadPanel() {
     state.pics = {};
     liveConnect(); // the last panel's stream ends
     const gen = ++panelGen;
-    const r = await api(`${state.base}/component/${state.comp}`);
+    let r;
+    try { r = await api(`${state.base}/component/${state.comp}`); } catch (e) { return; }
     if (gen !== panelGen) return;
     const info = (state.info = r.info || {});
     state.values = info.values || {};
+    const d = state.devices.find((x) => x.n === state.dev) || {};
+    const o = d.origin === "pung" ? "pung" : "schwung";
+    const at = state.devices.findIndex((x) => x.n === state.dev);
+    $("unit-kicker").textContent = `Device ${String(at + 1).padStart(2, "0")} · ${KIND[d.kind] || KIND[info.type] || "Device"}${d.track ? " · " + d.track : ""}`;
     $("panel-title").textContent = info.module ? `${info.name || info.module}` : "Empty";
-    const tools = $("panel-tools");
-    tools.innerHTML = "";
+    $("unit-meta").innerHTML = info.module
+      ? `<span class="origin ${o}" title="${esc(ORIGIN_TIP[o])}">${esc(ORIGIN[o])}</span>` +
+        `<span>${esc(info.module)}${d.version ? " · v" + esc(String(d.version).replace(/^v/, "")) : ""}</span>` +
+        (d.author ? `<span>${esc(d.author)}</span>` : "")
+      : "";
     const body = $("panel-body");
     body.innerHTML = "";
     frame = null; frameComp = null; frameSubscribed = false;
     if (!info.module) {
-      body.innerHTML = `<div class="empty">Nothing here yet. Choose a module with Swap.</div>`;
-      tools.appendChild(toolButton("Choose", () => openPicker("swap", "sound_generator")));
+      body.innerHTML = `<div class="bank"><div class="empty">This device holds no module.</div></div>`;
       return;
     }
-    if (state.mode === "devices") {
-      // a device in Live: Live adds, removes and bypasses it; here it is edited
-      tools.appendChild(toolButton(state.follow ? "Following Live" : "Follow Live", () => {
-        state.follow = true; refreshStatus();
-      }));
-    } else {
-      tools.appendChild(toolButton("Make Live MIDI track", makeTracks));
-      tools.appendChild(toolButton(info.bypassed ? "Turn on" : "Bypass", toggleBypass));
-      tools.appendChild(toolButton("Swap", () => openPicker("swap", info.type || "audio_fx")));
-      tools.appendChild(toolButton("Remove", removeComp, true));
-    }
     state.comps = null; state.shown = "";
-    if (state.mode === "devices") {
-      try {
-        const c = await api(`${state.base}/compartments`);
-        if (gen !== panelGen) return;
-        state.comps = c.compartments || []; state.shown = c.shown || "";
-      } catch (e) { state.comps = null; }
+    try {
+      const c = await api(`${state.base}/compartments`);
       if (gen !== panelGen) return;
-      body.innerHTML = ""; // a call that started earlier may have drawn meanwhile
-    }
-    // the compartments as pills over the panel, the module's own or Pung's
-    if (state.comps && state.comps.length) body.appendChild(compartmentStrip());
+      state.comps = c.compartments || []; state.shown = c.shown || "";
+    } catch (e) { state.comps = null; }
+    if (gen !== panelGen) return;
+    body.innerHTML = ""; // a call that started earlier may have drawn meanwhile
+    if (state.comps && state.comps.length > 1) body.appendChild(compartmentTabs());
+    else loadEnabled();
     if (info.web_ui) {
       // the module's own page, unmodified, in a sandbox
       frame = document.createElement("iframe");
@@ -260,16 +247,7 @@
     liveConnect();
   }
 
-  function toolButton(text, fn, danger) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "tool" + (danger ? " danger" : "");
-    b.textContent = text;
-    b.onclick = fn;
-    return b;
-  }
-
-  // banks from ui_hierarchy, else the chain_params order
+  // banks from ui_hierarchy, else the chain_params order (a module with no compartments)
   function banksOf(info) {
     const cp = info.chain_params || [];
     const byKey = Object.fromEntries(cp.map((p) => [p.key, p]));
@@ -289,204 +267,233 @@
     return { banks, byKey };
   }
 
-  // ---- compartments: one screen on the Push = one section here ---------------
-  // Every compartment is a pill that switches its section on or off here
-  // (remembered per module, in this browser); a double click (or Alt+click)
-  // shows that one only, "All" brings every one back. With one on, the Push
-  // turns to it when it shows this device. A dot marks the pill the Push
-  // shows. The module's own page is told which are on ({type:"compartments"}).
+  // ---- compartments: one screen on the Push = one tab here ------------------------
+  // A tab shows its compartment alone, as the Push shows one screen at a
+  // time, and turns the Push to it (when the Push shows this device). "All"
+  // lays every compartment out in one long page. The choice is remembered
+  // per module, in this browser. A lit square marks the tab the Push shows.
+  // The module's own page is told which are on ({type:"compartments"}).
   const compKey = () => `pung.comps.${(state.info && state.info.module) || ""}`;
   function loadEnabled() {
+    const all = (state.comps || []).map((c) => c.id);
     let ids = null;
     try { ids = JSON.parse(localStorage.getItem(compKey()) || "null"); } catch (e) { /* none kept */ }
-    const all = (state.comps || []).map((c) => c.id);
-    state.enabled = new Set(Array.isArray(ids) ? ids.filter((i) => all.includes(i)) : all);
-    if (!state.enabled.size) state.enabled = new Set(all);
+    ids = Array.isArray(ids) ? ids.filter((i) => all.includes(i)) : null;
+    if (!ids || !ids.length) ids = all.length > 1 ? [all.includes(state.shown) ? state.shown : all[0]] : all;
+    if (ids.length !== 1 && ids.length !== all.length) ids = [ids[0]]; // one, or all
+    state.enabled = new Set(ids);
   }
   function saveEnabled() {
     try { localStorage.setItem(compKey(), JSON.stringify([...state.enabled])); } catch (e) { /* kept for this visit only */ }
   }
-  function compartmentStrip() {
+  function compartmentTabs() {
     loadEnabled();
     const nav = document.createElement("nav");
     nav.className = "compartments";
-    nav.setAttribute("aria-label", "Compartments: click to show or hide, double click to show only one");
+    nav.setAttribute("aria-label", "Compartments: the device's screens");
+    state.comps.forEach((c, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.compartment = c.id;
+      b.innerHTML = `<span class="ix">${String(i + 1).padStart(2, "0")}</span><span>${esc(c.label)}</span>` +
+        (c.custom ? `<i class="scr" title="Has its own screen on the Push"></i>` : "") + `<i class="onpush" aria-hidden="true"></i>`;
+      b.onclick = () => setEnabled([c.id], true);
+      nav.appendChild(b);
+    });
     const all = document.createElement("button");
     all.type = "button";
     all.className = "all";
     all.textContent = "All";
-    all.onclick = () => setEnabled(state.comps.map((c) => c.id));
+    all.title = "Every compartment on one page";
+    all.onclick = () => setEnabled(state.comps.map((c) => c.id), true);
     nav.appendChild(all);
-    state.comps.forEach((c) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.dataset.compartment = c.id;
-      b.innerHTML = `<span class="dot" aria-hidden="true"></span>${esc(c.label)}${c.custom ? " ◆" : ""}`;
-      b.onclick = (e) => {
-        if (e.altKey) { setEnabled([c.id]); return; }
-        const on = new Set(state.enabled);
-        if (on.has(c.id)) on.delete(c.id); else on.add(c.id);
-        if (!on.size) on.add(c.id); // never none
-        setEnabled([...on]);
-      };
-      b.ondblclick = () => setEnabled([c.id]);
-      nav.appendChild(b);
-    });
     return nav;
   }
-  function setEnabled(ids) {
+  function setEnabled(ids, fromHere) {
     state.enabled = new Set(ids);
     saveEnabled();
     applyEnabled();
     if (state.enabled.size === 1) {
-      // one on: the Push turns to it (when it shows this device)
-      const id = [...state.enabled][0];
-      state.shown = id;
-      markShown();
-      post(`${state.base}/compartment`, { id }).catch(() => {});
+      const id = ids[0];
+      if (fromHere) {
+        // chosen here: the Push turns to it, when it shows this device
+        post(`${state.base}/compartment`, { id }).then((r) => {
+          if (r && r.ok && r.shown) { state.shown = id; markShown(); }
+        }).catch(() => {});
+      }
       showHere(id);
     }
   }
   function applyEnabled() {
     if (!state.comps || !state.enabled) return;
-    const allOn = state.enabled.size === state.comps.length;
+    const allOn = state.enabled.size === state.comps.length && state.comps.length > 1;
     document.querySelectorAll(".compartments button[data-compartment]").forEach((b) =>
-      b.setAttribute("aria-pressed", state.enabled.has(b.dataset.compartment) ? "true" : "false"));
+      b.setAttribute("aria-pressed", !allOn && state.enabled.has(b.dataset.compartment) ? "true" : "false"));
     const allBtn = document.querySelector(".compartments .all");
     if (allBtn) allBtn.setAttribute("aria-pressed", allOn ? "true" : "false");
-    // Pung's own sections; "More" (no compartment) only with every one on
+    // a section without a compartment ("More") only with every one on
     document.querySelectorAll(".bank").forEach((sec) => {
       const id = sec.dataset.compartment;
-      sec.hidden = id ? !state.enabled.has(id) : !allOn;
+      sec.hidden = id ? !state.enabled.has(id) : !(allOn || state.comps.length <= 1);
     });
     if (frame) toFrame({ type: "compartments", enabled: [...state.enabled] });
     liveConnect();
     if (window.PungVisuals) PungVisuals.redrawAll();
+    refreshScreens();
   }
-  // showOnPush: a section's title or its screen clicked: the Push turns to
-  // it (when it shows this device), and the page goes there
+  // showOnPush: the Push turns to a compartment (when it shows this device)
   async function showOnPush(id) {
-    state.shown = id;
-    markShown();
     showHere(id);
-    try { await post(`${state.base}/compartment`, { id }); } catch (e) { /* the page went there anyway */ }
+    let r = null;
+    try { r = await post(`${state.base}/compartment`, { id }); } catch (e) { /* said below */ }
+    const c = (state.comps || []).find((x) => x.id === id);
+    if (r && r.ok && r.shown) { state.shown = id; markShown(); toast(`The Push shows ${c ? c.label : "it"} now.`); }
+    else if (r && r.ok) toast(`The Push is not showing this device in the Pung view. Open it there, and it turns to ${c ? c.label : "this screen"}.`);
+    else toast("Pung did not answer.", true);
   }
   function showHere(id) {
-    const sec = document.querySelector(`.bank[data-compartment="${CSS.escape(id)}"]`);
-    if (sec && !sec.hidden) sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
     const comp = (state.comps || []).find((x) => x.id === id);
-    if (frame && comp) {
-      frame.scrollIntoView({ block: "start", behavior: "smooth" });
-      toFrame({ type: "compartment", id: comp.id, label: comp.label, keys: comp.keys });
-    }
+    if (frame && comp) toFrame({ type: "compartment", id: comp.id, label: comp.label, keys: comp.keys });
+    const tab = document.querySelector(`.compartments button[data-compartment="${CSS.escape(id)}"]`);
+    if (tab && tab.scrollIntoView) tab.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   function markShown() {
     document.querySelectorAll("[data-compartment]").forEach((el) => {
       const on = el.dataset.compartment === state.shown;
       el.classList.toggle("shown", on);
-      if (el.tagName === "BUTTON") el.title = on ? "On the Push" : "";
+      if (el.tagName === "BUTTON" && el.parentElement.classList.contains("compartments")) el.title = on ? "On the Push now" : "";
     });
   }
-  // the Push turned to another compartment: follow it here, and tell the
-  // module's own page (it may show the same section: {type:"compartment"})
+  // the Push turned to another compartment: the page follows it (one tab at
+  // a time), and tells the module's own page ({type:"compartment"})
   async function refreshCompartment() {
-    if (state.mode !== "devices" || !state.comps || document.hidden) return;
+    if (!state.comps || document.hidden || document.body.dataset.view !== "devices") return;
     let c;
     try { c = await api(`${state.base}/compartments`); } catch (e) { return; }
     // the Push shows no compartment of this device (another device is on
     // it): the page keeps the one chosen here
-    if (!c.shown || c.shown === state.shown) return;
-    state.shown = c.shown;
+    if ((c.shown || "") === state.shown) return;
+    state.shown = c.shown || "";
     markShown();
-    showHere(state.shown);
+    if (!c.shown) return; // the Push shows something else now: the page stays where it is
+    if (state.enabled && state.enabled.size === 1 && !state.enabled.has(c.shown) && !document.querySelector("#panel-body :focus")) setEnabled([c.shown], false);
+    else showHere(state.shown);
   }
 
+  // ---- a compartment: its screen, and its controls by encoder page ------------------
   function buildControls(info) {
     const wrap = document.createElement("div");
     let { banks, byKey } = banksOf(info);
     if (state.comps && state.comps.length) {
       // the module's compartments, as the Push shows them
-      banks = state.comps.map((c) => ({ name: c.label, keys: c.keys, id: c.id, custom: c.custom, takeover: c.takeover }));
+      banks = state.comps.map((c) => ({ name: c.label, keys: c.keys, id: c.id, custom: c.custom, takeover: c.takeover, pages: c.pages }));
       const seen = new Set(banks.flatMap((b) => b.keys));
       const rest = (info.chain_params || []).map((p) => p.key).filter((k) => !seen.has(k));
       if (rest.length) banks.push({ name: "More", keys: rest });
     }
     if (!banks.length) {
-      wrap.innerHTML = `<div class="empty">This module publishes no parameters.</div>`;
+      wrap.innerHTML = `<div class="bank"><div class="empty">This module publishes no parameters.</div></div>`;
       return wrap;
     }
     state.pics = {};
     banks.forEach((b, bi) => {
-      const sec = document.createElement("div");
+      const sec = document.createElement("section");
       sec.className = "bank";
+      if (b.id) sec.dataset.compartment = b.id;
+      const head = document.createElement("div");
+      head.className = "bank-head";
+      head.innerHTML = `<span class="ix">${String(bi + 1).padStart(2, "0")}</span><h3>${esc(b.name)}</h3>` +
+        (b.takeover ? `<span class="chip" title="On the Push this screen fills the whole display">Full screen</span>` :
+         b.custom ? `<span class="chip" title="This compartment has its own screen on the Push">Own screen</span>` : "") +
+        `<span class="chip live">On the Push now</span>`;
       if (b.id) {
-        // a compartment: its title turns the Push to it
-        sec.dataset.compartment = b.id;
-        const h = document.createElement("h3");
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "comp-title";
-        btn.textContent = b.name + (b.custom ? " ◆" : "");
-        btn.title = "Show on the Push";
+        btn.className = "btn small";
+        btn.textContent = "Show on Push";
         btn.onclick = () => showOnPush(b.id);
-        h.appendChild(btn);
-        sec.appendChild(h);
-      } else {
-        sec.innerHTML = `<h3>${esc(b.name)}</h3>`;
+        head.appendChild(btn);
       }
+      sec.appendChild(head);
       // a compartment with its own screen on the Push: the same screen here,
       // drawn by the same code from this device's values (UX-GUIDELINES 1.2)
-      if (b.id && b.custom) {
-        const img = document.createElement("img");
-        img.className = "screen" + (b.takeover ? " takeover" : "");
-        img.alt = `${b.name}, as the Push shows it`;
-        img.title = "Show on the Push";
-        img.dataset.compartment = b.id;
-        img.src = screenURL(b.id);
-        img.onclick = () => showOnPush(b.id);
-        sec.appendChild(img);
-      }
-      const grid = document.createElement("div");
-      grid.className = "grid";
-      // an envelope among the keys is drawn over its own controls, as on
-      // the Push (visuals.js); the rest are plain controls, in order
-      const groups = window.PungVisuals ? PungVisuals.pictureGroups(b.keys) : [];
-      for (let i = 0; i < b.keys.length; i++) {
-        const g = groups.find((x) => x.start === i);
-        if (!g) {
-          if (byKey[b.keys[i]]) grid.appendChild(control(byKey[b.keys[i]]));
-          continue;
+      if (b.id && b.custom) sec.appendChild(screenBox(b, -1));
+      // the encoder pages, eight controls to a row, in the Push's order
+      let pages = (b.pages && b.pages.length) ? b.pages.map((p) => ({ label: p.label, keys: p.keys || [], screen: !!p.screen })) : [];
+      if (!pages.length) for (let i = 0; i < b.keys.length; i += 8) pages.push({ label: "", keys: b.keys.slice(i, i + 8) });
+      const named = pages.length > 1;
+      pages.forEach((pg, pi) => {
+        const keys = pg.keys.filter((k) => byKey[k]);
+        if (!keys.length) return;
+        const pe = document.createElement("div");
+        pe.className = "page";
+        if (named) pe.innerHTML = `<p class="pg-label">${esc(pg.label || "Page " + (pi + 1))}</p>`;
+        // a page with a screen of its own on the Push (Nodal Red's Morph): that screen
+        if (b.id && pg.screen) pe.appendChild(screenBox(b, pi));
+        const grid = document.createElement("div");
+        grid.className = "grid";
+        // an envelope among the keys is drawn over its own controls, as on
+        // the Push (visuals.js); the rest are plain controls, in order. A
+        // compartment with its own screen keeps that screen as its picture.
+        const groups = window.PungVisuals && !b.custom && !pg.screen ? PungVisuals.pictureGroups(keys) : [];
+        let cells = 0;
+        for (let i = 0; i < keys.length; i++) {
+          const g = groups.find((x) => x.start === i);
+          if (!g) { grid.appendChild(control(byKey[keys[i]])); cells++; continue; }
+          // its live state comes over the page's stream (liveConnect), under this key
+          const key = `w/${bi}/${pi}/${g.kind}/${g.start}`;
+          state.pics[key] = { kind: g.kind, keys: g.keys, section: b.id || "" };
+          grid.appendChild(envelopeCard(g, keys.slice(g.start, g.end), byKey, key));
+          cells += g.end - g.start;
+          i = g.end - 1;
         }
-        // its live state comes over the page's stream (liveConnect), under this key
-        const key = `w/${bi}/${g.kind}/${g.start}`;
-        state.pics[key] = { kind: g.kind, keys: g.keys, section: b.id || "" };
-        grid.appendChild(envelopeCard(g, b.keys.slice(g.start, g.end), byKey, key));
-        i = g.end - 1;
-      }
-      sec.appendChild(grid);
+        // the row is filled to eight, so the hairlines close
+        for (let i = cells % 8; i && i < 8; i++) { const f = document.createElement("div"); f.className = "ctl filler"; f.setAttribute("aria-hidden", "true"); grid.appendChild(f); }
+        pe.appendChild(grid);
+        sec.appendChild(pe);
+      });
       wrap.appendChild(sec);
     });
     setTimeout(markShown, 0);
     return wrap;
   }
 
-  function screenURL(id) { return `${state.base}/compartments/${encodeURIComponent(id)}/screen.png?t=${Date.now()}`; }
-  // the screens follow the values; one request at a time per screen
+  function screenURL(id, page) { return `${state.base}/compartments/${encodeURIComponent(id)}/screen.png?t=${Date.now()}${page >= 0 ? "&page=" + page : ""}`; }
+  // a screen of the Push, in its bezel; a press turns the Push to it
+  function screenBox(b, page) {
+    const box = document.createElement("button");
+    box.type = "button";
+    box.className = "screenwrap";
+    box.title = "Show on the Push";
+    box.setAttribute("aria-label", `${b.name}, as the Push shows it. Press to show it on the Push.`);
+    const img = document.createElement("img");
+    img.className = "screen" + (b.takeover && page < 0 ? " takeover" : "");
+    img.alt = "";
+    img.dataset.compartment = b.id;
+    img.dataset.page = page;
+    img.src = screenURL(b.id, page);
+    box.appendChild(img);
+    box.onclick = () => showOnPush(b.id);
+    return box;
+  }
+  // the screens follow the values; one request at a time per screen, and
+  // only the screens in view
   function refreshScreens() {
     document.querySelectorAll("img.screen").forEach((img) => {
-      if (img.dataset.loading) return;
+      if (img.dataset.loading || img.closest("[hidden]")) return;
       img.dataset.loading = "1";
       const next = new Image();
       next.onload = () => { img.src = next.src; delete img.dataset.loading; };
       next.onerror = () => { delete img.dataset.loading; };
-      next.src = screenURL(img.dataset.compartment);
+      next.src = screenURL(img.dataset.compartment, +(img.dataset.page ?? -1));
     });
   }
 
-  // an envelope and its controls, one card spanning the row
+  // a picture and its controls, one card spanning their columns
   function envelopeCard(g, keys, byKey, liveKey) {
     const card = document.createElement("div");
     card.className = "envcard";
+    card.style.setProperty("--n", keys.length);
     const full = (k) => `${state.comp}:${k}`;
     const fig = PungVisuals.figure(g, {
       meta: (k) => byKey[k],
@@ -512,18 +519,7 @@
     return card;
   }
 
-  // syncControl: a control shows a value that changed elsewhere (the Push,
-  // a dragged handle). A control being edited keeps its own, unless forced.
-  function syncControl(k, v, force) {
-    const el = document.querySelector(`.ctl[data-key="${CSS.escape(k)}"]`);
-    if (!el || (!force && el.contains(document.activeElement))) return;
-    if (el.showValue) { if (el.dataset.value !== (v || "")) el.showValue(v); return; } // a file (files.js)
-    const p = (state.info.chain_params || []).find((x) => `${state.comp}:${x.key}` === k);
-    const input = el.querySelector("input,select");
-    if (input && input.tagName === "INPUT") { input.value = v; const o = el.querySelector("output"); if (o && p) o.textContent = fmt(p, v); }
-    else if (input && p) { const asIndex = /^\s*\d+\s*$/.test(v); input.value = String(asIndex ? parseInt(v, 10) : (p.options || []).indexOf(v)); }
-  }
-
+  // ---- one control -------------------------------------------------------------------
   function fmt(p, v) {
     if (v === undefined || v === null) return "--";
     if (p.type === "enum") {
@@ -536,6 +532,35 @@
     const s = p.type === "int" ? String(Math.round(f)) : Math.abs(f) >= 100 || p.unit === "%" ? f.toFixed(0) : f.toFixed(2);
     return s + (p.unit ? " " + p.unit : "");
   }
+  // a value and its unit, the unit small
+  function fmtHTML(p, v) {
+    const t = String(fmt(p, v));
+    if (p.unit && t.endsWith(" " + p.unit)) return `${esc(t.slice(0, -p.unit.length - 1))}<small>${esc(p.unit)}</small>`;
+    return esc(t);
+  }
+  // an option's index, whether the module says 2 or "Saw"
+  function enumIndex(p, v) {
+    if (v === undefined || v === null) return -1;
+    const s = String(v).trim();
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    return (p.options || []).indexOf(v);
+  }
+  const isOnOff = (p) => p.options && p.options.length === 2 && /^off$/i.test(p.options[0]) && /^on$/i.test(p.options[1]);
+  // a few short options are buttons; more, or longer ones, a list (a cell is an eighth of the row)
+  const isShort = (p) => p.options && ((p.options.length <= 3 && p.options.join("").length <= 12) || (p.options.length === 4 && p.options.join("").length <= 8));
+  // the fill of a slider: from the left, or from the middle for a value around zero
+  function paintRange(r) {
+    const min = +r.min, max = +r.max, v = +r.value;
+    const at = max > min ? ((v - min) / (max - min)) * 100 : 0;
+    if (min < 0 && max > 0) {
+      const mid = ((0 - min) / (max - min)) * 100;
+      r.style.setProperty("--f0", Math.min(at, mid) + "%");
+      r.style.setProperty("--fw", Math.abs(at - mid) + "%");
+    } else {
+      r.style.setProperty("--f0", "0%");
+      r.style.setProperty("--fw", at + "%");
+    }
+  }
 
   function control(p) {
     const key = `${state.comp}:${p.key}`;
@@ -543,33 +568,85 @@
     d.className = "ctl";
     const id = "c_" + key.replace(/[^a-z0-9]/gi, "_");
     const v = state.values[key];
+    const name = esc(p.name || p.key);
     if ((p.type === "filepath" || p.type === "file") && window.PungFiles) {
       // a file: its outline and name; a click opens the file browser (files.js)
       return PungFiles.control(p, key, v, state.base, (nv) => { state.values[key] = nv; refreshScreens(); });
     }
-    if (p.type === "enum" && p.options) {
-      d.innerHTML = `<label for="${id}">${esc(p.name || p.key)}</label>`;
-      const s = document.createElement("select");
-      s.id = id;
-      p.options.forEach((o, i) => s.add(new Option(o, String(i))));
-      const asIndex = /^\s*\d+\s*$/.test(v || "");
-      const idx = asIndex ? parseInt(v, 10) : p.options.indexOf(v);
-      if (idx >= 0) s.value = String(idx);
-      s.onchange = () => setParam(key, asIndex || v === undefined ? s.value : p.options[parseInt(s.value, 10)]);
-      d.appendChild(s);
-    } else {
-      d.innerHTML = `<label for="${id}">${esc(p.name || p.key)} <output id="${id}_o">${esc(fmt(p, v))}</output></label>`;
-      const r = document.createElement("input");
-      r.type = "range";
-      r.id = id;
-      r.min = p.min ?? 0; r.max = p.max ?? 1;
-      r.step = p.step || (p.type === "int" ? 1 : ((p.max ?? 1) - (p.min ?? 0)) / 200);
-      if (v !== undefined) r.value = v;
-      r.oninput = () => { $(id + "_o").textContent = fmt(p, r.value); setParam(key, r.value); };
-      d.appendChild(r);
-    }
     d.dataset.key = key;
+    d.title = p.name || p.key;
+    if (p.type === "enum" && p.options && p.options.length) {
+      const asIndex = () => { const cur = state.values[key]; return cur === undefined || /^\s*\d+\s*$/.test(cur); };
+      const send = (i) => setParam(key, asIndex() ? String(i) : p.options[i]);
+      const idx = enumIndex(p, v);
+      if (isOnOff(p)) {
+        d.dataset.kind = "toggle";
+        d.innerHTML = `<span class="lbl" id="${id}_l">${name}</span>`;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "tgl";
+        b.setAttribute("aria-labelledby", `${id}_l`);
+        const show = (on) => { b.setAttribute("aria-pressed", String(on)); b.innerHTML = `<i></i><span>${on ? "On" : "Off"}</span>`; };
+        show(idx === 1);
+        b.onclick = () => { const on = b.getAttribute("aria-pressed") !== "true"; show(on); send(on ? 1 : 0); };
+        d.appendChild(b);
+        d.showValue = (nv) => show(enumIndex(p, nv) === 1);
+      } else if (isShort(p)) {
+        d.dataset.kind = "opts";
+        d.innerHTML = `<span class="lbl" id="${id}_l">${name}</span>`;
+        const g = document.createElement("div");
+        g.className = "opts";
+        g.setAttribute("role", "group");
+        g.setAttribute("aria-labelledby", `${id}_l`);
+        const show = (i) => g.querySelectorAll("button").forEach((b, bi) => b.setAttribute("aria-pressed", String(bi === i)));
+        p.options.forEach((o, i) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = o;
+          b.title = o;
+          b.onclick = () => { show(i); send(i); };
+          g.appendChild(b);
+        });
+        show(idx);
+        d.appendChild(g);
+        d.showValue = (nv) => show(enumIndex(p, nv));
+      } else {
+        d.dataset.kind = "select";
+        d.innerHTML = `<label for="${id}">${name}</label>`;
+        const s = document.createElement("select");
+        s.id = id;
+        p.options.forEach((o, i) => s.add(new Option(o, String(i))));
+        if (idx >= 0) s.value = String(idx);
+        s.onchange = () => send(parseInt(s.value, 10));
+        d.appendChild(s);
+        d.showValue = (nv) => { const i = enumIndex(p, nv); if (i >= 0) s.value = String(i); };
+      }
+      return d;
+    }
+    d.dataset.kind = "range";
+    d.innerHTML = `<label for="${id}">${name}</label><output id="${id}_o" for="${id}">${fmtHTML(p, v)}</output>`;
+    const r = document.createElement("input");
+    r.type = "range";
+    r.id = id;
+    r.min = p.min ?? 0; r.max = p.max ?? 1;
+    r.step = p.step || (p.type === "int" ? 1 : ((p.max ?? 1) - (p.min ?? 0)) / 200);
+    if (v !== undefined) r.value = v;
+    paintRange(r);
+    const out = d.querySelector("output");
+    r.oninput = () => { out.innerHTML = fmtHTML(p, r.value); paintRange(r); setParam(key, r.value); };
+    // a double click puts a value around zero back to zero, as on a mixer
+    if (+r.min < 0 && +r.max > 0) r.ondblclick = () => { r.value = 0; r.oninput(); };
+    d.appendChild(r);
+    d.showValue = (nv) => { r.value = nv; out.innerHTML = fmtHTML(p, nv); paintRange(r); };
     return d;
+  }
+
+  // syncControl: a control shows a value that changed elsewhere (the Push,
+  // a dragged handle). A control being edited keeps its own, unless forced.
+  function syncControl(k, v, force) {
+    const el = document.querySelector(`.ctl[data-key="${CSS.escape(k)}"]`);
+    if (!el || (!force && el.contains(document.activeElement) && el.dataset.kind === "range")) return;
+    if (el.showValue) el.showValue(v);
   }
 
   let pending = {}, sendTimer = null;
@@ -583,36 +660,18 @@
     sendTimer = null;
     const batch = pending;
     pending = {};
-    Promise.all(Object.entries(batch).map(([key, value]) => post(`${state.base}/param`, { key, value }))).then(refreshScreens);
-  }
-
-  async function makeTracks() {
-    $("health").textContent = "asking Live...";
-    const r = await post(`${state.base}/tracks`, {});
-    $("health").textContent = r.ok ? `MIDI track "Pung ${state.slot}" is ready. Now make an audio track by hand: input PushHack, channel Pung ${state.slot}, Monitor In.` : r.error;
-  }
-
-  async function toggleBypass() {
-    await post(`${state.base}/param`, { key: `${state.comp}:bypassed`, value: state.info.bypassed ? "0" : "1" });
-    chainSig = "";
-    await refreshStatus();
-    loadPanel();
-  }
-
-  async function removeComp() {
-    const c = state.comp;
-    if (c === "synth") await post(`${state.base}/param`, { key: "synth:module", value: "" });
-    else if (c.startsWith("midi_fx")) await post(`${state.base}/param`, { key: "midi_fx:remove", value: c.slice(7) });
-    else await post(`${state.base}/param`, { key: "fx:remove", value: c.slice(2) });
-    state.comp = "synth";
-    chainSig = "";
-    await refreshStatus();
-    loadPanel();
+    Promise.all(Object.entries(batch).map(([key, value]) => post(`${state.base}/param`, { key, value })))
+      .then((rs) => {
+        const bad = rs.find((r) => r && r.ok === false);
+        if (bad) toast(bad.error || "The device did not take that value.", true);
+        refreshScreens();
+      })
+      .catch(() => toast("Pung did not answer: the value was not set.", true));
   }
 
   // live values: changes from the Push encoders reach the page and the iframe
   async function refreshValues() {
-    if (!state.info || !state.info.module || document.hidden) return;
+    if (!state.info || !state.info.module || document.hidden || state.dev < 0 || document.body.dataset.view !== "devices") return;
     let r;
     try { r = await api(`${state.base}/component/${state.comp}/values`); } catch (e) { return; }
     const changed = {};
@@ -626,7 +685,7 @@
     refreshScreens();
   }
 
-  // ---- the module page bridge (schwung-manager's protocol) ----------------
+  // ---- the module page bridge (schwung-manager's protocol) ---------------------------
   function toFrame(msg) { if (frame && frame.contentWindow) frame.contentWindow.postMessage(msg, "*"); }
 
   window.addEventListener("message", (e) => {
@@ -675,56 +734,42 @@
     }
   });
 
-  // ---- module picker ------------------------------------------------------
-  function openPicker(mode, kind) {
-    pickerMode = mode;
-    $("picker").hidden = false;
-    $("picker-title").textContent = mode === "swap" ? "Replace this module" : "Add a module";
-    setPickerKind(kind);
-    $("picker").scrollIntoView({ block: "nearest" });
+  // ---- the sound browser: a drawer (sounds.js fills it) --------------------------------
+  let drawerFrom = null;
+  function openDrawer() {
+    if ($("sounds").hidden) return;
+    drawerFrom = document.activeElement;
+    document.body.classList.add("drawer-open");
+    $("drawer-back").hidden = false;
+    setTimeout(() => $("snd-list").focus(), 60);
+    window.dispatchEvent(new CustomEvent("pung:drawer", { detail: { open: true } }));
   }
-
-  function setPickerKind(kind) {
-    pickerKind = kind;
-    document.querySelectorAll(".kinds button").forEach((b) => b.setAttribute("aria-selected", b.dataset.kind === kind ? "true" : "false"));
-    const cards = $("picker-cards");
-    cards.innerHTML = "";
-    const list = state.modules.filter((m) => m.type === kind && m.loadable);
-    if (!list.length) cards.innerHTML = `<div class="empty">No modules of this kind are installed.</div>`;
-    list.forEach((m) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "card";
-      b.innerHTML = `<b>${esc(m.name)}</b><span>${esc(m.author || "")}</span><span>${esc(m.version || "")}</span>`;
-      b.onclick = () => choose(m);
-      cards.appendChild(b);
-    });
+  function closeDrawer() {
+    if (!document.body.classList.contains("drawer-open")) return;
+    document.body.classList.remove("drawer-open");
+    $("drawer-back").hidden = true;
+    if (drawerFrom && document.contains(drawerFrom)) drawerFrom.focus();
+    window.dispatchEvent(new CustomEvent("pung:drawer", { detail: { open: false } }));
   }
-
-  async function choose(m) {
-    const slot = state.slots.find((s) => s.slot === state.slot);
-    const c = slot.chain;
-    const used = (list) => list.filter(Boolean).length;
-    let key, at, comp;
-    if (m.type === "sound_generator") { key = "synth:module"; comp = "synth"; }
-    else if (pickerMode === "swap" && kindOfComp(state.comp) === m.type) { key = `${state.comp}:module`; comp = state.comp; }
-    else if (m.type === "audio_fx") { at = used(c.fx) + 1; key = `fx${at}:module`; comp = `fx${at}`; }
-    else { at = used(c.midi_fx) + 1; key = `midi_fx${at}:module`; comp = `midi_fx${at}`; }
-    if (at > 8) { alertBox("The chain is full."); return; }
-    await post(`${state.base}/param`, { key, value: m.id });
-    $("picker").hidden = true;
-    state.comp = comp;
-    chainSig = "";
-    await refreshStatus();
-    loadPanel();
-  }
-
-  function kindOfComp(c) { return c === "synth" ? "sound_generator" : c.startsWith("midi_fx") ? "midi_fx" : "audio_fx"; }
-  function alertBox(t) { $("health").textContent = t; }
-  function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-
-  document.querySelectorAll(".kinds button").forEach((b) => (b.onclick = () => setPickerKind(b.dataset.kind)));
-  $("picker-close").onclick = () => ($("picker").hidden = true);
+  window.PungDrawer = { open: openDrawer, close: closeDrawer, isOpen: () => document.body.classList.contains("drawer-open") };
+  // the device's sound, as sounds.js knows it: the header says it
+  window.addEventListener("pung:sound", (e) => {
+    const v = e.detail && e.detail.v;
+    const box = $("unit-sound");
+    if (!v || (!v.factory && !v.has_state)) { box.hidden = true; closeDrawer(); return; }
+    box.hidden = false;
+    const f = v.factory, nm = $("unit-sound-name");
+    // nothing loaded from a list yet (or its entry was deleted): the device still
+    // plays the module's own sound at this place in the bank, and that has a name
+    const cur = v.current && v.current.name ? v.current : f && f.name && f.index >= 0 ? { name: f.name, source: "factory" } : null;
+    nm.classList.toggle("none", !cur);
+    nm.innerHTML = cur ? `${v.edited ? '<span class="edited" title="Changed since it was loaded">●</span> ' : ""}${esc(cur.name)}` : "No sound chosen yet";
+    nm.title = cur ? cur.name + (v.edited ? " (changed since it was loaded)" : "") : "";
+    $("unit-sound-bank").textContent = cur && cur.source === "user" ? "Your sound" : f && f.bank ? f.bank + (f.count > 0 && f.index >= 0 ? ` · ${f.index + 1} of ${f.count}` : "") : f && f.count > 0 ? `${f.count} sounds` : "";
+    const steps = !!(f && f.count > 1);
+    $("snd-prev").disabled = !steps;
+    $("snd-next").disabled = !steps;
+  });
 
   // Pung's settings (settings.go)
   async function loadPrefs() {
@@ -732,22 +777,30 @@
     if (!box) return;
     try { box.checked = !!(await api("/api/settings")).settings.touch_card; } catch (e) { return; }
     box.onchange = async () => {
-      const r = await post("/api/settings", { touch_card: box.checked });
-      if (!r.ok) { box.checked = !box.checked; alertBox(r.error || "could not save the setting"); }
+      let r = { ok: false };
+      try { r = await post("/api/settings", { touch_card: box.checked }); } catch (e) { /* said below */ }
+      if (!r.ok) { box.checked = !box.checked; toast(r.error || "The setting could not be saved.", true); }
+      else toast(box.checked ? "The detail card is on." : "The detail card is off.");
     };
   }
 
   async function boot() {
-    setSlotColor();
-    // the sticky compartment strip sits under the header, whatever its height
-    const top = document.querySelector(".top");
-    const fit = () => document.documentElement.style.setProperty("--top-h", top.offsetHeight + "px");
-    fit();
-    window.addEventListener("resize", fit);
+    $("follow-live").onchange = (e) => { state.follow = e.target.checked; if (state.follow) refreshStatus(); };
+    $("snd-open").onclick = openDrawer;
+    $("snd-close").onclick = closeDrawer;
+    $("drawer-back").onclick = closeDrawer;
+    $("snd-prev").onclick = () => window.PungSounds && PungSounds.step(-1);
+    $("snd-next").onclick = () => window.PungSounds && PungSounds.step(1);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && PungDrawer.isOpen() && !e.defaultPrevented && $("snd-form").hidden) closeDrawer();
+    });
+    document.querySelectorAll("[data-goto]").forEach((a) => a.addEventListener("click", (e) => {
+      e.preventDefault();
+      const b = document.querySelector(`.views button[data-view="${a.dataset.goto}"]`);
+      if (b) b.click();
+    }));
     loadPrefs();
-    try { state.modules = (await api("/api/modules")).modules || []; } catch (e) { /* the status line says why */ }
     await refreshStatus();
-    loadPanel();
     setInterval(refreshStatus, 1000);
     setInterval(refreshValues, 350);
     setInterval(refreshCompartment, 500);

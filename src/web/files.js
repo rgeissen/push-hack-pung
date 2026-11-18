@@ -79,7 +79,7 @@
   async function open(o) {
     if (!dlg) build();
     const r = await post(`${o.base}/files/open`, { key: o.key });
-    if (!r.ok) { alert(r.error || "This file cannot be chosen now."); return; }
+    if (!r.ok) { PungToast(r.error || "This file cannot be chosen now.", true); return; }
     const f = r.file;
     S = { base: o.base, key: o.key, onChange: o.onChange, file: f, before: f.value, place: f.at.place, dir: f.at.dir || "",
           rows: [], crumbs: [], cursor: 0, query: "", preview: f.preview, timer: null, info: null, infoPath: "", canAdd: false, done: false };
@@ -367,7 +367,7 @@
     for (const f of files) {
       $("fl-status").textContent = `Sending ${f.name} (${done + 1} of ${files.length})…`;
       let r = await api(`${S.base}/files/upload?key=${q(S.key)}&dir=${q(S.dir)}&name=${q(f.name)}`, { method: "PUT", body: f });
-      if (!r.ok && /already there/.test(r.error || "") && confirm(`${f.name} is already there. Replace it?`))
+      if (!r.ok && /already there/.test(r.error || "") && (await PungConfirm(`${f.name} is already there. Replace it?`, "Replace", true)))
         r = await api(`${S.base}/files/upload?key=${q(S.key)}&dir=${q(S.dir)}&name=${q(f.name)}&replace=1`, { method: "PUT", body: f });
       if (r.ok) { done++; last = r.path; } else refused.push(`${f.name}: ${r.error || "not sent"}`);
     }
