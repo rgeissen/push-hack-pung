@@ -10,9 +10,8 @@
 // read back from the emulator.
 //
 // Slots. The Nord has one panel and four slots: `slot` picks the slot the
-// parameters edit and, as the synth's slot buttons do, plays it alone unless
-// it is already part of the layer; slot_a..slot_d switch slots into the
-// layer. Notes play every slot that is on.
+// parameters edit, among the slots that are on; slot_a..slot_d switch slots
+// into the layer. Notes play every slot that is on.
 
 #include <algorithm>
 #include <array>
@@ -1037,14 +1036,14 @@ void v2_set_param(void *instance, const char *key, const char *val) {
             if (!strcasecmp(o_slot[i], val)) n = i;
         if (n < 0) n = atoi(val);
         if (n < 0 || n > 3 || n == in->slot) return;
+        // The panel moves among the slots that play, and no further: a sound
+        // with one slot has one slot to edit. A slot that is off is passed
+        // over in the direction turned (a knob goes by one step at a time);
+        // slot_a..slot_d are what switch a slot in.
+        const int dir = n > in->slot ? 1 : -1;
+        while (n >= 0 && n <= 3 && !in->on[n]) n += dir;
+        if (n < 0 || n > 3 || n == in->slot) return;
         in->slot = n;
-        // As the synth's slot buttons: a slot of the layer takes the panel and
-        // the layer stays; any other slot plays alone, and the others' lights
-        // go out. (Switching a slot on beside it is slot_a..slot_d's.)
-        if (!in->on[n]) {
-            release_held(in);
-            for (int i = 0; i < 4; i++) in->on[i] = i == n;
-        }
         in->multiDirty = true;
     } else if (!strncmp(key, "slot_", 5) && key[5] >= 'a' && key[5] <= 'd' && !key[6]) {
         const int i = key[5] - 'a';

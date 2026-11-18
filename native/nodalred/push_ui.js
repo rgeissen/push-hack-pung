@@ -267,7 +267,10 @@ push.compartment({
     g.text(8, 14, "THE KNOBS EDIT", "dim", -1);
     g.value(60, 62, "SLOT " + e, "slot", 0);
     var kn = v.$knobs || [];
-    if (kn[0] === "slot") g.text(60, 80, "TURN TO CHANGE", "faint", 0);
+    var nOn = 0;
+    for (var q = 0; q < sl.length; q++) if (sl[q].on) nOn++;
+    // the knob moves among the slots that are on: with one, there is nowhere to go
+    if (kn[0] === "slot") g.text(60, 80, nOn > 1 ? "TURN TO CHANGE" : "THE ONLY SLOT ON", "faint", 0);
     for (var i = 0; i < 4; i++) {
       var s = sl[i] || { on: false, edit: false, w1: 0, w2: 0, cut: 0, res: 0, ft: 0, mix: 0.5, mode: 2, uni: false, name: "" };
       slotTile(g, 124 + i * 120, 112, s, "ABCD".charAt(i), t === "slot_" + "abcd".charAt(i));
