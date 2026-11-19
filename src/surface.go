@@ -209,6 +209,12 @@ func (u *surface) run(done <-chan struct{}) {
 				u.leds = map[uint16]uint8{} // repaint everything
 				u.refreshPositions(true)
 				u.refreshValues()
+				// back from a device's own surface app: say how to get there again
+				if p, _, _ := u.currentBank(); p.Module != "" && !u.autoOpen {
+					if mi, ok := findModule(u.h.modulesDir, p.Module); ok && mi.SurfaceApp != "" && surfaceAppPort(mi.SurfaceApp) != 0 {
+						u.say(strings.ToUpper(mi.Name) + " HAS ITS OWN SURFACE|PRESS ITS BUTTON (TOP LEFT) OR THE JOG WHEEL TO OPEN IT")
+					}
+				}
 				if !u.liveReady {
 					u.liveSince = time.Now() // the hold counts from here (holdFrame)
 				}
@@ -1812,6 +1818,12 @@ func (u *surface) refreshLive() {
 		// a page that is the module's whole front panel is what the device
 		// looks like: selecting the device shows it, once (Back still leaves)
 		u.autoOpen = false
+		// a takeover module (its surface is its own app): Pung's own view of
+		// it is next to nothing, so selecting the device opens the app, once.
+		// Back from it (its LIVE), Pung's view stays and says how to return.
+		if u.focused.Load() && u.handOver() {
+			return
+		}
 		if p, _, b := u.currentBank(); b != nil && p.Module != "" && u.ov != nil {
 			set := u.ov.get(u.h.modulesDir, p.Module)
 			if comp := set.compartment(b.Compartment); comp != nil && comp.takeover && set.failed == "" && !set.off {
