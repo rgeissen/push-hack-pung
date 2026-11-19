@@ -31,6 +31,11 @@ type ModuleInfo struct {
 	// module.json says "origin": "pung"), else "schwung": one built from a
 	// Schwung module. The web page shows which is which.
 	Origin string `json:"origin"`
+	// SurfaceApp: a Push Hack app that is this module's whole surface on
+	// Push (module.json "pung": {"surface_app": "stacks"}): its own screen,
+	// pads and buttons. Opening the device hands the Push to it, and it edits
+	// this device (handover.go). Not installed: Pung's own view of the device.
+	SurfaceApp string `json:"surface_app,omitempty"`
 	// Forks: its sound is computed in processes of its own
 	// (capabilities.forks_processes: JE-8086). They take their scheduling
 	// from the thread that loads the module (engine.go: cSet)
@@ -99,6 +104,9 @@ func scanModulesNow(root string) []ModuleInfo {
 				ID, Name, Abbrev, Version, Author, Description string
 				DSP                                            string `json:"dsp"`
 				Origin                                         string `json:"origin"`
+				Pung                                           struct {
+					SurfaceApp string `json:"surface_app"`
+				} `json:"pung"`
 				ComponentType                                  string `json:"component_type"`
 				Capabilities                                   struct {
 					Forks bool `json:"forks_processes"`
@@ -119,6 +127,7 @@ func scanModulesNow(root string) []ModuleInfo {
 			if m.Origin == "pung" {
 				info.Origin = "pung"
 			}
+			info.SurfaceApp = m.Pung.SurfaceApp
 			info.WebUI = exists(filepath.Join(dir, "web_ui.html"))
 			info.Help = exists(filepath.Join(dir, "help.json"))
 			// the chain host loads audio_fx/<id>/<id>.so and dsp.so for the rest

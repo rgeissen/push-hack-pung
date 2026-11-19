@@ -92,6 +92,7 @@ type surface struct {
 	open    bool
 	autoOpen bool // the selection is new: open it if its page is a front panel
 	wheelAt  time.Time // the last step along the wheel key
+	handedAt time.Time // the Push was handed to a device's surface app (handover.go)
 	inner    bool      // the jog wheel is one level inside the open device: it walks the wheel key
 	bankOff int // open: how far the page row is scrolled (pageSlots)
 	devOff  int // closed: how far the device row is scrolled (deviceSlots)
@@ -1090,6 +1091,9 @@ func (u *surface) hasSounds() bool {
 // openDevice: the selected device's pages on the lower row (a Pung device,
 // read and confirmed: nothing else has pages here).
 func (u *surface) openDevice() {
+	if u.liveReady && u.handOver() {
+		return // the device's own surface is another app's (handover.go)
+	}
 	if _, cm, _ := u.currentBank(); cm != nil && u.liveReady {
 		u.open = true
 		u.bankOff = rowShow(u.bankOff, len(cm.Banks), u.bank)

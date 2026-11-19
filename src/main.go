@@ -59,6 +59,7 @@ func main() {
 	if err != nil {
 		log.Printf("hack.json: %v (port %d)", err, cfg.Port)
 	}
+	pungPort = cfg.Port
 	if *nslots < 0 || *nslots > 16 {
 		log.Fatalf("-slots must be 0..16")
 	}
