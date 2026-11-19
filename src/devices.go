@@ -556,6 +556,9 @@ type device struct {
 	previewFrames atomic.Uint64
 	// Process timing, in ns, the worst since Stats last read them
 	procLast, procMax, procGapMax atomic.Int64
+	// the MIDI clock made for the MIDI effect (Process): the realtime thread's only
+	clkPlaying bool
+	clkTick    int64
 
 	// capture: the last seconds this device gave Live, kept while armed (a
 	// test door: GET /api/devices/{n}/capture.wav). Preallocated when armed;
@@ -725,6 +728,32 @@ func (d *device) Process(b *livedevice.Block) {
 			return
 		}
 		d.s.sendMidi(msg)
+	}
+	// MIDI clock for the MIDI effect: Schwung's sequencers and arpeggiators
+	// follow the clock bytes Move sends them (start, 24 a beat, stop), and
+	// Live sends a plugin none. Made here from Live's own beat, so they run
+	// with Live's transport (Stacks stayed silent without it, 2026-11-19).
+	if b.TransportValid && (d.c.Kind == livedevice.MIDI || d.midiFX != 0) {
+		tick := int64(math.Floor(b.Beat * 24))
+		switch {
+		case b.Playing && !d.clkPlaying:
+			d.s.sendMidi([]byte{0xFA})
+			d.s.sendMidi([]byte{0xF8}) // the downbeat's own clock
+		case !b.Playing && d.clkPlaying:
+			d.s.sendMidi([]byte{0xFC})
+		case b.Playing:
+			if n := tick - d.clkTick; n < 0 || n > 48 {
+				// the song position jumped (a loop, a locate): from the top again
+				d.s.sendMidi([]byte{0xFC})
+				d.s.sendMidi([]byte{0xFA})
+				d.s.sendMidi([]byte{0xF8})
+			} else {
+				for ; n > 0; n-- {
+					d.s.sendMidi([]byte{0xF8})
+				}
+			}
+		}
+		d.clkPlaying, d.clkTick = b.Playing, tick
 	}
 	if d.held.n > 0 { // what the skipped blocks brought, first and in order
 		d.heldSent.Add(uint64(d.held.flush(deliver)))
