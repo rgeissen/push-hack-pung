@@ -91,7 +91,7 @@ type ovCompartment struct {
 	// liveKeys: values the module drives itself (a voice's level, an LFO's
 	// phase), read every frame while the screen is shown (livefx.go)
 	liveKeys []string
-	// wheel: the key the small encoder left of the display steps while the
+	// wheel: the key the upper small encoder left of the display steps while the
 	// compartment is shown: what the page is about (Stacks: the chord the
 	// knobs edit), so moving along it costs no knob and no page
 	wheel string

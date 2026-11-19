@@ -827,7 +827,9 @@ func (u *surface) cc(n, v byte) {
 		u.turn(int(n-push3.CCEncoder1), push3.DecodeRel(v))
 		return
 	}
-	if n == push3.CCTempo {
+	if n == push3.CCVolume {
+		// the upper of the two small encoders left of the display (the lower
+		// one, tempo, was tried first and was the wrong one: 2026-11-19)
 		u.wheel(push3.DecodeRel(v))
 		return
 	}
@@ -1250,7 +1252,7 @@ func (u *surface) turn(enc, delta int) {
 	}
 }
 
-// wheel: the small encoder left of the display steps the key the shown
+// wheel: the upper small encoder left of the display steps the key the shown
 // compartment names (push.compartment's wheel), one step a detent. A module
 // that names none leaves it alone.
 func (u *surface) wheel(delta int) {
