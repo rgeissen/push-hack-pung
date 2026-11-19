@@ -231,5 +231,18 @@ func (u *surface) watchLive(done <-chan struct{}) {
 				log.Printf("surface: Live restarts: the surface is Live's")
 			}
 		}
+		// ... and while a device's surface app holds it (handover.go): the
+		// app does not know that Live went. Its buttons were not Live's, and
+		// Live's question at the start could not be answered (2026-11-19).
+		u.mu.Lock()
+		app := u.handedApp
+		u.mu.Unlock()
+		if app != "" && surfaceOwner(u.pm.Base) == app {
+			if err := leaveFor(u.pm.Base, app); err != nil {
+				log.Printf("surface: Live restarts, and taking the surface from %s failed: %v", app, err)
+			} else {
+				log.Printf("surface: Live restarts: the surface is Live's (it was %s's)", app)
+			}
+		}
 	}
 }

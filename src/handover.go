@@ -76,6 +76,7 @@ func (u *surface) handOver() bool {
 		name = tr
 	}
 	u.handedAt = time.Now()
+	u.handedApp = mi.SurfaceApp
 	app, pm := mi.SurfaceApp, u.pm
 	go func() {
 		hc := &http.Client{Timeout: 2 * time.Second}
@@ -108,4 +109,36 @@ func (u *surface) handOver() bool {
 		}
 	}()
 	return true
+}
+
+// surfaceOwner: the app that has the Push now, as push-manager says, or "".
+func surfaceOwner(pmBase string) string {
+	hc := &http.Client{Timeout: time.Second}
+	resp, err := hc.Get(pmBase + "/api/surface")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var j struct {
+		Owner string `json:"owner"`
+		App   string `json:"app"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&j) != nil || j.Owner != "app" {
+		return ""
+	}
+	return j.App
+}
+
+// leaveFor gives the surface an app holds back to Live, in its name.
+func leaveFor(pmBase, app string) error {
+	b, _ := json.Marshal(map[string]string{"app": app, "to": "live"})
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Post(pmBase+"/api/surface/leave", "application/json", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("%s", resp.Status)
+	}
+	return nil
 }

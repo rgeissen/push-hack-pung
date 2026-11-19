@@ -93,6 +93,7 @@ type surface struct {
 	autoOpen bool // the selection is new: open it if its page is a front panel
 	wheelAt  time.Time // the last step along the wheel key
 	handedAt time.Time // the Push was handed to a device's surface app (handover.go)
+	handedApp string   // ... and to which one, last
 	inner    bool      // the jog wheel is one level inside the open device: it walks the wheel key
 	bankOff int // open: how far the page row is scrolled (pageSlots)
 	devOff  int // closed: how far the device row is scrolled (deviceSlots)
