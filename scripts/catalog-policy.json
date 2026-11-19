@@ -7,5 +7,7 @@
     }
   },
   "publish": {},
-  "withhold": {}
+  "withhold": {
+    "stacks": "its repository is still private: Pung publishes the source of what it ships (take this line out when rgeissen/schwung-stacks is public)"
+  }
 }

@@ -1,0 +1,18 @@
+{
+ "_about": "Schwung modules that are not in Schwung's own catalog yet, built from their repositories like every other. Same entry shape as Schwung's module-catalog.json. component_type is what Pung files the module as; a module that is something else on Move says so in its module.json (\"pung\": {\"component_type\": ...}, docs/push-module-builds.md).",
+ "modules": [
+  {
+   "id": "stacks",
+   "name": "Stacks",
+   "description": "Chord progressions: write one, hear it on a track, follow Live's transport",
+   "author": "rgeissen",
+   "component_type": "midi_fx",
+   "github_repo": "rgeissen/schwung-stacks",
+   "default_branch": "main",
+   "subcategory": "sequencer",
+   "tags": [
+    "chords"
+   ]
+  }
+ ]
+}

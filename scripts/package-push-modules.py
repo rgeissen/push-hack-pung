@@ -132,6 +132,20 @@ for mid, m in sorted(cat.items()):
     if bad:
         failed.append((mid, "; ".join(bad)))
         continue
+    # A module that is one thing on Move and another on the Push says so in
+    # its module.json ("pung": {"component_type": "midi_fx"}): Stacks is a
+    # tool there and a MIDI effect here. The packed module.json is the one
+    # Pung reads, so it carries Pung's filing; the repository's stays Move's.
+    if os.path.exists(mjp):
+        pj = json.load(open(mjp))
+        want = (pj.get("pung") or {}).get("component_type")
+        if want and pj.get("component_type") != want:
+            pj["component_type"] = want
+            caps = pj.setdefault("capabilities", {})
+            caps["component_type"], caps["chainable"] = want, True
+            for k in ("tool_config", "ui"):
+                pj.pop(k, None)
+            json.dump(pj, open(mjp, "w"), indent=1)
     asset = "%s-push-x86_64.tar.gz" % mid
     tp = os.path.join(dist, asset)
     with tarfile.open(tp, "w:gz") as t:

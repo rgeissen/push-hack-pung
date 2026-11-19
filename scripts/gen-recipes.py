@@ -171,7 +171,8 @@ def gen(m):
     mjrel = os.path.relpath(mj, repo)
     mdir = os.path.dirname(mjrel)
     j = json.load(open(mj))
-    sub = SUBDIR.get(j.get("component_type") or m["component_type"], "other")
+    # what Pung files it as: the module's own word for Pung, else its type
+    sub = SUBDIR.get((j.get("pung") or {}).get("component_type") or j.get("component_type") or m["component_type"], "other")
     files = repo_files(repo)
     text = script_text(repo, mdir)
     VARS.clear()

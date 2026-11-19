@@ -49,6 +49,12 @@ for m in n:
     if m["id"] in ids:
         sys.exit("native module %s: Schwung's catalog has that id" % m["id"])
 c["modules"] += n
+# Schwung modules Schwung's catalog does not list yet (scripts/extra-catalog.json)
+x = json.load(open("scripts/extra-catalog.json"))["modules"]
+for m in x:
+    if m["id"] in ids or any(m["id"] == k["id"] for k in n):
+        sys.exit("extra module %s: the catalog has that id (drop it from extra-catalog.json)" % m["id"])
+c["modules"] += x
 json.dump(c, open("build/catalog-merged.json", "w"), indent=1)
 print("catalog: %d modules, %d native" % (len(c["modules"]), len(n)))
 PY

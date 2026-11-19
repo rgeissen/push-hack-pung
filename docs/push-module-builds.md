@@ -134,3 +134,21 @@ hand.)
 - **Licences:** each package carries the repo's licence files. Several modules
   statically link GPL code, and dj links fdk-aac, whose licence restricts
   redistribution. Review this before serving the packages publicly.
+
+## A module that is something else on Move
+
+A module may be one thing on Move and another on the Push: Stacks is a tool there (it takes the whole surface)
+and a MIDI effect here (a device on a track). Its `module.json` says so itself:
+
+```json
+"component_type": "tool",
+"pung": { "component_type": "midi_fx" }
+```
+
+`gen-recipes.py` files it by Pung's word, and `package-push-modules.py` writes that into the packed
+`module.json` (and drops `tool_config` and `ui`), so Pung reads an ordinary MIDI effect. The repository's own
+`module.json` stays Move's. Such a module needs the entry point of what it becomes (`move_midi_fx_init`).
+
+`scripts/extra-catalog.json` lists Schwung modules that Schwung's catalog does not carry yet; they are built
+from their repositories like every other. One whose repository is private is kept out of the catalog by a
+`withhold` line in `catalog-policy.json`: Pung publishes the source of everything it ships.
