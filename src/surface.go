@@ -92,6 +92,7 @@ type surface struct {
 	open    bool
 	autoOpen bool // the selection is new: open it if its page is a front panel
 	wheelAt  time.Time // the last step of the small left encoder (wheel)
+	inner    bool      // the jog wheel is one level inside the open device: it walks the wheel key
 	bankOff int // open: how far the page row is scrolled (pageSlots)
 	devOff  int // closed: how far the device row is scrolled (deviceSlots)
 	focus   int // closed: the device under the jog wheel (index in the track's devices), -1 none
@@ -866,7 +867,19 @@ func (u *surface) cc(n, v byte) {
 		u.stepTrack(-1) // as on Push: the tracks, at both levels
 	case n == push3.CCDPadRight:
 		u.stepTrack(1)
+	case n == push3.CCJogClickRight:
+		// one level in, as Push's jog goes deeper: the wheel walks what the
+		// page is about (a module that names nothing has no such level)
+		if u.view == "chain" && u.open && u.wheelComp() != nil {
+			u.inner = true
+			u.showRows()
+		}
 	case n == push3.CCJogClickLeft:
+		if u.inner {
+			u.inner = false // back to the pages
+			u.showRows()
+			break
+		}
 		u.open = false // back, as Push's jog
 	case n == push3.CCJogPress || n == push3.CCDPadCenter:
 		u.jogPress()
@@ -1028,6 +1041,7 @@ func (u *surface) top(i int) {
 		switch {
 		case i == 0:
 			u.open = false
+			u.inner = false
 		case i == soundsButton && u.hasSounds():
 			u.openSounds() // the device's own action, where Push puts a device's (sounds_view.go)
 		}
@@ -1148,6 +1162,10 @@ func (u *surface) jog(delta int) {
 	if !u.liveActive() || u.view != "chain" {
 		return
 	}
+	if u.open && u.inner && u.wheelComp() != nil {
+		u.wheel(delta)
+		return
+	}
 	if u.open {
 		u.stepBank(sign(delta))
 		return
@@ -1164,6 +1182,14 @@ func (u *surface) jog(delta int) {
 // opens). Open: the device's sounds.
 func (u *surface) jogPress() {
 	if u.view != "chain" {
+		return
+	}
+	if u.open && u.inner {
+		if c := u.wheelComp(); c != nil && c.wheelPress != "" {
+			if d, prefix := u.pungDevice(); d != nil {
+				go d.SetOutside(prefix+":"+c.wheelPress, "on")
+			}
+		}
 		return
 	}
 	if u.open {
@@ -1250,6 +1276,18 @@ func (u *surface) turn(enc, delta int) {
 	if nv, changed := m.step(cur, delta, u.shift); changed {
 		u.writeParam(p, key, m, nv)
 	}
+}
+
+// wheelComp: the shown compartment, if it names something to walk.
+func (u *surface) wheelComp() *ovCompartment {
+	p, cm, b := u.currentBank()
+	if b == nil || cm == nil || p.Module == "" || u.ov == nil {
+		return nil
+	}
+	if c := u.ov.get(u.h.modulesDir, p.Module).compartment(b.Compartment); c != nil && c.wheel != "" {
+		return c
+	}
+	return nil
 }
 
 // wheel: the upper small encoder left of the display steps the key the shown
@@ -1636,6 +1674,7 @@ func (u *surface) enterSelection(v liveView) {
 	u.vals = map[string]string{}
 	u.lvIdx = map[string]int{}
 	u.open, u.focus = false, -1 // another device: the chain level, as on Push
+	u.inner = false
 	u.autoOpen = true           // ... unless its page is a front panel (refreshLive)
 	u.peekUntil = time.Time{}
 	m := u.bankMem[v.key]

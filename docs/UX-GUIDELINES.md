@@ -125,6 +125,13 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
   scrolled, one step a press (`rowSlots`).
 - **The jog wheel**: at chain level a focus along the devices (framed), its press opens the focused one;
   in an open device it steps the pages; a nudge left goes back.
+- **One level further in, for a device with something inside**: a module may name what a page is about as
+  a key that can be walked (`wheel` in `push.compartment`: Stacks names the chord the knobs edit). In the
+  open device a nudge right goes in: the wheel walks that key, its press sets `wheel_press` (Stacks: hear the
+  chord), a nudge left comes back to the pages. The same grammar as Push's own levels; a module that names
+  nothing has no such level. The screen is told (`v.$wheel`) and must show which level the wheel is on.
+- **The upper small encoder left of the display is only a shortcut** for that walk, from any level. Nothing
+  may be reachable with it alone: the jog wheel is the way, as on Push.
 - **D-pad left / right are the tracks**, at both levels.
 - **Push's verbs**: Shift fine; Delete + touch resets a parameter to its default (the module's own, else
   Live's); Mute + a device's button switches it off and on, and its parameters grey out; Delete + a

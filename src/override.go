@@ -91,10 +91,15 @@ type ovCompartment struct {
 	// liveKeys: values the module drives itself (a voice's level, an LFO's
 	// phase), read every frame while the screen is shown (livefx.go)
 	liveKeys []string
-	// wheel: the key the upper small encoder left of the display steps while the
-	// compartment is shown: what the page is about (Stacks: the chord the
-	// knobs edit), so moving along it costs no knob and no page
+	// wheel: what the compartment's page is about, as a key that can be walked
+	// (Stacks: the chord the knobs edit). The jog wheel walks it one level
+	// inside the open device (a nudge right goes in, left comes back, as
+	// Push's own levels), and the upper small encoder left of the display
+	// walks it from anywhere, as a shortcut
 	wheel string
+	// wheelPress: the key a press of the jog wheel sets to "on" while it
+	// walks the wheel key (Stacks: hear the chord)
+	wheelPress string
 }
 
 // pageScreen: the band screen for a compartment's page: the page's own,
@@ -281,6 +286,9 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		}
 		if v := spec.Get("wheel"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
 			c.wheel = v.String()
+		}
+		if v := spec.Get("wheel_press"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			c.wheelPress = v.String()
 		}
 		if v := spec.Get("takeover"); v != nil && !goja.IsUndefined(v) {
 			c.takeover = v.ToBoolean()

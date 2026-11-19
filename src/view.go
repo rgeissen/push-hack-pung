@@ -742,5 +742,7 @@ func (u *surface) takeoverInfo(p position, cm *compMeta, b *bank, comp *ovCompar
 	if u.liveActive() {
 		track, _ = u.live.state().trackHeader()
 	}
-	return map[string]any{"$page": page, "$pages": pages, "$knobs": knobs, "$name": p.Name, "$track": track, "$live": u.liveInfo()}
+	// $wheel: the jog wheel is walking the compartment's wheel key now
+	return map[string]any{"$page": page, "$pages": pages, "$knobs": knobs, "$name": p.Name, "$track": track, "$live": u.liveInfo(),
+		"$wheel": u.open && u.inner && comp.wheel != ""}
 }
