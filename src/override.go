@@ -94,8 +94,7 @@ type ovCompartment struct {
 	// wheel: what the compartment's page is about, as a key that can be walked
 	// (Stacks: the chord the knobs edit). The jog wheel walks it one level
 	// inside the open device (a nudge right goes in, left comes back, as
-	// Push's own levels), and the upper small encoder left of the display
-	// walks it from anywhere, as a shortcut
+	// Push's own levels)
 	wheel string
 	// wheelPress: the key a press of the jog wheel sets to "on" while it
 	// walks the wheel key (Stacks: hear the chord)

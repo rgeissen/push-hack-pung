@@ -91,7 +91,7 @@ type surface struct {
 	// the track's devices and the lower row Live's tracks
 	open    bool
 	autoOpen bool // the selection is new: open it if its page is a front panel
-	wheelAt  time.Time // the last step of the small left encoder (wheel)
+	wheelAt  time.Time // the last step along the wheel key
 	inner    bool      // the jog wheel is one level inside the open device: it walks the wheel key
 	bankOff int // open: how far the page row is scrolled (pageSlots)
 	devOff  int // closed: how far the device row is scrolled (deviceSlots)
@@ -439,6 +439,9 @@ var liveButtons = []int{
 	push3.CCMute, push3.CCSolo, push3.CCStopClips,
 	push3.CCUndo, push3.CCDelete, push3.CCDuplicate, push3.CCDoubleLoop, push3.CCQuantize, push3.CCConvert,
 	push3.CCFixedLength, push3.CCCapture, push3.CCTapTempo, push3.CCMetronome,
+	// the two small encoders left of the display: volume and tempo are
+	// Live's in every view, and Pung puts nothing of its own on them
+	push3.CCVolume, push3.CCVolumePress, push3.CCTempo, push3.CCTempoPress,
 }
 
 // isLiveButton: a button in liveButtons. Pung sees its press too (it
@@ -828,12 +831,7 @@ func (u *surface) cc(n, v byte) {
 		u.turn(int(n-push3.CCEncoder1), push3.DecodeRel(v))
 		return
 	}
-	if n == push3.CCVolume {
-		// the upper of the two small encoders left of the display (the lower
-		// one, tempo, was tried first and was the wrong one: 2026-11-19)
-		u.wheel(push3.DecodeRel(v))
-		return
-	}
+
 	if n == push3.CCJogWheel {
 		u.jog(push3.DecodeRel(v))
 		return
@@ -1290,9 +1288,8 @@ func (u *surface) wheelComp() *ovCompartment {
 	return nil
 }
 
-// wheel: the upper small encoder left of the display steps the key the shown
-// compartment names (push.compartment's wheel), one step a detent. A module
-// that names none leaves it alone.
+// wheel: one step along the key the shown compartment names
+// (push.compartment's wheel), for the jog wheel one level inside the device.
 func (u *surface) wheel(delta int) {
 	p, cm, b := u.currentBank()
 	if b == nil || cm == nil || p.Module == "" || u.ov == nil || delta == 0 {

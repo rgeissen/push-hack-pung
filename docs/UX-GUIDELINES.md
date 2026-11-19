@@ -130,8 +130,9 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
   open device a nudge right goes in: the wheel walks that key, its press sets `wheel_press` (Stacks: hear the
   chord), a nudge left comes back to the pages. The same grammar as Push's own levels; a module that names
   nothing has no such level. The screen is told (`v.$wheel`) and must show which level the wheel is on.
-- **The upper small encoder left of the display is only a shortcut** for that walk, from any level. Nothing
-  may be reachable with it alone: the jog wheel is the way, as on Push.
+- **The two small encoders left of the display stay Live's** (volume, tempo), in every view. A shortcut on
+  the volume encoder was tried for the walk and taken out again (2026-11-19): everything goes through the jog
+  wheel, as on Push.
 - **D-pad left / right are the tracks**, at both levels.
 - **Push's verbs**: Shift fine; Delete + touch resets a parameter to its default (the module's own, else
   Live's); Mute + a device's button switches it off and on, and its parameters grey out; Delete + a
