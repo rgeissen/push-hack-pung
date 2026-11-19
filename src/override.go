@@ -50,6 +50,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dop251/goja"
@@ -90,6 +91,10 @@ type ovCompartment struct {
 	// liveKeys: values the module drives itself (a voice's level, an LFO's
 	// phase), read every frame while the screen is shown (livefx.go)
 	liveKeys []string
+	// wheel: the key the small encoder left of the display steps while the
+	// compartment is shown: what the page is about (Stacks: the chord the
+	// knobs edit), so moving along it costs no knob and no page
+	wheel string
 }
 
 // pageScreen: the band screen for a compartment's page: the page's own,
@@ -273,6 +278,9 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		}
 		if kv := spec.Get("live_keys"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
 			vm.ExportTo(kv, &c.liveKeys) //nolint:errcheck
+		}
+		if v := spec.Get("wheel"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			c.wheel = v.String()
 		}
 		if v := spec.Get("takeover"); v != nil && !goja.IsUndefined(v) {
 			c.takeover = v.ToBoolean()
@@ -693,6 +701,9 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	if s.kept == nil || len(s.kept) >= 8 {
 		s.kept = map[string]*keptFrame{}
 	}
+	if moving && !p.offline {
+		ovMovedAt.Store(time.Now().UnixNano()) // the Push's next frame is another picture (surface.frames)
+	}
 	s.kept[slot] = &keptFrame{sig: sig, img: img, moving: moving}
 	putFrame(dst, img, p, w, h)
 	return true
@@ -705,6 +716,12 @@ type keptFrame struct {
 	img    *image.NRGBA
 	moving bool
 }
+
+// ovMovedAt: when a screen on the Push last drew a picture that moves by
+// itself (it read the time). The frame loop draws the next tick then, whatever
+// the sound does: Stacks' playhead ran at 13 frames a second, because only a
+// sounding device counted as moving and a MIDI device makes no sound.
+var ovMovedAt atomic.Int64
 
 // frameSig: everything a screen's picture depends on.
 func frameSig(w, h int, sc color.NRGBA, p placement, vals map[string]ovValue, touched string) uint64 {

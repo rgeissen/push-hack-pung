@@ -91,6 +91,7 @@ type surface struct {
 	// the track's devices and the lower row Live's tracks
 	open    bool
 	autoOpen bool // the selection is new: open it if its page is a front panel
+	wheelAt  time.Time // the last step of the small left encoder (wheel)
 	bankOff int // open: how far the page row is scrolled (pageSlots)
 	devOff  int // closed: how far the device row is scrolled (deviceSlots)
 	focus   int // closed: the device under the jog wheel (index in the track's devices), -1 none
@@ -826,6 +827,10 @@ func (u *surface) cc(n, v byte) {
 		u.turn(int(n-push3.CCEncoder1), push3.DecodeRel(v))
 		return
 	}
+	if n == push3.CCTempo {
+		u.wheel(push3.DecodeRel(v))
+		return
+	}
 	if n == push3.CCJogWheel {
 		u.jog(push3.DecodeRel(v))
 		return
@@ -1245,6 +1250,50 @@ func (u *surface) turn(enc, delta int) {
 	}
 }
 
+// wheel: the small encoder left of the display steps the key the shown
+// compartment names (push.compartment's wheel), one step a detent. A module
+// that names none leaves it alone.
+func (u *surface) wheel(delta int) {
+	p, cm, b := u.currentBank()
+	if b == nil || cm == nil || p.Module == "" || u.ov == nil || delta == 0 {
+		return
+	}
+	comp := u.ov.get(u.h.modulesDir, p.Module).compartment(b.Compartment)
+	if comp == nil || comp.wheel == "" {
+		return
+	}
+	m := cm.Params[comp.wheel]
+	if m == nil || m.ReadOnly {
+		return
+	}
+	if time.Since(u.wheelAt) < 70*time.Millisecond {
+		return // one step a detent: a spin must not run past what is there
+	}
+	u.wheelAt = time.Now()
+	cur, ok := u.vals[u.valKey(p, comp.wheel)]
+	if !ok {
+		if d, prefix := u.pungDevice(); d != nil {
+			cur, ok = d.s.Get(prefix + ":" + comp.wheel)
+		}
+	}
+	if !ok {
+		return
+	}
+	nv, changed := m.step(cur, sign(delta), true)
+	if !changed {
+		return
+	}
+	// into the module first, and from there to Live: through Live a step
+	// took 20 to 130 ms to arrive (measured 2026-11-19), and what is walked
+	// along is what the screen shows
+	if d, prefix := u.pungDevice(); d != nil && u.liveReady {
+		u.vals[u.valKey(p, comp.wheel)] = nv
+		go d.SetOutside(prefix+":"+comp.wheel, nv)
+		return
+	}
+	u.writeParam(p, comp.wheel, m, nv)
+}
+
 // resetParam: Delete + an encoder's touch puts its parameter back to its
 // default, as on Push: the module's own where it states one, else Live's.
 func (u *surface) resetParam(enc int) {
@@ -1494,7 +1543,8 @@ func (u *surface) frames(done <-chan struct{}) {
 		peak := u.level()
 		animating := math.Abs(peak-lastPeak) > 0.5 || time.Now().Before(u.peekUntil.Add(50*time.Millisecond)) ||
 			(u.open && time.Now().Before(u.rowsUntil.Add(50*time.Millisecond))) ||
-			(u.toast != "" && time.Since(u.toastAt) < 2600*time.Millisecond) || u.liveWanted()
+			(u.toast != "" && time.Since(u.toastAt) < 2600*time.Millisecond) || u.liveWanted() ||
+			time.Now().UnixNano()-ovMovedAt.Load() < int64(100*time.Millisecond)
 		if !u.dirty.Swap(false) && !animating {
 			u.mu.Unlock()
 			continue
