@@ -4,7 +4,7 @@
 // LFO 1, LFO 2, Mod, Aftertouch, Expression), in its order and names.
 //
 // Two pictures, each showing what knobs cannot:
-// - Macros (takeover): the JV-880's LCD, and its four TONES at a glance:
+// - Macros (front panel): the JV-880's LCD, and its four TONES at a glance:
 //   which sound, which wave, how loud, where panned, their amp envelopes.
 //   A JV patch IS four tones; a row of knobs never shows that. Live, from
 //   the emulated chip itself: every voice's amplitude in the LCD, and every
@@ -81,7 +81,7 @@ push.envelopeTimes(function (env) {
   });
 });
 
-// ---- Macros: the takeover ------------------------------------------------------------
+// ---- Macros: the front panel ------------------------------------------------------------
 
 // ---- the chip's voices, live -------------------------------------------------------
 // The module reads them from the emulated PCM chip (live_voices): each
@@ -205,7 +205,7 @@ for (var ti = 0; ti < 4; ti++) {
 }
 
 push.compartment({
-  id: "macros", label: "Macros", takeover: true,
+  id: "macros", label: "Macros", front_panel: true,
   pages: [
     { label: "Macros", keys: ["macro_cutoff", "macro_resonance", "macro_attack", "macro_decay", "macro_sustain", "macro_release", "macro_tvf_env_depth", "macro_lfo_depth"] },
     { label: "Patch", keys: ["mode", "part", "octave_transpose", "link_tones"] }

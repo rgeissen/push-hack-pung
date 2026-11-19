@@ -152,3 +152,15 @@ and a MIDI effect here (a device on a track). Its `module.json` says so itself:
 `scripts/extra-catalog.json` lists Schwung modules that Schwung's catalog does not carry yet; they are built
 from their repositories like every other. One whose repository is private is kept out of the catalog by a
 `withhold` line in `catalog-policy.json`: Pung publishes the source of everything it ships.
+
+## Takeover modules
+
+A module's surface on the Push can be an app of its own, a Push Hack that has the screen, the pads and the
+buttons while the device is open. The module names it: `"pung": {"surface_app": "stacks"}`. Opening the
+device in Pung tells that app which device to edit (`POST /api/bind` on the app's port) and hands it the Push
+(`src/handover.go`); the app's own way back to Live ends it. Without the app installed, Pung's own view of
+the device opens. The page marks such a module **Takeover**, beside its origin (Schwung, Pung native): the
+origin says where a module comes from, the surface how it is edited.
+
+"Takeover" was first the name of a screen that fills the whole display (the Nord's red panel). That is a
+**front panel** now (`front_panel: true` in `push.compartment`; `takeover: true` is still read).

@@ -49,7 +49,7 @@ The Push and the web page are two views of that one structure, and each one does
    substantially better than level 2 (§5). Three sizes:
    - a **page screen**: the band over the encoders, for one page (a JV-880 envelope over its eight knobs);
    - a **band screen**: the band, for every page of a compartment (Osirus's filter routing);
-   - a **takeover**: the whole panel; Pung draws none of its own elements (JE-8086's Patch, Mini-JV's
+   - a **front panel**: the whole panel; Pung draws none of its own elements (JE-8086's Patch, Mini-JV's
      Macros, Dexed's Algorithm).
 
 Most modules should never need level 3. **The default must be world class on its own**, because it is
@@ -118,7 +118,7 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
 - **A device's button selects it; the selected one's opens and closes it.** Another device or track
   selected: back at chain level.
 - **A front panel opens with its device**: when the page shown is a module's full-panel screen
-  (`takeover`), selecting the device opens it at once, so the panel is what you see first. Button 1
+  (`front_panel`), selecting the device opens it at once, so the panel is what you see first. Button 1
   still goes back to chain level, and it stays there until another device is selected.
 - **The encoders edit at both levels**: at chain level they show the selected device's last page.
 - **Rows scroll as Push's do**: an arrow on the last button while more follow, on the first once
@@ -153,7 +153,7 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
   device is Push's own browser); backing out of the browser returns to Pung's view.
 - **Not there yet**: the upper buttons 2 to 8 of an open device (Push puts a page's switches there), automation dots, moving a
   device by holding its button.
-- **A full-panel screen** (a takeover, §5) belongs to the open device. It hides the two rows, so they are
+- **A full-panel screen** (a front panel, §5) belongs to the open device. It hides the two rows, so they are
   drawn over it for a moment on opening, on a page turn and while the jog wheel is touched: the way back
   is never hidden for good.
 
@@ -261,7 +261,7 @@ neighbouring knobs. The touched cell instead shows:
 
 The card stays available as a setting (web page, **Push display > Detail card on touch**; `touch_card` in
 `settings.json`), off by default, and never opens over a picture. Turning a page shows no notice either:
-the header names the page (a takeover draws its own indicator), and a box over the knobs hid two of them
+the header names the page (a front panel draws its own indicator), and a box over the knobs hid two of them
 for 2.5 s on every page turn. Notices are for what the screen does not already say.
 
 ### Moving between devices
@@ -336,13 +336,13 @@ If it only restyles the default page, it does not ship.
    last picture. Only a picture that moves by itself is drawn every frame: one that reads the time (the
    draw's third argument), or shows an envelope while notes sound. Measured on a Push 3 with an emulator
    running, while a knob turns: Pung's own pages 0.1 to 0.5 ms a frame, Nodal Red's panel 1.3 ms, its
-   oscillator screen 0.8 ms, its filter screen 2.5 ms, JE-8086's Patch takeover 2.5 ms. While nothing
+   oscillator screen 0.8 ms, its filter screen 2.5 ms, JE-8086's Patch front panel 2.5 ms. While nothing
    turns: no script runs at all. Keep a changing frame cheap too: what never changes goes into
    `g.layer`, curves are cached, and nothing is computed that the frame does not show.
-5. **Fit the budget**: 8 ms a frame, 14 ms for a takeover (§7). One `g.poly` per curve; cache what does
+5. **Fit the budget**: 8 ms a frame, 14 ms for a front panel (§7). One `g.poly` per curve; cache what does
    not change. What a screen draws the same every frame (a panel's ground, frames, legends) goes into
    `g.layer(key, fn)`: drawn once, copied after that. Nodal Red's panel went from 26 ms to 3 ms a frame. `/api/surface/state` reports `module_ui_draw_us`: measure on the device.
-6. **A takeover replaces Pung's elements, so it owns their jobs**: every encoder's name and value
+6. **A front panel replaces Pung's elements, so it owns their jobs**: every encoder's name and value
    (`v.$knobs`), the touched one in slot colour, which page of how many. The bottom 56 pixels are the
    encoder row, by convention (y 104 to 160), so that the hands find their values where they always are.
 7. **A picture over knobs is aligned with them** where the parts are places (a keyboard's break point
@@ -352,17 +352,17 @@ If it only restyles the default page, it does not ship.
    name. If the screen shows a relationship, the page should show it too. Without a web page of its own,
    Pung's page shows the screen itself (drawn by the same code).
 9. **The way back is Push's**: upper button 1 or a jog nudge left leaves the open device, and at chain
-   level the page shows as plain knobs. A takeover never hides that for good (§3, The controls).
+   level the page shows as plain knobs. A front panel never hides that for good (§3, The controls).
 
 ### Showcase
 
 | Module | Compartment | Kind | What it shows that knobs cannot |
 |---|---|---|---|
-| JE-8086 | Patch | takeover | the JP-8000's LCD (P:A11, the patch name, the parameter being turned), both oscillators' waves, the filter's response, the amp envelope, LFO 1: the patch at a glance while the encoders play its macros |
+| JE-8086 | Patch | front panel | the JP-8000's LCD (P:A11, the patch name, the parameter being turned), both oscillators' waves, the filter's response, the amp envelope, LFO 1: the patch at a glance while the encoders play its macros |
 | JE-8086 | Osc, Filter & Amp, LFO & Mod, FX, Play & Arp, System | default | the tabs of its own web panel, its numbered sections as pages |
-| Mini-JV | Macros | takeover | the JV-880's LCD and its four tones: which wave, how loud, where panned, their amp envelopes. A JV patch is four tones |
+| Mini-JV | Macros | front panel | the JV-880's LCD and its four tones: which wave, how loud, where panned, their amp envelopes. A JV patch is four tones |
 | Mini-JV | Tone 1-4, Pitch / Filter / Amp Env pages | default | Pung's envelope (T1 T2 T3 S T4), on the JV's own times (`push.envelopeTimes`) |
-| Dexed | Algorithm | takeover | the algorithm as the DX7 prints it (from Dexed's own table), ratios and levels in the operators, the feedback loop, the six envelopes; encoders: algorithm, feedback, six levels |
+| Dexed | Algorithm | front panel | the algorithm as the DX7 prints it (from Dexed's own table), ratios and levels in the operators, the feedback loop, the six envelopes; encoders: algorithm, feedback, six levels |
 | Dexed | Operator 1-6 EG, Pitch EG | default | Pung's envelope (R1 R2 R3 S R4), on msfa's own times (`push.envelopeTimes`) |
 | Dexed | Operator 1-6 Key Scale | page screens | keyboard level scaling over a keyboard |
 | Osirus | Filters, Envelopes | band screens | the filter routing as a signal path with both responses; both envelopes with the sustain slope in words |
@@ -467,9 +467,9 @@ of plain knobs draws in about 7.4 ms and hands over in about 1.8 ms; the spectru
 playhead nothing measurable; Mini-JV's Macros with its voices about 10.4 ms. A 30 fps frame is 33 ms.
 
 - Things move only when the instrument moves: an LFO's phase, a meter. A static value is drawn still.
-- The Push redraws many times a second. A widget or a screen gets **8 ms**, a takeover **14 ms**; three
+- The Push redraws many times a second. A widget or a screen gets **8 ms**, a front panel **14 ms**; three
   slow frames in a row, or one over 40 ms, switch it off for the session. Measured on the device:
-  JE-8086's Patch takeover draws in 2.6 to 4.1 ms, Mini-JV's Macros in about 2.7 ms. Pung's own pictures are drawn in Go, outside the module's budget.
+  JE-8086's Patch front panel draws in 2.6 to 4.1 ms, Mini-JV's Macros in about 2.7 ms. Pung's own pictures are drawn in Go, outside the module's budget.
 - The web page polls values every 500 ms and redraws only what changed.
 
 ## 8. Review checklist
@@ -491,6 +491,6 @@ Before a screen, widget or web section ships:
       `PUNG_SHOTS=dir go test`).
 - [ ] For a custom screen: one sentence saying what it shows that the default cannot. If there is no such
       sentence, it does not ship.
-- [ ] For a takeover: the encoder row (names, values, the touched one) and the page are on it; it was
+- [ ] For a front panel: the encoder row (names, values, the touched one) and the page are on it; it was
       measured on the device (`module_ui_draw_us`) under 14 ms.
 - [ ] Where the module has a web panel: the compartments are its panels, in its order, under its names.

@@ -442,6 +442,9 @@ for m in mods:
     entry = {k: m[k] for k in ("id", "name", "version", "component_type", "install_subdir", "description", "author", "requires", "requires_modules")}
     # a module written for the Push (native/), or one built from a Schwung module
     entry["origin"] = "pung" if m["source"].get("native") else "schwung"
+    # a takeover module: its surface on Push is a Push Hack app (module.json "pung": {"surface_app"})
+    if (mj.get("pung") or {}).get("surface_app"):
+        entry["surface_app"] = mj["pung"]["surface_app"]
     sc = SCHWUNG_CAT.get(mid, {})
     rel = RELEASES.get(mid, {})
     try:

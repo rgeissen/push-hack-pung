@@ -209,6 +209,7 @@
     $("panel-title").textContent = info.module ? `${info.name || info.module}` : "Empty";
     $("unit-meta").innerHTML = info.module
       ? `<span class="origin ${o}" title="${esc(ORIGIN_TIP[o])}">${esc(ORIGIN[o])}</span>` +
+        (d.surface_app ? `<span class="surface-kind${d.surface_app_installed ? "" : " missing"}" title="${d.surface_app_installed ? "On the Push, opening this device hands the screen, pads and buttons to the " + esc(d.surface_app) + " app" : "Its surface on the Push is the " + esc(d.surface_app) + " app, which is not installed: Pung's own view opens"}">Takeover</span>` : "") +
         `<span>${esc(info.module)}${d.version ? " · v" + esc(String(d.version).replace(/^v/, "")) : ""}</span>` +
         (d.author ? `<span>${esc(d.author)}</span>` : "")
       : "";
@@ -403,7 +404,7 @@
       const head = document.createElement("div");
       head.className = "bank-head";
       head.innerHTML = `<span class="ix">${String(bi + 1).padStart(2, "0")}</span><h3>${esc(b.name)}</h3>` +
-        (b.takeover ? `<span class="chip" title="On the Push this screen fills the whole display">Full screen</span>` :
+        (b.takeover ? `<span class="chip" title="On the Push this screen is the device's front panel: it fills the whole display">Front panel</span>` :
          b.custom ? `<span class="chip" title="This compartment has its own screen on the Push">Own screen</span>` : "") +
         `<span class="chip live">On the Push now</span>`;
       if (b.id) {

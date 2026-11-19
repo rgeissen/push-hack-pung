@@ -81,12 +81,12 @@ push.compartment({
   pages keep the default view. Use it where one page needs a picture (a keyboard's level scaling) and
   the rest are fine as knobs. Never for an envelope: a page of envelope knobs gets Pung's envelope by
   itself, the same as every module's.
-- **`takeover: true`** (with `screen`): the screen draws **all of the panel** (`g.w` 960, `g.h` 160), and Pung
+- **`front_panel: true`** (with `screen`) (first called `takeover`, still read): the screen draws **all of the panel** (`g.w` 960, `g.h` 160), and Pung
   draws none of its own elements, only its notices on top. The screen must then show what those elements
   showed: the encoders' names and values (`v.$knobs`, the eight keys the encoders turn now, `""` for an
   empty one), the touched one, and which page it is (`v.$page`, the index into `v.$pages`, the page
   labels). `v.$name` is the device's name and `v.$track` Live's track. Leaving the open device (upper button 1, a jog nudge left) and any
-  failure bring Pung's default view back. A takeover's budget is 14 ms (it draws what Pung's own elements
+  failure bring Pung's default view back. A front panel's budget is 14 ms (it draws what Pung's own elements
   would have).
 - **`extra_keys`**: values a screen shows that no encoder edits (a patch name, a mode); they are read with
   the compartment's keys and given in `v`, even without metadata.
@@ -162,4 +162,4 @@ while the page is hidden. Mini-JV's page draws its chip's voices from `frame.key
   over 8 ms, a draw over 40 ms, or a script that throws switch the picture off until Pung restarts. The
   native page comes back and the top bar says `MODULE UI OFF`. The log says why.
 - The panel has 16-bit color: gradients show steps. Use flat colors and 2-pixel lines.
-- **A user can always get back**: a takeover shows only while the device is open, and the way back and the page row are drawn over it on opening, on a page turn and while the jog wheel is touched.
+- **A user can always get back**: a front panel shows only while the device is open, and the way back and the page row are drawn over it on opening, on a page turn and while the jog wheel is touched.

@@ -57,6 +57,10 @@
   }
 
   const originOf = (x) => (x.origin === "pung" ? "pung" : "schwung");
+  // a takeover: its surface on the Push is an app of its own
+  const surfaceChip = (x) => (x.surface_app
+    ? `<span class="surface-kind${x.surface_app_installed ? "" : " missing"}" title="${x.surface_app_installed ? "Its surface on the Push is the " + esc(x.surface_app) + " app" : "Its surface is the " + esc(x.surface_app) + " app, which is not installed on this Push: Pung's own view opens"}">Takeover</span>`
+    : "");
   const originChip = (x) => `<span class="origin ${originOf(x)}" title="${originOf(x) === "pung" ? "Written for the Push alone" : "Built from a Schwung module for Ableton Move"}">${ORIGIN[originOf(x)]}</span>`;
 
   function render() {
@@ -190,7 +194,7 @@
     const cat = catLabel(x);
     const tags = (x.tags || []).filter((g) => g !== "needs-assets").slice(0, 3);
     return `<article class="mod ${t.cls}${originOf(x) === "pung" ? " native" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-label="${esc(x.name)}, ${esc(t.label)}, ${ORIGIN[originOf(x)]}">
-      <div class="top"><h3>${esc(x.name)}</h3>${originChip(x)}</div>
+      <div class="top"><h3>${esc(x.name)}</h3><span class="chips">${surfaceChip(x)}${originChip(x)}</span></div>
       <span class="badges"><span class="badge kind">${esc(t.label)}</span>${cat ? `<span class="badge cat">${esc(cat)}</span>` : ""}</span>
       <p class="desc" title="${esc(x.description || "")}">${esc(x.description || "")}</p>
       ${tags.length ? `<div class="pills">${tags.map((g) => `<span class="pill">${esc(g)}</span>`).join("")}</div>` : ""}
@@ -243,11 +247,14 @@
     if (src.archive) links.push(`<a href="${esc(srcURL)}">Source of this build${src.archive_size ? ` (${bytes(src.archive_size)})` : ""}</a>`);
     body.innerHTML = `
       <header class="sheet-head ${t.cls}">
-        <span class="kind">${esc(t.label)} ${originChip(x)}</span>
+        <span class="kind">${esc(t.label)} ${originChip(x)} ${surfaceChip(x)}</span>
         <h2 id="mod-sheet-title">${esc(x.name)}</h2>
         <p class="by">${esc(x.author || "")}</p>
       </header>
       <p class="desc">${esc(x.description || "")}</p>
+      ${x.surface_app ? `<p class="note">${x.surface_app_installed
+        ? `<b>Takeover.</b> On the Push, opening this device hands the screen, the pads and the buttons to the <b>${esc(x.surface_app)}</b> app, which edits it. That app's own way back to Live ends it.`
+        : `<b>Takeover, but its app is missing.</b> Its surface on the Push is the <b>${esc(x.surface_app)}</b> app, a Push Hack that is not installed on this Push. Until it is, opening the device shows Pung's own view.`}</p>` : ""}
       <dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
       ${links.length ? `<p class="links">${links.join(" · ")}</p>` : ""}
       ${x.requires && !specs(x).length && !(x.asset_state || []).length ? `<p class="req">${esc(x.requires)}</p>` : ""}

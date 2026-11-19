@@ -142,7 +142,7 @@ with a picture of what its knobs do together:
 
 | Compartment | The picture |
 |---|---|
-| Panel | the whole Push screen as the instrument's front panel, in its red: every knob where the hardware has it, standing where the sound has it; the slot display and buttons, the selectors as lit legends. A takeover; the encoders play slot, cutoff, resonance, envelope amount, mix, attack, release, portamento |
+| Panel | the whole Push screen as the instrument's front panel, in its red: every knob where the hardware has it, standing where the sound has it; the slot display and buttons, the selectors as lit legends. A front panel; the encoders play slot, cutoff, resonance, envelope amount, mix, attack, release, portamento |
 | Slots | the four slots as tiles over their on/off knobs: the sound, the waves, the filter, which are layered, which one the knobs edit |
 | Oscillators | both waveforms as they are (pulse width, the interval, hard sync, FM), and their mix or ring modulation |
 | Filter | the response of the chosen type, where the envelope takes the cutoff, the envelope |

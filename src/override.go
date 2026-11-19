@@ -82,7 +82,7 @@ type ovCompartment struct {
 	keys      []string // all of them, in order (what a screen gets)
 	pages     []ovPage // the encoder pages; from keys, 8 at a time, when none are given
 	screen    goja.Callable
-	// takeover: the screen draws all of the panel (960 x 160), Pung none of
+	// takeover: a FRONT PANEL (front_panel in push_ui.js): the screen draws all of the panel (960 x 160), Pung none of
 	// its own elements; only its notices and errors (UX-GUIDELINES.md, 5)
 	takeover bool
 	// extraKeys: values the screen shows that no encoder edits (a patch
@@ -289,11 +289,16 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		if v := spec.Get("wheel_press"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
 			c.wheelPress = v.String()
 		}
-		if v := spec.Get("takeover"); v != nil && !goja.IsUndefined(v) {
-			c.takeover = v.ToBoolean()
+		// front_panel: the screen is the whole display. (Its first name was
+		// "takeover", still read: that word now means a module whose whole
+		// surface is another app's, handover.go.)
+		for _, name := range []string{"front_panel", "takeover"} {
+			if v := spec.Get(name); v != nil && !goja.IsUndefined(v) && v.ToBoolean() {
+				c.takeover = true
+			}
 		}
 		if c.takeover && c.screen == nil {
-			panic(vm.NewTypeError("push.compartment: takeover needs a screen"))
+			panic(vm.NewTypeError("push.compartment: front_panel needs a screen"))
 		}
 		if c.id == "" || c.id == "undefined" || len(c.keys) == 0 {
 			panic(vm.NewTypeError("push.compartment needs an id and keys"))

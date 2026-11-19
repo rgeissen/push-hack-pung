@@ -3,7 +3,7 @@
 // LFO & Mod, FX, Play & Arp, System), their pages that panel's numbered
 // sections, so the Push and the page show one instrument.
 //
-// One compartment draws the whole panel (takeover): Patch, the JP-8000's own
+// One compartment draws the whole panel (front panel): Patch, the JP-8000's own
 // way in. Its LCD (patch numbers as the hardware writes them, P:A11..P:B88,
 // and the parameter being turned), and the front panel at a glance: both
 // oscillators, the filter's response, the amp envelope, LFO 1. What knobs
@@ -22,7 +22,7 @@ function pages(label, keys) { // a section: 8 keys to a page
 function concat() { var o = []; for (var i = 0; i < arguments.length; i++) o = o.concat(arguments[i]); return o; }
 function pre(p, list) { return list.map(function (k) { return p + k; }); }
 
-// ---- Patch: the takeover -----------------------------------------------------------
+// ---- Patch: the front panel -----------------------------------------------------------
 
 function known(v, k) { return v[k] && v[k].known; }
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : "--"; }
@@ -180,7 +180,7 @@ function knobRow(g, v) {
 }
 
 push.compartment({
-  id: "patch", label: "Patch", takeover: true,
+  id: "patch", label: "Patch", front_panel: true,
   pages: [
     { label: "Patch", keys: ["cutoff", "resonance", "filter_env_depth", "part", "amp_attack", "amp_decay", "amp_sustain", "amp_release"] },
     { label: "Select", keys: ["mode", "bank", "perf_bank", "mod_lever", "tempo"] }

@@ -96,6 +96,9 @@ type catalogEntry struct {
 	// Origin: "pung" (a Pung-native module) or "schwung"; from the catalog,
 	// else from the installed module (view)
 	Origin          string   `json:"origin,omitempty"`
+	// SurfaceApp: a takeover module: the Push Hack app that is its whole
+	// surface on Push while the device is open (handover.go)
+	SurfaceApp string `json:"surface_app,omitempty"`
 	RequiresModules []string `json:"requires_modules"`
 	Asset           string   `json:"asset"`
 	Size            int64    `json:"size"`
@@ -1029,6 +1032,8 @@ func writeFileAtomic(p string, raw []byte) {
 
 type moduleRow struct {
 	catalogEntry
+	// SurfaceAppInstalled: that app is on this Push (else Pung's own view opens)
+	SurfaceAppInstalled bool `json:"surface_app_installed"`
 	InCatalog bool   `json:"in_catalog"`
 	Supported bool   `json:"supported"`
 	Installed string `json:"installed,omitempty"` // its version
@@ -1091,6 +1096,9 @@ func (mm *modMgr) view() map[string]any {
 			if r.Origin == "" {
 				r.Origin = i.Origin
 			}
+			if r.SurfaceApp == "" {
+				r.SurfaceApp = i.SurfaceApp
+			}
 		}
 		if r.Origin != "pung" {
 			r.Origin = "schwung"
@@ -1109,10 +1117,12 @@ func (mm *modMgr) view() map[string]any {
 		r.ID, r.Name, r.Version, r.Description, r.Author = id, i.Name, i.Version, i.Description, i.Author
 		r.ComponentType = i.Type
 		r.Origin = i.Origin
+		r.SurfaceApp = i.SurfaceApp
 		rows = append(rows, r)
 	}
 	for i := range rows {
 		r := &rows[i]
+		r.SurfaceAppInstalled = r.SurfaceApp != "" && surfaceAppPort(r.SurfaceApp) != 0
 		r.AssetsReady = true
 		for _, a := range r.AssetState {
 			r.AssetsNeed += a.Missing

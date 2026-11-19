@@ -1,7 +1,7 @@
 // Dexed (DX7) on the Push. Dexed has no web panel of its own, so this is a
 // new design (docs/UX-GUIDELINES.md, 5), in the DX7's own terms:
 //
-// - Algorithm (takeover): the algorithm as the DX7 prints it on its panel:
+// - Algorithm (front panel): the algorithm as the DX7 prints it on its panel:
 //   six operators, modulators stacked over carriers, the feedback loop; each
 //   operator with its frequency ratio and output level. Beside it the voice's
 //   name and all six operator envelopes. The encoders: algorithm, feedback
@@ -269,7 +269,7 @@ function kbdScreen(n) {
   };
 }
 
-// ---- Algorithm: the takeover -----------------------------------------------------------
+// ---- Algorithm: the front panel -----------------------------------------------------------
 
 function knobRow(g, v) {
   var knobs = v.$knobs || [], t = v.$touched;
@@ -291,7 +291,7 @@ for (var on = 1; on <= 6; on++) {
 }
 
 push.compartment({
-  id: "algorithm", label: "Algorithm", takeover: true,
+  id: "algorithm", label: "Algorithm", front_panel: true,
   pages: [{ label: "Algorithm", keys: ["algorithm", "feedback", "op1_level", "op2_level", "op3_level", "op4_level", "op5_level", "op6_level"] }],
   extra_keys: overviewKeys,
   screen: function (g, v) {

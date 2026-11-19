@@ -223,6 +223,9 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 				e["peak_db"] = peakDB(d.s.peak())
 				if m, ok := findModule(h.modulesDir, d.c.module); ok {
 					e["origin"], e["version"], e["author"] = m.Origin, m.Version, m.Author
+					if m.SurfaceApp != "" {
+						e["surface_app"], e["surface_app_installed"] = m.SurfaceApp, surfaceAppPort(m.SurfaceApp) != 0
+					}
 				}
 				out = append(out, e)
 			}

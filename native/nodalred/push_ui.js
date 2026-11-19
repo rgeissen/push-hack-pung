@@ -221,7 +221,7 @@ function panelRow(g, v) {
   if (ps.length > 1) g.text(950, 31, String(ps[v.$page] || "").toUpperCase() + "  " + ((v.$page || 0) + 1) + "/" + ps.length, SOFT, 1);
 }
 push.compartment({
-  id: "panel", label: "Panel", takeover: true,
+  id: "panel", label: "Panel", front_panel: true,
   pages: [
     { label: "Panel", keys: ["slot", "cutoff", "resonance", "filter_env", "mix", "amp_attack", "amp_release", "portamento"] }
   ],

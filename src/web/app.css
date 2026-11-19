@@ -141,6 +141,12 @@ select { appearance: none; padding-right: 28px; max-width: 100%; text-overflow: 
 .origin.pung { background: var(--native); color: #000; }
 .origin.schwung { color: var(--steel); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--steel) 70%, transparent); }
 .origin.schwung::before { background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+/* how a module is edited on the Push: a takeover's surface is its own app */
+.surface-kind { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; font-size: 10px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; font-family: var(--mono); color: var(--amber);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); white-space: nowrap; }
+.surface-kind::before { content: ""; width: 8px; height: 6px; box-shadow: inset 0 0 0 1.5px currentColor; }
+.surface-kind.missing { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line2); }
 .origin-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
 .origin-legend > div { background: var(--panel); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .origin-legend p { color: var(--muted); font-size: 13px; }
@@ -610,3 +616,7 @@ body.down #devices-view .unit, body.down #devices-view .rack, body.down #no-devi
   .ico { min-width: 40px; height: 36px; }
   .snd-row .ico:not(.star):not(.yes):not(#snd-no) { visibility: visible; }
 }
+
+.mod .top .chips { display: inline-flex; gap: 6px; flex: none; }
+.sheet .note, #mod-sheet-body .note { margin: 0 0 14px; padding: 10px 12px; font-size: 13px; color: var(--muted); border-left: 3px solid var(--amber); background: #ffb0000d; }
+#mod-sheet-body .note b { color: var(--fg); }

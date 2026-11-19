@@ -210,7 +210,7 @@ because there a picture shows what knobs cannot: the Virus's filter routing as a
 saturation stage, filter 2, which filter the panel edits, both responses), and its envelopes with their
 sustain slope. OB-Xd's `push_ui.js` widgets are the default layer's showcase, not a custom screen.
 
-Since then (2026-11-15) three modules have **takeover** screens that draw the whole panel, each the
+Since then (2026-11-15) three modules have **front panel** screens that draw the whole panel, each the
 instrument's own way in: JE-8086's Patch (the JP-8000's LCD and the patch at a glance), Mini-JV's Macros
 (the JV-880's LCD and its four tones), Dexed's Algorithm (the DX7's algorithm chart, from the engine's own
 table). Where a module has its own web panel (JE-8086, Mini-JV), its compartments are that panel's tabs
