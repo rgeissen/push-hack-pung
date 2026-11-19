@@ -234,10 +234,14 @@ func (u *surface) watchLive(done <-chan struct{}) {
 		// ... and while a device's surface app holds it (handover.go): the
 		// app does not know that Live went. Its buttons were not Live's, and
 		// Live's question at the start could not be answered (2026-11-19).
-		u.mu.Lock()
-		app := u.handedApp
-		u.mu.Unlock()
-		if app != "" && surfaceOwner(u.pm.Base) == app {
+		// (any installed module's surface app: Pung itself may have started
+		// again since it handed the Push over, as an Apply does)
+		app := surfaceOwner(u.pm.Base)
+		mine := false
+		for _, m := range scanModules(u.h.modulesDir) {
+			mine = mine || (app != "" && m.SurfaceApp == app)
+		}
+		if mine {
 			if err := leaveFor(u.pm.Base, app); err != nil {
 				log.Printf("surface: Live restarts, and taking the surface from %s failed: %v", app, err)
 			} else {

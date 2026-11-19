@@ -76,7 +76,6 @@ func (u *surface) handOver() bool {
 		name = tr
 	}
 	u.handedAt = time.Now()
-	u.handedApp = mi.SurfaceApp
 	app, pm := mi.SurfaceApp, u.pm
 	go func() {
 		hc := &http.Client{Timeout: 2 * time.Second}
