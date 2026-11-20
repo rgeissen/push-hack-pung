@@ -332,6 +332,49 @@ void emu_main(Instance *in) {
         if (in->pendingLoad && !in->haveSingle) load_sound(in, in->bank, in->preset);
         if (!in->haveSingle) load_sound(in, 0, 0);
         in->pendingLoad = false;
+        snprintf(in->status, sizeof(in->status), "Warming up the Virus %s", o_model[model]);
+    }
+    // Warm-up, before the first note anyone hears: the DSP emulator compiles
+    // the synth's code as it first runs it, and the first chords after a
+    // start dropped out about fifty times while it did (2026-11-20). A chord
+    // is played here, unheard, until that is done.
+    {
+        float wb[12][BLOCK];
+        synthLib::TAudioInputs wi{};
+        synthLib::TAudioOutputs wo{};
+        float z[BLOCK] = {0};
+        for (size_t i = 0; i < wo.size() && i < 12; i++) wo[i] = wb[i];
+        for (size_t i = 0; i < wi.size(); i++) wi[i] = z;
+        std::vector<synthLib::SMidiEvent> sink;
+        { // the sound first: the code a sound runs is the code to compile
+            std::lock_guard<std::mutex> l(in->mu);
+            send_single(in);
+        }
+        for (int b = 0; b < 44100 / 2 / BLOCK && !in->quit.load(); b++) {
+            in->plugin->process(wi, wo, BLOCK, 120.0f, 0.0f, false);
+            sink.clear();
+            in->plugin->getMidiOut(sink);
+        }
+        const uint8_t notes[] = {36, 48, 55, 60, 64, 67, 72, 79};
+        for (uint8_t n : notes) {
+            synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, 0x90, n, 100);
+            send(in, ev);
+        }
+        for (int b = 0; b < 44100 * 3 / 2 / BLOCK && !in->quit.load(); b++) {
+            in->plugin->process(wi, wo, BLOCK, 120.0f, 0.0f, false);
+            sink.clear();
+            in->plugin->getMidiOut(sink);
+        }
+        synthLib::SMidiEvent off(synthLib::MidiEventSource::Host, 0xb0, 123, 0); // all notes off
+        send(in, off);
+        for (int b = 0; b < 44100 / BLOCK && !in->quit.load(); b++) {
+            in->plugin->process(wi, wo, BLOCK, 120.0f, 0.0f, false);
+            sink.clear();
+            in->plugin->getMidiOut(sink);
+        }
+    }
+    {
+        std::lock_guard<std::mutex> l(in->mu);
         snprintf(in->status, sizeof(in->status), "Virus %s", o_model[model]);
         in->loading = 0;
         send_single(in);
