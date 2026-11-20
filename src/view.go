@@ -574,8 +574,12 @@ func (u *surface) drawUnderWidget(img *image.NRGBA, col int, p position, m *para
 	// 16 px between neighbours, so a row of them reads as columns
 	const room = colW - 16
 	val = fitLabel(strings.ToUpper(val), room)
+	name := m.Name
+	if m.Short != "" {
+		name = m.Short
+	}
 	if left := room - textWidth(val, nil) - 7; left >= 5*7 {
-		val = fitLabel(strings.ToUpper(m.Name), left) + " " + val
+		val = fitLabel(strings.ToUpper(name), left) + " " + val
 	}
 	label(img, cx, 122, val, nameCol, 0)
 	if u.touched == col {

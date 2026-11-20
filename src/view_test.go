@@ -174,6 +174,23 @@ func TestUnderWidgetKeepsItsText(t *testing.T) {
 	gallery(t, "under-widget", img)
 }
 
+// A short name stands in for the name under a widget: the page says the
+// section, the row says the knob (OsTIrus' Amp Env: "SUSTAIN 100 %", never
+// "AENV. 100 %"). Parsed from chain_params' "short".
+func TestUnderWidgetShortName(t *testing.T) {
+	initFaces()
+	m := metaFromObj(map[string]any{"key": "amp_env_sustain", "name": "AEnv Sustain Level", "short": "Sustain",
+		"type": "int", "min": 0.0, "max": 127.0})
+	if m.Short != "Sustain" {
+		t.Fatalf("short %q", m.Short)
+	}
+	u, p := testSurface([]*paramMeta{m}, []string{"100"})
+	boxes := spy(func() { u.drawUnderWidget(newFrame(), 0, p, m, m.Key, slotColor(0)) })
+	if len(boxes) == 0 || !strings.HasPrefix(boxes[0].s, "SUSTAIN ") {
+		t.Fatalf("drew %+v", boxes)
+	}
+}
+
 func TestHeaderLayout(t *testing.T) {
 	initFaces()
 	for nb := 0; nb <= 8; nb++ {

@@ -21,8 +21,12 @@ import (
 )
 
 type paramMeta struct {
-	Key      string
-	Name     string
+	Key  string
+	Name string
+	// Short: the name where it shares a column with its value under a
+	// picture (chain_params "short"), the section the page's title already
+	// says left out: OsTIrus' "AEnv Sus" is "Sustain" on Amp Env
+	Short    string
 	Type     string // float | int | enum | bool | string
 	Min, Max float64
 	Step     float64
@@ -105,8 +109,8 @@ func str(v any) string {
 }
 
 func metaFromObj(o map[string]any) *paramMeta {
-	m := &paramMeta{Key: str(o["key"]), Name: str(o["name"]), Type: str(o["type"]), Unit: str(o["unit"]),
-		Format: str(o["display_format"])}
+	m := &paramMeta{Key: str(o["key"]), Name: str(o["name"]), Short: str(o["short"]), Type: str(o["type"]),
+		Unit: str(o["unit"]), Format: str(o["display_format"])}
 	if m.Name == "" {
 		m.Name = str(o["label"])
 	}
@@ -226,10 +230,19 @@ func buildMeta(module string, get func(string) (string, bool)) *compMeta {
 // not name them all (JE-8086's arpeggiator lives in its Performance mode,
 // Mini-JV's tones in levels of their own); the rest follow its sections,
 // grouped by name (names.go), as the web page's "More" does.
+//
+// A level's list parameter is not one of the rest: it is the list the Sounds
+// browser walks (OsTIrus' and Nodal Red 2X's "preset"), and on a page of its
+// own it was a knob that loaded a whole sound a detent.
 func (cm *compMeta) planLeftovers() {
 	seen := map[string]bool{}
 	for _, b := range cm.Banks {
 		for _, k := range b.Keys {
+			seen[k] = true
+		}
+	}
+	for _, lv := range cm.Levels {
+		if k := str(lv["list_param"]); k != "" {
 			seen[k] = true
 		}
 	}

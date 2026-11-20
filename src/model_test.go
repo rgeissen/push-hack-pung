@@ -62,6 +62,27 @@ func TestNoHierarchyPagesChainParamsByEight(t *testing.T) {
 	}
 }
 
+// The sound list a level browses is the Sounds browser's, never a page of
+// leftovers: OsTIrus and Nodal Red 2X declare "preset" in chain_params and
+// came out with a last page holding one knob that loaded a sound a detent.
+func TestListParamIsNoLeftover(t *testing.T) {
+	cm := buildMeta("x", getter(map[string]string{
+		"chain_params": `[{"key":"preset","name":"Sound","type":"int","min":0,"max":127},
+			{"key":"cutoff","name":"Cutoff","type":"int","min":0,"max":127},
+			{"key":"spare","name":"Spare","type":"int","min":0,"max":127}]`,
+		"ui_hierarchy": `{"levels":{"root":{"list_param":"preset","count_param":"preset_count","knobs":["cutoff"]}}}`}))
+	for _, b := range cm.Banks {
+		for _, k := range b.Keys {
+			if k == "preset" {
+				t.Fatalf("preset on page %q: %+v", b.Name, cm.Banks)
+			}
+		}
+	}
+	if len(cm.Banks) != 2 || cm.Banks[1].Keys[0] != "spare" { // the other leftovers still get their page
+		t.Fatalf("banks %+v", cm.Banks)
+	}
+}
+
 // Schwung's rule: no metadata means no knob, never an invented 0..1 float.
 func TestUnknownKeyIsReadOnly(t *testing.T) {
 	cm := buildMeta("x", getter(map[string]string{"ui_hierarchy": `{"levels":{"root":{"knobs":["mystery"]}}}`}))
@@ -183,7 +204,6 @@ func TestLiveNormRoundTrip(t *testing.T) {
 		t.Fatalf("float from norm: %q", got)
 	}
 }
-
 
 // A Live device has no parameter for a hierarchy key without chain_params:
 // its column goes, and a bank left empty goes (OB-Xd's osc_quantize).

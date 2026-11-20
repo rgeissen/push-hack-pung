@@ -118,7 +118,7 @@ noisemaker / ENV 3 (FREE): filter cutoff resonance
 noisemaker / ENV DRAW: filter cutoff resonance
 nusaw / MAIN: filter cutoff resonance
 nusaw / MAIN: env attack decay sustain release
-nusaw / F: env f_attack f_decay f_sustain f_release
+nusaw / F / VELOCITY: env f_attack f_decay f_sustain f_release
 obxd / MAIN: filter cutoff resonance
 obxd / MAIN: env attack decay sustain release
 obxd / FILTER: filter cutoff resonance
