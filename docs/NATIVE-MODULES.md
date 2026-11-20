@@ -225,3 +225,30 @@ A list parameter may name a key that says which of its options can be chosen at 
 one character an option (`"1010"`). A turn on the Push passes over the others, so the value never shows
 one of them, and the web page greys their buttons. Nodal Red 2X uses it for the edit slot: only the slots
 that are on.
+
+## OsTIrus (Access Virus TI)
+
+gearmulator's Virus TI (`virusLib`), measured on a Push before it was built: the TI and TI2 at 2.3x real
+time under load (about 77% of one core at real time), the Snow at 3.1x (about 40%). Nodal Red 2X's
+foundations: the emulator on its own threads feeding a ring, 6 dB of headroom and a soft limiter, one
+instance at a time (`/dev/shm/pung-ostirus.lock`).
+
+- **One firmware, three synths.** The installer's `.bin` holds the TI, the TI2 and the Snow; `model`
+  starts the emulator again as the other. Its factory banks are the banks, their names read from it.
+- **A parameter is a byte of the single.** The 512-byte single (pages A, B, 6E, 6F) is the state; a
+  turned knob changes its byte and sends that byte as a parameter change, so the dump is always the
+  sound as it is.
+- **The layout is generated, the design is not.** `tools/gen_params.py` reads gearmulator's own
+  descriptions (`parameterDescriptions_TI.json`: pages, ranges, value texts) and lays them out by the
+  table at its top: one page one thought, eight knobs, the same knob doing the same job on sibling pages
+  (Attack knob 1 of every envelope, Rate knob 1 of every LFO). 234 parameters on 32 pages: of a single's
+  563 bytes, about 300 are not for a player (arpeggiator steps, name characters, controllers).
+  Names are twelve characters at most, so the encoder row shows them whole.
+- **Numbers name their values.** A long value list (a send level in dB, 124 matrix destinations) is a
+  number that shows its text (`value_labels` by reference into `value_lists`): an enum steps one
+  option a gesture, and inline lists would not fit chain_params.
+- **The front panel is the Soft Knobs.** Every TI patch points three knobs at what matters in it and
+  names them; the device opens on a front panel whose first three encoders are those knobs under the
+  patch's names, beside cutoff, resonance, filter envelope and the two sends. Above them the display
+  and what the patch is made of: oscillator models, filter modes and routing, the effects that are on.
+- **Not yet:** the TI's multi mode (16 parts), the vocoder and input (an instrument has no input).
