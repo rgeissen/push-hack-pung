@@ -409,7 +409,7 @@ time), the loudest sample of each block, the last 4096 samples of the output, an
 | **LFO** restarted by notes with a rate in Hz | the same | exact: the time since the last note |
 | **LFO** restarted by notes (`trig`, `retrig`, `keytrig`, `synchro`...), any rate | its start flashes as a note restarts it | the notes |
 | **LFO** free running, or a rate with no unit | still | its phase cannot be known |
-| a module's screen | whatever it draws from `v.$live` and its `live_keys` (overrides.md) | the module |
+| a module's screen | its envelopes, filters and LFOs exactly as above, when it draws them with `g.envelope`, `g.filter` and `g.lfo` (in its own colours if it likes: `color`); whatever else it draws from `v.$live` and its `live_keys` (overrides.md). A curve a screen draws itself is still: Vavra and Xenia lost every moving picture that way, and OsTIrus and Nodal Red their filters' and LFOs' (`g.filter` and `g.lfo` were not live on a screen until 2026-11-21); `TestNativeScreensMove` now plays a note through each of their pages | the module |
 
 **Where it runs**: one live session per sound (`src/livehub.go`), shared by the Push view and every web
 page watching it: it is the only reader of the sound's state, so the two can never tell two stories. It

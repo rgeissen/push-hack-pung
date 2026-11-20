@@ -416,23 +416,8 @@ function mixerScreen(g, v) {
   g.fill(760, 40, 180, 2, RULE);
   g.dot(760 + 180 * pan, 41, 5, ORANGE);
 }
-// a filter's curve, from its type, cutoff and resonance
-function filterCurve(type, fc, res) {
-  var c = 0.08 + 0.84 * fc, q = res * 0.9;
-  return function (x) { // x 0..1 across the spectrum, answer 0..1 (1 = loud)
-    var d = (x - c) * 9, peak = q * Math.exp(-d * d * 6), steep = /24/.test(type) ? 3.2 : /6 dB/.test(type) ? 0.9 : 1.8;
-    if (/Notch/.test(type)) return Math.max(0, Math.min(1, 0.62 - 0.6 * Math.exp(-d * d * 3) + peak * 0.2));
-    if (/BP/.test(type) && !/LP\/BP/.test(type)) return Math.max(0, Math.min(1, 0.7 - Math.abs(x - c) * (steep + 0.8) + peak * 0.4));
-    if (/HP/.test(type)) return Math.max(0, Math.min(1, (x > c ? 0.62 : 0.62 - (c - x) * steep) + peak * 0.5));
-    return Math.max(0, Math.min(1, (x < c ? 0.62 : 0.62 - (x - c) * steep) + peak * 0.5));
-  };
-}
-function drawFilter(g, x, y, w, h, type, fc, res, c) {
-  var f = filterCurve(type, fc, res), pts = [];
-  for (var i = 0; i <= 80; i++) pts.push(x + i / 80 * w, y + h - f(i / 80) * h);
-  g.area(pts, y + h, c === ORANGE_LT ? ORANGE_GL : ORANGE_DK);
-  g.poly(pts, 2, c);
-}
+// the two filters: Pung's filter picture (the sound's spectrum behind each
+// curve while it plays), in the XT's orange; filter 1 feeds filter 2
 function filterScreen(g, v) {
   edge(g);
   var t = v.$touched || "";
@@ -440,41 +425,40 @@ function filterScreen(g, v) {
   g.fill(12, 2, 560, 82, PANEL);
   legend(g, 20, 16, "Filter 1  " + t1, t.indexOf("f1_") === 0 ? ORANGE_LT : ORANGE);
   g.text(564, 16, "EXTRA " + (disp(v, "f1_extra") || "0"), DIM, 1);
-  drawFilter(g, 20, 22, 544, 58, t1, frac(v, "f1_cutoff", 0.5), frac(v, "f1_resonance", 0), t.indexOf("f1_") === 0 ? ORANGE_LT : ORANGE);
+  g.filter(16, 20, 552, 62, { cutoff: "f1_cutoff", resonance: "f1_resonance", type: "f1_type", color: ORANGE });
   g.line(572, 50, 600, 50, 2, ORANGE);
   g.fill(600, 2, 344, 82, PANEL);
   legend(g, 608, 16, "Filter 2  " + t2, t.indexOf("f2_") === 0 ? ORANGE_LT : ORANGE);
-  drawFilter(g, 608, 22, 328, 58, t2, frac(v, "f2_cutoff", 0.5), 0, t.indexOf("f2_") === 0 ? ORANGE_LT : ORANGE);
+  g.filter(604, 20, 336, 62, { cutoff: "f2_cutoff", type: "f2_type", color: ORANGE });
 }
-// an LFO: its wave, bent by its symmetry, flat for its delay, slow or fast
-function lfoWave(name, sym) {
-  var k = 0.5 + sym * 0.45; // where the cycle turns
-  switch (name) {
-  case "Triangle": return function (t) { return t < k ? -0.9 + 1.8 * t / k : 0.9 - 1.8 * (t - k) / (1 - k); };
-  case "Square": return function (t) { return t < k ? 0.9 : -0.9; };
-  case "Saw": return function (t) { return 0.9 - 1.8 * t; };
-  case "Random": return function (t) { var j = Math.floor(t * 8); return Math.sin(j * 12.9898) * 0.9; };
-  case "S&H": return function (t) { var j = Math.floor(t * 4); return Math.sin(j * 78.233 + 1) * 0.9; };
-  default: return function (t) { var u = t < k ? t / k * 0.5 : 0.5 + (t - k) / (1 - k) * 0.5; return 0.9 * Math.sin(u * 2 * Math.PI); };
-  }
-}
+// the two LFOs: Pung's LFO picture, in the XT's orange; what bends and
+// delays them beside it. (Their rates have no unit and nothing restarts them
+// on a note that Pung can read: they are drawn still, as their phase cannot
+// be known.)
 function lfoScreen(g, v) {
   edge(g);
   var t = v.$touched || "";
   for (var n = 1; n <= 2; n++) {
     var p = "lfo" + n + "_", x = n === 1 ? 12 : 486, shape = disp(v, p + "shape") || "Sine", lit = t.indexOf(p) === 0;
-    var sym = (frac(v, p + "symmetry", 0.5) - 0.5) * 2, f = lfoWave(shape, sym), dl = frac(v, p + "delay", 0) * 0.4;
-    var rate = 1 + frac(v, p + "rate", 0.3) * 5, pts = [];
     g.fill(x, 2, 460, 82, PANEL);
     legend(g, x + 8, 16, "LFO " + n + "  " + shape, lit ? ORANGE_LT : ORANGE);
     g.text(x + 452, 16, (disp(v, p + "sync") === "On" ? "SYNC  " : "") + (disp(v, p + "rate") || ""), DIM, 1);
-    for (var i = 0; i <= 120; i++) {
-      var u = i / 120, a = u < dl ? 0 : Math.min(1, (u - dl) / 0.15 + 0.15);
-      pts.push(x + 10 + u * 440, 52 - f((u * rate) % 1) * a * 26);
-    }
-    g.poly(pts, 2, lit ? INK : ORANGE_LT);
-    if (n === 2 && disp(v, "lfo2_phase") && disp(v, "lfo2_phase") !== "Free") g.text(x + 452, 80, "PHASE " + disp(v, "lfo2_phase"), DIM, 1);
+    g.lfo(x + 4, 20, 452, 50, { shape: p + "shape", rate: p + "rate", color: ORANGE });
+    var extra = "SYMMETRY " + (disp(v, p + "symmetry") || "0") + "   DELAY " + (disp(v, p + "delay") || "Off");
+    if (n === 2 && disp(v, "lfo2_phase")) extra += "   PHASE " + disp(v, "lfo2_phase");
+    g.text(x + 8, 80, extra, DIM, -1, 444);
   }
+}
+// the free envelope: three times and levels, a release: Pung's envelope
+function freeEnvScreen(g, v) {
+  edge(g);
+  legend(g, 20, 14, "Free Envelope", ORANGE);
+  g.text(944, 14, (disp(v, "free_env_trigger") || "").toUpperCase(), DIM, 1);
+  g.envelope(10, 18, 940, 66, {
+    time1: "free_env_time1", level1: "free_env_level1", time2: "free_env_time2", level2: "free_env_level2",
+    time3: "free_env_time3", level3: "free_env_level3", time4: "free_env_release_time", level4: "free_env_release_level",
+    labels: true, color: ORANGE
+  });
 }
 // the voices: poly or mono, one, two or many per note, and how far apart
 function voiceScreen(g, v) {
@@ -620,8 +604,14 @@ push.compartment({
   id: "filter", label: "Filters", extra_keys: ["status", "f1_cutoff", "f1_resonance"],
   pages: [{ label: PAGES.filter[0].label, keys: PAGES.filter[0].keys, screen: filterScreen }]
 });
-// the filter, amp and free envelopes: Pung's own envelope, the same as every module's
-push.compartment({ id: "env", label: "Envelopes", pages: PAGES.env });
+// the filter and amp envelopes: Pung's own envelope, found on their pages
+// as on every module's; the free envelope's keys it cannot read alone
+push.compartment({
+  id: "env", label: "Envelopes", extra_keys: ["status", "free_env_trigger"],
+  pages: PAGES.env.map(function (pg) {
+    return pg.label === "Free Env" ? { label: pg.label, keys: pg.keys, screen: freeEnvScreen } : { label: pg.label, keys: pg.keys };
+  })
+});
 push.compartment({
   id: "lfo", label: "LFOs",
   // each page's picture is both LFOs whole: what the other page edits comes with it

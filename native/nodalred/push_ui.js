@@ -23,6 +23,8 @@ function known(v, k) { return v[k] && v[k].known; }
 function frac(v, k, neutral) { return known(v, k) ? v[k].frac : (neutral || 0); }
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : ""; }
 function num(v, k, d) { var n = parseFloat(disp(v, k)); return isNaN(n) ? (d || 0) : n; }
+// an LFO synced to the clock: its sync names a note value
+function synced(v, k) { var d = disp(v, k); return d !== "" && d.toLowerCase() !== "off"; }
 function isOn(v, k) { var s = disp(v, k).toLowerCase(); return s === "on" || s === "1"; }
 function hot(v, k) { return v.$touched === k; }
 
@@ -444,14 +446,15 @@ push.compartment({
     // LFO 1
     var l1 = t.indexOf("lfo1_") === 0;
     g.text(8, rows[0] + 4, "LFO 1", l1 ? "fg" : "dim", -1);
-    g.lfo(60, rows[0] - 9, 110, 18, { shape: "lfo1_wave", rate: "lfo1_rate" });
+    // synced to the clock (a note value), it runs on Live's beat: the playhead follows it
+    g.lfo(60, rows[0] - 9, 110, 18, { shape: "lfo1_wave", rate: synced(v, "lfo1_sync") ? "lfo1_sync" : "lfo1_rate" });
     g.text(srcX - 6, rows[0] + 4, disp(v, "lfo1_sync") && disp(v, "lfo1_sync").toLowerCase() !== "off" ? disp(v, "lfo1_sync") : "", "dim", 1);
     link(0, disp(v, "lfo1_dest"), frac(v, "lfo1_amount", 0), l1);
     // LFO 2, or the arpeggiator
     var l2 = t.indexOf("lfo2_") === 0, d2 = disp(v, "lfo2_dest"), isLfo = /^LFO /i.test(d2);
     g.text(8, rows[1] + 4, isLfo || !d2 || /off/i.test(d2) ? "LFO 2" : "ARP", l2 ? "fg" : "dim", -1);
     if (isLfo) {
-      g.lfo(60, rows[1] - 9, 110, 18, { shape: "Triangle", rate: "lfo2_rate" });
+      g.lfo(60, rows[1] - 9, 110, 18, { shape: "Triangle", rate: synced(v, "lfo2_sync") ? "lfo2_sync" : "lfo2_rate" });
       link(1, d2, frac(v, "lfo2_amount", 0), l2);
     } else if (d2 && !/off/i.test(d2)) {
       var range = Math.round(frac(v, "lfo2_amount", 0) * 4);
@@ -462,9 +465,9 @@ push.compartment({
     // the mod envelope: attack and decay, up or down
     var me = t.indexOf("modenv_") === 0, amt = (frac(v, "modenv_amount", 0.5) - 0.5) * 2;
     g.text(8, rows[2] + 4, "MOD ENV", me ? "fg" : "dim", -1);
-    var a = frac(v, "modenv_attack", 0), dcy = frac(v, "modenv_decay", 0), ex = 70, ew = 100, top = rows[2] - 8, bot = rows[2] + 8;
-    var peakY = amt >= 0 ? top : bot, zeroY = amt >= 0 ? bot : top, ax = ex + 4 + a * ew * 0.4;
-    g.poly([ex, zeroY, ax, peakY, ax + 6 + dcy * ew * 0.55, zeroY, ex + ew, zeroY], 1.5, Math.abs(amt) > 0.02 ? "fg" : "faint");
+    // Pung's envelope (a note runs along it); a negative amount turns it upside down at its destination
+    g.envelope(60, rows[2] - 11, 120, 22, { attack: "modenv_attack", decay: "modenv_decay" });
+    if (amt < -0.02) g.text(186, rows[2] + 4, "INV", "mod", -1);
     link(2, disp(v, "modenv_dest"), Math.abs(amt), me);
     // the wheel
     var mw = t === "modwheel_dest", wd = disp(v, "modwheel_dest");

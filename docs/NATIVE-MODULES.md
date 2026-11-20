@@ -44,6 +44,10 @@ It is not a new plugin format. Only where the source lives and what it may assum
 7. **Sounds by the contract:** a bank chooser is a level with `items_param` and `select_param`, and the
    list answers `preset_names` (every name of the bank) and `preset_name_<n>`. Then SOUNDS shows banks and
    names without loading a sound. A bank as a plain knob gives a list of one bank.
+8. **Envelopes, filters and LFOs through Pung's pictures**, `g.envelope`, `g.filter` and `g.lfo`, in the
+   instrument's colours (`color`) inside its own panel: they then move with the sound (a note's dot on
+   each envelope, the spectrum behind each filter, an LFO's playhead or restart). A curve drawn by hand
+   stands still; Vavra's and Xenia's did, until `TestNativeScreensMove` caught it.
 
 ## Layout
 

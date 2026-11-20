@@ -288,7 +288,9 @@ function envScreen(label, p) {
   return function (g, v) {
     edge(g, v);
     g.text(18, 14, label, DIM, -1);
-    g.envelope(10, 22, 940, 62, { attack: p + "attack", decay: p + "decay", sustain: p + "sustain", release: p + "release", labels: true });
+    // the Virus's sustain is a slope (sustain_time): the plateau rises or falls while the key is held
+    g.envelope(10, 22, 940, 62, { attack: p + "attack", decay: p + "decay", sustain: p + "sustain", slope: p + "sustain_time",
+      release: p + "release", labels: true });
   };
 }
 push.compartment({
@@ -361,7 +363,10 @@ function lfoScreen(n, amounts) {
   return function (g, v) {
     edge(g, v);
     var p = "lfo" + n + "_", t = v.$touched || "";
-    g.lfo(10, 22, 420, 62, { shape: p + "shape", rate: p + "rate" });
+    // clocked, it runs on Live's beat at its note value; key triggered (Off, or the phase it starts at), a note restarts it
+    var clocked = disp(v, p + "clock") && disp(v, p + "clock") !== "Off";
+    var kt = disp(v, p + "keytrigger");
+    g.lfo(10, 22, 420, 62, { shape: p + "shape", rate: clocked ? p + "clock" : p + "rate", trig: kt !== "" && kt !== "Off" });
     g.text(18, 14, "LFO " + n, DIM, -1);
     var clk = disp(v, p + "clock");
     g.text(422, 14, (clk && clk !== "Off" ? clk : (disp(v, p + "rate") || "")).toUpperCase(), INK, 1);
@@ -396,7 +401,7 @@ push.compartment({
   // the amounts pages draw the LFO they belong to, so its wave and rate are read there too
   extra_keys: ["status", "osc1_lfo1_amount", "osc2_lfo1_amount", "pw_lfo1_amount", "reso_lfo1_amount", "filtgain_lfo1_amount", "shape_lfo2_amount",
     "fm_lfo2_amount", "cutoff1_lfo2_amount", "cutoff2_lfo2_amount", "pan_lfo2_amount", "osc_lfo3_amount",
-    "lfo1_shape", "lfo1_rate", "lfo1_clock", "lfo2_shape", "lfo2_rate", "lfo2_clock"]
+    "lfo1_shape", "lfo1_rate", "lfo1_clock", "lfo1_keytrigger", "lfo2_shape", "lfo2_rate", "lfo2_clock", "lfo2_keytrigger"]
 });
 
 // ---- the modulation matrix: a source, three destinations, a line as strong as its amount

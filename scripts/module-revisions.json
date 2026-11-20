@@ -49,7 +49,11 @@
   "why": "2026-11-17: the libresample and asmjit licence texts were left out"
  },
  "nodalred": {
-  "rev": 4,
-  "why": "2026-11-20: a sound change dropped audio while the emulator took the dump in: the ring fills further ahead first"
+  "rev": 5,
+  "why": "2026-11-21: its screens' filter and LFOs move with the sound (the spectrum, a synced LFO's playhead), and its mod envelope runs each note"
+ },
+ "ostirus": {
+  "rev": 2,
+  "why": "2026-11-21: its screens' filters and LFOs move with the sound (the spectrum, a clocked LFO's playhead, a key-triggered restart); its envelopes show the slope"
  }
 }

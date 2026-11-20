@@ -487,6 +487,24 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		}
 		return goja.Undefined()
 	})
+	// {color}: the picture in the module's own colour (an instrument's
+	// panel: Vavra's amber, Xenia's orange) instead of the slot's. Its live
+	// marks stay in the modulation colour, as everywhere.
+	accent := func(o map[string]any) color.NRGBA {
+		if c, ok := o["color"].(string); ok && c != "" {
+			return ovColor(c, sc)
+		}
+		return sc
+	}
+	// keyOf: the key a role names, when it names one this screen was given
+	keyOf := func(o map[string]any, role string) string {
+		if k, ok := o[role].(string); ok {
+			if _, ok := vals[k]; ok {
+				return k
+			}
+		}
+		return ""
+	}
 	// Pung's envelope (envmodel.go, visuals.go): the one picture every
 	// envelope gets, on the default view, a module's screen and the web
 	// page. g.envelope(x, y, w, h, {keys: [...], labels}) finds the envelope
@@ -514,6 +532,11 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				real = false
 			}
 		}
+		// {still: true}: the module knows its envelope does not run as a
+		// held note would (a one-shot, a loop): its shape, and no dots
+		if st, _ := o["still"].(bool); st {
+			real, e.Still = false, true
+		}
 		if p.live != nil && e.Known && real {
 			ks := envKeysSorted(keys)
 			key := p.liveKey + "/env/" + ks[0]
@@ -523,7 +546,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				moving = true // notes on the envelope: the next frame differs
 			}
 		}
-		drawEnvelope(img, image.Rect(int(x), int(y), int(x+ww), int(y+hh)), e, sc)
+		drawEnvelope(img, image.Rect(int(x), int(y), int(x+ww), int(y+hh)), e, accent(o))
 		return vm.ToValue(true)
 	})
 	// Pung's filter, LFO and mix (visuals_shapes.go), as the default view
@@ -572,7 +595,20 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				f.Known = f.Known && v.Known
 			}
 		}
-		drawFilter(img, rectOf(call), f, sc)
+		c := sc
+		if o, ok := call.Argument(4).Export().(map[string]any); ok {
+			c = accent(o)
+			// live: the sound's spectrum behind the response, as on Pung's
+			// own pages (it is the device's output: one for every filter)
+			if k := keyOf(o, "cutoff"); k != "" && p.live != nil {
+				p.live.want(p.liveKey+"/filter/"+k, picGroup{kind: "filter", keys: map[string]string{"cutoff": k}}, vals)
+				f.Spectrum = p.liveOut.Spec
+				if f.Spectrum != nil && p.liveOut.Active {
+					moving = true
+				}
+			}
+		}
+		drawFilter(img, rectOf(call), f, c)
 		return goja.Undefined()
 	})
 	g.Set("lfo", func(call goja.FunctionCall) goja.Value {
@@ -589,7 +625,41 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				l.Rate, l.Known = v.Frac, l.Known && v.Known
 			}
 		}
-		drawLFO(img, rectOf(call), l, sc)
+		c := sc
+		if o, ok := call.Argument(4).Export().(map[string]any); ok {
+			c = accent(o)
+			// live: a playhead where its phase can be known (synced to Live's
+			// beat, or restarted by notes at a rate in Hz), a flash where a
+			// note restarts it ({sync, div, trig}: the keys that say how it
+			// runs, livefx.go); still where it runs free
+			if p.live != nil && (keyOf(o, "shape") != "" || keyOf(o, "rate") != "") {
+				keys := map[string]string{}
+				for _, role := range []string{"shape", "rate", "sync", "div", "trig"} {
+					if k := keyOf(o, role); k != "" {
+						keys[role] = k
+					}
+				}
+				lv := vals
+				// trig as true or false: the screen says whether notes restart
+				// it, where no key says it in words (the Virus's key trigger is
+				// Off or the phase it restarts at)
+				if b, ok := o["trig"].(bool); ok {
+					lv = make(map[string]ovValue, len(vals)+1)
+					for k, x := range vals {
+						lv[k] = x
+					}
+					keys["trig"] = "#trig"
+					lv["#trig"] = ovValue{Display: map[bool]string{true: "On", false: "Off"}[b], Known: true}
+				}
+				key := p.liveKey + "/lfo/" + keys["shape"] + "|" + keys["rate"]
+				p.live.want(key, picGroup{kind: "lfo", keys: keys}, lv)
+				l.Live = p.liveOut.LFOs[key]
+				if l.Live != nil && (l.Live.Phase >= 0 || l.Live.Restart > 0) {
+					moving = true
+				}
+			}
+		}
+		drawLFO(img, rectOf(call), l, c)
 		return goja.Undefined()
 	})
 	g.Set("mix", func(call goja.FunctionCall) goja.Value {

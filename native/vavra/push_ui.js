@@ -353,35 +353,18 @@ function mixScreen(g, v) {
   }
 }
 
-// a filter's curve, from its type, cutoff and resonance
-function filterCurve(type, fc, res) {
-  var c = 0.08 + 0.84 * fc, q = res * 0.9;
-  return function (x) { // x 0..1 across the spectrum, answer 0..1 (1 = loud)
-    var d = (x - c) * 9, peak = q * Math.exp(-d * d * 6);
-    if (/LP/.test(type)) return Math.max(0, Math.min(1, (x < c ? 0.62 : 0.62 - (x - c) * (/24/.test(type) ? 3.2 : 1.8)) + peak * 0.5));
-    if (/HP/.test(type)) return Math.max(0, Math.min(1, (x > c ? 0.62 : 0.62 - (c - x) * (/24/.test(type) ? 3.2 : 1.8)) + peak * 0.5));
-    if (/BP/.test(type)) return Math.max(0, Math.min(1, 0.7 - Math.abs(x - c) * (/24/.test(type) ? 4 : 2.4) + peak * 0.4));
-    if (/Notch/.test(type)) return Math.max(0, Math.min(1, 0.62 - 0.6 * Math.exp(-d * d * 3) + peak * 0.2));
-    if (/Comb/.test(type)) return Math.max(0, Math.min(1, 0.4 + (/\+/.test(type) ? 0.25 : -0.25) * Math.cos(x * 40 * c) + peak * 0.2));
-    return 0.62;
-  };
-}
-function drawFilter(g, x, y, w, h, type, fc, res, c) {
-  var f = filterCurve(type, fc, res), pts = [];
-  for (var i = 0; i <= 80; i++) pts.push(x + i / 80 * w, y + h - f(i / 80) * h);
-  g.area(pts, y + h, c === AMBER_LT ? AMBER_GL : AMBER_DK);
-  g.poly(pts, 2, c);
-}
+// the two filters: Pung's filter picture (the sound's spectrum behind each
+// curve while it plays), in the microQ's amber, and how they are wired
 function filterScreen(g, v) {
   edge(g, v);
   var t = v.$touched || "", serial = disp(v, "filter_routing") === "Serial";
   for (var n = 1; n <= 2; n++) {
-    var p = "f" + n + "_", x = n === 1 ? 14 : 500, type = disp(v, p + "type") || "Off", on = type !== "Off";
+    var p = "f" + n + "_", x = n === 1 ? 14 : 500, type = disp(v, p + "type") || "Bypass", on = type !== "Bypass" && type !== "Off";
     var lit = t.indexOf(p) === 0;
     g.fill(x, 4, 440, 80, PANEL);
     legend(g, x + 8, 18, "Filter " + n + "  " + type, on ? (lit ? AMBER_LT : AMBER) : FAINT);
     g.text(x + 432, 18, "DRIVE " + (disp(v, p + "drive") || "0"), DIM, 1);
-    if (on) drawFilter(g, x + 8, 24, 424, 56, type, frac(v, p + "cutoff", 0.5), frac(v, p + "resonance", 0), lit ? AMBER_LT : AMBER);
+    if (on) g.filter(x + 4, 22, 432, 60, { cutoff: p + "cutoff", resonance: p + "resonance", type: p + "type", color: AMBER });
     else g.fill(x + 8, 80, 424, 1, FAINT);
   }
   // how the two are wired
@@ -398,30 +381,27 @@ function ampScreen(g, v) {
     (disp(v, "amp_mod_amount") || ""), DIM, -1, 600);
 }
 
-// the microQ's envelope: attack to a level, two decays to two sustains, release
+// the microQ's envelope: Pung's envelope (each note a dot on its clock), in
+// the microQ's amber. ADSR is the four named stages; the five-stage modes
+// attack to a level, then two decays to two sustains, then release. A
+// one-shot or a loop does not run as a held note would: its shape, still.
 function envScreen(label, p) {
   return function (g, v) {
     edge(g, v);
-    var t = v.$touched || "", mode = disp(v, p + "mode") || "ADSR", five = mode !== "ADSR";
-    // (the attack level and the second decay and sustain are the five-stage modes'; ADSR attacks to the top)
-    var a = frac(v, p + "attack"), al = five ? frac(v, p + "attack_level", 1) : 1, d = frac(v, p + "decay"), s = frac(v, p + "sustain");
-    var d2 = frac(v, p + "decay2"), s2 = frac(v, p + "sustain2"), r = frac(v, p + "release");
-    var x0 = 14, y0 = g.h - 6, H = g.h - 22, W = 820, seg = W / 5;
-    var xa = x0 + seg * (0.05 + a), xd = xa + seg * (0.05 + d), xd2 = five ? xd + seg * (0.05 + d2) : xd, xs = xd2 + seg * 0.9;
-    var ys2 = five ? s2 : s, xr = xs + seg * (0.05 + r);
-    var pts = [x0, y0, xa, y0 - H * al, xd, y0 - H * s];
-    if (five) pts.push(xd2, y0 - H * s2);
-    pts.push(xs, y0 - H * ys2, xr, y0);
-    g.area(pts, y0, AMBER_DK);
-    g.poly(pts, 2, AMBER_LT);
-    g.fill(x0, y0, W + 10, 1, RULE);
+    var mode = disp(v, p + "mode") || "ADSR";
+    var spec = mode === "ADSR"
+      ? { attack: p + "attack", decay: p + "decay", sustain: p + "sustain", release: p + "release" }
+      : { time1: p + "attack", level1: p + "attack_level", time2: p + "decay", level2: p + "sustain", time3: p + "decay2",
+          level3: p + "sustain2", time4: p + "release" };
+    spec.labels = true;
+    spec.color = AMBER;
+    spec.still = mode !== "ADSR" && mode !== "ADS1DS2R";
+    g.envelope(10, 20, 820, 64, spec);
     legend(g, 20, 14, label, AMBER);
     g.text(950, 14, mode.toUpperCase(), INK, 1);
-    var st = [["A", xa], ["D", xd], ["S", xs], ["R", xr]];
-    if (five) st.splice(2, 0, ["D2", xd2]);
-    for (var i = 0; i < st.length; i++) g.text(st[i][1] - 8, y0 - 4, st[i][0], INK, 1);
     var trig = disp(v, p + "trigger_mode");
     if (trig) g.text(950, 34, "TRIGGER " + trig.toUpperCase(), DIM, 1);
+    if (spec.still) g.text(950, 54, mode === "One Shot" ? "RUNS THROUGH" : "LOOPS", DIM, 1);
   };
 }
 function triggerScreen(g, v) {
@@ -435,17 +415,8 @@ function triggerScreen(g, v) {
   }
 }
 
-// an LFO: its wave, how fast, how it fades in
-function lfoWave(name) {
-  switch (name) {
-  case "Triangle": return function (t) { return t < 0.5 ? -0.9 + 3.6 * t : 2.7 - 3.6 * t; };
-  case "Square": return function (t) { return t < 0.5 ? 0.9 : -0.9; };
-  case "Saw": return function (t) { return 0.9 - 1.8 * t; };
-  case "Random": return function (t) { var k = Math.floor(t * 8); return Math.sin(k * 12.9898) * 0.9; };
-  case "S&H": return function (t) { var k = Math.floor(t * 4); return Math.sin(k * 78.233 + 1) * 0.9; };
-  default: return function (t) { return 0.9 * Math.sin(t * 2 * Math.PI); };
-  }
-}
+// an LFO: Pung's LFO picture (a flash as a note restarts it, when it is key
+// synced), in the microQ's amber; its clock, phase, delay and fade beside it
 function lfoScreen(n) {
   var p = "lfo" + n + "_";
   return function (g, v) {
@@ -453,18 +424,11 @@ function lfoScreen(n) {
     var shape = disp(v, p + "shape") || "Sine", clocked = disp(v, p + "clocked") === "On";
     g.fill(10, 4, 520, g.h - 8, PANEL);
     legend(g, 18, 18, "LFO " + n + "  " + shape, AMBER);
-    // the delay as the flat start, the fade as the swell after it
-    var dl = frac(v, p + "delay", 0) * 0.4, pts = [];
-    for (var i = 0; i <= 120; i++) {
-      var t = i / 120, amp = t < dl ? 0 : Math.min(1, (t - dl) / 0.2 + 0.2);
-      var f = lfoWave(shape)((t * (1 + frac(v, p + "speed", 0.3) * 5)) % 1);
-      pts.push(20 + t * 500, 54 - f * amp * 26);
-    }
-    g.poly(pts, 2, AMBER_LT);
-    g.text(560, 18, clocked ? "CLOCKED" : "FREE", clocked ? AMBER : DIM, -1);
+    g.lfo(14, 22, 512, g.h - 30, { shape: p + "shape", rate: p + "speed", trig: p + "sync", color: AMBER });
+    g.text(560, 18, (clocked ? "CLOCKED" : "FREE") + (disp(v, p + "sync") === "On" ? "   KEY SYNC" : ""), clocked ? AMBER : DIM, -1);
     g.value(560, 50, clocked ? "SYNC " + (disp(v, p + "speed") || "") : (disp(v, p + "speed") || "--"), INK, -1, 380);
-    g.text(560, 76, "PHASE " + (disp(v, p + "start_phase") || "") + "   FADE " + (disp(v, p + "fade") || "") +
-      "   KEYS " + (disp(v, p + "key_track") || ""), DIM, -1, 390);
+    g.text(560, 76, "PHASE " + (disp(v, p + "start_phase") || "") + "   DELAY " + (disp(v, p + "delay") || "") + "   FADE " +
+      (disp(v, p + "fade") || ""), DIM, -1, 390);
   };
 }
 
