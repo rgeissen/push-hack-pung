@@ -191,3 +191,21 @@ func TestAssetBySizeUnderAnyName(t *testing.T) {
 		t.Fatalf("others = %v", st[0].Others)
 	}
 }
+
+// A file whose size varies is declared by a smallest size: one of the
+// asset's extensions at least that big counts, under any name, and a
+// smaller one or another extension does not.
+func TestAssetByMinSize(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "roms"), 0o755)                                                                                                                                                              //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"x","assets":{"path":"roms","extensions":[".bin"],"files":[{"filename":"fw.bin","label":"Firmware","min_size":8,"required":true}]}}`), 0o644) //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "roms", "small.bin"), []byte("1234"), 0o644)                                                                                                                                //nolint:errcheck
+	os.WriteFile(filepath.Join(dir, "roms", "big.txt"), []byte("123456789012"), 0o644)                                                                                                                          //nolint:errcheck
+	if st := assetStates(dir); st[0].Missing != 1 {
+		t.Fatalf("too small or another extension counted: %+v", st[0])
+	}
+	os.WriteFile(filepath.Join(dir, "roms", "Access Virus TI.bin"), []byte("123456789012"), 0o644) //nolint:errcheck
+	if st := assetStates(dir); st[0].Missing != 0 || st[0].Files[0].Filename != "Access Virus TI.bin" {
+		t.Fatalf("the firmware is not seen: %+v", st[0])
+	}
+}

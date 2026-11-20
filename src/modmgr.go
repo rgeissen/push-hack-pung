@@ -95,10 +95,10 @@ type catalogEntry struct {
 	Requires      string `json:"requires"`
 	// Origin: "pung" (a Pung-native module) or "schwung"; from the catalog,
 	// else from the installed module (view)
-	Origin          string   `json:"origin,omitempty"`
+	Origin string `json:"origin,omitempty"`
 	// SurfaceApp: a takeover module: the Push Hack app that is its whole
 	// surface on Push while the device is open (handover.go)
-	SurfaceApp string `json:"surface_app,omitempty"`
+	SurfaceApp      string   `json:"surface_app,omitempty"`
 	RequiresModules []string `json:"requires_modules"`
 	Asset           string   `json:"asset"`
 	Size            int64    `json:"size"`
@@ -375,6 +375,10 @@ type assetFile struct {
 	Filename string `json:"filename"`
 	Label    string `json:"label"`
 	Size     int64  `json:"size"`
+	// MinSize: a file whose size varies (OsTIrus: a firmware installer of
+	// about 8 MB, version to version) is there when a file of the asset's
+	// extensions of at least this size is, under any name
+	MinSize  int64  `json:"min_size,omitempty"`
 	CRC32    string `json:"crc32"`
 	Required bool   `json:"required"`
 }
@@ -480,11 +484,28 @@ func assetStates(dir string) []assetState {
 		// "missing" beside a firmware that was in the folder and running.
 		for i := range st.Files {
 			fs := &st.Files[i]
-			if fs.Present || fs.Size <= 0 || fs.CRC32 != "" {
+			if fs.Present || (fs.Size <= 0 && fs.MinSize <= 0) || fs.CRC32 != "" {
 				continue
 			}
+			fits := func(name string, size int64) bool {
+				if fs.Size > 0 {
+					return size == fs.Size
+				}
+				if size < fs.MinSize {
+					return false
+				}
+				if len(a.Extensions) == 0 {
+					return true
+				}
+				for _, x := range a.Extensions {
+					if strings.HasSuffix(name, x) {
+						return true
+					}
+				}
+				return false
+			}
 			for _, e := range ents {
-				if fi, err := e.Info(); err == nil && !e.IsDir() && fi.Size() == fs.Size && !named[e.Name()] && !strings.HasPrefix(e.Name(), ".") {
+				if fi, err := e.Info(); err == nil && !e.IsDir() && fits(e.Name(), fi.Size()) && !named[e.Name()] && !strings.HasPrefix(e.Name(), ".") {
 					fs.Present, fs.OK, fs.Filename = true, true, e.Name()
 					named[e.Name()] = true
 					break
@@ -1033,12 +1054,12 @@ func writeFileAtomic(p string, raw []byte) {
 type moduleRow struct {
 	catalogEntry
 	// SurfaceAppInstalled: that app is on this Push (else Pung's own view opens)
-	SurfaceAppInstalled bool `json:"surface_app_installed"`
-	InCatalog bool   `json:"in_catalog"`
-	Supported bool   `json:"supported"`
-	Installed string `json:"installed,omitempty"` // its version
-	Managed   bool   `json:"managed"`
-	Status    string `json:"status"` // available | installed | update | builtin
+	SurfaceAppInstalled bool   `json:"surface_app_installed"`
+	InCatalog           bool   `json:"in_catalog"`
+	Supported           bool   `json:"supported"`
+	Installed           string `json:"installed,omitempty"` // its version
+	Managed             bool   `json:"managed"`
+	Status              string `json:"status"` // available | installed | update | builtin
 	// Repacked: the update is the same version, packed again by Pung
 	Repacked    bool         `json:"repacked,omitempty"`
 	InUse       int          `json:"in_use"`
