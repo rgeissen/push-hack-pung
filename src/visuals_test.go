@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"image"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -81,14 +81,14 @@ var envFleet = map[string]struct {
 	frac map[string]float64
 	segs string // the stage bar's labels
 }{
-	"adsr":    {[]string{"attack", "decay", "sustain", "release"}, map[string]float64{"attack": 0.2, "decay": 0.4, "sustain": 0.6}, "A D S R"},
-	"ad":      {[]string{"pitch_env_attack", "pitch_env_decay"}, map[string]float64{"pitch_env_attack": 0.1, "pitch_env_decay": 0.7}, "A D"},
-	"ahdsr":   {[]string{"e_attack", "e_hold", "e_decay", "e_sustain", "e_release"}, map[string]float64{"e_sustain": 0.3}, "A H D S R"},
-	"dar":     {[]string{"e1_delay", "e1_atk", "e1_rel"}, nil, "DL A S R"},
-	"virus":   {[]string{"amp_attack", "amp_decay", "amp_sustain", "amp_sustain_time", "amp_release"}, map[string]float64{"amp_attack": 0, "amp_sustain": 0.7, "amp_sustain_time": 0.1}, "A D S R"},
-	"jv-amp":  {[]string{"tvaenvtime1", "tvaenvlevel1", "tvaenvtime2", "tvaenvlevel2", "tvaenvtime3", "tvaenvlevel3", "tvaenvtime4"}, map[string]float64{"tvaenvlevel1": 1, "tvaenvlevel2": 0.8, "tvaenvlevel3": 0.6}, "T1 T2 T3 S T4"},
+	"adsr":     {[]string{"attack", "decay", "sustain", "release"}, map[string]float64{"attack": 0.2, "decay": 0.4, "sustain": 0.6}, "A D S R"},
+	"ad":       {[]string{"pitch_env_attack", "pitch_env_decay"}, map[string]float64{"pitch_env_attack": 0.1, "pitch_env_decay": 0.7}, "A D"},
+	"ahdsr":    {[]string{"e_attack", "e_hold", "e_decay", "e_sustain", "e_release"}, map[string]float64{"e_sustain": 0.3}, "A H D S R"},
+	"dar":      {[]string{"e1_delay", "e1_atk", "e1_rel"}, nil, "DL A S R"},
+	"virus":    {[]string{"amp_attack", "amp_decay", "amp_sustain", "amp_sustain_time", "amp_release"}, map[string]float64{"amp_attack": 0, "amp_sustain": 0.7, "amp_sustain_time": 0.1}, "A D S R"},
+	"jv-amp":   {[]string{"tvaenvtime1", "tvaenvlevel1", "tvaenvtime2", "tvaenvlevel2", "tvaenvtime3", "tvaenvlevel3", "tvaenvtime4"}, map[string]float64{"tvaenvlevel1": 1, "tvaenvlevel2": 0.8, "tvaenvlevel3": 0.6}, "T1 T2 T3 S T4"},
 	"jv-pitch": {[]string{"penvtime1", "penvlevel1", "penvtime2", "penvlevel2", "penvtime3", "penvlevel3", "penvtime4", "penvlevel4"}, map[string]float64{"penvlevel1": 0.9, "penvlevel2": 0.3, "penvlevel3": 0.5, "penvlevel4": 0.5}, "T1 T2 T3 S T4"},
-	"dx":      {[]string{"op1_eg_r1", "op1_eg_l1", "op1_eg_r2", "op1_eg_l2", "op1_eg_r3", "op1_eg_l3", "op1_eg_r4", "op1_eg_l4"}, map[string]float64{"op1_eg_r1": 0.95, "op1_eg_l1": 1, "op1_eg_l2": 0.9, "op1_eg_l3": 0.7, "op1_eg_l4": 0}, "R1 R2 R3 S R4"},
+	"dx":       {[]string{"op1_eg_r1", "op1_eg_l1", "op1_eg_r2", "op1_eg_l2", "op1_eg_r3", "op1_eg_l3", "op1_eg_r4", "op1_eg_l4"}, map[string]float64{"op1_eg_r1": 0.95, "op1_eg_l1": 1, "op1_eg_l2": 0.9, "op1_eg_l3": 0.7, "op1_eg_l4": 0}, "R1 R2 R3 S R4"},
 }
 
 // TestDrawEnvelope draws every kind of envelope, known and unknown, each

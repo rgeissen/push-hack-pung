@@ -13,14 +13,12 @@ import (
 	"math"
 )
 
-
 // ---- envelopes (envmodel.go says what one is) ----------------------------------------
 
 // mixColor: c faded toward black, for fills (the panel has no alpha).
 func mixColor(c color.NRGBA, t float64) color.NRGBA {
 	return color.NRGBA{uint8(float64(c.R) * t), uint8(float64(c.G) * t), uint8(float64(c.B) * t), 255}
 }
-
 
 // drawEnvelope draws an envelope in the rect: the shape filled in the
 // slot's color, faded; its segments as a line, the touched one thick and in
@@ -109,7 +107,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 		}
 		dt := 0.0 // the frame's ages, carried on to now
 		if lv.At > 0 {
-			dt = math.Max(0, math.Min(0.25, (liveNow() - lv.At).Seconds()))
+			dt = math.Max(0, math.Min(0.25, (liveNow()-lv.At).Seconds()))
 		}
 		for n := len(lv.Voices) - 1; n >= 0; n-- { // the newest drawn last, on top
 			v := lv.Voices[n]

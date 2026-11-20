@@ -89,16 +89,16 @@ type surface struct {
 	// the two levels of Push's device view: open, the lower row is the
 	// device's pages and upper button 1 goes back; closed, the upper row is
 	// the track's devices and the lower row Live's tracks
-	open    bool
-	autoOpen bool // the selection is new: open it if its page is a front panel
+	open     bool
+	autoOpen bool      // the selection is new: open it if its page is a front panel
 	wheelAt  time.Time // the last step along the wheel key
 	handedAt time.Time // the Push was handed to a device's surface app (handover.go)
 	inner    bool      // the jog wheel is one level inside the open device: it walks the wheel key
-	bankOff int // open: how far the page row is scrolled (pageSlots)
-	devOff  int // closed: how far the device row is scrolled (deviceSlots)
-	focus   int // closed: the device under the jog wheel (index in the track's devices), -1 none
-	view    string
-	shift   bool
+	bankOff  int       // open: how far the page row is scrolled (pageSlots)
+	devOff   int       // closed: how far the device row is scrolled (deviceSlots)
+	focus    int       // closed: the device under the jog wheel (index in the track's devices), -1 none
+	view     string
+	shift    bool
 	// held, with a display button or a touch: Delete, Mute, Solo. They are
 	// Live's buttons too (liveButtons): Pung only reads them
 	del, mute, solo bool
@@ -1682,7 +1682,7 @@ func (u *surface) enterSelection(v liveView) {
 	u.lvIdx = map[string]int{}
 	u.open, u.focus = false, -1 // another device: the chain level, as on Push
 	u.inner = false
-	u.autoOpen = true           // ... unless its page is a front panel (refreshLive)
+	u.autoOpen = true // ... unless its page is a front panel (refreshLive)
 	u.peekUntil = time.Time{}
 	m := u.bankMem[v.key]
 	u.bank, u.bankOff = m[0], m[1]

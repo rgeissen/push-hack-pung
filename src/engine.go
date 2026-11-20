@@ -21,13 +21,13 @@ package main
 import "C"
 
 import (
-	"slices"
-	"os"
 	"bytes"
 	"errors"
 	"log"
 	"math"
+	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"

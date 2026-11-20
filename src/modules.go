@@ -107,8 +107,8 @@ func scanModulesNow(root string) []ModuleInfo {
 				Pung                                           struct {
 					SurfaceApp string `json:"surface_app"`
 				} `json:"pung"`
-				ComponentType                                  string `json:"component_type"`
-				Capabilities                                   struct {
+				ComponentType string `json:"component_type"`
+				Capabilities  struct {
 					Forks bool `json:"forks_processes"`
 				} `json:"capabilities"`
 			}
