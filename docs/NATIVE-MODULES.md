@@ -256,8 +256,8 @@ instance at a time (`/dev/shm/pung-ostirus.lock`).
 ## Vavra (Waldorf microQ)
 
 gearmulator's microQ (`mqLib`): a 68000 running Waldorf's OS beside one DSP56300, about 22% of one core
-on a Push. Its engine is `waldorf_engine.cpp`, shared with Xenia (the Microwave II/XT, `xtLib`, which
-waits for a ROM dump): OsTIrus's design, the emulator on its own thread into a ring, one instance at a
+on a Push. Its engine is `waldorf_engine.cpp`, shared with Xenia (the Microwave II/XT, `xtLib`, below):
+OsTIrus's design, the emulator on its own thread into a ring, one instance at a
 time (`/dev/shm/pung-vavra.lock`), the firmware found by gearmulator's own loader in `roms/`.
 
 - **The OS carries no sounds.** A microQ keeps them in flash, so they come from sound sets: Waldorf's
@@ -280,4 +280,42 @@ time (`/dev/shm/pung-vavra.lock`), the firmware found by gearmulator's own loade
 - **In Live, 2026-11-20**: 128 parameters; a parameter set from Live reaches the synth; beside OsTIrus
   and Braids, all three playing, the Push 53% idle and no dropout of Vavra's own; a sound and its edits
   survive a restart of Pung.
+
+## Xenia (Waldorf Microwave II/XT)
+
+gearmulator's Microwave II/XT (`xtLib`): a 68000 running Waldorf's OS 2.33 beside one DSP56300, on the
+engine Vavra uses (`waldorf_engine.cpp`, built with `WALDORF_XT`; one instance at a time,
+`/dev/shm/pung-xenia.lock`). It boots in about 0.6 s.
+
+- **The ROM is two halves, or one dump.** The XT keeps its wavetables and factory sounds in ROM, so an
+  OS update `.mid` alone cannot run it; beside a ROM it updates it. gearmulator's loader finds the
+  files in `roms/` by content: a 256 KB dump, or the two 128 KB Am29F010 halves.
+- **The sounds come from the synth.** 256 factory sounds in banks A and B, asked for one by one
+  (0.6 s, `fam::BANKS`). gearmulator answered bank B with bank A (`m_romSingles[_loc + 100]`;
+  `patches/0003-xt-bank-b-index.patch` reads `_loc + 128`), and its 68000 printed every LCD update to
+  stderr (`patches/0002`, quiet unless `PUNG_MC68K_LOG`).
+- **It boots in Multi mode**, which ignores a single dump; a Single-mode dump right after boot
+  (`fam::BOOT`) puts it where a sound can be loaded. It is silent while it takes a sound in, so
+  `render-check` waits longer before the chord (`RENDER_SETTLE_MS`).
+- **214 parameters on 32 pages** (`tools/gen_params.py` writes `dsp/xt_params.h` and the page lists in
+  `push_ui.js`). An enum whose options are not its raw values in order is a `rawmap`: the XT's effect
+  types are 0..7 and 32..34.
+- **The screens draw the real wavetable.** The front panel and the Waves page show the sound's table as
+  a landscape of its waves, the two start positions lit, the three fixed waves every table ends in
+  (61..63: triangle, square, saw) beside it. The waves are the synth's: when the sound's table changes
+  the engine asks for it (`F0 3E 0E 7F 03 hh ll F7`, a 64-slot table) and then for each key wave in it
+  (`02`), one at a time because the XT drops a burst of requests, parsed by `xt::State`. A slot between
+  two key waves is their crossfade, as the synth plays it. `get_param("wave_view")` hands the screen
+  positions 0, 4 .. 60, 32 points each, as hex: `""` while the waves are coming, `"algo"` for the tables
+  the synth computes (28..51, 64..95), which cannot be asked for and are named rather than drawn.
+- **The effect panel names A, B and C** by the effect (Delay: Time, Feedback, Mix).
+- **Heard without Live**: `RENDER_SETTLE_MS=1500 scripts/render-check.sh xenia <assets>` (`?wave_view`
+  reads the table after the chord). Measured 2026-11-20: of ten sounds, nine give nine different
+  chords at the right pitch and one (A50 "Tsching") is silent for a held chord; closing the cutoff
+  moves the spectrum from 4883 Hz to 638 Hz; an effect type set by name reads back as itself.
+- **On the Push, 2026-11-20**: every page walked with the real values; tables 0 (Resonant), 3, 5, 13,
+  100 drawn from the synth's waves and 40 named as computed; beside Vavra and Tablor no dropout of its
+  own (one late block a minute on all three at once); its sound survives a restart of Pung.
+- **Not yet in Live:** the class Live knows for Xenia was registered before Xenia had its parameters
+  (89, Pung's own), so its 128 come with the next Apply.
 

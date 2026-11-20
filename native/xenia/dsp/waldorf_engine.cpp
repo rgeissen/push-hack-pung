@@ -68,12 +68,16 @@ namespace tbl = mq;
 #define HAVE_PARAMS 1
 #elif defined(WALDORF_XT)
 #include "xtLib/xtDevice.h"
+#include "xtLib/xtState.h"
+#include <map>
 typedef xt::Device SynthDevice;
 #define SYNTH_ID "xenia"
 #define SYNTH_NAME "Xenia"
 #define SYNTH_HW "Microwave II/XT"
 #define FIRMWARE_HINT "a 256 KB Microwave II/XT ROM (or its two 128 KB halves)"
-#define HAVE_PARAMS 0 // its table comes with a ROM to check it against
+#include "xt_params.h" // tools/gen_params.py
+namespace tbl = xtp;
+#define HAVE_PARAMS 1
 #else
 #error "WALDORF_MQ or WALDORF_XT"
 #endif
@@ -186,6 +190,18 @@ struct Instance {
     int64_t deepUntil = 0;                // the emulator thread's
     char status[160] = "Starting";
     char error[200] = "";
+#if defined(WALDORF_XT)
+    // The sound's wavetable as its real waves, for the screen (wave_view): the
+    // table's 64 slots and the waves in them, asked of the synth (the XT
+    // answers from its ROM, as for gearmulator's wave editor). Under mu.
+    int tableWanted = -1, tableHave = -1;    // a wavetable number
+    bool tableAlgorithmic = false;           // generated, not stored: nothing to ask
+    std::vector<uint16_t> tableWaves;        // its 64 slots' wave ids
+    std::map<uint16_t, std::vector<int8_t>> waves; // wave id -> 128 samples
+    std::vector<uint16_t> wavesMissing;      // asked one at a time: the XT drops a burst
+    int waveAsked = -1;                      // the wave asked for, until it comes
+    int64_t tableAskedAt = 0, waveAskedAt = 0; // the emulator thread's
+#endif
 };
 
 void set_status(Instance *in, const char *s) {
@@ -197,6 +213,113 @@ void send(Instance *in, synthLib::SMidiEvent &ev) {
     std::lock_guard<std::mutex> l(in->plugMu);
     if (in->plugin) in->plugin->addMidiEvent(ev);
 }
+
+#if defined(WALDORF_XT)
+// mu held: the emulator thread asks for what the screen needs of the wavetable
+void ask_waves(Instance *in) {
+    if (!in->haveSingle) return;
+    if (!in->wavesMissing.empty() && (in->waveAsked < 0 || now_us() - in->waveAskedAt > 200000)) {
+        const uint16_t w = in->wavesMissing.front();
+        if (in->waves.count(w)) {
+            in->wavesMissing.erase(in->wavesMissing.begin());
+            in->waveAsked = -1;
+            return;
+        }
+        in->waveAsked = w;
+        in->waveAskedAt = now_us();
+        synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
+        ev.sysex = {0xf0, 0x3e, 0x0e, 0x7f, 0x02, uint8_t(w >> 7), uint8_t(w & 0x7f), 0xf7};
+        send(in, ev);
+    }
+    const int t = in->single[25]; // "Wave": the wavetable
+    in->tableWanted = t;
+    if (t == in->tableHave || now_us() - in->tableAskedAt < 300000) return;
+    in->tableAskedAt = now_us();
+    in->tableAlgorithmic = xt::wave::isAlgorithmicTable(xt::TableId(uint16_t(t)));
+    if (in->tableAlgorithmic) {
+        in->tableHave = t;
+        in->tableWaves.clear();
+        return;
+    }
+    synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
+    ev.sysex = {0xf0, 0x3e, 0x0e, 0x7f, 0x03, uint8_t(t >> 7), uint8_t(t & 0x7f), 0xf7};
+    if (getenv("PUNG_SCAN_LOG")) fprintf(stderr, "asking for table %d\n", t);
+    send(in, ev);
+}
+
+// an answer of the synth's: a table, or a wave of it
+void take_wave_answer(Instance *in, const synthLib::SMidiEvent &e) {
+    const auto &sx = e.sysex;
+    if (sx.size() < 8 || sx[1] != 0x3e || sx[2] != 0x0e) return;
+    if (sx[4] == 0x13) { // a table
+        xt::TableData table;
+        if (!xt::State::parseTableData(table, sx)) return;
+        const int id = xt::State::getTableId(sx).rawId();
+        {
+            std::lock_guard<std::mutex> l(in->mu);
+            if (id != in->tableWanted) return;
+            in->tableHave = id;
+            in->tableWaves.clear();
+            if (getenv("PUNG_SCAN_LOG")) {
+                fprintf(stderr, "table %d:", id);
+                for (const auto &w : table) fprintf(stderr, " %u", unsigned(w.rawId()));
+                fprintf(stderr, "\n");
+            }
+            in->wavesMissing.clear();
+            for (const auto &w : table) {
+                in->tableWaves.push_back(w.rawId());
+                if (xt::wave::isValidWaveIndex(w.rawId()) && !in->waves.count(w.rawId()))
+                    in->wavesMissing.push_back(w.rawId());
+            }
+            std::sort(in->wavesMissing.begin(), in->wavesMissing.end());
+            in->wavesMissing.erase(std::unique(in->wavesMissing.begin(), in->wavesMissing.end()), in->wavesMissing.end());
+        }
+    } else if (sx[4] == 0x12) { // a wave
+        xt::WaveData wave;
+        if (!xt::State::parseWaveData(wave, sx)) return;
+        std::lock_guard<std::mutex> l(in->mu);
+        const uint16_t id = xt::State::getWaveId(sx).rawId();
+        in->waves[id] = std::vector<int8_t>(wave.begin(), wave.end());
+        if (id == in->waveAsked) {
+            in->waveAsked = -1;
+            in->wavesMissing.erase(std::remove(in->wavesMissing.begin(), in->wavesMissing.end(), id), in->wavesMissing.end());
+        }
+    }
+}
+
+// mu held: sixteen of the table's positions (0, 4 .. 60), 32 points each, as
+// two hex digits a point (0x80 the middle). A position between two key waves
+// is their crossfade, as the synth plays it; after the last key wave, that
+// one. (61-63 are the fixed triangle, square and saw, and not drawn.) "" while
+// the waves are still coming, "algo" for a table the synth computes.
+std::string wave_view(const Instance *in) {
+    if (in->tableHave != in->tableWanted || in->tableWanted < 0) return "";
+    if (in->tableAlgorithmic) return "algo";
+    if (in->tableWaves.size() != 64 || !in->wavesMissing.empty()) return "";
+    std::vector<int> keys; // the positions with a wave of their own
+    for (int i = 0; i <= 60; i++) {
+        const uint16_t w = in->tableWaves[size_t(i)];
+        if (xt::wave::isValidWaveIndex(w) && in->waves.count(w)) keys.push_back(i);
+    }
+    if (keys.empty()) return "";
+    auto sample = [&](int pos, int i) -> int {
+        size_t k = 0;
+        while (k + 1 < keys.size() && keys[k + 1] <= pos) k++;
+        const auto &a = in->waves.at(in->tableWaves[size_t(keys[k])]);
+        if (pos <= keys[k] || k + 1 >= keys.size()) return a[size_t(i)];
+        const auto &b = in->waves.at(in->tableWaves[size_t(keys[k + 1])]);
+        return a[size_t(i)] + (b[size_t(i)] - a[size_t(i)]) * (pos - keys[k]) / (keys[k + 1] - keys[k]);
+    };
+    std::string o;
+    char b[3];
+    for (int pos = 0; pos <= 60; pos += 4)
+        for (int i = 0; i < 128; i += 4) {
+            snprintf(b, sizeof(b), "%02x", uint8_t(sample(pos, i) + 128));
+            o += b;
+        }
+    return o;
+}
+#endif
 
 // What goes past the headroom bends instead of breaking (Nodal Red 2X: a
 // hard corner is a click on every peak).
@@ -523,6 +646,18 @@ void emu_main(Instance *in) {
             in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
             midiOut.clear();
             in->plugin->getMidiOut(midiOut);
+#if defined(WALDORF_XT)
+            for (const auto &e : midiOut)
+                if (!e.sysex.empty()) {
+                    if (getenv("PUNG_SCAN_LOG") && e.sysex.size() > 6)
+                        fprintf(stderr, "sysex out: %zu bytes cmd %02x %02x %02x\n", e.sysex.size(), e.sysex[4], e.sysex[5], e.sysex[6]);
+                    take_wave_answer(in, e);
+                }
+            {
+                std::lock_guard<std::mutex> l(in->mu);
+                ask_waves(in);
+            }
+#endif
             // 6 dB of headroom, and a soft limiter above 3/4 of full scale
             const float g = float(in->gain) * 0.01f * 0.5f * 32767.0f;
             const uint32_t w = in->wr.load(std::memory_order_relaxed);
@@ -612,6 +747,11 @@ int raw_of(const Instance *in, const tbl::Param &p) {
 
 // a raw value as Pung reads it: an enum's index, an octave's, a number as shown
 int value_of(const tbl::Param &p, int raw) {
+    if (p.rawmap >= 0) { // an enum of the named options only: where the raw value is among them
+        for (int i = 0; i < tbl::kListLen[p.list]; i++)
+            if (tbl::kRawMaps[p.rawmap][i] == raw) return i;
+        return 0;
+    }
     switch (p.kind) {
     case tbl::kEnum: return std::max(0, std::min(int(p.max), raw) - int(p.min));
     case tbl::kOctave: return p.step ? std::max(0, (raw - p.raw_min) / p.step) : 0;
@@ -620,6 +760,7 @@ int value_of(const tbl::Param &p, int raw) {
 }
 
 int raw_from(const tbl::Param &p, int v) {
+    if (p.rawmap >= 0) return tbl::kRawMaps[p.rawmap][std::max(0, std::min(tbl::kListLen[p.list] - 1, v))];
     switch (p.kind) {
     case tbl::kEnum: return std::max(int(p.min), std::min(int(p.max), v + p.min));
     case tbl::kOctave: return p.raw_min + std::max(0, std::min(int(p.max), v)) * p.step;
@@ -630,7 +771,7 @@ int raw_from(const tbl::Param &p, int v) {
 // the text a value shows ("" for a plain number)
 std::string text_of(const tbl::Param &p, int raw) {
     if (p.list < 0) return std::to_string(raw - p.offset);
-    const int i = p.kind == tbl::kOctave ? value_of(p, raw) : raw - p.min;
+    const int i = p.kind == tbl::kOctave || p.rawmap >= 0 ? value_of(p, raw) : raw - p.min;
     return i >= 0 && i < tbl::kListLen[p.list] ? tbl::kLists[p.list][i] : std::to_string(raw);
 }
 
@@ -825,6 +966,9 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
         if (in->haveSingle) return snprintf(buf, size_t(len), "%s", text_at(in->single, fam::NAME_AT, fam::NAME_LEN).c_str());
         return snprintf(buf, size_t(len), "%s", lib_name(in, in->bank, in->preset).c_str());
     }
+#if defined(WALDORF_XT)
+    if (!strcmp(key, "wave_view")) return snprintf(buf, size_t(len), "%s", wave_view(in).c_str());
+#endif
     if (!strcmp(key, "category"))
         return snprintf(buf, size_t(len), "%s", in->haveSingle ? text_at(in->single, fam::CAT_AT, fam::CAT_LEN).c_str() : "");
     if (!strcmp(key, "bank_index") || !strcmp(key, "bank_select") || !strcmp(key, "bank")) return snprintf(buf, size_t(len), "%d", in->bank);

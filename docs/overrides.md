@@ -50,6 +50,7 @@ The frame starts at the widget's top left. Nothing you draw can leave it.
 | `g.text(x, y, s, color, align[, maxWidth])` | small capitals (the label face); `y` is the baseline; align -1 left, 0 center, 1 right; with `maxWidth`, cut to fit it (ending in `.`) |
 | `g.value(x, y, s, color, align[, maxWidth])` | the larger value face; with `maxWidth`, a smaller face before a cut, and a number is never cut (`-24000` becomes `-24K`) |
 | `g.measure(s[, "value"])` | the width of `s` in pixels, in the label face or the value face |
+| `g.layer(key, fn)` | the part of a screen that does not change: `fn` draws it once, and while `key` stays the same the kept picture is copied in instead (a dot-matrix display of a thousand dots costs a copy). The layer **replaces the frame drawn so far**, so a screen has one, and it comes first; a second layer wipes the first. Put everything the key decides into the one layer and its key (Xenia's front panel: the display's two lines, the wavetable and the start positions) |
 
 Colors: `"#rrggbb"`, a Push palette name (`"orange"`, `"sky"`, ...), or `"slot"` (the slot's color), `"fg"`,
 `"dim"`, `"faint"`, `"line"`, `"mod"`, `"warn"`, `"black"`. Text is ASCII only.

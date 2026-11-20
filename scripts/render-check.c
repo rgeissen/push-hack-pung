@@ -4,7 +4,7 @@
 // runs, optionally chooses a sound, plays a chord and renders it, and says how
 // loud it was. A module that boots and is silent, or crashes, fails here.
 //
-//   render-check <module dir> [seconds] [key=value ...]
+//   render-check <module dir> [seconds] [key=value | ?key ...]
 //
 // Writes <module dir>/../render-check.wav (16-bit stereo, 44.1 kHz) and exits
 // 0 when the chord's peak is above -60 dB. scripts/render-check.sh runs it in
@@ -96,6 +96,12 @@ int main(int argc, char **argv) {
     for (int i = 3; i < argc; i++) {
         char kv[512];
         snprintf(kv, sizeof(kv), "%s", argv[i]);
+        if (kv[0] == '?') { // ?key: what the module answers for it now
+            char val[512] = "";
+            api->get_param(in, kv + 1, val, sizeof(val));
+            printf("get %s = %s\n", kv + 1, val);
+            continue;
+        }
         char *eq = strchr(kv, '=');
         if (!eq) continue;
         *eq = 0;
@@ -149,6 +155,14 @@ int main(int argc, char **argv) {
     const double pdb = peak > 0 ? 20 * log10(peak) : -120, rdb = sum > 0 ? 10 * log10(sum / n) : -120;
     printf("chord: peak %.1f dB, rms %.1f dB over %.1f s (%d frames settled first)\n", pdb, rdb, seconds, settle);
     printf("engine: %s\n", dbg);
+    // ?key again, after: what the module took a while to find out
+    for (int i = 3; i < argc; i++) {
+        if (argv[i][0] != '?') continue;
+        static char val[8192];
+        val[0] = 0;
+        api->get_param(in, argv[i] + 1, val, sizeof(val));
+        printf("after %s = %s\n", argv[i] + 1, val);
+    }
     char out[1100];
     snprintf(out, sizeof(out), "%s/../render-check.wav", dir);
     wav(out, pcm, frames);

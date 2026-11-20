@@ -285,6 +285,22 @@
     <p><strong>In Live.</strong> Live keeps 128 of Vavra's 341 parameters for automation and Push's own device view: the matrix's seven rows (filter cutoff, resonance and envelope, both main envelopes, the LFOs and the effects' types and mix among them), the oscillators and the mixer. The rest, the filters' and envelopes' further settings, the effects' own knobs, the modulation slots and the arpeggiator, is edited in the Pung view.</p>
     <p><strong>One at a time.</strong> A second Vavra in a Set stays silent, and its screens say <em>Waiting</em>; it starts when the first one is removed.</p>
   </div>
+
+  <div class="prose">
+    <h3>Xenia: the Microwave II/XT and its wavetables</h3>
+    <p>Xenia emulates the Waldorf Microwave II and XT. A Microwave sound is a path through a wavetable: 64 wave positions, each oscillator starting at one of them, the envelopes moving it along. Xenia opens on that table, drawn from the real waves the synth holds, beside the XT's two-line display in its orange. The two oscillators' start positions are lit in the table; the encoders are the panel's knobs: the wavetable, both start waves, the wave envelope's amount, the filter and the volume.</p>
+  </div>
+  [[screen img="xenia_panel" title="Xenia: the wavetable" alt="Xenia's front panel: an orange panel with a green dot-matrix display reading A010 Oxy Rhythm2 WMF, Resonant, W1 20, W2 44, Cutoff 87; beside it the Resonant wavetable as a landscape of waves with the waves where oscillators 1 and 2 start lit, and the triangle, square and saw every table ends in; below, the eight encoders and the pages over the lower buttons." up="0-7" upsel="0" lo="0-7" losel="0"]]The Resonant table, its waves read from the synth: oscillator 1 starts at wave 20, oscillator 2 at wave 44. Rendered by Pung from a running Xenia.[[/screen]]
+  <div class="prose">
+    <p>A table changes as you turn the Wavetable knob, and Xenia reads the new one from the synth (about a second for its waves to arrive). Some tables are not stored as waves: the synth computes them as it plays, and the panel names them rather than drawing them. A start wave of 61 to 63 is one of the three fixed waves at the end of every table, lit beside it.</p>
+    <p>Every section has pages of its own, each with a picture: the two oscillators on a ruler of octaves, the table again with how far the keys move each start, the mixer with the Microwave's aliasing, quantising and clipping, the two filters as curves, the two LFOs, the wave envelope's eight stages as the path through the table with its key-on and key-off loops, the sixteen modulation slots and four modifiers, and the arpeggiator's sixteen-step pattern. The filter, amp and free envelopes are Pung's own envelope.</p>
+    <p><strong>The effect.</strong> What the effect's knobs A, B and C do depends on the effect. The effect panel names them after it: choose Delay, and they read Time, Feedback and Mix.</p>
+  </div>
+  [[screen img="xenia_fx" title="The effect names its own knobs" alt="Xenia's effect panel: the display reads Effect Delay and Glide Portamento Linear; the ten effects as tiles with Delay lit; the glide as a line from one note to the next; the encoders read Type, Time, Feedback, Mix, Glide, Time, Type and Mode." up="0-7" upsel="6" lo="0-7" losel="5"]]Delay chosen: knobs A, B and C are its time, feedback and mix.[[/screen]]
+  <div class="prose">
+    <p><strong>Firmware.</strong> Xenia needs a Microwave II/XT ROM: a 256&nbsp;KB dump, or its two 128&nbsp;KB halves (the Am29F010 chips). An operating system update file alone is not enough, because the ROM holds the wavetables and the sounds; beside a ROM, an update file (<code>mw2_xt_xtk_sys_v233.mid</code>) updates it. Add the files on the module's card. The 256 factory sounds are in banks A and B.</p>
+    <p><strong>One at a time.</strong> A second Xenia in a Set stays silent, and its screens say <em>Waiting</em>; it starts when the first one is removed.</p>
+  </div>
 </section>
 
 <section id="live">
@@ -359,7 +375,7 @@
   <ol class="steps">
     <li><div><p><strong>Install</strong> the modules you want. They install from the copy inside Pung's release, on the Push itself: nothing is downloaded.</p></div></li>
     <li><div><p><strong>Apply.</strong> New devices need one Live restart, because Live looks for plugins only when it starts. Apply saves nothing for you: save your Set first. Live restarts in about 30 seconds and recovers the Set. Install several modules, then Apply once.</p></div></li>
-    <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV, Osirus, Nodal Red 2X, OsTIrus and Vavra emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum (OsTIrus's by its size).</p></div></li>
+    <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV, Osirus, Nodal Red 2X, OsTIrus, Vavra and Xenia emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum (OsTIrus's by its size).</p></div></li>
   </ol>
   <div class="prose"><p>A new Pung release brings new modules and new versions; the Modules page shows them (see <a href="#update">Updating</a>). Removing a module needs Apply too.</p><p>During the test phase, modules come inside Pung's releases. After it, Pung's module pipeline, which is already built, will serve them directly, so updates arrive as Schwung publishes them.</p></div>
 </section>

@@ -8,7 +8,6 @@
   },
   "publish": {},
   "withhold": {
-    "stacks": "its repository is still private: Pung publishes the source of what it ships (take this line out when rgeissen/schwung-stacks is public)",
-    "xenia": "the engine is there; the Microwave II/XT needs a ROM dump to be built and tested against (take this line out when it has been)"
+    "stacks": "its repository is still private: Pung publishes the source of what it ships (take this line out when rgeissen/schwung-stacks is public)"
   }
 }

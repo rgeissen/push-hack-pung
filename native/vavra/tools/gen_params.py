@@ -232,6 +232,7 @@ def main():
             bits[e["name"]] = (int(str(e["mask"]), 0), int(str(e.get("shift", 0)), 0))
 
     lists = {}
+    rawmaps = []
 
     def list_id(texts):
         k = json.dumps(texts)
@@ -267,6 +268,16 @@ def main():
             # an on/off button on gearmulator's panel whose "on" is the
             # range's top (2): Normal or Single, stored as 0 or 2
             e.update(kind="octave", min=0, max=1, raw_min=0, step=2, list=list_id(["Normal", "Single"]))
+            return e
+        # a list with blank names (the XT's effect types 8..31, the microQ's fourth glide mode):
+        # an enum of the named ones only, each writing its own raw value
+        raw_list = vl.get(tt) if isinstance(vl.get(tt), list) else None
+        if p["isDiscrete"] and raw_list and any(i < len(raw_list) and not str(raw_list[i]).strip() for i in range(lo, hi + 1)):
+            named = [(i, str(raw_list[i]).strip()) for i in range(lo, hi + 1) if i < len(raw_list) and str(raw_list[i]).strip()]
+            e["kind"] = "enum"
+            e["list"] = list_id([x for _, x in named])
+            rawmaps.append([r for r, _ in named])
+            e["rawmap"] = len(rawmaps) - 1
             return e
         if p.get("isBool") or (p["isDiscrete"] and hi - lo < 32 and tt not in PLAIN and tt not in OFFSET):
             e["kind"] = "enum"
@@ -332,22 +343,25 @@ def main():
     out.append("enum Kind { kInt, kEnum, kLabels, kOctave, kFx };")
     out.append("// byte: the byte of the single; mask/shift: the bits of it (mask 0: all of it). octave: the value is")
     out.append("// raw_min + index * step. fx/slot: a neutral effect knob (kFx), resolved by the effect type (kFxTable).")
+    out.append("// rawmap: an enum whose options are not its raw values in order (the XT's effect types: 0..7 and 32..34):")
+    out.append("// option i is kRawMaps[rawmap][i]; -1: the raw value is min + i")
     out.append("struct Param { const char *key, *name, *short_; int16_t byte; uint8_t mask, shift; int16_t min, max, offset; uint8_t kind;")
-    out.append("               int16_t list; int16_t raw_min, step; uint8_t fx, slot; };")
+    out.append("               int16_t list; int16_t raw_min, step; uint8_t fx, slot; int16_t rawmap; };")
     out.append("")
     for lk, li in sorted(lists.items(), key=lambda x: x[1]):
         L = json.loads(lk)
         out.append("static const char *const L%d[] = {%s};" % (li, ", ".join(c_str(x) for x in L)))
     out.append("static const char *const *const kLists[] = {%s};" % ", ".join("L%d" % i for i in range(len(lists))))
+    out.append("static const int16_t kRawMaps[][64] = {%s};" % (", ".join("{%s}" % ", ".join(str(x) for x in m) for m in rawmaps) or "{0}"))
     out.append("static const int kListLen[] = {%s};" %
                ", ".join(str(len(json.loads(lk))) for lk, _ in sorted(lists.items(), key=lambda x: x[1])))
     out.append("")
 
     def prow(e):
         kind = {"int": "kInt", "enum": "kEnum", "labels": "kLabels", "octave": "kOctave", "fx": "kFx"}[e["kind"]]
-        return "{%s, %s, %s, %d, %d, %d, %d, %d, %d, %s, %d, %d, %d, %d, %d}" % (
+        return "{%s, %s, %s, %d, %d, %d, %d, %d, %d, %s, %d, %d, %d, %d, %d, %d}" % (
             c_str(e["key"]), c_str(e["name"]), c_str(short_of(e["name"])), e["byte"], e["mask"], e["shift"], e["min"], e["max"],
-            e["offset"], kind, e["list"], e.get("raw_min", 0), e.get("step", 0), e.get("fx", 0), e.get("slot", 0))
+            e["offset"], kind, e["list"], e.get("raw_min", 0), e.get("step", 0), e.get("fx", 0), e.get("slot", 0), e.get("rawmap", -1))
 
     out.append("static const Param kParams[] = {")
     for e in params:
