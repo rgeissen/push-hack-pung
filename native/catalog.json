@@ -12,8 +12,35 @@
    "native": true,
    "modsrc": "pung-nodalred",
    "subcategory": "polysynth",
-   "tags": ["needs-assets", "vintage-emulation"],
+   "tags": [
+    "needs-assets",
+    "vintage-emulation"
+   ],
    "requires": "A Nord Lead 2X firmware: one .bin file of 524,288 bytes in the module's roms/ folder",
+   "deps": {
+    "libs/gearmulator": {
+     "local": "../schwung-je8086/libs/gearmulator",
+     "repo": "https://github.com/rgeissen/gearmulator.git",
+     "commit": "e72bedbc94682c4e0eaf000513ce03d7c75e0375"
+    }
+   }
+  },
+  {
+   "id": "ostirus",
+   "name": "OsTIrus",
+   "description": "Access Virus TI emulator (Gearmulator OsTIrus): TI, TI2 and Snow, with the factory banks the firmware carries",
+   "author": "dsp56300/gearmulator (Pung module: rgeissen)",
+   "component_type": "sound_generator",
+   "github_repo": "rgeissen/push-hack-pung",
+   "default_branch": "main",
+   "native": true,
+   "modsrc": "pung-ostirus",
+   "subcategory": "polysynth",
+   "tags": [
+    "needs-assets",
+    "vintage-emulation"
+   ],
+   "requires": "An Access Virus TI firmware: the firmware installer's .bin file (about 8 MB) in the module's roms/ folder",
    "deps": {
     "libs/gearmulator": {
      "local": "../schwung-je8086/libs/gearmulator",

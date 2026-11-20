@@ -1,0 +1,32 @@
+{
+    "id": "ostirus",
+    "name": "OsTIrus",
+    "abbrev": "TI",
+    "version": "0.1.0",
+    "description": "Access Virus TI emulator (Gearmulator OsTIrus): TI, TI2 and Snow from one firmware, with the factory banks it carries",
+    "author": "dsp56300/gearmulator (Pung module: rgeissen)",
+    "license": "GPL-3.0",
+    "origin": "pung",
+    "dsp": "dsp.so",
+    "api_version": 2,
+    "assets": [
+        {
+            "path": "roms",
+            "label": "Firmware",
+            "extensions": [".bin", ".BIN"],
+            "description": "Requires an Access Virus TI firmware: the .bin file of the firmware installer (about 8 MB). It holds the TI, the TI2 and the Snow, and their factory sounds. The loader finds it by content, so the name is free.",
+            "hint": "The emulator runs the Virus's two DSPs on its own threads, off the audio thread. One OsTIrus at a time.",
+            "files": [
+                {"filename": "virus_ti.bin", "label": "Virus TI firmware", "required": true}
+            ]
+        }
+    ],
+    "capabilities": {
+        "audio_out": true,
+        "audio_in": false,
+        "midi_in": true,
+        "midi_out": false,
+        "chainable": true,
+        "component_type": "sound_generator"
+    }
+}
