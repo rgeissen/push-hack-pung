@@ -12,6 +12,16 @@
 // folder is where they look (synthLib::RomLoader), so every form they
 // accept is accepted here (the microQ: the OS update mq_2_23.mid or a
 // 512 KB dump; the XT: a 256 KB dump, or its two halves).
+//
+// Sounds. A synth's sounds live in its flash, which an operating system
+// update does not carry: the microQ boots from mq_2_23.mid with none. They
+// come from sound sets, the synths' own sysex dumps as Waldorf published
+// them (the microQ's factory set: mQ_factory2001.mid), in the module's
+// sounds/ folder, read with gearmulator's MIDI file reader. Each set gives
+// its banks; their names and categories are the sound list, and a sound's
+// dump is what loading it sends to the edit buffer. Without a set, the
+// synth itself is asked (a full ROM dump may carry its flash). The sound in
+// the edit buffer, as a dump, is the device's state.
 
 #include <algorithm>
 #include <atomic>
@@ -26,6 +36,8 @@
 #include <thread>
 #include <vector>
 
+#include <dirent.h>
+
 #include <fcntl.h>
 #include <pthread.h>
 #include <sched.h>
@@ -36,6 +48,7 @@
 
 #include "dsp56kBase/logging.h"
 #include "synthLib/deviceException.h"
+#include "synthLib/midiToSysex.h"
 #include "synthLib/midiTypes.h"
 #include "synthLib/plugin.h"
 #include "synthLib/romLoader.h"
@@ -63,6 +76,30 @@ extern "C" {
 }
 
 namespace {
+
+// ---- the family: what differs between the two synths -------------------------
+// (gearmulator's parameterDescriptions_*.json, "midipackets")
+namespace fam {
+const uint8_t WALDORF = 0x3e, OMNI = 0x7f;
+const uint8_t REQUEST_SINGLE = 0x00, SINGLE_DUMP = 0x10;
+#if defined(WALDORF_MQ)
+const uint8_t MODEL = 0x10;  // microQ
+const int BANKS = 3, SOUNDS = 100; // A, B, C: the internal singles
+const uint8_t BANK0 = 0x40;  // MidiBufferNum::SingleBankA (a dump file may say 0x00: the deprecated A)
+const uint8_t EDIT = 0x20;   // MidiBufferNum::SingleEditBufferSingleMode
+const int DATA = 383;        // a single's bytes, between header and checksum
+const int NAME_AT = 363, NAME_LEN = 16, CAT_AT = 379, CAT_LEN = 4;
+const char *const BANK_NAME[] = {"Bank A", "Bank B", "Bank C"};
+#else
+// The Microwave II/XT's library is read once its dumps can be checked
+// against a booted synth: until then, no sound list.
+const uint8_t MODEL = 0x0e;
+const int BANKS = 0, SOUNDS = 0;
+const uint8_t BANK0 = 0x00, EDIT = 0x20;
+const int DATA = 0, NAME_AT = 0, NAME_LEN = 16, CAT_AT = -1, CAT_LEN = 0;
+const char *const BANK_NAME[] = {""};
+#endif
+} // namespace fam
 
 const host_api_v1_t *g_host = nullptr;
 
@@ -92,6 +129,9 @@ int64_t now_us() {
 const int RING = 4096;  // stereo frames, a power of two
 const int BLOCK = 64;   // frames the emulator renders at a time
 const int AHEAD = 320;  // frames kept ready for the host (7 ms)
+// A sound goes in as a dump, which the synth takes a moment over: the ring
+// is filled this far ahead first, and stays deep a moment after (OsTIrus).
+const int AHEAD_DUMP = 1280; // 29 ms
 
 struct Instance {
     std::string dir;
@@ -113,8 +153,20 @@ struct Instance {
     std::atomic<uint32_t> underruns{0};
     std::atomic<uint32_t> blockUs{0}, blockMaxUs{0};
 
+    // the sound and the library, under mu
     std::mutex mu;
     int gain = 100; // percent
+    struct Bank {
+        std::string name;
+        std::vector<std::vector<uint8_t>> sounds; // a dump's bytes each (empty: no sound there)
+    };
+    std::vector<Bank> banks; // the library
+    int bank = 0, preset = 0;
+    std::vector<uint8_t> single; // the sound in the edit buffer, as loaded and edited
+    bool haveSingle = false;
+    bool pendingLoad = false;             // a sound waits for the emulator to be up
+    std::atomic<bool> dumpPending{false}; // a sound waits for the ring to be deep enough
+    int64_t deepUntil = 0;                // the emulator thread's
     char status[160] = "Starting";
     char error[200] = "";
 };
@@ -138,6 +190,175 @@ inline float soft_limit(float v) {
     const float o = knee + room * std::tanh((a - knee) / room);
     return v < 0 ? -o : o;
 }
+
+// ---- sounds ----------------------------------------------------------------------
+
+std::string text_at(const std::vector<uint8_t> &d, int at, int n) {
+    std::string s;
+    if (at < 0) return s;
+    for (int i = 0; i < n && at + i < int(d.size()); i++) {
+        const char c = char(d[size_t(at + i)]);
+        s.push_back(c >= 32 && c < 127 ? c : ' ');
+    }
+    // the name field is padded to its 16 letters, the programmer's initials
+    // last ("Rain         WMF"): one space between words
+    std::string o;
+    for (char c : s)
+        if (c != ' ' || (!o.empty() && o.back() != ' ')) o.push_back(c);
+    while (!o.empty() && o.back() == ' ') o.pop_back();
+    return o;
+}
+
+std::string json_text(const std::string &s) {
+    std::string o;
+    for (char c : s) {
+        if (c == '"' || c == '\\') o.push_back('\\');
+        if (uint8_t(c) >= 32) o.push_back(c);
+    }
+    return o;
+}
+
+// mu held: the sound in the edit buffer, to the synth
+void send_single(Instance *in) {
+    if (!in->haveSingle || int(in->single.size()) != fam::DATA) return;
+    synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
+    ev.sysex = {0xf0, fam::WALDORF, fam::MODEL, fam::OMNI, fam::SINGLE_DUMP, fam::EDIT, 0x00};
+    ev.sysex.insert(ev.sysex.end(), in->single.begin(), in->single.end());
+    uint8_t sum = 0;
+    for (size_t i = 4; i < ev.sysex.size(); i++) sum = uint8_t(sum + ev.sysex[i]);
+    ev.sysex.push_back(sum & 0x7f);
+    ev.sysex.push_back(0xf7);
+    send(in, ev);
+}
+
+// mu held. A sound of the library becomes the device's sound.
+bool load_sound(Instance *in, int bank, int preset) {
+    in->bank = std::max(0, bank);
+    in->preset = std::max(0, preset);
+    if (in->banks.empty()) {
+        in->pendingLoad = true; // the library is not read yet: when it is
+        return false;
+    }
+    if (bank >= int(in->banks.size()) || preset >= int(in->banks[size_t(bank)].sounds.size())) return false;
+    const auto &d = in->banks[size_t(bank)].sounds[size_t(preset)];
+    if (d.empty()) return false;
+    in->single = d;
+    in->haveSingle = true;
+    if (in->loading.load()) in->pendingLoad = true;
+    else in->dumpPending = true; // the emulator thread sends it, with the ring deep (AHEAD_DUMP)
+    return true;
+}
+
+// A single dump: its bank letter (0 = A) and place, or false.
+template <typename Bytes> // a SysexBuffer (a pmr vector) or a plain one
+bool single_dump(const Bytes &s, int &bank, int &place) {
+    if (fam::DATA == 0 || s.size() != size_t(fam::DATA + 9) || s[1] != fam::WALDORF || s[2] != fam::MODEL || s[4] != fam::SINGLE_DUMP)
+        return false;
+    bank = s[5] >= fam::BANK0 ? s[5] - fam::BANK0 : s[5];
+    place = s[6];
+    return bank >= 0 && bank < 26 && place < 128;
+}
+
+// The sound sets in the module's sounds/ folder: every file's single dumps,
+// a bank per bank letter in it. With one set the banks are "Bank A"...;
+// with several, a bank says which set it comes from.
+std::vector<Instance::Bank> read_sets(const std::string &dir) {
+    std::vector<std::string> files;
+    if (DIR *d = opendir(dir.c_str())) {
+        while (dirent *e = readdir(d)) {
+            const std::string n = e->d_name;
+            if (n[0] == '.' || n.size() < 5) continue;
+            std::string x = n.substr(n.size() - 4);
+            for (auto &c : x) c = char(tolower(c));
+            if (x == ".mid" || x == ".syx") files.push_back(n);
+        }
+        closedir(d);
+    }
+    std::sort(files.begin(), files.end());
+    std::vector<Instance::Bank> out;
+    for (const auto &f : files) {
+        synthLib::SysexBufferList msgs;
+        if (!synthLib::MidiToSysex::extractSysexFromFile(msgs, dir + "/" + f)) continue;
+        std::vector<Instance::Bank> mine(26);
+        int n = 0;
+        for (const auto &m : msgs) {
+            int b, p;
+            if (!single_dump(m, b, p)) continue;
+            auto &snd = mine[size_t(b)].sounds;
+            if (snd.size() <= size_t(p)) snd.resize(size_t(p) + 1);
+            snd[size_t(p)].assign(m.begin() + 7, m.begin() + 7 + fam::DATA);
+            n++;
+        }
+        plog("%s: %d sounds", f.c_str(), n);
+        const std::string stem = f.substr(0, f.size() - 4);
+        for (int b = 0; b < 26; b++) {
+            if (mine[size_t(b)].sounds.empty()) continue;
+            mine[size_t(b)].name = std::string(files.size() > 1 ? stem + " " : "Bank ") + char('A' + b);
+            out.push_back(std::move(mine[size_t(b)]));
+        }
+    }
+    return out;
+}
+
+// The emulator thread's, before audio: the sets, else the synth is asked for
+// every sound, one at a time, and the emulator runs until each answer is in.
+void read_library(Instance *in) {
+    set_status(in, "Reading the sounds");
+    auto sets = read_sets(in->dir + "/sounds");
+    if (!sets.empty()) {
+        std::lock_guard<std::mutex> l(in->mu);
+        in->banks = std::move(sets);
+        return;
+    }
+    if (fam::BANKS == 0) return;
+    float buf[12][BLOCK];
+    synthLib::TAudioInputs ins{};
+    synthLib::TAudioOutputs outs{};
+    for (size_t i = 0; i < outs.size() && i < 12; i++) outs[i] = buf[i];
+    float silent[BLOCK] = {0};
+    for (size_t i = 0; i < ins.size(); i++) ins[i] = silent;
+    std::vector<synthLib::SMidiEvent> midiOut;
+    std::vector<Instance::Bank> lib(size_t(fam::BANKS));
+    for (int b = 0; b < fam::BANKS; b++) {
+        lib[size_t(b)].name = fam::BANK_NAME[b];
+        lib[size_t(b)].sounds.resize(size_t(fam::SOUNDS));
+    }
+    const int64_t t0 = now_us();
+    int got = 0;
+    for (int b = 0; b < fam::BANKS && !in->quit.load() && !(got == 0 && b > 0); b++) {
+        char st[80];
+        snprintf(st, sizeof(st), "Reading the sounds: %s", fam::BANK_NAME[b]);
+        set_status(in, st);
+        for (int p = 0; p < fam::SOUNDS && !in->quit.load() && !(got == 0 && p > 0); p++) { // nothing for the first: nothing there
+            synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
+            ev.sysex = {0xf0, fam::WALDORF, fam::MODEL, fam::OMNI, fam::REQUEST_SINGLE, uint8_t(fam::BANK0 + b), uint8_t(p), 0xf7};
+            send(in, ev);
+            // the first answer waits for the OS to settle; the others come quickly
+            const int limit = got == 0 ? 44100 * 10 / BLOCK : 44100 * 2 / BLOCK;
+            bool done = false;
+            for (int k = 0; k < limit && !done && !in->quit.load(); k++) {
+                in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
+                midiOut.clear();
+                in->plugin->getMidiOut(midiOut);
+                for (const auto &e : midiOut) {
+                    const auto &s = e.sysex;
+                    int rb, rp;
+                    if (!single_dump(s, rb, rp) || rb >= fam::BANKS || rp >= fam::SOUNDS) continue;
+                    lib[size_t(rb)].sounds[size_t(rp)].assign(s.begin() + 7, s.begin() + 7 + fam::DATA);
+                    if (rb == b && rp == p) done = true;
+                }
+            }
+            if (done) got++;
+            else plog("no answer for %s sound %d", fam::BANK_NAME[b], p + 1);
+        }
+    }
+    plog("the synth gave %d sounds in %d ms", got, int((now_us() - t0) / 1000));
+    if (got == 0) return; // no sound set, and none in the synth: no list
+    std::lock_guard<std::mutex> l(in->mu);
+    in->banks = std::move(lib);
+}
+
+// ---- the emulator ---------------------------------------------------------------
 
 void emu_main(Instance *in) {
     pthread_setname_np(pthread_self(), SYNTH_ID);
@@ -193,8 +414,14 @@ void emu_main(Instance *in) {
         return;
     }
     plog("booted in %d ms", int((now_us() - t0) / 1000));
+    read_library(in);
     {
         std::lock_guard<std::mutex> l(in->mu);
+        // a sound a Set gave back, else the one asked for, else the first
+        if (!in->haveSingle) load_sound(in, in->bank, in->preset);
+        if (!in->haveSingle) load_sound(in, 0, 0);
+        in->pendingLoad = false;
+        if (in->haveSingle) in->dumpPending = true;
         snprintf(in->status, sizeof(in->status), SYNTH_HW);
         in->loading = 0;
     }
@@ -209,7 +436,14 @@ void emu_main(Instance *in) {
 
     while (!in->quit.load(std::memory_order_relaxed)) {
         uint32_t fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
-        while (fill < uint32_t(AHEAD) && !in->quit.load(std::memory_order_relaxed)) {
+        if (in->dumpPending.load() && fill >= uint32_t(AHEAD_DUMP)) {
+            std::lock_guard<std::mutex> l(in->mu);
+            in->dumpPending = false;
+            send_single(in);
+            in->deepUntil = now_us() + 2500000;
+        }
+        const uint32_t target = in->dumpPending.load() || now_us() < in->deepUntil ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
+        while (fill < target && !in->quit.load(std::memory_order_relaxed)) {
             const int64_t b0 = now_us();
             for (auto &b : buf) memset(b, 0, sizeof(b));
             in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
@@ -263,6 +497,46 @@ void stop(Instance *in) {
     in->rd = 0;
 }
 
+// ---- state ---------------------------------------------------------------------
+
+bool json_field(const char *json, const char *key, std::string &out) {
+    char pat[64];
+    snprintf(pat, sizeof(pat), "\"%s\":", key);
+    const char *p = strstr(json, pat);
+    if (!p) return false;
+    p += strlen(pat);
+    out.clear();
+    if (*p == '"') {
+        for (p++; *p && *p != '"'; p++) out.push_back(*p);
+    } else {
+        for (; *p && *p != ',' && *p != '}'; p++) out.push_back(*p);
+    }
+    return true;
+}
+
+int hexv(char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1; }
+
+// mu held
+void set_state(Instance *in, const char *val) {
+    std::string s;
+    if (json_field(val, "gain", s)) in->gain = std::max(1, std::min(200, atoi(s.c_str())));
+    if (json_field(val, "bank", s)) in->bank = std::max(0, atoi(s.c_str()));
+    if (json_field(val, "preset", s)) in->preset = std::max(0, atoi(s.c_str()));
+    std::string hex;
+    if (fam::DATA > 0 && json_field(val, "single", hex) && hex.size() == size_t(fam::DATA) * 2) {
+        std::vector<uint8_t> d(size_t(fam::DATA));
+        for (size_t i = 0; i < d.size(); i++) {
+            const int a = hexv(hex[i * 2]), b = hexv(hex[i * 2 + 1]);
+            if (a < 0 || b < 0) return;
+            d[i] = uint8_t(a * 16 + b);
+        }
+        in->single = std::move(d);
+        in->haveSingle = true;
+        if (in->loading.load()) in->pendingLoad = true;
+        else in->dumpPending = true;
+    }
+}
+
 // ---- the plugin API -------------------------------------------------------------
 
 void *v2_create(const char *module_dir, const char *) {
@@ -307,7 +581,45 @@ void v2_set_param(void *instance, const char *key, const char *val) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !val) return;
     std::lock_guard<std::mutex> l(in->mu);
-    if (!strcmp(key, "gain")) in->gain = std::max(1, std::min(200, atoi(val)));
+    if (!strcmp(key, "state")) {
+        set_state(in, val);
+    } else if (!strcmp(key, "preset")) {
+        char *end = nullptr;
+        const int n = int(strtol(val, &end, 10));
+        if (end != val) load_sound(in, in->bank, n);
+    } else if (!strcmp(key, "bank_index") || !strcmp(key, "bank_select") || !strcmp(key, "bank")) {
+        int n = -1;
+        for (size_t i = 0; i < in->banks.size(); i++)
+            if (in->banks[i].name == val) n = int(i);
+        if (n < 0) {
+            char *end = nullptr;
+            n = int(strtol(val, &end, 10));
+            if (end == val) return;
+        }
+        if (n == in->bank && in->haveSingle) return;
+        load_sound(in, n, 0); // as on the synth: a bank's first sound, so the list and the sound agree
+    } else if (!strcmp(key, "gain")) {
+        in->gain = std::max(1, std::min(200, atoi(val)));
+    } else if (!strcmp(key, "all_notes_off")) {
+        synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, 0xb0, 123, 0);
+        send(in, ev);
+    }
+}
+
+#define AP(...)                                                              \
+    do {                                                                     \
+        if (off < len) off += snprintf(buf + off, size_t(len - off), __VA_ARGS__); \
+    } while (0)
+
+// mu held: a sound's name in the library ("" when there is none)
+std::string lib_name(const Instance *in, int bank, int i) {
+    if (bank < 0 || bank >= int(in->banks.size()) || i < 0 || i >= int(in->banks[size_t(bank)].sounds.size())) return std::string();
+    return text_at(in->banks[size_t(bank)].sounds[size_t(i)], fam::NAME_AT, fam::NAME_LEN);
+}
+
+// mu held: the sounds in the current bank
+int bank_size(const Instance *in) {
+    return in->bank >= 0 && in->bank < int(in->banks.size()) ? int(in->banks[size_t(in->bank)].sounds.size()) : 0;
 }
 
 int v2_get_param(void *instance, const char *key, char *buf, int len) {
@@ -317,13 +629,68 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
         return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u", in->underruns.load(), in->blockUs.load(),
                         in->blockMaxUs.exchange(0), in->wr.load() - in->rd.load());
     std::lock_guard<std::mutex> l(in->mu);
+    const int nb = int(in->banks.size()), ns = bank_size(in);
     if (!strcmp(key, "status")) return snprintf(buf, size_t(len), "%s", in->status);
+    if (!strcmp(key, "load_error")) return snprintf(buf, size_t(len), "%s", in->error);
     if (!strcmp(key, "gain")) return snprintf(buf, size_t(len), "%d", in->gain);
-    if (!strcmp(key, "chain_params"))
-        return snprintf(buf, size_t(len), "[{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}]");
-    if (!strcmp(key, "ui_hierarchy"))
-        return snprintf(buf, size_t(len), "{\"modes\":null,\"levels\":{\"root\":{\"label\":\"" SYNTH_NAME "\",\"children\":null,"
-                                          "\"knobs\":[\"gain\"],\"params\":[\"gain\"]}}}");
+    if (!strcmp(key, "preset")) return snprintf(buf, size_t(len), "%d", in->preset);
+    if (!strcmp(key, "preset_count")) return snprintf(buf, size_t(len), "%d", ns);
+    if (!strcmp(key, "preset_name")) {
+        // the name the sound itself carries: also right for a sound a Set gave back
+        if (in->haveSingle) return snprintf(buf, size_t(len), "%s", text_at(in->single, fam::NAME_AT, fam::NAME_LEN).c_str());
+        return snprintf(buf, size_t(len), "%s", lib_name(in, in->bank, in->preset).c_str());
+    }
+    if (!strcmp(key, "category"))
+        return snprintf(buf, size_t(len), "%s", in->haveSingle ? text_at(in->single, fam::CAT_AT, fam::CAT_LEN).c_str() : "");
+    if (!strcmp(key, "bank_index") || !strcmp(key, "bank_select") || !strcmp(key, "bank")) return snprintf(buf, size_t(len), "%d", in->bank);
+    if (!strcmp(key, "bank_count")) return snprintf(buf, size_t(len), "%d", nb);
+    if (!strcmp(key, "bank_name")) return snprintf(buf, size_t(len), "%s", in->bank < nb ? json_text(in->banks[size_t(in->bank)].name).c_str() : "");
+    if (!strcmp(key, "bank_list")) {
+        int off = 0;
+        AP("[");
+        for (int i = 0; i < nb; i++) AP("%s\"%s\"", i ? "," : "", json_text(in->banks[size_t(i)].name).c_str());
+        AP("]");
+        return off < len ? off : -1;
+    }
+    if (!strcmp(key, "preset_names")) {
+        int off = 0;
+        AP("[");
+        for (int i = 0; i < ns; i++) AP("%s\"%s\"", i ? "," : "", json_text(lib_name(in, in->bank, i)).c_str());
+        AP("]");
+        return off < len ? off : -1;
+    }
+    if (!strncmp(key, "preset_name_", 12)) {
+        const int i = atoi(key + 12);
+        return snprintf(buf, size_t(len), "%s", lib_name(in, in->bank, i).c_str());
+    }
+    if (!strcmp(key, "chain_params")) {
+        int off = 0;
+        AP("[{\"key\":\"preset\",\"name\":\"Sound\",\"type\":\"int\",\"min\":0,\"max\":127}");
+        AP(",{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}]");
+        return off < len ? off : -1;
+    }
+    if (!strcmp(key, "ui_hierarchy")) {
+        int off = 0;
+        AP("{\"modes\":null,\"levels\":{\"root\":{\"list_param\":\"preset\",\"count_param\":\"preset_count\","
+           "\"name_param\":\"preset_name\",\"children\":null,\"knobs\":[\"gain\"],"
+           "\"params\":[{\"level\":\"banks\",\"label\":\"Bank\"},{\"level\":\"synth\",\"label\":\"Synth\"}]},");
+        AP("\"banks\":{\"label\":\"Bank\",\"items_param\":\"bank_list\",\"select_param\":\"bank_select\","
+           "\"navigate_to\":\"root\",\"children\":null,\"knobs\":[],\"params\":[]},");
+        AP("\"synth\":{\"label\":\"Synth\",\"children\":null,\"knobs\":[\"gain\"],"
+           "\"params\":[{\"key\":\"gain\",\"label\":\"Output Gain\"}]}}}");
+        return off < len ? off : -1;
+    }
+    if (!strcmp(key, "state")) {
+        int off = 0;
+        AP("{\"v\":1,\"gain\":%d,\"bank\":%d,\"preset\":%d", in->gain, in->bank, in->preset);
+        if (in->haveSingle) {
+            AP(",\"single\":\"");
+            for (uint8_t c : in->single) AP("%02x", c);
+            AP("\"");
+        }
+        AP("}");
+        return off < len ? off : -1;
+    }
     return -1;
 }
 

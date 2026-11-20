@@ -13,11 +13,42 @@
         {
             "path": "roms",
             "label": "Firmware",
-            "extensions": [".mid", ".MID", ".bin", ".BIN"],
+            "extensions": [
+                ".mid",
+                ".MID",
+                ".bin",
+                ".BIN"
+            ],
             "description": "Requires the Waldorf microQ operating system: the OS update mq_2_23.mid (about 330 KB), or a 512 KB dump of the microQ's ROM. The loader finds it by content, so the name is free.",
             "hint": "The emulator runs the microQ's 68000 and its DSP on its own threads, off the audio thread. One Vavra at a time.",
             "files": [
-                {"filename": "mq_2_23.mid", "label": "microQ operating system", "min_size": 300000, "required": true}
+                {
+                    "filename": "mq_2_23.mid",
+                    "label": "microQ operating system",
+                    "min_size": 300000,
+                    "required": true
+                }
+            ]
+        },
+        {
+            "path": "sounds",
+            "label": "Sounds",
+            "optional": true,
+            "extensions": [
+                ".mid",
+                ".MID",
+                ".syx",
+                ".SYX"
+            ],
+            "description": "Sound sets: the microQ's own sysex dumps, as Waldorf published them. The factory set is mQ_factory2001.mid (300 sounds in banks A to C), from the microQ OS 2.22 package. Every set added here is a bank in the sound list.",
+            "hint": "An operating system update carries no sounds: without a set, Vavra has none to choose from.",
+            "files": [
+                {
+                    "filename": "mQ_factory2001.mid",
+                    "label": "microQ factory sounds (2001)",
+                    "size": 128030,
+                    "required": false
+                }
             ]
         }
     ],
