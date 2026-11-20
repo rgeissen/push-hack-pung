@@ -1,0 +1,32 @@
+{
+    "id": "xenia",
+    "name": "Xenia",
+    "abbrev": "XT",
+    "version": "0.1.0",
+    "description": "Waldorf Microwave II/XT emulator (Gearmulator Xenia)",
+    "author": "dsp56300/gearmulator (Pung module: rgeissen)",
+    "license": "GPL-3.0",
+    "origin": "pung",
+    "dsp": "dsp.so",
+    "api_version": 2,
+    "assets": [
+        {
+            "path": "roms",
+            "label": "Firmware",
+            "extensions": [".bin", ".BIN", ".mid", ".MID"],
+            "description": "Requires a Waldorf Microwave II/XT ROM: a 256 KB dump, or its two 128 KB halves. An OS update .mid alone is not enough (it lacks the wavetables); beside a ROM it updates it. The loader finds them by content, so the names are free.",
+            "hint": "The emulator runs the Microwave's 68000 and its DSP on its own threads, off the audio thread. One Xenia at a time.",
+            "files": [
+                {"filename": "xt.bin", "label": "Microwave II/XT ROM", "min_size": 131072, "required": true}
+            ]
+        }
+    ],
+    "capabilities": {
+        "audio_out": true,
+        "audio_in": false,
+        "midi_in": true,
+        "midi_out": false,
+        "chainable": true,
+        "component_type": "sound_generator"
+    }
+}

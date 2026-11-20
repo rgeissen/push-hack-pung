@@ -48,6 +48,54 @@
      "commit": "e72bedbc94682c4e0eaf000513ce03d7c75e0375"
     }
    }
+  },
+  {
+   "id": "vavra",
+   "name": "Vavra",
+   "description": "Waldorf microQ emulator (Gearmulator Vavra)",
+   "author": "dsp56300/gearmulator (Pung module: rgeissen)",
+   "component_type": "sound_generator",
+   "github_repo": "rgeissen/push-hack-pung",
+   "default_branch": "main",
+   "native": true,
+   "modsrc": "pung-vavra",
+   "subcategory": "polysynth",
+   "tags": [
+    "needs-assets",
+    "vintage-emulation"
+   ],
+   "requires": "The Waldorf microQ operating system: the OS update mq_2_23.mid, or a 512 KB microQ ROM, in the module's roms/ folder",
+   "deps": {
+    "libs/gearmulator": {
+     "local": "../schwung-je8086/libs/gearmulator",
+     "repo": "https://github.com/rgeissen/gearmulator.git",
+     "commit": "e72bedbc94682c4e0eaf000513ce03d7c75e0375"
+    }
+   }
+  },
+  {
+   "id": "xenia",
+   "name": "Xenia",
+   "description": "Waldorf Microwave II/XT emulator (Gearmulator Xenia)",
+   "author": "dsp56300/gearmulator (Pung module: rgeissen)",
+   "component_type": "sound_generator",
+   "github_repo": "rgeissen/push-hack-pung",
+   "default_branch": "main",
+   "native": true,
+   "modsrc": "pung-xenia",
+   "subcategory": "polysynth",
+   "tags": [
+    "needs-assets",
+    "vintage-emulation"
+   ],
+   "requires": "A Waldorf Microwave II/XT ROM: a 256 KB dump or its two 128 KB halves, in the module's roms/ folder",
+   "deps": {
+    "libs/gearmulator": {
+     "local": "../schwung-je8086/libs/gearmulator",
+     "repo": "https://github.com/rgeissen/gearmulator.git",
+     "commit": "e72bedbc94682c4e0eaf000513ce03d7c75e0375"
+    }
+   }
   }
  ]
 }

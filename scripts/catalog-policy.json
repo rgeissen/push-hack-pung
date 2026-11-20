@@ -9,6 +9,8 @@
   "publish": {},
   "withhold": {
     "stacks": "its repository is still private: Pung publishes the source of what it ships (take this line out when rgeissen/schwung-stacks is public)",
-    "ostirus": "not finished: the engine and the factory sounds are there, the parameters and the screens are not (take this line out when it is ready for a release)"
+    "ostirus": "not finished: the engine and the factory sounds are there, the parameters and the screens are not (take this line out when it is ready for a release)",
+    "vavra": "not finished: the engine is there, the sounds, the parameters and the screens are not (take this line out when it is ready for a release)",
+    "xenia": "not finished: the engine is there, the sounds, the parameters and the screens are not (take this line out when it is ready for a release)"
   }
 }
