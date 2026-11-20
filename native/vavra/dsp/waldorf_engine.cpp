@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <strings.h>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -53,6 +54,8 @@
 #include "synthLib/plugin.h"
 #include "synthLib/romLoader.h"
 
+#include <unordered_map>
+
 #if defined(WALDORF_MQ)
 #include "mqLib/device.h"
 typedef mqLib::Device SynthDevice;
@@ -60,6 +63,9 @@ typedef mqLib::Device SynthDevice;
 #define SYNTH_NAME "Vavra"
 #define SYNTH_HW "microQ"
 #define FIRMWARE_HINT "the microQ operating system mq_2_23.mid, or a 512 KB microQ ROM"
+#include "mq_params.h" // tools/gen_params.py
+namespace tbl = mq;
+#define HAVE_PARAMS 1
 #elif defined(WALDORF_XT)
 #include "xtLib/xtDevice.h"
 typedef xt::Device SynthDevice;
@@ -67,6 +73,7 @@ typedef xt::Device SynthDevice;
 #define SYNTH_NAME "Xenia"
 #define SYNTH_HW "Microwave II/XT"
 #define FIRMWARE_HINT "a 256 KB Microwave II/XT ROM (or its two 128 KB halves)"
+#define HAVE_PARAMS 0 // its table comes with a ROM to check it against
 #else
 #error "WALDORF_MQ or WALDORF_XT"
 #endif
@@ -81,7 +88,7 @@ namespace {
 // (gearmulator's parameterDescriptions_*.json, "midipackets")
 namespace fam {
 const uint8_t WALDORF = 0x3e, OMNI = 0x7f;
-const uint8_t REQUEST_SINGLE = 0x00, SINGLE_DUMP = 0x10;
+const uint8_t REQUEST_SINGLE = 0x00, SINGLE_DUMP = 0x10, SINGLE_PARAM = 0x20;
 #if defined(WALDORF_MQ)
 const uint8_t MODEL = 0x10;  // microQ
 const int BANKS = 3, SOUNDS = 100; // A, B, C: the internal singles
@@ -497,6 +504,113 @@ void stop(Instance *in) {
     in->rd = 0;
 }
 
+
+// ---- parameters ------------------------------------------------------------------
+// Every one is bits of a byte of the single (tbl::Param: byte, mask, shift),
+// read from the sound as loaded and sent to the synth as a single parameter
+// change when it is turned, the whole byte, so the dump is always the sound
+// as it is. An effect knob (kFx) is whatever the slot's effect type makes it.
+#if HAVE_PARAMS
+const tbl::Param *find_param(const char *key) {
+    static std::unordered_map<std::string, int> idx;
+    if (idx.empty())
+        for (int i = 0; i < tbl::kNumParams; i++) idx.emplace(tbl::kParams[i].key, i);
+    auto it = idx.find(key);
+    return it == idx.end() ? nullptr : &tbl::kParams[it->second];
+}
+
+// mu held: the effect type a slot holds
+int fx_type(const Instance *in, int fx) {
+    static const tbl::Param *t1 = find_param("fx1_type"), *t2 = find_param("fx2_type");
+    const tbl::Param *t = fx == 1 ? t1 : t2;
+    return t && in->haveSingle ? in->single[size_t(t->byte)] : 0;
+}
+
+// mu held: what a knob is now (an effect knob: by the type; nullptr: nothing)
+const tbl::Param *resolve(const Instance *in, const tbl::Param *p) {
+    if (p->kind != tbl::kFx) return p;
+    const int t = fx_type(in, p->fx);
+    for (int i = 0; i < tbl::kNumFxTypes; i++) {
+        const auto &f = tbl::kFxTable[i];
+        if (f.fx == p->fx && f.type == t) return p->slot >= 1 && p->slot <= f.n ? &f.p[p->slot - 1] : nullptr;
+    }
+    return nullptr;
+}
+
+int raw_of(const Instance *in, const tbl::Param &p) {
+    int v = in->single[size_t(p.byte)];
+    if (p.mask) v = (v >> p.shift) & p.mask;
+    return v;
+}
+
+// a raw value as Pung reads it: an enum's index, an octave's, a number as shown
+int value_of(const tbl::Param &p, int raw) {
+    switch (p.kind) {
+    case tbl::kEnum: return std::max(0, std::min(int(p.max), raw) - int(p.min));
+    case tbl::kOctave: return p.step ? std::max(0, (raw - p.raw_min) / p.step) : 0;
+    default: return raw - p.offset;
+    }
+}
+
+int raw_from(const tbl::Param &p, int v) {
+    switch (p.kind) {
+    case tbl::kEnum: return std::max(int(p.min), std::min(int(p.max), v + p.min));
+    case tbl::kOctave: return p.raw_min + std::max(0, std::min(int(p.max), v)) * p.step;
+    default: return std::max(int(p.min), std::min(int(p.max), v + p.offset));
+    }
+}
+
+// the text a value shows ("" for a plain number)
+std::string text_of(const tbl::Param &p, int raw) {
+    if (p.list < 0) return std::to_string(raw - p.offset);
+    const int i = p.kind == tbl::kOctave ? value_of(p, raw) : raw - p.min;
+    return i >= 0 && i < tbl::kListLen[p.list] ? tbl::kLists[p.list][i] : std::to_string(raw);
+}
+
+// mu held: a byte of the single to the synth
+void send_byte(Instance *in, int idx) {
+    synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
+    ev.sysex = {0xf0, fam::WALDORF, fam::MODEL, fam::OMNI, fam::SINGLE_PARAM, 0x00, uint8_t(idx >> 7), uint8_t(idx & 0x7f),
+                uint8_t(in->single[size_t(idx)] & 0x7f), 0xf7};
+    send(in, ev);
+}
+
+// mu held
+void param_set(Instance *in, const tbl::Param &knob, const char *val) {
+    const tbl::Param *p = resolve(in, &knob);
+    if (!p) return;
+    char *end = nullptr;
+    long v = strtol(val, &end, 10);
+    if (end == val) { // an option by its name
+        if (p->list < 0) return;
+        v = -1;
+        for (int i = 0; i < tbl::kListLen[p->list]; i++)
+            if (!strcasecmp(tbl::kLists[p->list][i], val)) v = i;
+        if (v < 0) return;
+        if (p->kind == tbl::kLabels) v += p->min - p->offset;
+    }
+    const int raw = raw_from(*p, int(v));
+    uint8_t &b = in->single[size_t(p->byte)];
+    if (p->mask) b = uint8_t((b & ~(p->mask << p->shift)) | ((raw & p->mask) << p->shift));
+    else b = uint8_t(raw);
+    if (!in->loading.load()) send_byte(in, p->byte);
+}
+
+// mu held: an effect slot's knobs as the type makes them, "|" between
+std::string fx_row(const Instance *in, int fx, bool values) {
+    std::string o;
+    for (int slot = 1; slot <= 14; slot++) {
+        char key[16];
+        snprintf(key, sizeof(key), "fx%d_p%d", fx, slot);
+        const tbl::Param *k = find_param(key);
+        const tbl::Param *p = k ? resolve(in, k) : nullptr;
+        if (slot > 1) o += "|";
+        if (p) o += values ? text_of(*p, raw_of(in, *p)) : p->name;
+    }
+    return o;
+}
+#endif
+
 // ---- state ---------------------------------------------------------------------
 
 bool json_field(const char *json, const char *key, std::string &out) {
@@ -600,6 +714,10 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         load_sound(in, n, 0); // as on the synth: a bank's first sound, so the list and the sound agree
     } else if (!strcmp(key, "gain")) {
         in->gain = std::max(1, std::min(200, atoi(val)));
+#if HAVE_PARAMS
+    } else if (const tbl::Param *p = find_param(key)) {
+        if (in->haveSingle) param_set(in, *p, val);
+#endif
     } else if (!strcmp(key, "all_notes_off")) {
         synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, 0xb0, 123, 0);
         send(in, ev);
@@ -663,14 +781,101 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
         const int i = atoi(key + 12);
         return snprintf(buf, size_t(len), "%s", lib_name(in, in->bank, i).c_str());
     }
+#if HAVE_PARAMS
+    if (const tbl::Param *k = find_param(key)) {
+        const tbl::Param *p = in->haveSingle ? resolve(in, k) : nullptr;
+        if (!in->haveSingle) return -1;
+        return snprintf(buf, size_t(len), "%d", p ? value_of(*p, raw_of(in, *p)) : 0);
+    }
+    if (!strcmp(key, "fx1_labels") || !strcmp(key, "fx2_labels") || !strcmp(key, "fx1_values") || !strcmp(key, "fx2_values"))
+        return snprintf(buf, size_t(len), "%s", in->haveSingle ? fx_row(in, key[2] - '0', key[4] == 'v').c_str() : "");
+#endif
     if (!strcmp(key, "chain_params")) {
         int off = 0;
         AP("[{\"key\":\"preset\",\"name\":\"Sound\",\"type\":\"int\",\"min\":0,\"max\":127}");
-        AP(",{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}]");
+        AP(",{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}");
+#if HAVE_PARAMS
+        for (int i = 0; i < tbl::kNumParams; i++) {
+            const tbl::Param &p = tbl::kParams[i];
+            AP(",{\"key\":\"%s\",\"name\":\"%s\"", p.key, json_text(p.name).c_str());
+            if (p.short_[0]) AP(",\"short\":\"%s\"", json_text(p.short_).c_str());
+            if (p.kind == tbl::kEnum && p.list >= 0) {
+                AP(",\"type\":\"enum\",\"options\":[");
+                for (int j = 0; j < tbl::kListLen[p.list]; j++) AP("%s\"%s\"", j ? "," : "", json_text(tbl::kLists[p.list][j]).c_str());
+                AP("]}");
+            } else if (p.kind == tbl::kFx) {
+                AP(",\"type\":\"int\",\"min\":0,\"max\":127}");
+            } else if (p.kind == tbl::kOctave) {
+                AP(",\"type\":\"int\",\"min\":0,\"max\":%d,\"value_labels\":\"L%d\"}", p.max, p.list);
+            } else {
+                AP(",\"type\":\"int\",\"min\":%d,\"max\":%d", p.min - p.offset, p.max - p.offset);
+                if (p.kind == tbl::kLabels && p.list >= 0) AP(",\"value_labels\":\"L%d\"", p.list);
+                AP("}");
+            }
+        }
+#endif
+        AP("]");
         return off < len ? off : -1;
     }
-    if (!strcmp(key, "ui_hierarchy")) {
+#if HAVE_PARAMS
+    // the value texts the numbers name (chain_params "value_labels": "L<n>")
+    if (!strcmp(key, "value_lists")) {
+        std::vector<bool> used(sizeof(tbl::kListLen) / sizeof(tbl::kListLen[0]));
+        for (int i = 0; i < tbl::kNumParams; i++)
+            if ((tbl::kParams[i].kind == tbl::kLabels || tbl::kParams[i].kind == tbl::kOctave) && tbl::kParams[i].list >= 0)
+                used[size_t(tbl::kParams[i].list)] = true;
         int off = 0;
+        AP("{");
+        bool first = true;
+        for (size_t l = 0; l < used.size(); l++) {
+            if (!used[l]) continue;
+            AP("%s\"L%d\":[", first ? "" : ",", int(l));
+            first = false;
+            for (int j = 0; j < tbl::kListLen[l]; j++) AP("%s\"%s\"", j ? "," : "", json_text(tbl::kLists[l][j]).c_str());
+            AP("]");
+        }
+        AP("}");
+        return off < len ? off : -1;
+    }
+#endif
+    if (!strcmp(key, "ui_hierarchy")) {
+        // the root is the sound list, its knobs the first page; every page a
+        // level of eight knobs, in the layout's order (kPages)
+        int off = 0;
+#if HAVE_PARAMS
+        auto knobs = [&](const tbl::Page &pg) {
+            AP("[");
+            bool f = true;
+            for (const char *k : pg.keys)
+                if (k) {
+                    AP("%s\"%s\"", f ? "" : ",", k);
+                    f = false;
+                }
+            AP("]");
+        };
+        AP("{\"modes\":null,\"levels\":{\"root\":{\"list_param\":\"preset\",\"count_param\":\"preset_count\","
+           "\"name_param\":\"preset_name\",\"children\":null,\"knobs\":");
+        knobs(tbl::kPages[0]);
+        AP(",\"params\":[{\"level\":\"banks\",\"label\":\"Bank\"}");
+        for (int i = 1; i < tbl::kNumPages; i++) AP(",{\"level\":\"p%d\",\"label\":\"%s\"}", i, tbl::kPages[i].label);
+        AP(",{\"level\":\"synth\",\"label\":\"Synth\"}]}");
+        AP(",\"banks\":{\"label\":\"Bank\",\"items_param\":\"bank_list\",\"select_param\":\"bank_select\","
+           "\"navigate_to\":\"root\",\"children\":null,\"knobs\":[],\"params\":[]}");
+        for (int i = 1; i < tbl::kNumPages; i++) {
+            AP(",\"p%d\":{\"label\":\"%s\",\"children\":null,\"knobs\":", i, tbl::kPages[i].label);
+            knobs(tbl::kPages[i]);
+            AP(",\"params\":[");
+            bool f = true;
+            for (const char *k : tbl::kPages[i].keys)
+                if (const tbl::Param *p = k ? find_param(k) : nullptr) {
+                    AP("%s{\"key\":\"%s\",\"label\":\"%s\"}", f ? "" : ",", k, json_text(p->name).c_str());
+                    f = false;
+                }
+            AP("]}");
+        }
+        AP(",\"synth\":{\"label\":\"Synth\",\"children\":null,\"knobs\":[\"gain\"],"
+           "\"params\":[{\"key\":\"gain\",\"label\":\"Output Gain\"}]}}}");
+#else
         AP("{\"modes\":null,\"levels\":{\"root\":{\"list_param\":\"preset\",\"count_param\":\"preset_count\","
            "\"name_param\":\"preset_name\",\"children\":null,\"knobs\":[\"gain\"],"
            "\"params\":[{\"level\":\"banks\",\"label\":\"Bank\"},{\"level\":\"synth\",\"label\":\"Synth\"}]},");
@@ -678,6 +883,7 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
            "\"navigate_to\":\"root\",\"children\":null,\"knobs\":[],\"params\":[]},");
         AP("\"synth\":{\"label\":\"Synth\",\"children\":null,\"knobs\":[\"gain\"],"
            "\"params\":[{\"key\":\"gain\",\"label\":\"Output Gain\"}]}}}");
+#endif
         return off < len ? off : -1;
     }
     if (!strcmp(key, "state")) {
