@@ -252,3 +252,32 @@ instance at a time (`/dev/shm/pung-ostirus.lock`).
   patch's names, beside cutoff, resonance, filter envelope and the two sends. Above them the display
   and what the patch is made of: oscillator models, filter modes and routing, the effects that are on.
 - **Not yet:** the TI's multi mode (16 parts), the vocoder and input (an instrument has no input).
+
+## Vavra (Waldorf microQ)
+
+gearmulator's microQ (`mqLib`): a 68000 running Waldorf's OS beside one DSP56300, about 22% of one core
+on a Push. Its engine is `waldorf_engine.cpp`, shared with Xenia (the Microwave II/XT, `xtLib`, which
+waits for a ROM dump): OsTIrus's design, the emulator on its own thread into a ring, one instance at a
+time (`/dev/shm/pung-vavra.lock`), the firmware found by gearmulator's own loader in `roms/`.
+
+- **The OS carries no sounds.** A microQ keeps them in flash, so they come from sound sets: Waldorf's
+  sysex dumps in `sounds/` (the factory set `mQ_factory2001.mid`, 300 sounds), read with gearmulator's
+  MIDI file reader. A sound loads as a dump into the edit buffer, with the ring deep (as OsTIrus).
+- **A parameter is bits of a byte.** 341 of them (`tools/gen_params.py` writes `dsp/mq_params.h` and the
+  page lists in `push_ui.js`); a turned knob sends the whole byte, so a parameter sharing it (voice mode
+  and unison, an envelope's mode and trigger, an arp step's type, glide and accent) is kept.
+- **The effects reuse their bytes.** What byte 130 means depends on the effect in the slot, so the
+  effect knobs are neutral (`fx1_p1`..) and a table per effect type says what each is. In Live they are
+  "FX1 Param N"; the effects panel names them (`fx1_labels`, `fx1_values`).
+- **The front panel is the edit matrix**, seven rows of eight, the lower buttons lighting a row
+  (`draws_tabs`). Live keeps those rows, the oscillators and the mixer: Live pads every page to eight,
+  so a short page costs slots.
+- **Warmed up before it is heard**, as OsTIrus: the first chords after a start underran the ring while
+  the emulator compiled (seven in a minute, a block of 22 ms), none after.
+- **Heard without Live**: `scripts/render-check.sh vavra <assets>` loads the shipping `dsp.so` as the
+  chain host does and measures a chord. Measured 2026-11-20: every bank plays, the pitches are right
+  (C3 at 130.5 Hz), closing Filter 1 moves the chord from -26 to -49 dB.
+- **In Live, 2026-11-20**: 128 parameters; a parameter set from Live reaches the synth; beside OsTIrus
+  and Braids, all three playing, the Push 53% idle and no dropout of Vavra's own; a sound and its edits
+  survive a restart of Pung.
+

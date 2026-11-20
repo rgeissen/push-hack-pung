@@ -209,13 +209,21 @@ function knobRow(g, v, names, values, y) {
     g.value(x + 36, y + 37, values ? values[i] : (disp(v, k) || "--"), INK, -1, 80);
   }
 }
-// the lower buttons' names, as Pung's own tabs: a full-screen page hides them
+// the lower buttons, as Pung maps them ($tabs: a page's name, "<" or ">"
+// where the row moves along the module's pages): a full-screen page hides
+// Pung's own row, so it draws this one (draws_tabs)
 function tabs(g, v, y) {
-  var ps = v.$pages || [], cur = v.$page || 0;
-  for (var i = 0; i < 8 && i < ps.length; i++) {
-    var x = i * 120;
+  var ts = v.$tabs || [], cur = v.$tab === undefined ? -1 : v.$tab;
+  for (var i = 0; i < 8; i++) {
+    var t = ts[i] || "", x = i * 120;
+    if (t === "<" || t === ">") {
+      var cx = x + 60, d = t === "<" ? -1 : 1;
+      g.poly([cx - 6 * d, y - 9, cx + 6 * d, y - 4, cx - 6 * d, y + 1, cx - 6 * d, y - 9], 2, AMBER);
+      continue;
+    }
+    if (!t) continue;
     if (i === cur) g.fill(x + 6, y - 11, 108, 15, AMBER);
-    g.text(x + 60, y, String(ps[i]).toUpperCase(), i === cur ? GROUND : DIM, 0, 104);
+    g.text(x + 60, y, t.toUpperCase(), i === cur ? GROUND : DIM, 0, 104);
   }
 }
 
@@ -576,6 +584,8 @@ function fxPanel(g, v) {
     for (var i = 0; i < 6; i++) { names.push(labels[i] || ""); vals.push(values[i] || ""); }
   } else {
     for (var j = 6; j < 14; j++) { names.push(labels[j] || ""); vals.push(values[j] || ""); }
+    // most effects have six knobs or fewer: this page is the larger ones' (Vocoder, Five FX, Reverb)
+    if (!labels[6]) g.text(480, 126, (type === "Bypass" ? "NO EFFECT IN FX " + fx : type.toUpperCase() + " HAS NO MORE KNOBS"), DIM, 0);
   }
   knobRow(g, v, names, vals, 100);
   tabs(g, v, 157);
@@ -586,7 +596,7 @@ var SOUND = ["status", "preset", "preset_name", "bank_name", "category"];
 function waiting(v) { return disp(v, "status").indexOf("Waiting") === 0; }
 
 push.compartment({
-  id: "panel", label: "Vavra", front_panel: true,
+  id: "panel", label: "Vavra", front_panel: true, draws_tabs: true,
   pages: PAGES.panel,
   extra_keys: SOUND,
   screen: function (g, v) {
@@ -640,7 +650,7 @@ push.compartment({
   ]
 });
 push.compartment({
-  id: "fx", label: "Effects", front_panel: true,
+  id: "fx", label: "Effects", front_panel: true, draws_tabs: true,
   pages: PAGES.fx,
   extra_keys: ["status", "preset", "preset_name", "bank_name", "category", "fx1_labels", "fx1_values", "fx2_labels", "fx2_values"],
   screen: fxPanel

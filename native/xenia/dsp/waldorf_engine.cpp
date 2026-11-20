@@ -428,7 +428,46 @@ void emu_main(Instance *in) {
         if (!in->haveSingle) load_sound(in, in->bank, in->preset);
         if (!in->haveSingle) load_sound(in, 0, 0);
         in->pendingLoad = false;
-        if (in->haveSingle) in->dumpPending = true;
+        snprintf(in->status, sizeof(in->status), "Warming up the " SYNTH_HW);
+    }
+    // Warm-up, before the first note anyone hears (OsTIrus): the DSP
+    // emulator compiles the synth's code the first time it runs it, and the
+    // first chords after a start underran the ring while it did (seven in a
+    // minute's playing, a block taking 22 ms, none once warm; measured
+    // 2026-11-20). The sound is loaded and a chord played, unheard.
+    {
+        float wb[12][BLOCK];
+        synthLib::TAudioInputs wi{};
+        synthLib::TAudioOutputs wo{};
+        float z[BLOCK] = {0};
+        for (size_t i = 0; i < wo.size() && i < 12; i++) wo[i] = wb[i];
+        for (size_t i = 0; i < wi.size(); i++) wi[i] = z;
+        std::vector<synthLib::SMidiEvent> sink;
+        auto run = [&](double seconds) {
+            for (int b = 0; b < int(44100 * seconds / BLOCK) && !in->quit.load(); b++) {
+                in->plugin->process(wi, wo, BLOCK, 120.0f, 0.0f, false);
+                sink.clear();
+                in->plugin->getMidiOut(sink);
+            }
+        };
+        {
+            std::lock_guard<std::mutex> l(in->mu);
+            send_single(in);
+        }
+        run(0.3);
+        const uint8_t notes[] = {36, 48, 55, 60, 64, 67, 72, 79};
+        for (uint8_t n : notes) {
+            synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, 0x90, n, 100);
+            send(in, ev);
+        }
+        run(1.5);
+        synthLib::SMidiEvent off(synthLib::MidiEventSource::Host, 0xb0, 123, 0); // all notes off
+        send(in, off);
+        run(1.0);
+    }
+    {
+        std::lock_guard<std::mutex> l(in->mu);
+        if (in->haveSingle) in->dumpPending = true; // again, for the sound to start clean
         snprintf(in->status, sizeof(in->status), SYNTH_HW);
         in->loading = 0;
     }

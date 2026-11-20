@@ -145,7 +145,11 @@ NAMES = {
 # the name on the label row under a picture, where the page's title says the section (OsTIrus)
 PREFIX = re.compile(r"^(Osc[123]|Sub[12]|F[12]|FEnv|AEnv|Env[34]|L[123]|Fast[1-8]|Slot[1-8]|Mod[1-4]|Arp) ")
 WORDS = {"Src": "Source", "Amt": "Amount", "Reso": "Resonance", "Sus": "Sustain"}
-OWN_SHORT = {"Osc1 Bal": "Osc 1", "Osc2 Bal": "Osc 2", "Osc3 Bal": "Osc 3", "Noise Bal": "Noise", "RingMod Bal": "Ring Mod",
+OWN_SHORT = {"Noise F1": "F1 In", "Noise F2": "F2 In", "Routing": "Route",
+             "Osc1 PWM Src": "PWM Src", "Osc2 PWM Src": "PWM Src", "Osc3 PWM Src": "PWM Src",
+             "Osc1 FM Src": "FM Src", "Osc2 FM Src": "FM Src", "Osc3 FM Src": "FM Src",
+             "F1 Mod Src": "Mod Src", "F2 Mod Src": "Mod Src", "F1 Pan Src": "Pan Src", "F2 Pan Src": "Pan Src",
+             "Osc1 Bal": "Osc 1", "Osc2 Bal": "Osc 2", "Osc3 Bal": "Osc 3", "Noise Bal": "Noise", "RingMod Bal": "Ring Mod",
              "FEnv Att Lvl": "Att Level", "AEnv Att Lvl": "Att Level", "Env3 Att Lvl": "Att Level", "Env4 Att Lvl": "Att Level",
              "Amp Mod Src": "Mod Source", "Amp Mod Amt": "Mod Amount", "Amp Velocity": "Velocity",
              "FEnv Trigger": "Filter Env", "AEnv Trigger": "Amp Env", "Env3 Trigger": "Env 3", "Env4 Trigger": "Env 4"}
@@ -236,6 +240,8 @@ def main():
 
     # the step types are symbols on the microQ's display; a blank is a pause
     vl["arpStep"] = ["Normal", "Pause", "Previous", "First", "Last", "First+Last", "Chord", "Random"]
+    # and a step's timing as arrows: early, on the beat, late
+    vl["arpTiming"] = ["Random", "-3", "-2", "-1", "On Beat", "+1", "+2", "+3"]
 
     def texts(tt, lo, hi):
         v = vl.get(tt)
