@@ -320,6 +320,11 @@ engine Vavra uses (`waldorf_engine.cpp`, built with `WALDORF_XT`; one instance a
 - **On the Push, 2026-11-20**: every page walked with the real values; tables 0 (Resonant), 3, 5, 13,
   100 drawn from the synth's waves and 40 named as computed; beside Vavra and Tablor no dropout of its
   own (one late block a minute on all three at once); its sound survives a restart of Pung.
-- **Not yet in Live:** the class Live knows for Xenia was registered before Xenia had its parameters
-  (89, Pung's own), so its 128 come with the next Apply.
+- **In Live, after an Apply, 2026-11-21**: Live keeps 89 of the 214 parameters, whole pages only (the
+  front panel through the effect page; `fitLive` leaves the MIDI FX selector its room); a value set in
+  Live reaches the synth (F1 Cutoff 76, then 25), a wavetable chosen in Live brings its waves to the
+  screens, and an edit in Pung shows in Live. The state round-trips with its edits (`state` read, the
+  sound changed, `state` written back: the sound and its cutoff return). An Apply before Xenia could
+  read its parameters had registered Pung's own 89 instead: install a ROM-needing module's ROM before
+  the Apply that brings it into Live.
 
