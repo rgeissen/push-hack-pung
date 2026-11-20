@@ -269,6 +269,22 @@
     <p><strong>In Live.</strong> Live keeps 128 of OsTIrus's 234 parameters for automation and Push's own device view: the front panel, the oscillators, filters, envelopes and effects. The LFOs, the matrix, the arpeggiator and the voice settings are edited in the Pung view.</p>
     <p><strong>One at a time.</strong> As with Nodal Red 2X, the emulator needs most of a Push's processor. A second OsTIrus in a Set stays silent, and its screens say <em>Waiting</em>; it starts when the first one is removed.</p>
   </div>
+
+  <div class="prose">
+    <h3>Vavra: the microQ, edited through its matrix</h3>
+    <p>Vavra emulates the Waldorf microQ. The microQ is edited through a matrix: seven lit rows (Oscillators, Mixer, Filters, Amp/FX, Envelopes, LFOs and Mod Matrix), each printing what its knobs do. Vavra opens on that matrix, in the microQ's charcoal and amber, beside its green two-line display. The lower buttons light a row, and the eight encoders are that row's eight parameters.</p>
+  </div>
+  [[screen img="vavra_panel" title="Vavra: the edit matrix" alt="Vavra's front panel: a green dot-matrix display reading OBX Purple5 PROX and A006 Lead OSC, beside the microQ's matrix of seven amber rows with the Oscillators row lit; below, the eight encoders' names and values, and the rows' names over the lower buttons." up="0-7" upsel="0" lo="0-6" losel="0"]]The Oscillators row lit: the encoders are both oscillators' shape, octave, semitone and detune. Rendered by Pung from a running Vavra.[[/screen]]
+  <div class="prose">
+    <p>Every section also has pages of its own, each with a picture: the three oscillators as waves, the mixer as faders between the two filters, the filters as their curves and how they are wired, the four five-stage envelopes, the three LFOs, the modulation matrix (eight fast slots, eight standard slots and four modifiers), and the arpeggiator with its sixteen-step user pattern.</p>
+    <p><strong>Effects.</strong> The microQ has two effect slots, and what an effect knob does depends on the effect in its slot. The effects panel names its knobs after the effect it holds. Choose Phaser, and the knobs read Speed, Depth, Feedback, Center, Spacing and Polarity. In Live the same knobs are called FX1 Param 1 to 14, because Live keeps a parameter's name fixed.</p>
+  </div>
+  [[screen img="vavra_fx" title="The effects name their own knobs" alt="Vavra's effects panel: the display reads FX 1 Phaser; FX 1 Phaser and FX 2 Reverb as two lit boxes; the encoders read Type, Mix, Speed, Depth, Feedback, Center, Spacing and Polarity." up="0-7" upsel="5" lo="0-3" losel="0"]]FX 1 holds a Phaser, so its knobs are the Phaser's.[[/screen]]
+  <div class="prose">
+    <p><strong>Firmware and sounds.</strong> Vavra needs the microQ's operating system: the update file <code>mq_2_23.mid</code> from Waldorf, or a 512&nbsp;KB dump of a microQ's ROM. Add it on the module's card. An operating system carries no sounds, because a microQ keeps them in its own memory. Add a sound set on the card's Sounds row: Waldorf's factory set is <code>mQ_factory2001.mid</code>, in the microQ 2.22 update package, with 300 sounds in banks A to C. Every set you add there becomes more banks.</p>
+    <p><strong>In Live.</strong> Live keeps 128 of Vavra's parameters: the matrix's seven rows first, then the oscillators and the filters. Everything else is edited in the Pung view.</p>
+    <p><strong>One at a time.</strong> A second Vavra in a Set stays silent, and its screens say <em>Waiting</em>; it starts when the first one is removed.</p>
+  </div>
 </section>
 
 <section id="live">
@@ -343,7 +359,7 @@
   <ol class="steps">
     <li><div><p><strong>Install</strong> the modules you want. They install from the copy inside Pung's release, on the Push itself: nothing is downloaded.</p></div></li>
     <li><div><p><strong>Apply.</strong> New devices need one Live restart, because Live looks for plugins only when it starts. Apply saves nothing for you: save your Set first. Live restarts in about 30 seconds and recovers the Set. Install several modules, then Apply once.</p></div></li>
-    <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV, Osirus, Nodal Red 2X and OsTIrus emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum (OsTIrus's by its size).</p></div></li>
+    <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV, Osirus, Nodal Red 2X, OsTIrus and Vavra emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum (OsTIrus's by its size).</p></div></li>
   </ol>
   <div class="prose"><p>A new Pung release brings new modules and new versions; the Modules page shows them (see <a href="#update">Updating</a>). Removing a module needs Apply too.</p><p>During the test phase, modules come inside Pung's releases. After it, Pung's module pipeline, which is already built, will serve them directly, so updates arrive as Schwung publishes them.</p></div>
 </section>
