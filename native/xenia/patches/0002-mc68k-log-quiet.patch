@@ -1,0 +1,27 @@
+--- a/source/cpu/mc68k/logging.cpp	2026-11-20 22:58:46
++++ b/source/cpu/mc68k/logging.cpp	2026-11-20 22:58:46
+@@ -3,6 +3,7 @@
+ #include <fstream>
+ #include <vector>
+ #include <cstring>
++#include <cstdlib>
+ 
+ #ifdef _WIN32
+ #define WIN32_LEAN_AND_MEAN
+@@ -16,9 +17,15 @@
+ 
+ namespace mc68k
+ {
++	// Pung: the 68000's log goes to the host's stderr, which is Pung's log
++	// file, and it logs every change of the synth's display (the Microwave
++	// XT's LCD: forty characters a line, a line per character written). Quiet
++	// unless PUNG_MC68K_LOG is set.
+ 	void logToConsole( const std::string& _s )
+ 	{
+-		output_string( (_s + "\n").c_str() );
++		static const bool on = getenv("PUNG_MC68K_LOG") != nullptr;
++		if(on)
++			output_string( (_s + "\n").c_str() );
+ 	}
+ }
+ 

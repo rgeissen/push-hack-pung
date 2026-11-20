@@ -97,14 +97,24 @@ const uint8_t EDIT = 0x20;   // MidiBufferNum::SingleEditBufferSingleMode
 const int DATA = 383;        // a single's bytes, between header and checksum
 const int NAME_AT = 363, NAME_LEN = 16, CAT_AT = 379, CAT_LEN = 4;
 const char *const BANK_NAME[] = {"Bank A", "Bank B", "Bank C"};
+const int CHECKSUM_FROM = 4;      // a dump's checksum: from the command byte (mqState::sendMulti)
+const uint8_t *const BOOT = nullptr; // nothing to say after booting
+const int BOOT_LEN = 0;
 #else
-// The Microwave II/XT's library is read once its dumps can be checked
-// against a booted synth: until then, no sound list.
-const uint8_t MODEL = 0x0e;
-const int BANKS = 0, SOUNDS = 0;
-const uint8_t BANK0 = 0x00, EDIT = 0x20;
-const int DATA = 0, NAME_AT = 0, NAME_LEN = 16, CAT_AT = -1, CAT_LEN = 0;
-const char *const BANK_NAME[] = {""};
+const uint8_t MODEL = 0x0e;  // Microwave II/XT
+const int BANKS = 2, SOUNDS = 128; // A and B
+const uint8_t BANK0 = 0x00;  // xt::LocationH::SingleBankA
+const uint8_t EDIT = 0x20;   // xt::LocationH::SingleEditBufferSingleMode
+const int DATA = 256;        // a single's bytes, its name the last sixteen
+const int NAME_AT = 240, NAME_LEN = 16, CAT_AT = -1, CAT_LEN = 0;
+const char *const BANK_NAME[] = {"Bank A", "Bank B"};
+const int CHECKSUM_FROM = 7;      // from the first byte of the sound (parameterDescriptions_xt "singledump")
+// The XT boots into Multi mode, and a single sent to the single-mode edit
+// buffer is only played in Single mode: a mode dump says Single
+// (xtController::setPlayMode, sendModeDump)
+const uint8_t BOOT_MSG[] = {0xf0, WALDORF, MODEL, OMNI, 0x17, 0x00, 0xf7};
+const uint8_t *const BOOT = BOOT_MSG;
+const int BOOT_LEN = sizeof(BOOT_MSG);
 #endif
 } // namespace fam
 
@@ -232,7 +242,7 @@ void send_single(Instance *in) {
     ev.sysex = {0xf0, fam::WALDORF, fam::MODEL, fam::OMNI, fam::SINGLE_DUMP, fam::EDIT, 0x00};
     ev.sysex.insert(ev.sysex.end(), in->single.begin(), in->single.end());
     uint8_t sum = 0;
-    for (size_t i = 4; i < ev.sysex.size(); i++) sum = uint8_t(sum + ev.sysex[i]);
+    for (size_t i = size_t(fam::CHECKSUM_FROM); i < ev.sysex.size(); i++) sum = uint8_t(sum + ev.sysex[i]);
     ev.sysex.push_back(sum & 0x7f);
     ev.sysex.push_back(0xf7);
     send(in, ev);
@@ -332,16 +342,21 @@ void read_library(Instance *in) {
     }
     const int64_t t0 = now_us();
     int got = 0;
+    // PUNG_SCAN_LOG: every answer and its time in the synth's own clock, and no early end
+    const bool scanLog = getenv("PUNG_SCAN_LOG") != nullptr;
     for (int b = 0; b < fam::BANKS && !in->quit.load() && !(got == 0 && b > 0); b++) {
         char st[80];
         snprintf(st, sizeof(st), "Reading the sounds: %s", fam::BANK_NAME[b]);
         set_status(in, st);
+        int misses = 0; // a bank with fewer sounds than places (the XT's B has 100 of 128): three gaps end it
         for (int p = 0; p < fam::SOUNDS && !in->quit.load() && !(got == 0 && p > 0); p++) { // nothing for the first: nothing there
             synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
             ev.sysex = {0xf0, fam::WALDORF, fam::MODEL, fam::OMNI, fam::REQUEST_SINGLE, uint8_t(fam::BANK0 + b), uint8_t(p), 0xf7};
             send(in, ev);
-            // the first answer waits for the OS to settle; the others come quickly
-            const int limit = got == 0 ? 44100 * 10 / BLOCK : 44100 * 2 / BLOCK;
+            // the first answer waits for the OS to settle, and a bank's first for the
+            // synth to turn to it (the XT's B came after the A run's timeout); the
+            // others come quickly
+            const int limit = got == 0 || p == 0 ? 44100 * 10 / BLOCK : 44100 * 2 / BLOCK;
             bool done = false;
             for (int k = 0; k < limit && !done && !in->quit.load(); k++) {
                 in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
@@ -350,13 +365,21 @@ void read_library(Instance *in) {
                 for (const auto &e : midiOut) {
                     const auto &s = e.sysex;
                     int rb, rp;
+                    if (scanLog && s.size() > 6)
+                        plog("asked %c%d, after %d ms: %d bytes, %02x %02x %02x", 'A' + b, p + 1, k * BLOCK * 1000 / 44100, int(s.size()),
+                             s[4], s[5], s[6]);
                     if (!single_dump(s, rb, rp) || rb >= fam::BANKS || rp >= fam::SOUNDS) continue;
                     lib[size_t(rb)].sounds[size_t(rp)].assign(s.begin() + 7, s.begin() + 7 + fam::DATA);
                     if (rb == b && rp == p) done = true;
                 }
             }
-            if (done) got++;
-            else plog("no answer for %s sound %d", fam::BANK_NAME[b], p + 1);
+            if (done) {
+                got++;
+                misses = 0;
+            } else if (++misses >= 3 && !scanLog) {
+                plog("%s ends before sound %d", fam::BANK_NAME[b], p - 1);
+                break;
+            }
         }
     }
     plog("the synth gave %d sounds in %d ms", got, int((now_us() - t0) / 1000));
@@ -421,6 +444,11 @@ void emu_main(Instance *in) {
         return;
     }
     plog("booted in %d ms", int((now_us() - t0) / 1000));
+    if (fam::BOOT) {
+        synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
+        ev.sysex.assign(fam::BOOT, fam::BOOT + fam::BOOT_LEN);
+        send(in, ev);
+    }
     read_library(in);
     {
         std::lock_guard<std::mutex> l(in->mu);

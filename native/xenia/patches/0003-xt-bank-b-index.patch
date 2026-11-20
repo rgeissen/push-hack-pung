@@ -1,0 +1,13 @@
+--- a/source/waldi/xt/xtLib/xtState.cpp	2026-11-20 23:09:58
++++ b/source/waldi/xt/xtLib/xtState.cpp	2026-11-20 23:09:58
+@@ -573,7 +573,9 @@
+ 		case LocationH::SingleBankB:
+ 			if(_loc >= 128)
+ 				return nullptr;
+-			return &m_romSingles[_loc + 100];
++			// Pung: the XT's banks hold 128 sounds (the microQ's, this came from, 100):
++			// at +100, B1..B28 and A101..A128 were the same places
++			return &m_romSingles[_loc + 128];
+ 		case LocationH::SingleEditBufferSingleMode:
+ 			m_isEditBuffer = true;
+ 			return m_currentInstrumentSingles.data();

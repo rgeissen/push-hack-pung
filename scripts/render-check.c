@@ -107,9 +107,12 @@ int main(int argc, char **argv) {
     printf("sound: %s\n", name);
     // the sound settles (a dump into the synth), then a chord, held, then let go
     const int total = (int)(seconds * 44100) / 128;
-    int16_t *pcm = calloc((size_t)(total + 400) * 128 * 2, sizeof(int16_t));
+    int16_t *pcm = calloc((size_t)(total + 400 + 44100 * 10 / 128) * 128 * 2, sizeof(int16_t));
     int frames = 0;
-    for (int b = 0; b < 100; b++) { // 290 ms
+    // (RENDER_SETTLE_MS: a synth that is silent while it takes a sound in, the Microwave XT)
+    const char *settle_env = getenv("RENDER_SETTLE_MS");
+    const int settle_blocks = (settle_env ? atoi(settle_env) : 290) * 44100 / 128 / 1000;
+    for (int b = 0; b < settle_blocks; b++) {
         api->render_block(in, pcm + frames * 2, 128);
         frames += 128;
         usleep(2900);
