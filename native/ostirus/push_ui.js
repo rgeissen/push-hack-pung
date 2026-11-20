@@ -411,17 +411,24 @@ var SLOT_KEYS = [
 function matrixScreen(n) {
   return function (g, v) {
     edge(g, v);
-    var k = SLOT_KEYS[n], t = v.$touched || "", src = disp(v, k[0]) || "Off";
-    g.text(18, 14, "SLOT " + (n + 1), DIM, -1);
-    g.fill(18, 34, 220, 22, src === "Off" ? PANEL : RED_DK);
-    g.text(128, 49, src.toUpperCase(), src === "Off" ? FAINT : INK, 0, 210);
+    var k = SLOT_KEYS[n], t = v.$touched || "", src = disp(v, k[0]) || "Off", rows = [], any = false;
+    // a destination does something only with a source and an amount: an
+    // unused slot keeps its old destinations at amount 0, drawn as off
     for (var d = 0; d < 3; d++) {
-      var dk = k[1 + d * 2], ak = k[2 + d * 2], dest = disp(v, dk) || "Off", f = frac(v, ak, 0.5), y = 18 + d * 26;
-      var amt = Math.abs(f - 0.5) * 2, live = src !== "Off" && dest !== "Off" && amt > 0.01, lit = t === dk || t === ak;
-      g.line(238, 45, 520, y + 6, live ? 1 + Math.round(amt * 4) : 1, live ? (lit ? LED_ON : RED) : RULE);
-      g.fill(520, y - 4, 300, 20, dest === "Off" ? BG : PANEL);
-      g.text(530, y + 10, dest.toUpperCase(), dest === "Off" ? FAINT : INK, -1, 280);
-      g.text(940, y + 10, dest === "Off" ? "" : (disp(v, ak) || ""), lit ? INK : DIM, 1);
+      var dk = k[1 + d * 2], ak = k[2 + d * 2], dest = disp(v, dk) || "Off", f = frac(v, ak, 0.5);
+      var amt = Math.abs(f - 0.5) * 2, live = src !== "Off" && dest !== "Off" && amt > 0.01;
+      rows.push({ dk: dk, ak: ak, dest: dest, amt: amt, live: live, lit: t === dk || t === ak });
+      any = any || live;
+    }
+    g.text(18, 14, "SLOT " + (n + 1), DIM, -1);
+    g.fill(18, 34, 220, 22, any ? RED_DK : PANEL);
+    g.text(128, 49, src.toUpperCase(), any || t === k[0] ? INK : FAINT, 0, 210);
+    for (var i = 0; i < 3; i++) {
+      var r = rows[i], y = 18 + i * 26, shown = r.live || r.lit;
+      g.line(238, 45, 520, y + 6, r.live ? 1 + Math.round(r.amt * 4) : 1, r.live ? (r.lit ? LED_ON : RED) : RULE);
+      g.fill(520, y - 4, 300, 20, shown ? PANEL : BG);
+      g.text(530, y + 10, r.dest.toUpperCase(), shown ? INK : FAINT, -1, 280);
+      g.text(940, y + 10, r.dest === "Off" ? "" : (disp(v, r.ak) || ""), r.lit ? INK : (r.live ? DIM : FAINT), 1);
     }
   };
 }

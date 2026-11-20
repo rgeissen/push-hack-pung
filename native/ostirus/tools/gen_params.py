@@ -236,7 +236,8 @@ PREFIX = re.compile(r"^(Osc[123]|FEnv|AEnv|Env[34]|L[123]|Dly|Rev|Cho|Pha|Dist|F
 # Feedback read "100.0 %" and "62.5 %": spelt out, the name would be cut)
 WORDS = {"Rel": "Release", "Predly": "Predelay", "Damp": "Damping", "Symm": "Symmetry", "Semi": "Semitone", "Vol": "Volume"}
 # no prefix to drop, still too long beside a value
-OWN_SHORT = {"Key Mode": "Mode", "Treble Boost": "Treble", "Bass Boost": "Bass"}
+OWN_SHORT = {"Key Mode": "Mode", "Treble Boost": "Treble", "Bass Boost": "Bass", "Flt1 Env": "Env 1", "Flt2 Env": "Env 2",
+             "Routing": "Route", "Flt Balance": "Balance"}
 
 
 def short_of(name):
