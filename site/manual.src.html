@@ -252,6 +252,23 @@
     <p><strong>Firmware and sounds.</strong> The module needs a Nord Lead 2X firmware file, which Pung never ships; add it on the module's card. On its first start it reads the 890 sounds stored inside that firmware and keeps them as banks. That takes about three minutes, once, and the sound stutters while it runs. The Nord stores no names: a bank file's sounds can be named by a text file of the same name beside it, one name a line. Sound banks of your own (<code>.syx</code>) go into the module's Banks folder.</p>
     <p><strong>One at a time.</strong> The emulator needs most of a Push's processor. A second Nodal Red 2X in a Set stays silent and says it is waiting; it starts when the first one is removed.</p>
   </div>
+
+  <div class="prose">
+    <h3>OsTIrus: the Virus TI, Soft Knobs first</h3>
+    <p>OsTIrus emulates the Access Virus TI, and with it the TI2 and the Snow. A Virus sound is played from three knobs its sound designer named: the <strong>Soft Knobs</strong>. Every factory sound points them at what matters in it and calls them so (Vibrato, Thinner, Infect). So the device opens on a front panel whose first three encoders are those knobs, under the sound's own names, beside the five every Virus player reaches for: cutoff, resonance, filter envelope, and the delay and reverb sends. Above them, the display (bank, sound, category) and what the sound is made of: its oscillator models, its filters and how they are wired, which effects are on.</p>
+  </div>
+  [[screen img="osti_panel" title="OsTIrus: the front panel" alt="OsTIrus's front panel: a Virus-style display reading TI Rom A 006, BelisimoBC, Pad, with the Soft Knobs Vibrato, Thinner and Infect; panels for the oscillators (HyperSaw, Wavetable), the filters (low pass into high pass, Serial 4) and the effects (Delay on); the eight encoders' names and values below." up="0-7" upsel="0" lo="0" losel="0"]]The sound's three Soft Knobs on the first three encoders, under its own names. A Push 3 capture.[[/screen]]
+  <div class="prose">
+    <p>The other pages follow the synth's sections, eight knobs a page, and the same knob does the same job on sibling pages: attack is knob 1 of every envelope, rate knob 1 of every LFO. Each page has a picture of what its knobs do together: the oscillators as waves, the two filters as the signal path they form, the envelopes and LFOs as shapes, every effect as a row of bars. The modulation matrix has a page for each of its six slots, a source and three destinations, each line as thick as its amount; a destination with no amount is drawn as off.</p>
+  </div>
+  [[screen img="osti_filters" title="Two filters, as they are wired" alt="OsTIrus's Filters page: the responses of filter 1 and filter 2 side by side, the routing Serial 4, the balance, saturation and cutoff link at the right, the eight encoders' names and values below." up="0-7" upsel="2" lo="0-7" losel="5"]]Filter 1 and filter 2 as the sound passes them, and how they are routed.[[/screen]]
+  [[screen img="osti_matrix" title="A matrix slot" alt="OsTIrus's Matrix Slot 1 page: LFO 2 Bipolar on the left, joined to Osc Balance, Osc 2 Wavetable Index and Osc Volume on the right by lines as thick as each amount." up="0-7" upsel="6" lo="0-7" losel="6"]]One source, three destinations, each line as strong as its amount.[[/screen]]
+  <div class="prose">
+    <p><strong>Firmware and sounds.</strong> OsTIrus needs the Virus TI firmware: the <code>.bin</code> file that comes with Access's Virus TI installer. Pung never ships it; add it on the module's card, and Pung recognises it by its size, whatever the file is called. The firmware holds the factory banks of all three synths, named as on the hardware: TI Rom A to S, TI2 Rom A to Y and Snow Rom A to H. Every model plays every bank.</p>
+    <p><strong>TI, TI2 or Snow.</strong> The model is on the Synth page. Switching it restarts the emulator for a moment and keeps the sound you are editing, so you can hear one sound on another Virus.</p>
+    <p><strong>In Live.</strong> Live keeps 128 of OsTIrus's 234 parameters for automation and Push's own device view: the front panel, the oscillators, filters, envelopes and effects. The LFOs, the matrix, the arpeggiator and the voice settings are edited in the Pung view.</p>
+    <p><strong>One at a time.</strong> As with Nodal Red 2X, the emulator needs most of a Push's processor. A second OsTIrus in a Set stays silent, and its screens say <em>Waiting</em>; it starts when the first one is removed.</p>
+  </div>
 </section>
 
 <section id="live">
@@ -326,7 +343,7 @@
   <ol class="steps">
     <li><div><p><strong>Install</strong> the modules you want. They install from the copy inside Pung's release, on the Push itself: nothing is downloaded.</p></div></li>
     <li><div><p><strong>Apply.</strong> New devices need one Live restart, because Live looks for plugins only when it starts. Apply saves nothing for you: save your Set first. Live restarts in about 30 seconds and recovers the Set. Install several modules, then Apply once.</p></div></li>
-    <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV, Osirus and Nodal Red 2X emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum.</p></div></li>
+    <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV, Osirus, Nodal Red 2X and OsTIrus emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum (OsTIrus's by its size).</p></div></li>
   </ol>
   <div class="prose"><p>A new Pung release brings new modules and new versions; the Modules page shows them (see <a href="#update">Updating</a>). Removing a module needs Apply too.</p><p>During the test phase, modules come inside Pung's releases. After it, Pung's module pipeline, which is already built, will serve them directly, so updates arrive as Schwung publishes them.</p></div>
 </section>
