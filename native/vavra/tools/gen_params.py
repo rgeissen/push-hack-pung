@@ -86,6 +86,11 @@ LAYOUT = [
 
     ("arp", "Arp", ["ArpMode", "ArpPattern", "ArpClock", "ArpLength", "ArpOctaveRange", "ArpDirection", "ArpSortOrder", "ArpVeloMode"]),
     ("arp", "Arp +", ["Tempo", "ArpMaxNotes", "ArpTFactor", "ArpSameNoteOverlap", "ArpPatternReset", "ArpPatternLength"]),
+] + [
+    # the user pattern: sixteen steps, each a step, a glide, an accent, a length and a timing
+    ("arp", "%s %d-%d" % (label, a + 1, a + 8), ["Arp%02d%s" % (i, field) for i in range(a, a + 8)])
+    for field, label in [("Step", "Steps"), ("Accent", "Accent"), ("Glide", "Glide"), ("Length", "Length"), ("Timing", "Timing")]
+    for a in (0, 8)
 ]
 
 # Names for the Push's cells and Live's lists: twelve letters at most.
@@ -104,12 +109,19 @@ def auto_name(n):
         (r"^Slot([1-8])FSource$", r"Fast\1 Src"), (r"^Slot([1-8])FDestination$", r"Fast\1 Dest"), (r"^Slot([1-8])FAmount$", r"Fast\1 Amt"),
         (r"^Slot([1-8])SSource$", r"Slot\1 Src"), (r"^Slot([1-8])SDestination$", r"Slot\1 Dest"), (r"^Slot([1-8])SAmount$", r"Slot\1 Amt"),
         (r"^Mod([1-4])Source([12])$", r"Mod\1 Src \2"), (r"^Mod([1-4])Operator$", r"Mod\1 Op"), (r"^Mod([1-4])Constant$", r"Mod\1 Const"),
+        (r"^Arp(\d\d)Step$", lambda m: "Step %d" % (int(m.group(1)) + 1)),
+        (r"^Arp(\d\d)Accent$", lambda m: "Accent %d" % (int(m.group(1)) + 1)),
+        (r"^Arp(\d\d)Glide$", lambda m: "Glide %d" % (int(m.group(1)) + 1)),
+        (r"^Arp(\d\d)Length$", lambda m: "Length %d" % (int(m.group(1)) + 1)),
+        (r"^Arp(\d\d)Timing$", lambda m: "Timing %d" % (int(m.group(1)) + 1)),
         (r"^Arp(\w+)$", r"Arp \1"),
     ]
     for pat, rep in rules:
         if re.match(pat, n):
             n = re.sub(pat, rep, n)
             break
+    if re.match(r"^(Step|Accent|Glide|Length|Timing) \d+$", n):
+        return n
     n = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", n)
     n = re.sub(r"Sustain2$", "Sus 2", re.sub(r"Decay2$", "Decay 2", n))
     return n
@@ -221,6 +233,9 @@ def main():
         k = json.dumps(texts)
         lists.setdefault(k, len(lists))
         return lists[k]
+
+    # the step types are symbols on the microQ's display; a blank is a pause
+    vl["arpStep"] = ["Normal", "Pause", "Previous", "First", "Last", "First+Last", "Chord", "Random"]
 
     def texts(tt, lo, hi):
         v = vl.get(tt)

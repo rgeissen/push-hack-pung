@@ -77,7 +77,17 @@ var PAGES = {
   ],
   arp: [
     { label: "Arp", keys: ["arp_mode", "arp_pattern", "arp_clock", "arp_length", "arp_octave_range", "arp_direction", "arp_sort_order", "arp_velo_mode"] },
-    { label: "Arp +", keys: ["tempo", "arp_max_notes", "arp_tfactor", "arp_same_note_overlap", "arp_pattern_reset", "arp_pattern_length"] }
+    { label: "Arp +", keys: ["tempo", "arp_max_notes", "arp_tfactor", "arp_same_note_overlap", "arp_pattern_reset", "arp_pattern_length"] },
+    { label: "Steps 1-8", keys: ["arp00_step", "arp01_step", "arp02_step", "arp03_step", "arp04_step", "arp05_step", "arp06_step", "arp07_step"] },
+    { label: "Steps 9-16", keys: ["arp08_step", "arp09_step", "arp10_step", "arp11_step", "arp12_step", "arp13_step", "arp14_step", "arp15_step"] },
+    { label: "Accent 1-8", keys: ["arp00_accent", "arp01_accent", "arp02_accent", "arp03_accent", "arp04_accent", "arp05_accent", "arp06_accent", "arp07_accent"] },
+    { label: "Accent 9-16", keys: ["arp08_accent", "arp09_accent", "arp10_accent", "arp11_accent", "arp12_accent", "arp13_accent", "arp14_accent", "arp15_accent"] },
+    { label: "Glide 1-8", keys: ["arp00_glide", "arp01_glide", "arp02_glide", "arp03_glide", "arp04_glide", "arp05_glide", "arp06_glide", "arp07_glide"] },
+    { label: "Glide 9-16", keys: ["arp08_glide", "arp09_glide", "arp10_glide", "arp11_glide", "arp12_glide", "arp13_glide", "arp14_glide", "arp15_glide"] },
+    { label: "Length 1-8", keys: ["arp00_length", "arp01_length", "arp02_length", "arp03_length", "arp04_length", "arp05_length", "arp06_length", "arp07_length"] },
+    { label: "Length 9-16", keys: ["arp08_length", "arp09_length", "arp10_length", "arp11_length", "arp12_length", "arp13_length", "arp14_length", "arp15_length"] },
+    { label: "Timing 1-8", keys: ["arp00_timing", "arp01_timing", "arp02_timing", "arp03_timing", "arp04_timing", "arp05_timing", "arp06_timing", "arp07_timing"] },
+    { label: "Timing 9-16", keys: ["arp08_timing", "arp09_timing", "arp10_timing", "arp11_timing", "arp12_timing", "arp13_timing", "arp14_timing", "arp15_timing"] }
   ],
 };
 // </pages>
@@ -504,6 +514,39 @@ function arpScreen(g, v) {
   g.text(30, 100, "PATTERN " + (disp(v, "arp_pattern") || "").toUpperCase() + "   " + dir.toUpperCase() + "   " + oct + " OCT", DIM, -1, 900);
 }
 
+// the user pattern: sixteen steps in a row, the page's eight lit; a step's
+// type as its symbol, its accent as height, a glide as a tie to the next,
+// its length as width and its timing as a shift
+var STEP_SYMBOL = { "Normal": "*", "Pause": "", "Previous": "-", "First": "<", "Last": ">", "First+Last": "<>", "Chord": "CH",
+  "Random": "?" };
+function stepKey(i, field) { return "arp" + (i < 10 ? "0" : "") + i + "_" + field; }
+function stepScreen(first) {
+  return function (g, v) {
+    edge(g, v);
+    var len = idx(v, "arp_pattern_length"), user = disp(v, "arp_pattern") === "User", t = v.$touched || "";
+    var cw = 50, x0 = 10, base = g.h - 18;
+    for (var i = 0; i < 16; i++) {
+      var x = x0 + i * cw, lit = i >= first && i < first + 8, inPat = i < len;
+      var type = disp(v, stepKey(i, "step")) || "Normal", pause = type === "Pause";
+      var acc = idx(v, stepKey(i, "accent")), h = 10 + Math.max(0, acc - 1) * 7;
+      var lenIdx = idx(v, stepKey(i, "length")), w = lenIdx === 0 ? cw - 4 : Math.max(8, (cw - 14) * (0.4 + lenIdx * 0.1));
+      var tim = idx(v, stepKey(i, "timing")), dx = tim === 0 ? 0 : (tim - 4) * 3;
+      var touched = t.indexOf(stepKey(i, "")) === 0;
+      var c = !inPat ? FAINT : pause ? RULE : touched ? AMBER_LT : lit ? AMBER : AMBER_GL;
+      if (lit) g.fill(x, 2, cw - 2, base + 14, PANEL);
+      if (!pause) g.fill(x + 4 + dx, base - h, w, h, c);
+      if (disp(v, stepKey(i, "glide")) === "On" && inPat) g.line(x + 4 + dx + w, base - h / 2, x + cw + 4, base - h / 2, 2, c);
+      g.text(x + cw / 2, 14, STEP_SYMBOL[type] !== undefined ? STEP_SYMBOL[type] : "", inPat ? INK : FAINT, 0);
+      g.text(x + cw / 2, base + 12, String(i + 1), lit ? AMBER : FAINT, 0);
+    }
+    // whether the arpeggiator plays this pattern at all
+    g.text(950, 18, user ? "USER" : "PATTERN", user ? AMBER : DIM, 1, 140);
+    g.text(950, 34, user ? "PATTERN" : (disp(v, "arp_pattern") || "").toUpperCase(), user ? AMBER : DIM, 1, 140);
+    if (!user) g.text(950, 50, "NOT USED", FAINT, 1, 140);
+    g.text(950, 70, len + " STEPS", DIM, 1, 140);
+  };
+}
+
 // ---- the effects: a panel naming its own knobs ---------------------------------------------
 function fxPanel(g, v) {
   var page = v.$page || 0, ps = v.$pages || [], fx = page < 2 ? 1 : 2, more = page % 2 === 1;
@@ -625,7 +668,13 @@ push.compartment({
     { label: PAGES.matrix[9].label, keys: PAGES.matrix[9].keys, screen: modifierScreen(3) }
   ]
 });
+var STEP_KEYS = [];
+for (var si = 0; si < 16; si++) ["step", "accent", "glide", "length", "timing"].forEach(function (f) { STEP_KEYS.push(stepKey(si, f)); });
 push.compartment({
-  id: "arp", label: "Arp", extra_keys: ["status", "tempo", "arp_clock", "arp_mode", "arp_direction", "arp_octave_range", "arp_pattern"],
-  pages: PAGES.arp, screen: arpScreen
+  id: "arp", label: "Arp",
+  extra_keys: ["status", "tempo", "arp_clock", "arp_mode", "arp_direction", "arp_octave_range", "arp_pattern", "arp_pattern_length"]
+    .concat(STEP_KEYS),
+  pages: PAGES.arp.map(function (pg, i) {
+    return { label: pg.label, keys: pg.keys, screen: i < 2 ? arpScreen : stepScreen(/9-16/.test(pg.label) ? 8 : 0) };
+  })
 });

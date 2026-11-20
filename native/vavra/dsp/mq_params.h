@@ -42,8 +42,12 @@ static const char *const L28[] = {"Up", "Down", "Alt Up", "Alt Down"};
 static const char *const L29[] = {"As Played", "Reversed", "Note Low-High", "Note High-Low", "Vel Low-High", "Vel High-Low"};
 static const char *const L30[] = {"Each Note", "First Note", "Last Note"};
 static const char *const L31[] = {"40", "42", "44", "46", "48", "50", "52", "54", "56", "58", "60", "62", "64", "66", "68", "70", "72", "74", "76", "78", "80", "82", "84", "86", "88", "90", "91", "92", "93", "94", "95", "96", "97", "98", "99", "100", "101", "102", "103", "104", "105", "106", "107", "108", "109", "110", "111", "112", "113", "114", "115", "116", "117", "118", "119", "120", "121", "122", "123", "124", "125", "126", "127", "128", "129", "130", "131", "132", "133", "134", "135", "136", "137", "138", "139", "140", "141", "142", "143", "144", "145", "146", "147", "148", "149", "150", "151", "152", "153", "154", "155", "156", "157", "158", "159", "160", "161", "162", "163", "164", "165", "170", "175", "180", "185", "190", "195", "200", "205", "210", "215", "220", "225", "230", "235", "240", "245", "250", "255", "260", "265", "270", "275", "280", "285", "290", "295", "300"};
-static const char *const *const kLists[] = {L0, L1, L2, L3, L4, L5, L6, L7, L8, L9, L10, L11, L12, L13, L14, L15, L16, L17, L18, L19, L20, L21, L22, L23, L24, L25, L26, L27, L28, L29, L30, L31};
-static const int kListLen[] = {7, 9, 128, 2, 11, 7, 11, 6, 40, 58, 14, 128, 12, 2, 5, 5, 6, 4, 128, 5, 2, 128, 31, 8, 4, 17, 128, 128, 4, 6, 3, 128};
+static const char *const L32[] = {"Normal", "Pause", "Previous", "First", "Last", "First+Last", "Chord", "Random"};
+static const char *const L33[] = {"Off", "-3", "-2", "-1", "0", "+1", "+2", "+3"};
+static const char *const L34[] = {"Legato", "-3", "-2", "-1", "As Note Length", "+1", "+2", "+3"};
+static const char *const L35[] = {"Random", "<<<", "<<", "<", "|", ">", ">>", ">>>"};
+static const char *const *const kLists[] = {L0, L1, L2, L3, L4, L5, L6, L7, L8, L9, L10, L11, L12, L13, L14, L15, L16, L17, L18, L19, L20, L21, L22, L23, L24, L25, L26, L27, L28, L29, L30, L31, L32, L33, L34, L35};
+static const int kListLen[] = {7, 9, 128, 2, 11, 7, 11, 6, 40, 58, 14, 128, 12, 2, 5, 5, 6, 4, 128, 5, 2, 128, 31, 8, 4, 17, 128, 128, 4, 6, 3, 128, 8, 8, 8, 8};
 
 static const Param kParams[] = {
     {"o1_shape", "Osc1 Shape", "Shape", 8, 0, 0, 0, 6, 0, kEnum, 0, 0, 0, 0, 0},
@@ -307,8 +311,88 @@ static const Param kParams[] = {
     {"arp_same_note_overlap", "Arp Overlap", "Overlap", 321, 0, 0, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
     {"arp_pattern_reset", "Arp Reset", "Reset", 322, 0, 0, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
     {"arp_pattern_length", "Arp Pat Len", "Pat Len", 323, 0, 0, 0, 15, -1, kInt, -1, 0, 0, 0, 0},
+    {"arp00_step", "Step 1", "", 327, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp01_step", "Step 2", "", 328, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp02_step", "Step 3", "", 329, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp03_step", "Step 4", "", 330, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp04_step", "Step 5", "", 331, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp05_step", "Step 6", "", 332, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp06_step", "Step 7", "", 333, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp07_step", "Step 8", "", 334, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp08_step", "Step 9", "", 335, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp09_step", "Step 10", "", 336, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp10_step", "Step 11", "", 337, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp11_step", "Step 12", "", 338, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp12_step", "Step 13", "", 339, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp13_step", "Step 14", "", 340, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp14_step", "Step 15", "", 341, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp15_step", "Step 16", "", 342, 7, 4, 0, 7, 0, kEnum, 32, 0, 0, 0, 0},
+    {"arp00_accent", "Accent 1", "", 327, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp01_accent", "Accent 2", "", 328, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp02_accent", "Accent 3", "", 329, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp03_accent", "Accent 4", "", 330, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp04_accent", "Accent 5", "", 331, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp05_accent", "Accent 6", "", 332, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp06_accent", "Accent 7", "", 333, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp07_accent", "Accent 8", "", 334, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp08_accent", "Accent 9", "", 335, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp09_accent", "Accent 10", "", 336, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp10_accent", "Accent 11", "", 337, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp11_accent", "Accent 12", "", 338, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp12_accent", "Accent 13", "", 339, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp13_accent", "Accent 14", "", 340, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp14_accent", "Accent 15", "", 341, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp15_accent", "Accent 16", "", 342, 7, 0, 0, 7, 0, kEnum, 33, 0, 0, 0, 0},
+    {"arp00_glide", "Glide 1", "", 327, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp01_glide", "Glide 2", "", 328, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp02_glide", "Glide 3", "", 329, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp03_glide", "Glide 4", "", 330, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp04_glide", "Glide 5", "", 331, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp05_glide", "Glide 6", "", 332, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp06_glide", "Glide 7", "", 333, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp07_glide", "Glide 8", "", 334, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp08_glide", "Glide 9", "", 335, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp09_glide", "Glide 10", "", 336, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp10_glide", "Glide 11", "", 337, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp11_glide", "Glide 12", "", 338, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp12_glide", "Glide 13", "", 339, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp13_glide", "Glide 14", "", 340, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp14_glide", "Glide 15", "", 341, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp15_glide", "Glide 16", "", 342, 1, 3, 0, 1, 0, kEnum, 13, 0, 0, 0, 0},
+    {"arp00_length", "Length 1", "", 343, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp01_length", "Length 2", "", 344, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp02_length", "Length 3", "", 345, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp03_length", "Length 4", "", 346, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp04_length", "Length 5", "", 347, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp05_length", "Length 6", "", 348, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp06_length", "Length 7", "", 349, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp07_length", "Length 8", "", 350, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp08_length", "Length 9", "", 351, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp09_length", "Length 10", "", 352, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp10_length", "Length 11", "", 353, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp11_length", "Length 12", "", 354, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp12_length", "Length 13", "", 355, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp13_length", "Length 14", "", 356, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp14_length", "Length 15", "", 357, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp15_length", "Length 16", "", 358, 7, 4, 0, 7, 0, kEnum, 34, 0, 0, 0, 0},
+    {"arp00_timing", "Timing 1", "", 343, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp01_timing", "Timing 2", "", 344, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp02_timing", "Timing 3", "", 345, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp03_timing", "Timing 4", "", 346, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp04_timing", "Timing 5", "", 347, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp05_timing", "Timing 6", "", 348, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp06_timing", "Timing 7", "", 349, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp07_timing", "Timing 8", "", 350, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp08_timing", "Timing 9", "", 351, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp09_timing", "Timing 10", "", 352, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp10_timing", "Timing 11", "", 353, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp11_timing", "Timing 12", "", 354, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp12_timing", "Timing 13", "", 355, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp13_timing", "Timing 14", "", 356, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp14_timing", "Timing 15", "", 357, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
+    {"arp15_timing", "Timing 16", "", 358, 7, 0, 0, 7, 0, kEnum, 35, 0, 0, 0, 0},
 };
-static const int kNumParams = 261;
+static const int kNumParams = 341;
 
 // the pages: compartment, label, eight keys at most
 struct Page { const char *comp, *label; const char *keys[8]; };
@@ -358,8 +442,18 @@ static const Page kPages[] = {
     {"matrix", "Modifiers 3-4", {"mod3_source1", "mod3_source2", "mod3_operator", "mod3_constant", "mod4_source1", "mod4_source2", "mod4_operator", "mod4_constant"}},
     {"arp", "Arp", {"arp_mode", "arp_pattern", "arp_clock", "arp_length", "arp_octave_range", "arp_direction", "arp_sort_order", "arp_velo_mode"}},
     {"arp", "Arp +", {"tempo", "arp_max_notes", "arp_tfactor", "arp_same_note_overlap", "arp_pattern_reset", "arp_pattern_length"}},
+    {"arp", "Steps 1-8", {"arp00_step", "arp01_step", "arp02_step", "arp03_step", "arp04_step", "arp05_step", "arp06_step", "arp07_step"}},
+    {"arp", "Steps 9-16", {"arp08_step", "arp09_step", "arp10_step", "arp11_step", "arp12_step", "arp13_step", "arp14_step", "arp15_step"}},
+    {"arp", "Accent 1-8", {"arp00_accent", "arp01_accent", "arp02_accent", "arp03_accent", "arp04_accent", "arp05_accent", "arp06_accent", "arp07_accent"}},
+    {"arp", "Accent 9-16", {"arp08_accent", "arp09_accent", "arp10_accent", "arp11_accent", "arp12_accent", "arp13_accent", "arp14_accent", "arp15_accent"}},
+    {"arp", "Glide 1-8", {"arp00_glide", "arp01_glide", "arp02_glide", "arp03_glide", "arp04_glide", "arp05_glide", "arp06_glide", "arp07_glide"}},
+    {"arp", "Glide 9-16", {"arp08_glide", "arp09_glide", "arp10_glide", "arp11_glide", "arp12_glide", "arp13_glide", "arp14_glide", "arp15_glide"}},
+    {"arp", "Length 1-8", {"arp00_length", "arp01_length", "arp02_length", "arp03_length", "arp04_length", "arp05_length", "arp06_length", "arp07_length"}},
+    {"arp", "Length 9-16", {"arp08_length", "arp09_length", "arp10_length", "arp11_length", "arp12_length", "arp13_length", "arp14_length", "arp15_length"}},
+    {"arp", "Timing 1-8", {"arp00_timing", "arp01_timing", "arp02_timing", "arp03_timing", "arp04_timing", "arp05_timing", "arp06_timing", "arp07_timing"}},
+    {"arp", "Timing 9-16", {"arp08_timing", "arp09_timing", "arp10_timing", "arp11_timing", "arp12_timing", "arp13_timing", "arp14_timing", "arp15_timing"}},
 };
-static const int kNumPages = 45;
+static const int kNumPages = 55;
 
 // the effects: for slot fx (1, 2) and type t (FX1Type/FX2Type's value), its name and what its knobs are
 struct FxType { uint8_t fx, type; const char *name; int n; Param p[14]; };
