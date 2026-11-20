@@ -71,6 +71,18 @@ def commit(repo):
         return ""
 
 
+def native_commit(mid):
+    """A Pung-native module's commit: the last one that touched it (native/<id>, its
+    recipe), not this repository's HEAD. HEAD moves with every commit, so every native
+    module looked changed in every release (build-catalog.py's revision check, and a
+    new 171 MB source archive each time), while its files were the same."""
+    try:
+        return subprocess.run(["git", "-c", "safe.directory=*", "log", "-1", "--format=%H", "--",
+                               "native/" + mid, "scripts/recipes/%s.sh" % mid], capture_output=True, text=True).stdout.strip()
+    except Exception:
+        return ""
+
+
 # PUNG_LOADTEST=static: check the entry point without running the module.
 # A build host whose CPU cannot run what it builds (the DiskStation's Atom has
 # no SSE4.2; the Push builds target x86-64-v2) would see dlopen's constructors
@@ -161,7 +173,7 @@ for mid, m in sorted(cat.items()):
         "description": m.get("description", ""), "author": m.get("author", ""),
         "asset": asset, "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
         # a Pung-native module is built from this repository (native/<id>)
-        "source": ({"github_repo": m["github_repo"], "commit": commit("."), "modsrc": m["modsrc"], "native": True}
+        "source": ({"github_repo": m["github_repo"], "commit": native_commit(mid), "modsrc": m["modsrc"], "native": True}
                    if m.get("native") else
                    {"github_repo": FORKS.get(m["github_repo"].split("/")[1], m["github_repo"]), "commit": commit(repo)}),
         "requires": m.get("requires", ""), "requires_modules": m.get("requires_modules", []),
