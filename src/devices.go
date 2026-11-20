@@ -929,18 +929,50 @@ func (c *sclass) component() string {
 
 // matches: how well Live's parameter values (the plugin's parameter list in
 // Live, "Device On" first) fit this device's. 0 is a perfect fit.
+//
+// This device's side is what its module holds now, read, not the values
+// last exchanged with Live (norms): after Pung restarts, a device's norms
+// are its defaults until something is reported, so two devices of one
+// module (two OsTIrus in a Set) looked alike and the first won. The Pung
+// view then drew one device's knobs beside the other's display (its patch
+// name, "WAITING"), measured 2026-11-20. Asked once per selection.
+//
+// A parameter is placed by its position in Live's list when the names agree
+// there, else by its name where the name is the class's once: a device Live
+// saved with an earlier layout (a Set from before a module's list settled)
+// lists them elsewhere, and by position alone every one was compared with
+// another parameter.
 func (d *device) matches(liveParams []liveParam) float64 {
+	byName := map[string]int{}
+	for i, p := range d.c.Params {
+		if _, dup := byName[p.Name]; dup {
+			byName[p.Name] = -1
+		} else {
+			byName[p.Name] = i
+		}
+	}
 	diff, n := 0.0, 0
 	for k, p := range liveParams {
-		if k == 0 || k-1 >= len(d.c.order) || p.Max <= p.Min {
+		if k == 0 || p.Max <= p.Min {
 			continue
 		}
-		idx := d.c.order[k-1]
-		if idx >= len(d.norms) || d.c.Params[idx].Type == livedevice.PadType {
+		idx := -1
+		if k-1 < len(d.c.order) && d.c.order[k-1] < len(d.c.Params) && d.c.Params[d.c.order[k-1]].Name == p.Name {
+			idx = d.c.order[k-1]
+		} else if i, ok := byName[p.Name]; ok {
+			idx = i
+		}
+		if idx < 0 || idx >= len(d.norms) || d.c.Params[idx].Type == livedevice.PadType {
 			continue
+		}
+		mine := math.Float64frombits(d.norms[idx].Load())
+		if idx < len(d.c.meta) && d.c.meta[idx] != nil && d.c.role[idx] == "" {
+			if v, ok := d.s.Get(d.c.Params[idx].Key); ok {
+				mine = d.c.meta[idx].toNormValue(v)
+			}
 		}
 		live := (p.V - p.Min) / (p.Max - p.Min)
-		diff += math.Abs(live - math.Float64frombits(d.norms[idx].Load()))
+		diff += math.Abs(live - mine)
 		n++
 	}
 	if n == 0 {
