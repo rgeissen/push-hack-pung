@@ -374,6 +374,12 @@ bool find_rom(const std::string &dir, std::vector<uint8_t> &rom, std::string &na
 const int RING = 4096;      // stereo frames, a power of two
 const int BLOCK = 64;       // frames the emulator renders at a time
 const int AHEAD = 320;      // frames kept ready for the host (7 ms)
+// A new sound goes into the synth as a dump, and the emulator stalls while
+// it takes one (a dropout of a few ms on every sound change). Before such a
+// dump it renders this far ahead, and stays that deep for a moment, as
+// OsTIrus does. Only for a sound change: a knob whose parameter only a dump
+// carries must not get the longer latency.
+const int AHEAD_DUMP = 1280; // 29 ms
 
 struct Instance {
     std::string dir;
@@ -414,6 +420,8 @@ struct Instance {
     bool multiDirty = false;
     std::atomic<uint64_t> held[2] = {{0}, {0}}; // keys down now, a bit a note (release_held)
     int64_t busyUntil = 0; // a dump is on its way into the synth until then
+    std::atomic<bool> soundDump{false}; // the next dump is a sound change: deep first (AHEAD_DUMP)
+    int64_t deepUntil = 0; // the emulator thread's
     std::string slotName[4]; // the sound each slot was given (the Nord keeps no names)
 
     // what the synth sent (dumps it was asked for), under outMu
@@ -522,6 +530,7 @@ void init_sound(Instance *in) {
 
 // mu held
 void load_sound(Instance *in, const Sound &s) {
+    in->soundDump = true; // the emulator thread sends it with the ring deep (AHEAD_DUMP)
     if (s.multi) {
         if (s.dump.size() < n2x::g_multiDumpSize) return;
         in->multi.fill(0);
@@ -686,7 +695,9 @@ void emu_main(Instance *in) {
 
     while (!in->quit.load(std::memory_order_relaxed)) {
         uint32_t fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
-        while (fill < uint32_t(AHEAD) && !in->quit.load(std::memory_order_relaxed)) {
+        const bool deep = in->soundDump.load() || now_us() < in->deepUntil;
+        const uint32_t target = deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
+        while (fill < target && !in->quit.load(std::memory_order_relaxed)) {
             const int64_t t0 = now_us();
             for (auto &b : buf) memset(b, 0, sizeof(b));
             in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
@@ -732,7 +743,9 @@ void emu_main(Instance *in) {
             if (us > in->blockMaxUs.load(std::memory_order_relaxed)) in->blockMaxUs.store(us, std::memory_order_relaxed);
             fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
         }
-        if (in->mu.try_lock()) {
+        // a sound change waits until the ring is deep enough to ride out the dump
+        if ((!in->soundDump.load() || fill >= uint32_t(AHEAD_DUMP)) && in->mu.try_lock()) {
+            if (in->soundDump.exchange(false)) in->deepUntil = now_us() + 2500000;
             flush_dumps(in, false);
             in->mu.unlock();
         }

@@ -137,6 +137,14 @@ bool find_rom(const std::string &dir, virusLib::DeviceModel model, std::vector<u
 const int RING = 4096;  // stereo frames, a power of two
 const int BLOCK = 64;   // frames the emulator renders at a time
 const int AHEAD = 320;  // frames kept ready for the host (7 ms)
+// A sound goes into the synth as a dump, and the emulator stalls while it
+// takes one: up to 12 ms, measured, against 7 ms ready. So before a dump
+// it renders this far ahead (the latency rises for a moment, then the
+// ring drains back to AHEAD by itself), and sends the dump then. It stays
+// that deep for a moment after: the first notes of a new sound stall the
+// emulator too, while it compiles what that sound runs (measured: one
+// dropout a change with the depth only before the dump).
+const int AHEAD_DUMP = 1280; // 29 ms
 
 typedef virusLib::ROMFile::TPreset Preset;
 
@@ -171,6 +179,8 @@ struct Instance {
     Preset single{};     // the sound in the edit buffer, as loaded
     bool haveSingle = false;
     bool pendingLoad = false; // a sound waits for the emulator to be up
+    std::atomic<bool> dumpPending{false}; // a sound waits for the ring to be full enough (AHEAD_DUMP)
+    int64_t deepUntil = 0; // the emulator thread's: the ring stays deep until then, after a dump
     std::string romName;
     char status[160] = "Starting";
     char error[200] = "";
@@ -196,10 +206,16 @@ inline float soft_limit(float v) {
     return v < 0 ? -o : o;
 }
 
+// The firmware holds the factory banks of all three synths, the TI's first,
+// then the TI2's, then the Snow's; every model plays every one of them.
+// Named as gearmulator's own OsTIrus names them.
 std::string bank_name(int i) {
+    const int ti = int(virusLib::ROMFile::getRomBankCount(virusLib::DeviceModel::TI));
+    const int ti2 = int(virusLib::ROMFile::getRomBankCount(virusLib::DeviceModel::TI2));
     char b[24];
-    if (i < 26) snprintf(b, sizeof(b), "ROM %c", 'A' + i);
-    else snprintf(b, sizeof(b), "ROM %d", i + 1);
+    if (i < ti) snprintf(b, sizeof(b), "TI Rom %c", 'A' + i);
+    else if (i < ti + ti2) snprintf(b, sizeof(b), "TI2 Rom %c", 'A' + (i - ti));
+    else snprintf(b, sizeof(b), "Snow Rom %c", 'A' + (i - ti - ti2));
     return b;
 }
 
@@ -256,14 +272,16 @@ bool load_sound(Instance *in, int bank, int preset) {
     in->bank = bank;
     in->preset = preset;
     if (in->loading.load()) in->pendingLoad = true;
-    else send_single(in);
+    else in->dumpPending = true; // the emulator thread sends it, with the ring full (AHEAD_DUMP)
     return true;
 }
 
 void emu_main(Instance *in) {
     pthread_setname_np(pthread_self(), "ostirus");
     // Below the host's audio threads, above everything ordinary. The
-    // emulator's own threads are made by this one and inherit it.
+    // emulator's own threads are made by this one and inherit it. (Tried as
+    // an ordinary thread at nice -5, 2026-11-20: as many dropped blocks
+    // beside other devices, and underruns of its own.)
     sched_param sp{};
     sp.sched_priority = 45;
     if (sched_setscheduler(0, SCHED_FIFO, &sp) != 0) plog("no realtime priority for the emulator (%s)", strerror(errno));
@@ -283,7 +301,9 @@ void emu_main(Instance *in) {
         in->loading = 0;
         return;
     }
-    in->lockFd = open("/dev/shm/pung-ostirus.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+    // (a model switch keeps the lock it had: a waiting OsTIrus must not take
+    // the emulator in the moment between the two models)
+    if (in->lockFd < 0) in->lockFd = open("/dev/shm/pung-ostirus.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
     if (in->lockFd < 0) in->lockFd = open("/tmp/pung-ostirus.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
     while (in->lockFd >= 0 && flock(in->lockFd, LOCK_EX | LOCK_NB) != 0) {
         if (!in->waiting.exchange(1)) {
@@ -391,7 +411,14 @@ void emu_main(Instance *in) {
 
     while (!in->quit.load(std::memory_order_relaxed)) {
         uint32_t fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
-        while (fill < uint32_t(AHEAD) && !in->quit.load(std::memory_order_relaxed)) {
+        if (in->dumpPending.load() && fill >= uint32_t(AHEAD_DUMP)) {
+            std::lock_guard<std::mutex> l(in->mu);
+            in->dumpPending = false;
+            send_single(in);
+            in->deepUntil = now_us() + 2500000;
+        }
+        const uint32_t target = in->dumpPending.load() || now_us() < in->deepUntil ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
+        while (fill < target && !in->quit.load(std::memory_order_relaxed)) {
             const int64_t t0 = now_us();
             for (auto &b : buf) memset(b, 0, sizeof(b));
             in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
@@ -428,7 +455,7 @@ void start(Instance *in) {
     in->emu = std::thread(emu_main, in);
 }
 
-void stop(Instance *in) {
+void stop(Instance *in, bool keepLock = false) {
     in->quit = true;
     sem_post(&in->wake);
     if (in->emu.joinable()) in->emu.join();
@@ -437,7 +464,7 @@ void stop(Instance *in) {
         in->plugin.reset();
     }
     in->device.reset();
-    if (in->lockFd >= 0) {
+    if (in->lockFd >= 0 && !keepLock) {
         close(in->lockFd); // the emulator is gone: the next instance may start
         in->lockFd = -1;
     }
@@ -588,7 +615,7 @@ void set_state(Instance *in, const char *val) {
         }
         in->haveSingle = true;
         if (in->loading.load()) in->pendingLoad = true;
-        else send_single(in);
+        else in->dumpPending = true;
     }
 }
 
@@ -604,13 +631,14 @@ void v2_set_param(void *instance, const char *key, const char *val) {
             std::lock_guard<std::mutex> l(in->mu);
             if (m < 0 || m > 2 || m == in->model) return;
             in->model = m;
-            in->haveSingle = false; // another synth, another library: its first sound
-            in->bank = in->preset = 0;
+            // the sound stays, edits and all: every model reads the same
+            // firmware's banks, and the sound is what a player switches the
+            // model to hear on another Virus (the boot sends it again)
             in->rom.reset();
             in->names.clear();
             in->error[0] = 0;
         }
-        stop(in); // the emulator starts again as the other model
+        stop(in, true); // the emulator starts again as the other model, still this instance's
         start(in);
         return;
     }
@@ -706,6 +734,7 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
         for (int i = 0; i < ti::kNumParams; i++) {
             const ti::Param &p = ti::kParams[i];
             AP(",{\"key\":\"%s\",\"name\":\"%s\"", p.key, jesc(p.name).c_str());
+            if (p.short_[0]) AP(",\"short\":\"%s\"", jesc(p.short_).c_str());
             if (p.kind == ti::kEnum && p.list >= 0) {
                 AP(",\"type\":\"enum\",\"options\":[");
                 for (int j = 0; j < ti::kListLen[p.list]; j++) AP("%s\"%s\"", j ? "," : "", jesc(ti::kLists[p.list][j]).c_str());

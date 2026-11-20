@@ -41,6 +41,21 @@ LAYOUT = [
     ("env", "Env 4", ["Envelope 4/Attack", "Envelope 4/Decay", "Envelope 4/Sustain", "Envelope 4/Sustain Time",
                       "Envelope 4/Release"]),
 
+    ("fx", "Delay", ["Delay Type", "Delay Send", "Delay Time", "Delay Feedback", "Delay Clock", "Dly Rate / Rev Decay",
+                     "Dly Depth ", "Delay Color"]),
+    ("fx", "Reverb", ["Reverb Mode", "Reverb Send", "Reverb Type", "Reverb Time", "Reverb Damping", "Reverb Color",
+                      "Reverb Predelay", "Reverb Feedback"]),
+    ("fx", "Chorus", ["Chorus/Type", "Chorus Mix", "Chorus Rate", "Chorus Depth", "Chorus Delay", "Chorus Feedback",
+                      "Chorus Lfo Shape", "Chorus/X Over"]),
+    ("fx", "Phaser", ["Phaser Mode", "Phaser Mix", "Phaser Rate", "Phaser Depth", "Phaser Frequency", "Phaser Feedback",
+                      "Phaser Spread"]),
+    ("fx", "Distortion", ["Distortion Curve", "Distortion Intensity", "Patch Distortion/Mix", "Patch Distortion/Treble Booster",
+                          "Patch Distortion/High Cut", "Character Type", "Bass Intensity", "Bass Tune"]),
+    ("fx", "EQ", ["LowEQ Frequency", "LowEQ Gain", "MidEQ Frequency", "MidEQ Gain", "MidEQ Q-Factor", "HighEQ Frequency",
+                  "HighEQ Gain"]),
+    ("fx", "Filter Bank", ["Filter Bank/Type", "Filter Bank/Mix", "Filter Bank/Frequency", "Filter Bank/Resonance",
+                           "Filter Bank/Slope", "Filter Bank/Poles", "Filter Bank/Stereo Phase"]),
+
     ("lfo", "LFO 1", ["Lfo1 Rate", "Lfo1 Shape", "Lfo1 Clock", "Lfo1 Mode", "Lfo1 Symmetry", "Lfo1 Keyfollow",
                       "Lfo1 Keytrigger", "Lfo1 Env Mode"]),
     ("lfo", "LFO 1 Amounts", ["Osc1 Lfo1 Amount", "Osc2 Lfo1 Amount", "PW Lfo1 Amount", "Reso Lfo1 Amount",
@@ -64,21 +79,6 @@ LAYOUT = [
                           "Assign 5 Amount 2", "Assign 5 Destination 3", "Assign 5 Amount 3"]),
     ("matrix", "Slot 6", ["Assign 6 Source", "Assign 6 Destination", "Assign 6 Amount", "Assign 6 Destination 2",
                           "Assign 6 Amount 2", "Assign 6 Destination 3", "Assign 6 Amount 3"]),
-
-    ("fx", "Delay", ["Delay Type", "Delay Send", "Delay Time", "Delay Feedback", "Delay Clock", "Dly Rate / Rev Decay",
-                     "Dly Depth ", "Delay Color"]),
-    ("fx", "Reverb", ["Reverb Mode", "Reverb Send", "Reverb Type", "Reverb Time", "Reverb Damping", "Reverb Color",
-                      "Reverb Predelay", "Reverb Feedback"]),
-    ("fx", "Chorus", ["Chorus/Type", "Chorus Mix", "Chorus Rate", "Chorus Depth", "Chorus Delay", "Chorus Feedback",
-                      "Chorus Lfo Shape", "Chorus/X Over"]),
-    ("fx", "Phaser", ["Phaser Mode", "Phaser Mix", "Phaser Rate", "Phaser Depth", "Phaser Frequency", "Phaser Feedback",
-                      "Phaser Spread"]),
-    ("fx", "Distortion", ["Distortion Curve", "Distortion Intensity", "Patch Distortion/Mix", "Patch Distortion/Treble Booster",
-                          "Patch Distortion/High Cut", "Character Type", "Bass Intensity", "Bass Tune"]),
-    ("fx", "EQ", ["LowEQ Frequency", "LowEQ Gain", "MidEQ Frequency", "MidEQ Gain", "MidEQ Q-Factor", "HighEQ Frequency",
-                  "HighEQ Gain"]),
-    ("fx", "Filter Bank", ["Filter Bank/Type", "Filter Bank/Mix", "Filter Bank/Frequency", "Filter Bank/Resonance",
-                           "Filter Bank/Slope", "Filter Bank/Poles", "Filter Bank/Stereo Phase"]),
 
     ("arp", "Arp", ["Arp Mode", "Arp Pattern Selct", "Arp Octave Range", "Arp Hold Enable", "Arp Note Length", "Arp Swing",
                     "Arp Clock", "Clock Tempo"]),
@@ -211,8 +211,11 @@ def texts(vl, name, lo, hi):
     if v is None:
         return None
     if isinstance(v, dict):
-        return [str(v.get(str(i), "-")).strip() or "-" for i in range(lo, hi + 1)]
-    return [(str(v[i]).strip() if i < len(v) else str(i)) or "-" for i in range(lo, hi + 1)]
+        out = [str(v.get(str(i), "-")).strip() or "-" for i in range(lo, hi + 1)]
+    else:
+        out = [(str(v[i]).strip() if i < len(v) else str(i)) or "-" for i in range(lo, hi + 1)]
+    # gearmulator writes a degree as "^"; the Push's face has no degree sign
+    return [re.sub(r"(\d)\^$", r"\1 deg", t) for t in out]
 
 
 def k_of(name):
@@ -222,6 +225,28 @@ def k_of(name):
 def key_of(name):
     k = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
     return k[:40]
+
+
+# the name on the Push's label row under a picture, where it shares a column
+# with the value: the page's title already says the section, so the prefix
+# that says it again goes ("AEnv Sus" on Amp Env is "Sustain"). Live keeps
+# the full name: there it stands among all the others.
+PREFIX = re.compile(r"^(Osc[123]|FEnv|AEnv|Env[34]|L[123]|Dly|Rev|Cho|Pha|Dist|FB|M[1-6]|Arp) ")
+# a word spelt out where the value beside it leaves room (Sustain and
+# Feedback read "100.0 %" and "62.5 %": spelt out, the name would be cut)
+WORDS = {"Rel": "Release", "Predly": "Predelay", "Damp": "Damping", "Symm": "Symmetry", "Semi": "Semitone", "Vol": "Volume"}
+# no prefix to drop, still too long beside a value
+OWN_SHORT = {"Key Mode": "Mode", "Treble Boost": "Treble", "Bass Boost": "Bass"}
+
+
+def short_of(name):
+    if name in OWN_SHORT:
+        return OWN_SHORT[name]
+    t = PREFIX.sub("", name)
+    if t == name:
+        return ""
+    t = " ".join(WORDS.get(w, w) for w in t.split(" "))
+    return t if len(t) <= 12 else ""
 
 
 def c_str(s):
@@ -283,7 +308,7 @@ def main():
     out = ["// Generated by tools/gen_params.py from gearmulator's parameterDescriptions_TI.json. Do not edit.",
            "#pragma once", "#include <cstdint>", "", "namespace ti {", ""]
     out.append("enum Kind { kInt, kEnum, kLabels, kSoft };")
-    out.append("struct Param { const char *key, *name; int16_t off; int16_t min, max, offset; uint8_t kind; int16_t list; };")
+    out.append("struct Param { const char *key, *name, *short_; int16_t off; int16_t min, max, offset; uint8_t kind; int16_t list; };")
     out.append("// off: the byte in the 512-byte single (page A 0, B 128, 6E 256, 6F 384, plus the index)")
     out.append("")
     for lk, li in sorted(lists.items(), key=lambda x: x[1]):
@@ -295,11 +320,11 @@ def main():
     out.append("static const Param kParams[] = {")
     for e in params:
         if e["kind"] == "soft":
-            out.append("    {%s, %s, -1, 0, 127, 0, kSoft, -1}," % (c_str(e["key"]), c_str(e["name"])))
+            out.append("    {%s, %s, \"\", -1, 0, 127, 0, kSoft, -1}," % (c_str(e["key"]), c_str(e["name"])))
             continue
         off = order[e["page"]] * 128 + e["index"]
         kind = {"int": "kInt", "enum": "kEnum", "labels": "kLabels"}[e["kind"]]
-        out.append("    {%s, %s, %d, %d, %d, %d, %s, %d}," % (c_str(e["key"]), c_str(e["name"]), off, e["min"], e["max"], e["offset"], kind,
+        out.append("    {%s, %s, %s, %d, %d, %d, %d, %s, %d}," % (c_str(e["key"]), c_str(e["name"]), c_str(short_of(e["name"])), off, e["min"], e["max"], e["offset"], kind,
                                                            e.get("list_id", -1)))
     out.append("};")
     out.append("static const int kNumParams = %d;" % len(params))

@@ -49,7 +49,16 @@ function frame(g, x, y, w, h, c) {
   g.line(x, y, x, y + h, 1, c); g.line(x + w, y, x + w, y + h, 1, c);
 }
 function led(g, x, y, lit) { g.dot(x, y, 2.6, lit ? LED_ON : LED_OFF); }
-function edge(g) { g.fill(0, 0, 3, g.h, RED); } // every page carries the Virus's red at its left edge
+// One OsTIrus plays at a time (the emulator takes most of a Push); a second
+// one in the Set waits, silent, and every page says so
+function waiting(v) { return disp(v, "status").indexOf("Waiting") === 0; }
+function edge(g, v) { // every page carries the Virus's red at its left edge
+  g.fill(0, 0, 3, g.h, RED);
+  if (v && waiting(v)) {
+    g.fill(812, 4, 140, 16, RED_DK);
+    g.text(882, 15, "WAITING", LED_ON, 0);
+  }
+}
 function title(g, x, y, s, lit) { g.text(x, y, s.toUpperCase(), lit ? INK : DIM, -1); }
 
 // ---- waves -----------------------------------------------------------------------
@@ -79,6 +88,12 @@ function oscFn(mode, shape, wave, pw, density) {
 function lcd(g, v) {
   g.fill(10, 26, 372, 72, LCD);
   frame(g, 10, 26, 372, 72, "#24404f");
+  if (waiting(v)) {
+    g.text(20, 42, "OSTIRUS", LCD_DIM, -1);
+    g.value(20, 72, "WAITING", LCD_INK, -1, 350);
+    g.text(20, 91, "ANOTHER OSTIRUS IS PLAYING. ONE AT A TIME", LCD_DIM, -1, 350);
+    return;
+  }
   var n = num(v, "preset", 0) + 1;
   g.text(20, 42, (disp(v, "bank_name") || "ROM") + "  " + ("00" + n).slice(-3), LCD_DIM, -1);
   g.text(372, 42, disp(v, "category").toUpperCase(), LCD_DIM, 1);
@@ -165,7 +180,7 @@ function row(g, v) {
 push.compartment({
   id: "virus", label: "Virus", front_panel: true,
   pages: [{ label: "Virus", keys: ["soft1", "soft2", "soft3", "cutoff", "filter1_resonance", "filter1_env_amt", "delay_send", "reverb_send"] }],
-  extra_keys: ["soft1_name", "soft2_name", "soft3_name", "preset", "preset_name", "bank_name", "category", "model",
+  extra_keys: ["status", "soft1_name", "soft2_name", "soft3_name", "preset", "preset_name", "bank_name", "category", "model",
     "osc1_mode", "osc2_mode", "osc3_mode", "filter1_mode", "filter2_mode", "filter_routing", "reverb_mode", "chorus_type",
     "phaser_mix", "distortion_curve", "arp_mode", "unison_mode", "key_mode"],
   screen: function (g, v) { panel(g, v); }
@@ -174,7 +189,7 @@ push.compartment({
 // ---- oscillators ---------------------------------------------------------------------
 function oscScreen(n) {
   return function (g, v) {
-    edge(g);
+    edge(g, v);
     var p = "osc" + n + "_", mode = disp(v, p + "mode") || "Classic", t = v.$touched || "";
     var shape = frac(v, p + "shape", 0.5), wave = num(v, p + "wave_select", 0), pw = frac(v, p + "pulsewidth", 0.5);
     var sig = [mode, shape.toFixed(2), wave, pw.toFixed(2)].join("|");
@@ -204,7 +219,7 @@ function levelBar(g, x, y, w, label, f, lit) {
   g.fill(x + 70, y - 7, Math.round(w * f), 6, lit ? LED_ON : RED);
 }
 push.compartment({
-  id: "osc", label: "Oscillators",
+  id: "osc", label: "Oscillators", extra_keys: ["status"],
   pages: [
     { label: "Osc 1", keys: ["osc1_mode", "osc1_shape", "osc1_wave_select", "osc1_pulsewidth", "osc1_semitone", "osc1_keyfollow",
       "osc1_wavetable_formantshift", "osc1_wavetable_internal_detune"], screen: oscScreen(1) },
@@ -213,7 +228,7 @@ push.compartment({
     { label: "Osc 3 + Sub", keys: ["osc3_mode", "osc3_volume", "osc3_semitone", "osc3_detune", "suboscillator_volume",
       "suboscillator_shape", "noise_volume", "noise_color"],
       screen: function (g, v) {
-        edge(g);
+        edge(g, v);
         var t = v.$touched || "";
         frame(g, 10, 4, 300, 78, RULE); g.text(18, 17, "OSC 3  " + (disp(v, "osc3_mode") || "--").toUpperCase(), DIM, -1);
         if (on(v, "osc3_mode")) g.poly(cached("o3" + disp(v, "osc3_mode"), function () { var m = disp(v, "osc3_mode"); return wavePts(16, 22, 288, 56, function (x) { var p = x * 3; return m === "Saw" ? saw(p) : m === "Pulse" ? pulse(p, 0.5) : m === "Triangle" ? 1 - 4 * Math.abs(p - Math.floor(p) - 0.5) : Math.sin(p * 6.2832); }); }), 2, RED);
@@ -227,7 +242,7 @@ push.compartment({
     { label: "Mix + FM", keys: ["osc_balance", "osc_mainvolume", "osc2_fm_amount", "osc_fm_mode", "osc2_sync", "fm_filt_env_amt",
       "ringmodulator_volume", "punch_intensity"],
       screen: function (g, v) {
-        edge(g);
+        edge(g, v);
         var t = v.$touched || "", b = frac(v, "osc_balance", 0.5);
         g.text(18, 17, "1", b < 0.5 ? INK : DIM, -1); g.text(300, 17, "2", b > 0.5 ? INK : DIM, 1);
         g.fill(18, 24, 282, 4, RULE); g.fill(18 + Math.round(276 * b), 20, 6, 12, t === "osc_balance" ? LED_ON : RED);
@@ -245,7 +260,7 @@ push.compartment({
 
 // ---- filters -------------------------------------------------------------------------
 function filterScreen(g, v) {
-  edge(g);
+  edge(g, v);
   g.filter(10, 2, 300, 82, { cutoff: "cutoff", resonance: "filter1_resonance", type: "filter1_mode" });
   g.filter(330, 2, 300, 82, { cutoff: "cutoff2", resonance: "filter2_resonance", type: "filter2_mode" });
   g.text(18, 14, "1", INK, -1); g.text(338, 14, "2", INK, -1);
@@ -263,7 +278,7 @@ push.compartment({
     { label: "Filters +", keys: ["filter1_mode", "filter1_keyfollow", "filter1_env_polarity", "saturation_curve", "filter2_mode",
       "filter2_keyfollow", "filter2_env_polarity", "filter2_cutoff_link"] }
   ],
-  extra_keys: ["filter_balance", "saturation_curve", "filter2_cutoff_link", "filter_routing", "filter1_mode", "filter2_mode",
+  extra_keys: ["status", "filter_balance", "saturation_curve", "filter2_cutoff_link", "filter_routing", "filter1_mode", "filter2_mode",
     "cutoff", "cutoff2", "filter1_resonance", "filter2_resonance"],
   screen: filterScreen
 });
@@ -271,13 +286,13 @@ push.compartment({
 // ---- envelopes -----------------------------------------------------------------------
 function envScreen(label, p) {
   return function (g, v) {
-    edge(g);
+    edge(g, v);
     g.text(18, 14, label, DIM, -1);
-    g.envelope(10, 2, 940, 82, { attack: p + "attack", decay: p + "decay", sustain: p + "sustain", release: p + "release", labels: true });
+    g.envelope(10, 22, 940, 62, { attack: p + "attack", decay: p + "decay", sustain: p + "sustain", release: p + "release", labels: true });
   };
 }
 push.compartment({
-  id: "env", label: "Envelopes",
+  id: "env", label: "Envelopes", extra_keys: ["status"],
   pages: [
     { label: "Filter Env", keys: ["filter_env_attack", "filter_env_decay", "filter_env_sustain", "filter_env_sustain_time",
       "filter_env_release", "flt1_envamt_velocity", "flt2_envamt_velocity", "filter_keytrack_base"], screen: envScreen("FILTER ENVELOPE", "filter_env_") },
@@ -290,12 +305,63 @@ push.compartment({
   ]
 });
 
+// ---- effects: what the effect is, and how much of it there is ---------------------------
+var FX_LABEL = { delay_time: "TIME", delay_feedback: "FEEDBACK", dly_rate_rev_decay: "RATE", dly_depth: "DEPTH", delay_color: "COLOR",
+  reverb_time: "TIME", reverb_damping: "DAMPING", reverb_color: "COLOR", reverb_predelay: "PREDELAY", reverb_feedback: "FEEDBACK",
+  chorus_rate: "RATE", chorus_depth: "DEPTH", chorus_delay: "DELAY", chorus_feedback: "FEEDBACK", chorus_x_over: "X-OVER",
+  phaser_rate: "RATE", phaser_depth: "DEPTH", phaser_frequency: "FREQ", phaser_feedback: "FEEDBACK", phaser_spread: "SPREAD",
+  patch_distortion_mix: "MIX", patch_distortion_treble_booster: "TREBLE", patch_distortion_high_cut: "HIGH CUT",
+  bass_intensity: "BASS", bass_tune: "BASS TUNE", loweq_gain: "LOW", mideq_gain: "MID", mideq_q_factor: "MID Q",
+  higheq_gain: "HIGH", mideq_frequency: "MID FREQ", filter_bank_frequency: "FREQ", filter_bank_resonance: "RESO",
+  filter_bank_slope: "SLOPE", filter_bank_poles: "POLES", filter_bank_stereo_phase: "STEREO" };
+function fxScreen(name, typeKey, amountKey, keys) {
+  return function (g, v) {
+    edge(g, v);
+    var t = v.$touched || "", type = typeKey ? disp(v, typeKey) : "", active = amountKey ? on(v, amountKey) : true;
+    if (typeKey && (type === "Off" || type === "")) active = false;
+    led(g, 20, 14, active);
+    g.text(30, 18, name, active ? INK : DIM, -1);
+    if (type) g.value(18, 52, type.toUpperCase(), active ? INK : FAINT, -1, 300);
+    if (amountKey) g.text(18, 74, "AMOUNT " + (disp(v, amountKey) || "--"), DIM, -1);
+    // every knob of the page as a bar: the shape of the effect at a glance
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i], x = 340 + i * 76, f = frac(v, k, 0), lit = t === k;
+      g.fill(x, 12, 52, 62, PANEL);
+      g.fill(x, 12 + Math.round(62 * (1 - f)), 52, Math.max(1, Math.round(62 * f)), lit ? LED_ON : (active ? RED : FAINT));
+      g.text(x + 26, 84, FX_LABEL[k] || String(v[k] ? v[k].name : "").toUpperCase(), lit ? INK : DIM, 0, 72);
+    }
+  };
+}
+push.compartment({
+  id: "fx", label: "Effects", extra_keys: ["status"],
+  pages: [
+    { label: "Delay", keys: ["delay_type", "delay_send", "delay_time", "delay_feedback", "delay_clock", "dly_rate_rev_decay", "dly_depth", "delay_color"],
+      screen: fxScreen("DELAY", "delay_type", "delay_send", ["delay_time", "delay_feedback", "dly_rate_rev_decay", "dly_depth", "delay_color"]) },
+    { label: "Reverb", keys: ["reverb_mode", "reverb_send", "reverb_type", "reverb_time", "reverb_damping", "reverb_color", "reverb_predelay", "reverb_feedback"],
+      screen: fxScreen("REVERB", "reverb_mode", "reverb_send", ["reverb_time", "reverb_damping", "reverb_color", "reverb_predelay", "reverb_feedback"]) },
+    { label: "Chorus", keys: ["chorus_type", "chorus_mix", "chorus_rate", "chorus_depth", "chorus_delay", "chorus_feedback", "chorus_lfo_shape", "chorus_x_over"],
+      screen: fxScreen("CHORUS", "chorus_type", "chorus_mix", ["chorus_rate", "chorus_depth", "chorus_delay", "chorus_feedback", "chorus_x_over"]) },
+    { label: "Phaser", keys: ["phaser_mode", "phaser_mix", "phaser_rate", "phaser_depth", "phaser_frequency", "phaser_feedback", "phaser_spread"],
+      screen: fxScreen("PHASER", "phaser_mode", "phaser_mix", ["phaser_rate", "phaser_depth", "phaser_frequency", "phaser_feedback", "phaser_spread"]) },
+    { label: "Distortion", keys: ["distortion_curve", "distortion_intensity", "patch_distortion_mix", "patch_distortion_treble_booster",
+      "patch_distortion_high_cut", "character_type", "bass_intensity", "bass_tune"],
+      screen: fxScreen("DISTORTION", "distortion_curve", "distortion_intensity", ["patch_distortion_mix", "patch_distortion_treble_booster",
+        "patch_distortion_high_cut", "bass_intensity", "bass_tune"]) },
+    { label: "EQ", keys: ["loweq_frequency", "loweq_gain", "mideq_frequency", "mideq_gain", "mideq_q_factor", "higheq_frequency", "higheq_gain"],
+      screen: fxScreen("EQUALIZER", null, null, ["loweq_gain", "mideq_gain", "mideq_q_factor", "higheq_gain", "mideq_frequency"]) },
+    { label: "Filter Bank", keys: ["filter_bank_type", "filter_bank_mix", "filter_bank_frequency", "filter_bank_resonance", "filter_bank_slope",
+      "filter_bank_poles", "filter_bank_stereo_phase"],
+      screen: fxScreen("FILTER BANK", "filter_bank_type", "filter_bank_mix", ["filter_bank_frequency", "filter_bank_resonance",
+        "filter_bank_slope", "filter_bank_poles", "filter_bank_stereo_phase"]) }
+  ]
+});
+
 // ---- LFOs ----------------------------------------------------------------------------
 function lfoScreen(n, amounts) {
   return function (g, v) {
-    edge(g);
+    edge(g, v);
     var p = "lfo" + n + "_", t = v.$touched || "";
-    g.lfo(10, 2, 420, 82, { shape: p + "shape", rate: p + "rate" });
+    g.lfo(10, 22, 420, 62, { shape: p + "shape", rate: p + "rate" });
     g.text(18, 14, "LFO " + n, DIM, -1);
     var clk = disp(v, p + "clock");
     g.text(422, 14, (clk && clk !== "Off" ? clk : (disp(v, p + "rate") || "")).toUpperCase(), INK, 1);
@@ -327,8 +393,10 @@ push.compartment({
     { label: "LFO 3", keys: ["lfo3_rate", "lfo3_shape", "lfo3_clock", "lfo3_mode", "lfo3_keyfollow", "lfo3_destination", "osc_lfo3_amount",
       "lfo3_fade_in_time"], screen: lfoScreen(3, [["osc_lfo3_amount", "AMOUNT"]]) }
   ],
-  extra_keys: ["osc1_lfo1_amount", "osc2_lfo1_amount", "pw_lfo1_amount", "reso_lfo1_amount", "filtgain_lfo1_amount", "shape_lfo2_amount",
-    "fm_lfo2_amount", "cutoff1_lfo2_amount", "cutoff2_lfo2_amount", "pan_lfo2_amount", "osc_lfo3_amount"]
+  // the amounts pages draw the LFO they belong to, so its wave and rate are read there too
+  extra_keys: ["status", "osc1_lfo1_amount", "osc2_lfo1_amount", "pw_lfo1_amount", "reso_lfo1_amount", "filtgain_lfo1_amount", "shape_lfo2_amount",
+    "fm_lfo2_amount", "cutoff1_lfo2_amount", "cutoff2_lfo2_amount", "pan_lfo2_amount", "osc_lfo3_amount",
+    "lfo1_shape", "lfo1_rate", "lfo1_clock", "lfo2_shape", "lfo2_rate", "lfo2_clock"]
 });
 
 // ---- the modulation matrix: a source, three destinations, a line as strong as its amount
@@ -342,7 +410,7 @@ var SLOT_KEYS = [
 ];
 function matrixScreen(n) {
   return function (g, v) {
-    edge(g);
+    edge(g, v);
     var k = SLOT_KEYS[n], t = v.$touched || "", src = disp(v, k[0]) || "Off";
     g.text(18, 14, "SLOT " + (n + 1), DIM, -1);
     g.fill(18, 34, 220, 22, src === "Off" ? PANEL : RED_DK);
@@ -359,66 +427,15 @@ function matrixScreen(n) {
 }
 var MATRIX_PAGES = [];
 for (var mi = 0; mi < 6; mi++) MATRIX_PAGES.push({ label: "Slot " + (mi + 1), keys: SLOT_KEYS[mi], screen: matrixScreen(mi) });
-push.compartment({ id: "matrix", label: "Matrix", pages: MATRIX_PAGES });
-
-// ---- effects: what the effect is, and how much of it there is ---------------------------
-var FX_LABEL = { delay_time: "TIME", delay_feedback: "FEEDBACK", dly_rate_rev_decay: "RATE", dly_depth: "DEPTH", delay_color: "COLOR",
-  reverb_time: "TIME", reverb_damping: "DAMPING", reverb_color: "COLOR", reverb_predelay: "PREDELAY", reverb_feedback: "FEEDBACK",
-  chorus_rate: "RATE", chorus_depth: "DEPTH", chorus_delay: "DELAY", chorus_feedback: "FEEDBACK", chorus_x_over: "X-OVER",
-  phaser_rate: "RATE", phaser_depth: "DEPTH", phaser_frequency: "FREQ", phaser_feedback: "FEEDBACK", phaser_spread: "SPREAD",
-  patch_distortion_mix: "MIX", patch_distortion_treble_booster: "TREBLE", patch_distortion_high_cut: "HIGH CUT",
-  bass_intensity: "BASS", bass_tune: "BASS TUNE", loweq_gain: "LOW", mideq_gain: "MID", mideq_q_factor: "MID Q",
-  higheq_gain: "HIGH", mideq_frequency: "MID FREQ", filter_bank_frequency: "FREQ", filter_bank_resonance: "RESO",
-  filter_bank_slope: "SLOPE", filter_bank_poles: "POLES", filter_bank_stereo_phase: "STEREO" };
-function fxScreen(name, typeKey, amountKey, keys) {
-  return function (g, v) {
-    edge(g);
-    var t = v.$touched || "", type = typeKey ? disp(v, typeKey) : "", active = amountKey ? on(v, amountKey) : true;
-    if (typeKey && (type === "Off" || type === "")) active = false;
-    led(g, 20, 14, active);
-    g.text(30, 18, name, active ? INK : DIM, -1);
-    if (type) g.value(18, 52, type.toUpperCase(), active ? INK : FAINT, -1, 300);
-    if (amountKey) g.text(18, 74, "AMOUNT " + (disp(v, amountKey) || "--"), DIM, -1);
-    // every knob of the page as a bar: the shape of the effect at a glance
-    for (var i = 0; i < keys.length; i++) {
-      var k = keys[i], x = 340 + i * 76, f = frac(v, k, 0), lit = t === k;
-      g.fill(x, 12, 52, 62, PANEL);
-      g.fill(x, 12 + Math.round(62 * (1 - f)), 52, Math.max(1, Math.round(62 * f)), lit ? LED_ON : (active ? RED : FAINT));
-      g.text(x + 26, 84, FX_LABEL[k] || String(v[k] ? v[k].name : "").toUpperCase(), lit ? INK : DIM, 0, 72);
-    }
-  };
-}
-push.compartment({
-  id: "fx", label: "Effects",
-  pages: [
-    { label: "Delay", keys: ["delay_type", "delay_send", "delay_time", "delay_feedback", "delay_clock", "dly_rate_rev_decay", "dly_depth", "delay_color"],
-      screen: fxScreen("DELAY", "delay_type", "delay_send", ["delay_time", "delay_feedback", "dly_rate_rev_decay", "dly_depth", "delay_color"]) },
-    { label: "Reverb", keys: ["reverb_mode", "reverb_send", "reverb_type", "reverb_time", "reverb_damping", "reverb_color", "reverb_predelay", "reverb_feedback"],
-      screen: fxScreen("REVERB", "reverb_mode", "reverb_send", ["reverb_time", "reverb_damping", "reverb_color", "reverb_predelay", "reverb_feedback"]) },
-    { label: "Chorus", keys: ["chorus_type", "chorus_mix", "chorus_rate", "chorus_depth", "chorus_delay", "chorus_feedback", "chorus_lfo_shape", "chorus_x_over"],
-      screen: fxScreen("CHORUS", "chorus_type", "chorus_mix", ["chorus_rate", "chorus_depth", "chorus_delay", "chorus_feedback", "chorus_x_over"]) },
-    { label: "Phaser", keys: ["phaser_mode", "phaser_mix", "phaser_rate", "phaser_depth", "phaser_frequency", "phaser_feedback", "phaser_spread"],
-      screen: fxScreen("PHASER", "phaser_mode", "phaser_mix", ["phaser_rate", "phaser_depth", "phaser_frequency", "phaser_feedback", "phaser_spread"]) },
-    { label: "Distortion", keys: ["distortion_curve", "distortion_intensity", "patch_distortion_mix", "patch_distortion_treble_booster",
-      "patch_distortion_high_cut", "character_type", "bass_intensity", "bass_tune"],
-      screen: fxScreen("DISTORTION", "distortion_curve", "distortion_intensity", ["patch_distortion_mix", "patch_distortion_treble_booster",
-        "patch_distortion_high_cut", "bass_intensity", "bass_tune"]) },
-    { label: "EQ", keys: ["loweq_frequency", "loweq_gain", "mideq_frequency", "mideq_gain", "mideq_q_factor", "higheq_frequency", "higheq_gain"],
-      screen: fxScreen("EQUALIZER", null, null, ["loweq_gain", "mideq_gain", "mideq_q_factor", "higheq_gain", "mideq_frequency"]) },
-    { label: "Filter Bank", keys: ["filter_bank_type", "filter_bank_mix", "filter_bank_frequency", "filter_bank_resonance", "filter_bank_slope",
-      "filter_bank_poles", "filter_bank_stereo_phase"],
-      screen: fxScreen("FILTER BANK", "filter_bank_type", "filter_bank_mix", ["filter_bank_frequency", "filter_bank_resonance",
-        "filter_bank_slope", "filter_bank_poles", "filter_bank_stereo_phase"]) }
-  ]
-});
+push.compartment({ id: "matrix", label: "Matrix", extra_keys: ["status"], pages: MATRIX_PAGES });
 
 // ---- arpeggiator: the notes it climbs through ----------------------------------------
 push.compartment({
-  id: "arp", label: "Arp",
+  id: "arp", label: "Arp", extra_keys: ["status"],
   pages: [{ label: "Arp", keys: ["arp_mode", "arp_pattern_selct", "arp_octave_range", "arp_hold_enable", "arp_note_length", "arp_swing",
     "arp_clock", "clock_tempo"] }],
   screen: function (g, v) {
-    edge(g);
+    edge(g, v);
     var mode = disp(v, "arp_mode") || "Off", running = mode !== "Off";
     led(g, 20, 14, running); g.text(30, 18, "ARPEGGIATOR  " + mode.toUpperCase(), running ? INK : DIM, -1);
     var oct = Math.max(1, num(v, "arp_octave_range", 0) + 1), len = frac(v, "arp_note_length", 0.5), sw = frac(v, "arp_swing", 0);
@@ -433,25 +450,58 @@ push.compartment({
 });
 
 // ---- voice: how many voices a key sounds, and how they spread -------------------------
+function voiceScreen(g, v) {
+  edge(g, v);
+  var u = disp(v, "unison_mode") || "Off", n = u === "Off" ? 1 : u === "Twin" ? 2 : Math.max(1, parseInt(u, 10) || 1);
+  var det = frac(v, "unison_detune", 0), spread = frac(v, "unison_pan_spread", 0), t = v.$touched || "";
+  g.text(18, 18, (disp(v, "key_mode") || "--").toUpperCase(), INK, -1);
+  g.text(18, 36, n > 1 ? n + " VOICES A KEY" : "ONE VOICE A KEY", n > 1 ? RED : DIM, -1);
+  // the stereo field the voices stand in, left to right
+  g.fill(300, 82, 360, 1, RULE);
+  g.text(300, 80, "L", FAINT, 1);
+  g.text(660, 80, "R", FAINT, -1);
+  for (var i = 0; i < n; i++) {
+    var off = n > 1 ? (i / (n - 1) - 0.5) : 0, x = 480 + Math.round(off * 360 * spread), h = 56 - Math.abs(off) * 20;
+    g.fill(x - 2, 80 - h, 4, h, t === "unison_detune" || t === "unison_pan_spread" ? LED_ON : RED);
+    g.text(x, 80 - h - 4, n > 1 ? (off * det * 100 >= 0 ? "+" : "") + Math.round(off * det * 100) : "", DIM, 0);
+  }
+  var rows = [["portamento_time", "GLIDE"], ["transpose", "TRANSPOSE"], ["bender_range_up", "BEND UP"], ["bender_range_down", "BEND DOWN"]];
+  for (var r = 0; r < rows.length; r++) {
+    var lit = t === rows[r][0], y = 18 + r * 18;
+    g.text(760, y, rows[r][1], lit ? INK : DIM, -1);
+    g.text(940, y, disp(v, rows[r][0]) || "--", lit ? INK : DIM, 1);
+  }
+}
+// ---- velocity: how much harder playing moves, and which way ----------------------------
+var VEL_ROWS = [["osc1_shape_velocity", "SHAPE 1"], ["osc2_shape_velocity", "SHAPE 2"], ["pulsewidth_velocity", "PULSEWIDTH"],
+  ["fm_amount_velocity", "FM"], ["resonance1_velocity", "RESO 1"], ["resonance2_velocity", "RESO 2"], ["panorama_velocity", "PAN"]];
+function velocityScreen(g, v) {
+  edge(g, v);
+  var t = v.$touched || "";
+  g.text(18, 18, "VELOCITY", DIM, -1);
+  // soft to hard: the wedge every velocity amount is read along
+  for (var i = 0; i < 20; i++) g.fill(20 + i * 12, 84 - (i + 1) * 2, 8, (i + 1) * 2, i < 10 ? RED_DK : RED);
+  g.text(20, 96, "SOFT", FAINT, -1);
+  g.text(260, 96, "HARD", FAINT, 1);
+  // what harder playing moves, and which way: two columns, a centred bar each
+  for (var r = 0; r < VEL_ROWS.length; r++) {
+    var k = VEL_ROWS[r][0], x0 = r < 4 ? 330 : 650, y = 22 + (r % 4) * 18, f = frac(v, k, 0.5), lit = t === k;
+    var on = Math.abs(f - 0.5) > 0.004, ink = lit ? INK : (on ? DIM : FAINT);
+    g.text(x0, y, VEL_ROWS[r][1], ink, -1);
+    g.fill(x0 + 100, y - 4, 120, 2, RULE);
+    var mid = x0 + 160, x = x0 + 100 + Math.round(120 * f);
+    if (on || lit) g.fill(Math.min(mid, x), y - 6, Math.max(2, Math.abs(x - mid)), 6, lit ? LED_ON : RED);
+    g.text(x0 + 290, y, disp(v, k) || "--", ink, 1);
+  }
+}
 push.compartment({
   id: "voice", label: "Voice",
   pages: [
     { label: "Voice", keys: ["key_mode", "unison_mode", "unison_detune", "unison_pan_spread", "unison_lfo_phase", "portamento_time", "transpose",
-      "bender_range_up"] },
+      "bender_range_up"], screen: voiceScreen },
     { label: "Velocity", keys: ["osc1_shape_velocity", "osc2_shape_velocity", "pulsewidth_velocity", "fm_amount_velocity", "resonance1_velocity",
-      "resonance2_velocity", "panorama_velocity", "bender_range_down"] }
+      "resonance2_velocity", "panorama_velocity", "bender_range_down"], screen: velocityScreen }
   ],
-  extra_keys: ["key_mode", "unison_mode", "unison_detune", "unison_pan_spread"],
-  screen: function (g, v) {
-    edge(g);
-    var u = disp(v, "unison_mode") || "Off", n = u === "Off" ? 1 : u === "Twin" ? 2 : Math.max(1, parseInt(u, 10) || 1);
-    var det = frac(v, "unison_detune", 0), spread = frac(v, "unison_pan_spread", 0);
-    g.text(18, 18, (disp(v, "key_mode") || "--").toUpperCase(), INK, -1);
-    g.text(18, 36, n > 1 ? n + " VOICES A KEY" : "ONE VOICE A KEY", n > 1 ? RED : DIM, -1);
-    for (var i = 0; i < n; i++) {
-      var off = n > 1 ? (i / (n - 1) - 0.5) : 0, x = 480 + Math.round(off * 360 * spread), h = 64 - Math.abs(off) * 20;
-      g.fill(x - 2, 82 - h, 4, h, RED);
-      g.text(x, 82 - h - 4, n > 1 ? (off * det * 100 >= 0 ? "+" : "") + Math.round(off * det * 100) : "", DIM, 0);
-    }
-  }
+  extra_keys: ["status", "key_mode", "unison_mode", "unison_detune", "unison_pan_spread", "portamento_time", "transpose", "bender_range_up",
+    "bender_range_down"]
 });

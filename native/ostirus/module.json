@@ -17,7 +17,7 @@
             "description": "Requires an Access Virus TI firmware: the .bin file of the firmware installer (about 8 MB). It holds the TI, the TI2 and the Snow, and their factory sounds. The loader finds it by content, so the name is free.",
             "hint": "The emulator runs the Virus's two DSPs on its own threads, off the audio thread. One OsTIrus at a time.",
             "files": [
-                {"filename": "virus_ti.bin", "label": "Virus TI firmware", "required": true}
+                {"filename": "virus_ti.bin", "label": "Virus TI firmware", "min_size": 1048576, "required": true}
             ]
         }
     ],
