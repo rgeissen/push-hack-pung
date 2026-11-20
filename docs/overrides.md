@@ -88,6 +88,11 @@ push.compartment({
   labels). `v.$name` is the device's name and `v.$track` Live's track. Leaving the open device (upper button 1, a jog nudge left) and any
   failure bring Pung's default view back. A front panel's budget is 14 ms (it draws what Pung's own elements
   would have).
+- **`draws_tabs: true`** (a front panel with pages): the screen names the lower buttons itself. Pung
+  hands it the buttons as it maps them: `v.$tabs`, eight strings (a page's name, `"<"` or `">"` for the
+  arrows that move the row along the module's pages, `""` for none), and `v.$tab`, the lit one (-1 when
+  the page shown is off the row). On a page turn Pung then shows only its header for a moment (the way
+  back, Sounds), not its page row over the panel's own. Vavra's matrix and effects panels.
 - **`extra_keys`**: values a screen shows that no encoder edits (a patch name, a mode); they are read with
   the compartment's keys and given in `v`, even without metadata.
 - Band screens and page screens also get `v.$page`, `v.$pages` and `v.$knobs`.

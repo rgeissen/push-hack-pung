@@ -37,13 +37,16 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		if time.Now().Before(u.rowsUntil) {
 			y, h := botY+3, scrH-botY-6
 			rect(img, 0, 0, scrW, topH, cBlack)
-			rect(img, 0, botY, scrW, scrH-botY, cBlack)
 			rect(img, 0, 0, scrW, 2, sc)
 			drawBack(img, strings.ToUpper(p.Name), sc)
 			if u.hasSounds() {
 				drawSoundsButton(img, sc)
 			}
-			drawPageRow(img, y, h, cm, u.pageSlots(), u.bank, sc)
+			// (a panel that names its lower buttons keeps them: override.go drawsTabs)
+			if c := u.takeoverComp(p, b); c == nil || !c.drawsTabs {
+				rect(img, 0, botY, scrW, scrH-botY, cBlack)
+				drawPageRow(img, y, h, cm, u.pageSlots(), u.bank, sc)
+			}
 		}
 		return
 	}
@@ -269,6 +272,26 @@ func drawPageRow(img *image.NRGBA, y, h int, cm *compMeta, slots [8]int, cur int
 			}
 		}
 	}
+}
+
+// pageTabs: the lower row's eight buttons as names (drawPageRow's, for a
+// module drawing them itself), and which of them is the page shown.
+func pageTabs(cm *compMeta, slots [8]int, cur int) ([]string, int) {
+	tabs, tab := make([]string, 8), -1
+	for j, s := range slots {
+		switch {
+		case s == slotLeft:
+			tabs[j] = "<"
+		case s == slotRight:
+			tabs[j] = ">"
+		case cm != nil && s >= 0 && s < len(cm.Banks):
+			tabs[j] = cm.Banks[s].Name
+			if s == cur {
+				tab = j
+			}
+		}
+	}
+	return tabs, tab
 }
 
 // valueBaseline: where a value in face sits so its capitals centre on cy.
@@ -700,6 +723,17 @@ func ovValuesOf(cm *compMeta, keys []string, get func(string) (string, bool)) ma
 // and Pung draws none of its own elements (UX-GUIDELINES.md, 5). The bank
 // list, a failed or switched-off screen, or no screen: false, and the
 // default view draws instead. Notices still draw on top (render).
+// takeoverComp: the front panel compartment the bank belongs to, or nil.
+func (u *surface) takeoverComp(p position, b *bank) *ovCompartment {
+	if b == nil || p.Module == "" || u.ov == nil {
+		return nil
+	}
+	if c := u.ov.get(u.h.modulesDir, p.Module).compartment(b.Compartment); c != nil && c.takeover {
+		return c
+	}
+	return nil
+}
+
 func (u *surface) drawTakeover(img *image.NRGBA, p position, cm *compMeta, b *bank, sc color.NRGBA) bool {
 	// a module's full-panel screen belongs to the OPEN device: at chain level
 	// the rows are Push's (devices, tracks) and the page shows as knobs
@@ -746,7 +780,12 @@ func (u *surface) takeoverInfo(p position, cm *compMeta, b *bank, comp *ovCompar
 	if u.liveActive() {
 		track, _ = u.live.state().trackHeader()
 	}
+	// $tabs: the lower buttons as Pung maps them, for a panel that names
+	// them itself (draws_tabs): a page's name, "<" or ">" for the arrows
+	// that move the row along the module's pages, "" for none; $tab: the
+	// lit one (-1: the page shown is not in the row)
+	tabs, tab := pageTabs(cm, u.pageSlots(), u.bank)
 	// $wheel: the jog wheel is walking the compartment's wheel key now
 	return map[string]any{"$page": page, "$pages": pages, "$knobs": knobs, "$name": p.Name, "$track": track, "$live": u.liveInfo(),
-		"$wheel": u.open && u.inner && comp.wheel != ""}
+		"$wheel": u.open && u.inner && comp.wheel != "", "$tabs": tabs, "$tab": tab}
 }

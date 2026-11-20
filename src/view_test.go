@@ -275,3 +275,23 @@ func TestBottomRowsKeepTheirText(t *testing.T) {
 	}
 	gallery(t, "track-row", img)
 }
+
+// A panel naming the lower buttons itself is handed them as Pung maps them:
+// the arrows where the row moves on, the lit page where it is.
+func TestPageTabs(t *testing.T) {
+	cm := &compMeta{}
+	for i := 0; i < 12; i++ {
+		cm.Banks = append(cm.Banks, bank{Name: fmt.Sprintf("P%d", i)})
+	}
+	tabs, tab := pageTabs(cm, rowSlots(0, len(cm.Banks)), 2)
+	if tabs[0] != "P0" || tabs[7] != ">" || tab != 2 {
+		t.Fatalf("first row %q, lit %d", tabs, tab)
+	}
+	tabs, tab = pageTabs(cm, rowSlots(7, len(cm.Banks)), 2)
+	if tabs[0] != "<" || tab != -1 {
+		t.Fatalf("a later row %q, lit %d", tabs, tab)
+	}
+	if tabs, _ := pageTabs(cm, rowSlots(0, 3), 0); tabs[3] != "" || tabs[2] != "P2" {
+		t.Fatalf("a short row %q", tabs)
+	}
+}

@@ -99,6 +99,11 @@ type ovCompartment struct {
 	// wheelPress: the key a press of the jog wheel sets to "on" while it
 	// walks the wheel key (Stacks: hear the chord)
 	wheelPress string
+	// drawsTabs: a front panel with pages that names the lower buttons
+	// itself (Vavra's matrix rows). On a page turn Pung still shows its
+	// header for a moment (the way back, Sounds), but not its page row over
+	// the panel's own
+	drawsTabs bool
 }
 
 // pageScreen: the band screen for a compartment's page: the page's own,
@@ -296,6 +301,9 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 			if v := spec.Get(name); v != nil && !goja.IsUndefined(v) && v.ToBoolean() {
 				c.takeover = true
 			}
+		}
+		if v := spec.Get("draws_tabs"); v != nil && !goja.IsUndefined(v) && v.ToBoolean() {
+			c.drawsTabs = true
 		}
 		if c.takeover && c.screen == nil {
 			panic(vm.NewTypeError("push.compartment: front_panel needs a screen"))

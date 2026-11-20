@@ -52,6 +52,30 @@ push.compartment({ id: "env", label: "Envelope", keys: ["a","d","s","r","a2","d2
 	}
 }
 
+// A front panel may name its lower buttons itself (draws_tabs): read, and
+// only with that word.
+func TestDrawsTabs(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "sound_generators", "syn")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"syn","name":"Syn","component_type":"sound_generator"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "push_ui.js"), []byte(`
+push.compartment({ id: "panel", label: "Panel", front_panel: true, draws_tabs: true,
+  pages: [ { label: "Row 1", keys: ["a"] }, { label: "Row 2", keys: ["b"] } ], screen: function (g, v) {} });
+push.compartment({ id: "fp", label: "Plain", front_panel: true, keys: ["c"], screen: function (g, v) {} });
+`), 0o644)
+	set := newOverrides().get(root, "syn")
+	if set == nil || set.failed != "" {
+		t.Fatalf("set %+v", set)
+	}
+	if c := set.compartment("panel"); c == nil || !c.drawsTabs {
+		t.Fatalf("panel %+v", c)
+	}
+	if c := set.compartment("fp"); c == nil || c.drawsTabs {
+		t.Fatalf("a front panel names no tabs unless it says so: %+v", c)
+	}
+}
+
 // Every overlay shipped with Pung (overrides/<id>/push_ui.js) loads and draws
 // each of its screens and widgets with mid values, and with a key touched,
 // without an error. (The 8 ms budget is checked on the device; this machine's
