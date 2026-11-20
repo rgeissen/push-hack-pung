@@ -49,7 +49,7 @@
   "why": "2026-11-17: the libresample and asmjit licence texts were left out"
  },
  "nodalred": {
-  "rev": 3,
-  "why": "2026-11-18: the output clipped on loud sounds (crackling): 6 dB of headroom and a soft limiter"
+  "rev": 4,
+  "why": "2026-11-20: a sound change dropped audio while the emulator took the dump in: the ring fills further ahead first"
  }
 }
