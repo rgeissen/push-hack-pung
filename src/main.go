@@ -23,6 +23,7 @@ import (
 var buildVersion = "dev"
 
 func main() {
+	setProcs() // before any device thread starts (procs.go)
 	exe, _ := os.Executable()
 	base := filepath.Dir(exe)
 	modules := flag.String("modules", filepath.Join(base, "modules"), "Schwung module tree")

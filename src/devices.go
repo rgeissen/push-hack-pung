@@ -1100,9 +1100,11 @@ func (d *device) Close() {
 	// chain slot can be another device's
 	d.loadMu.Lock()
 	defer d.loadMu.Unlock()
+	restore := lockBoost() // the engine spins while this holds the lock (lockboost_linux.go)
 	d.s.own.Lock()
 	cSlotDestroy(d.s.Index)
 	d.s.own.Unlock()
+	restore()
 	d.p.release(d.s.Index)
 	go d.p.reviveSiblings(d.c.module)
 }

@@ -158,9 +158,11 @@ func (h *Host) closeSlot(i int) {
 	if s == nil {
 		return
 	}
+	restore := lockBoost() // the engine spins while this holds the lock (lockboost_linux.go)
 	s.own.Lock()
 	cSlotDestroy(i)
 	s.own.Unlock()
+	restore()
 	if s.bus != nil {
 		s.bus.Close()
 	}
@@ -175,6 +177,7 @@ func (s *Slot) Set(key, val string) {
 		s.loading.Store(true)
 		defer s.loading.Store(false)
 	}
+	defer lockBoost()() // the engine spins while this holds the lock (lockboost_linux.go)
 	s.own.Lock()
 	cSet(s.Index, key, val)
 	if heavy {
@@ -244,6 +247,7 @@ func (s *Slot) Meta(comp, key string) (string, bool) {
 }
 
 func (s *Slot) Get(key string) (string, bool) {
+	defer lockBoost()() // the engine spins while this holds the lock (lockboost_linux.go)
 	s.own.Lock()
 	defer s.own.Unlock()
 	return cGet(s.Index, key)
