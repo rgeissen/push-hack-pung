@@ -52,6 +52,21 @@ func (h *Host) componentInfo(s *Slot, comp string) map[string]any {
 	if raw, ok := s.Meta(comp, "ui_hierarchy"); ok && raw != "" {
 		json.Unmarshal([]byte(raw), &hier)
 	}
+	// value texts named by reference come to the page resolved (model.go, Labels)
+	var lists map[string][]string
+	for _, e := range cp {
+		ref, ok := e["value_labels"].(string)
+		if !ok {
+			continue
+		}
+		if lists == nil {
+			lists = map[string][]string{}
+			if raw, ok := s.Meta(comp, "value_lists"); ok && raw != "" {
+				json.Unmarshal([]byte(raw), &lists) //nolint:errcheck
+			}
+		}
+		e["value_labels"] = lists[ref]
+	}
 	out["chain_params"] = cp
 	out["hierarchy"] = hier
 	out["values"] = h.componentValues(s, comp, cp)

@@ -12,8 +12,11 @@
 // loaded as the synth's own single dump into the edit buffer, and that dump
 // is the device's state.
 //
-// Step 1 of the module: the engine, the factory sounds, the state. The
-// parameters come next (docs/NATIVE-MODULES.md).
+// Parameters. Every one is a byte of the single (512 bytes: pages A, B, 6E,
+// 6F), read from the sound as loaded and sent to the synth as a parameter
+// change when it is turned, so the dump is always the sound as it is. Their
+// pages, ranges and value texts are gearmulator's own descriptions, laid out
+// by tools/gen_params.py into ti_params.h (docs/NATIVE-MODULES.md, OsTIrus).
 
 #include <algorithm>
 #include <atomic>
@@ -47,6 +50,9 @@
 #include "virusLib/microcontroller.h"
 #include "virusLib/microcontrollerTypes.h"
 #include "virusLib/romfile.h"
+
+#include "ti_params.h"
+#include <unordered_map>
 
 extern "C" {
 #include "host/plugin_api_v1.h"
@@ -396,6 +402,76 @@ void stop(Instance *in) {
     in->rd = 0;
 }
 
+// ---- parameters -------------------------------------------------------------------
+
+const ti::Param *find_param(const char *key) {
+    static std::unordered_map<std::string, int> idx;
+    if (idx.empty())
+        for (int i = 0; i < ti::kNumParams; i++) idx.emplace(ti::kParams[i].key, i);
+    auto it = idx.find(key);
+    return it == idx.end() ? nullptr : &ti::kParams[it->second];
+}
+
+// A byte of the single to the synth: a parameter change on its page.
+void send_byte(Instance *in, int off) {
+    if (off < 0 || off >= 512) return;
+    const uint8_t v = in->single[size_t(off)] & 0x7f;
+    synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
+    ev.sysex = {0xf0, 0x00, 0x20, 0x33, 0x01, virusLib::OMNI_DEVICE_ID, ti::kPageCode[off / 128], virusLib::SINGLE,
+                uint8_t(off % 128), v, 0xf7};
+    send(in, ev);
+}
+
+// mu held. The byte a Soft Knob moves (-1: it points at nothing).
+int soft_target(const Instance *in, int i) {
+    const int dest = in->single[size_t(ti::kSoftDestOff[i])] & 0x7f;
+    return ti::kSoftTarget[dest];
+}
+
+// mu held. A parameter's value as Pung reads it: an enum's index, a number
+// as it is shown.
+int param_get(const Instance *in, const ti::Param &p) {
+    if (p.kind == ti::kSoft) {
+        const int t = soft_target(in, p.key[4] - '1');
+        return t < 0 ? 0 : in->single[size_t(t)];
+    }
+    const int raw = in->single[size_t(p.off)];
+    if (p.kind == ti::kEnum) return std::max(0, std::min(int(p.max), raw) - int(p.min));
+    return raw - p.offset;
+}
+
+// mu held
+void param_set(Instance *in, const ti::Param &p, const char *val) {
+    char *end = nullptr;
+    long v = strtol(val, &end, 10);
+    if (end == val) {
+        if (p.kind != ti::kEnum || p.list < 0) return;
+        v = -1;
+        for (int i = 0; i < ti::kListLen[p.list]; i++)
+            if (!strcasecmp(ti::kLists[p.list][i], val)) v = i;
+        if (v < 0) return;
+    }
+    if (p.kind == ti::kSoft) {
+        const int t = soft_target(in, p.key[4] - '1');
+        if (t < 0) return;
+        in->single[size_t(t)] = uint8_t(std::max(0L, std::min(127L, v)));
+        send_byte(in, t);
+        return;
+    }
+    const long raw = p.kind == ti::kEnum ? v + p.min : v + p.offset;
+    in->single[size_t(p.off)] = uint8_t(std::max(long(p.min), std::min(long(p.max), raw)));
+    if (!in->loading.load()) send_byte(in, p.off);
+}
+
+std::string jesc(const char *s) {
+    std::string o;
+    for (; *s; s++) {
+        if (*s == '"' || *s == '\\') o.push_back('\\');
+        if (uint8_t(*s) >= 32) o.push_back(*s);
+    }
+    return o;
+}
+
 // ---- the plugin API -------------------------------------------------------------
 
 void *v2_create(const char *module_dir, const char *) {
@@ -521,6 +597,8 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         }
         if (n == in->bank && in->haveSingle) return;
         load_sound(in, n, 0); // as on the synth: a bank's first sound, so the list and the sound agree
+    } else if (const ti::Param *p = find_param(key)) {
+        if (in->haveSingle) param_set(in, *p, val);
     } else if (!strcmp(key, "gain")) {
         in->gain = std::max(1, std::min(200, atoi(val)));
     } else if (!strcmp(key, "all_notes_off")) {
@@ -581,17 +659,92 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
         int off = 0;
         AP("[{\"key\":\"preset\",\"name\":\"Sound\",\"type\":\"int\",\"min\":0,\"max\":127}");
         AP(",{\"key\":\"model\",\"name\":\"Model\",\"type\":\"enum\",\"options\":[\"TI\",\"TI2\",\"Snow\"]}");
-        AP(",{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}]");
+        AP(",{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}");
+        for (int i = 0; i < ti::kNumParams; i++) {
+            const ti::Param &p = ti::kParams[i];
+            AP(",{\"key\":\"%s\",\"name\":\"%s\"", p.key, jesc(p.name).c_str());
+            if (p.kind == ti::kEnum && p.list >= 0) {
+                AP(",\"type\":\"enum\",\"options\":[");
+                for (int j = 0; j < ti::kListLen[p.list]; j++) AP("%s\"%s\"", j ? "," : "", jesc(ti::kLists[p.list][j]).c_str());
+                AP("]}");
+            } else {
+                AP(",\"type\":\"int\",\"min\":%d,\"max\":%d", p.min - p.offset, p.max - p.offset);
+                if (p.kind == ti::kLabels && p.list >= 0) AP(",\"value_labels\":\"L%d\"", p.list);
+                AP("}");
+            }
+        }
+        AP("]");
         return off < len ? off : -1;
     }
-    if (!strcmp(key, "ui_hierarchy")) {
+    // the value texts the numbers name (chain_params "value_labels": "L<n>")
+    if (!strcmp(key, "value_lists")) {
+        bool used[sizeof(ti::kListLen) / sizeof(ti::kListLen[0])] = {};
+        for (int i = 0; i < ti::kNumParams; i++)
+            if (ti::kParams[i].kind == ti::kLabels && ti::kParams[i].list >= 0) used[ti::kParams[i].list] = true;
         int off = 0;
+        AP("{");
+        bool first = true;
+        for (size_t l = 0; l < sizeof(used); l++) {
+            if (!used[l]) continue;
+            AP("%s\"L%d\":[", first ? "" : ",", int(l));
+            first = false;
+            for (int j = 0; j < ti::kListLen[l]; j++) AP("%s\"%s\"", j ? "," : "", jesc(ti::kLists[l][j]).c_str());
+            AP("]");
+        }
+        AP("}");
+        return off < len ? off : -1;
+    }
+    if (const ti::Param *p = find_param(key)) return in->haveSingle ? snprintf(buf, size_t(len), "%d", param_get(in, *p)) : -1;
+    if (!strncmp(key, "soft", 4) && key[4] >= '1' && key[4] <= '3' && !strcmp(key + 5, "_name")) {
+        if (!in->haveSingle) return snprintf(buf, size_t(len), "Soft Knob %c", key[4]);
+        const int i = key[4] - '1';
+        const int n = in->single[size_t(ti::kSoftNameOff[i])] & 0x7f;
+        if (soft_target(in, i) < 0) return snprintf(buf, size_t(len), "-");
+        return snprintf(buf, size_t(len), "%s", n < ti::kNumSoftNames ? ti::kSoftName[n] : "");
+    }
+    if (!strcmp(key, "category")) {
+        if (!in->haveSingle) return snprintf(buf, size_t(len), "");
+        const int c1 = in->single[size_t(ti::kCat1Off)], c2 = in->single[size_t(ti::kCat2Off)];
+        const char *a = c1 < ti::kNumCategories ? ti::kCategory[c1] : "", *b = c2 < ti::kNumCategories ? ti::kCategory[c2] : "";
+        if (c2 && c2 != c1 && strcmp(b, "--")) return snprintf(buf, size_t(len), "%s / %s", a, b);
+        return snprintf(buf, size_t(len), "%s", a);
+    }
+    if (!strcmp(key, "ui_hierarchy")) {
+        // the root is the sound list, its knobs the first page; every page a
+        // level of eight knobs, in the layout's order (ti_params.h kPages)
+        int off = 0;
+        auto knobs = [&](const ti::Page &pg) {
+            AP("[");
+            bool f = true;
+            for (const char *k : pg.keys)
+                if (k) {
+                    AP("%s\"%s\"", f ? "" : ",", k);
+                    f = false;
+                }
+            AP("]");
+        };
         AP("{\"modes\":null,\"levels\":{\"root\":{\"list_param\":\"preset\",\"count_param\":\"preset_count\","
-           "\"name_param\":\"preset_name\",\"children\":null,\"knobs\":[\"preset\",\"model\",\"gain\"],"
-           "\"params\":[{\"level\":\"banks\",\"label\":\"Bank\"},{\"key\":\"model\",\"label\":\"Model\"},"
-           "{\"key\":\"gain\",\"label\":\"Output Gain\"}]}");
+           "\"name_param\":\"preset_name\",\"children\":null,\"knobs\":");
+        knobs(ti::kPages[0]);
+        AP(",\"params\":[{\"level\":\"banks\",\"label\":\"Bank\"}");
+        for (int i = 1; i < ti::kNumPages; i++) AP(",{\"level\":\"p%d\",\"label\":\"%s\"}", i, ti::kPages[i].label);
+        AP(",{\"level\":\"synth\",\"label\":\"Synth\"}]}");
         AP(",\"banks\":{\"label\":\"Bank\",\"items_param\":\"bank_list\",\"select_param\":\"bank_select\","
-           "\"navigate_to\":\"root\",\"children\":null,\"knobs\":[],\"params\":[]}}}");
+           "\"navigate_to\":\"root\",\"children\":null,\"knobs\":[],\"params\":[]}");
+        for (int i = 1; i < ti::kNumPages; i++) {
+            AP(",\"p%d\":{\"label\":\"%s\",\"children\":null,\"knobs\":", i, ti::kPages[i].label);
+            knobs(ti::kPages[i]);
+            AP(",\"params\":[");
+            bool f = true;
+            for (const char *k : ti::kPages[i].keys)
+                if (const ti::Param *p = k ? find_param(k) : nullptr) {
+                    AP("%s{\"key\":\"%s\",\"label\":\"%s\"}", f ? "" : ",", k, jesc(p->name).c_str());
+                    f = false;
+                }
+            AP("]}");
+        }
+        AP(",\"synth\":{\"label\":\"Synth\",\"children\":null,\"knobs\":[\"model\",\"gain\"],"
+           "\"params\":[{\"key\":\"model\",\"label\":\"Model\"},{\"key\":\"gain\",\"label\":\"Output Gain\"}]}}}");
         return off < len ? off : -1;
     }
     if (!strcmp(key, "state")) {

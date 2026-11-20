@@ -60,7 +60,7 @@ func metaKey(key string) bool {
 		k = k[i+1:]
 	}
 	switch k {
-	case "ui_hierarchy", "chain_params", "state", "patch_list", "preset_list", "presets", "preset_names":
+	case "ui_hierarchy", "chain_params", "value_lists", "state", "patch_list", "preset_list", "presets", "preset_names":
 		return true
 	}
 	return false

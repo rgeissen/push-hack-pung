@@ -40,6 +40,13 @@ type paramMeta struct {
 	// now, a character an option ("1010"): a turn passes over the others
 	// (Nodal Red 2X: the edit slot, among the slots that are on)
 	Avail string
+	// Labels: the text of every value of a number, from Min up (OsTIrus: a
+	// send level in dB, a delay time, an oscillator's shape). Given inline
+	// ("value_labels": [...]) or by name ("value_labels": "L3"), the names
+	// resolved from the module's "value_lists" (buildMeta): a long list
+	// repeated on every parameter would not fit chain_params.
+	Labels    []string
+	labelsRef string
 	// File: a file parameter (the module's "filepath"): a sample, a
 	// wavetable, a kit; chosen in the file browser, never turned (files.go)
 	File *fileSpec
@@ -108,6 +115,14 @@ func metaFromObj(o map[string]any) *paramMeta {
 	}
 	m.Selector, _ = o["selector"].(bool)
 	m.Avail = str(o["available_param"])
+	switch vl := o["value_labels"].(type) {
+	case string:
+		m.labelsRef = vl
+	case []any:
+		for _, x := range vl {
+			m.Labels = append(m.Labels, fmt.Sprint(x))
+		}
+	}
 	m.Min, _ = num(o["min"])
 	m.Max, _ = num(o["max"])
 	m.Step, _ = num(o["step"])
@@ -187,6 +202,7 @@ func buildMeta(module string, get func(string) (string, bool)) *compMeta {
 			}
 		}
 	}
+	resolveLabels(cm, get)
 	if raw, ok := get("ui_hierarchy"); ok && raw != "" {
 		var hier struct {
 			Levels    map[string]map[string]any `json:"levels"`
@@ -430,10 +446,48 @@ func (m *paramMeta) frac(v string) float64 {
 	return (f - m.Min) / (m.Max - m.Min)
 }
 
+// resolveLabels fills the value texts named by reference, from the
+// module's "value_lists" (read only when a parameter names one).
+func resolveLabels(cm *compMeta, get func(string) (string, bool)) {
+	var lists map[string][]string
+	for _, k := range cm.Order {
+		m := cm.Params[k]
+		if m == nil || m.labelsRef == "" || m.Labels != nil {
+			continue
+		}
+		if lists == nil {
+			lists = map[string][]string{}
+			if raw, ok := get("value_lists"); ok && raw != "" {
+				json.Unmarshal([]byte(raw), &lists) //nolint:errcheck
+			}
+		}
+		m.Labels = lists[m.labelsRef]
+	}
+}
+
+// label: the text a number has, if the module named one.
+func (m *paramMeta) label(f float64) (string, bool) {
+	if len(m.Labels) == 0 {
+		return "", false
+	}
+	i := int(math.Round(f - m.Min))
+	if i < 0 || i >= len(m.Labels) {
+		return "", false
+	}
+	return m.Labels[i], true
+}
+
 // display renders a value with its unit, the way the module means it.
 func (m *paramMeta) display(v string, ok bool) (val, unit string) {
 	if !ok {
 		return "--", ""
+	}
+	if m.Type != "enum" && len(m.Labels) > 0 {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			if t, ok := m.label(f); ok {
+				return t, ""
+			}
+		}
 	}
 	switch m.Type {
 	case "enum":

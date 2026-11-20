@@ -529,6 +529,11 @@
     }
     let f = parseFloat(v);
     if (isNaN(f)) return v;
+    // the text the module gives every value of a number (OsTIrus: "-12.0 dB", "Saw>Pulse 40 %")
+    if (Array.isArray(p.value_labels)) {
+      const t = p.value_labels[Math.round(f - (p.min ?? 0))];
+      if (t !== undefined) return t;
+    }
     if (p.unit === "%" && p.max <= 1.0001) f *= 100;
     const s = p.type === "int" ? String(Math.round(f)) : Math.abs(f) >= 100 || p.unit === "%" ? f.toFixed(0) : f.toFixed(2);
     return s + (p.unit ? " " + p.unit : "");
