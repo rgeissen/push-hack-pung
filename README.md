@@ -158,7 +158,7 @@ audio through Live; **push-audio-loopback** is needed only for a chain opened th
 
 A release (`scripts/release.sh`, after `make build`) is one file, `pung.tar.gz`, in Push Hack Catalog's
 layout, with the module catalog inside it: `catalog/catalog.json` and every package it lists (82 MB for
-106 modules in 0.4.2). The Modules page installs from that copy, from the Push's own disk: nothing is downloaded
+106 modules in 0.4.3). The Modules page installs from that copy, from the Push's own disk: nothing is downloaded
 from anywhere, and a new Pung release brings the new module versions. Firmware for the emulators (JV-880,
 Osirus, JE-8086, Nodal Red 2X, OsTIrus, Vavra, Xenia) is never in it: you add it yourself on the Modules page, as before. A catalog address set in Pung's settings
 (`catalog_url`) still wins over the bundled one; without either, Pung reads no catalog from the web.
