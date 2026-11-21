@@ -175,7 +175,11 @@ func (s *Slot) Set(key, val string) {
 	heavy := heavyKey(key)
 	if heavy {
 		s.loading.Store(true)
-		defer s.loading.Store(false)
+		cSlotBusy(s.Index, true) // and a device's own thread does not wait either (rtloop.c)
+		defer func() {
+			cSlotBusy(s.Index, false)
+			s.loading.Store(false)
+		}()
 	}
 	defer lockBoost()() // the engine spins while this holds the lock (lockboost_linux.go)
 	s.own.Lock()

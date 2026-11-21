@@ -90,6 +90,8 @@ func (h *Host) routes(mux *http.ServeMux) {
 	// (a pause stops the devices' audio threads too: see "late" in /api/devices)
 	// a CPU profile of Pung itself, for go tool pprof: ?seconds=10
 	mux.HandleFunc("GET /api/debug/profile", pprof.Profile)
+	// an execution trace, for go tool trace: ?seconds=10 (what a goroutine waited for, and when)
+	mux.HandleFunc("GET /api/debug/trace", pprof.Trace)
 	mux.HandleFunc("GET /api/debug/gc", func(w http.ResponseWriter, r *http.Request) {
 		var st debug.GCStats
 		debug.ReadGCStats(&st)
@@ -251,5 +253,5 @@ func (h *Host) notify(slot int, key, value string) {
 	}
 }
 
-// gcPercent: GOGC as set at start (main.go).
+// gcPercent: GOGC as set at start (setGC, gomaxprocs.go).
 var gcPercent = 100

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"runtime"
+	"runtime/debug"
 )
 
 // realtimeProcs: Go's processors (Ps) for a Pung whose realtime threads must
@@ -26,4 +27,32 @@ func setProcs() {
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) < realtimeProcs {
 		runtime.GOMAXPROCS(realtimeProcs)
 	}
+}
+
+// realtimeGCPercent, realtimeMemLimit: how often Go collects garbage.
+//
+// A collection stops every goroutine for a moment, the devices' realtime
+// threads too, and the stop waits for Pung's ordinary threads (nice 19) to
+// reach it. Pung keeps about 9 MB live and allocates about 20 MB a second
+// (the view, the web page), so at Go's default (GOGC 100: collect when the
+// heap has doubled) it collected every 0.45 s, a stop of up to 1.1 ms each,
+// and Live played silence for the blocks that missed their half block: about
+// 3 late blocks a minute with OsTIrus. At 800 it collects every few minutes
+// (one in 120 s) and the late blocks were gone with it (measured 2026-11-21).
+// The limit lets Go collect sooner rather than grow past it; the Push has
+// about 6 GB free. GOGC or GOMEMLIMIT in the environment still win.
+const (
+	realtimeGCPercent = 800
+	realtimeMemLimit  = 1 << 30
+)
+
+func setGC() {
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(realtimeGCPercent)
+	}
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(realtimeMemLimit)
+	}
+	gcPercent = debug.SetGCPercent(-1)
+	debug.SetGCPercent(gcPercent)
 }

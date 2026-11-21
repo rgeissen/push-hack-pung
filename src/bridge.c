@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include <sys/syscall.h>
 #include <fcntl.h>
 
@@ -37,6 +38,8 @@ typedef struct {
     /* MIDI the module sent: written by the slot's owner, read by Go */
     uint8_t midi[MIDI_RING];
     _Atomic unsigned midi_w, midi_r;
+    /* the longest chain render_block since sb_chain_max_ns last read it */
+    _Atomic long long chain_ns_max;
 } slot_t;
 
 static char g_err[512];
@@ -192,48 +195,96 @@ int sb_init(const char *chain_dir) {
 static int valid(int slot) { return g_api && slot >= 0 && slot < SB_MAX_SLOTS; }
 int sb_slot_alive(int slot) { return valid(slot) && g_slots[slot].inst != NULL; }
 
+/* Each chain is called by one thread at a time: its lock, held for every call
+ * into it. A priority-inheriting mutex: when a device's realtime thread
+ * (rtloop.c) waits for it, the kernel lifts whoever holds it to the waiter's
+ * priority until it lets go, so an ordinary thread in the middle of a
+ * get_param is not left behind by an emulator's threads (it was, at nice 19,
+ * and Live played silence: lockboost_linux.go). Kept apart from g_slots,
+ * which sb_slot_create clears. busy: a long call (a module loading) holds
+ * it; the realtime thread does not wait then. */
+static pthread_mutex_t g_lock[SB_MAX_SLOTS];
+static _Atomic int g_busy[SB_MAX_SLOTS];
+static pthread_once_t g_lock_once = PTHREAD_ONCE_INIT;
+static void lock_init(void) {
+    pthread_mutexattr_t a;
+    pthread_mutexattr_init(&a);
+    pthread_mutexattr_setprotocol(&a, PTHREAD_PRIO_INHERIT);
+    for (int i = 0; i < SB_MAX_SLOTS; i++) pthread_mutex_init(&g_lock[i], &a);
+    pthread_mutexattr_destroy(&a);
+}
+static void slot_lock(int slot) {
+    pthread_once(&g_lock_once, lock_init);
+    pthread_mutex_lock(&g_lock[slot]);
+}
+static void slot_unlock(int slot) { pthread_mutex_unlock(&g_lock[slot]); }
+
+int sb_slot_lock_until(int slot, const struct timespec *abs_realtime) {
+    if (!valid(slot) || atomic_load_explicit(&g_busy[slot], memory_order_relaxed)) return -1;
+    pthread_once(&g_lock_once, lock_init);
+    return pthread_mutex_timedlock(&g_lock[slot], abs_realtime) == 0 ? 0 : -1;
+}
+void sb_slot_unlock(int slot) { if (valid(slot)) slot_unlock(slot); }
+void sb_slot_busy(int slot, int on) { if (valid(slot)) atomic_store(&g_busy[slot], on); }
+
 int sb_slot_create(int slot) {
     if (!valid(slot)) { set_err("bad slot %d", slot); return -1; }
     if (g_slots[slot].inst) return 0;
+    slot_lock(slot);
     memset(&g_slots[slot], 0, sizeof g_slots[slot]);
     t_slot = slot;
     g_slots[slot].inst = g_api->create_instance(g_chain_dir, NULL);
     t_slot = -1;
-    if (!g_slots[slot].inst) { set_err("create_instance failed for slot %d", slot); return -1; }
+    void *inst = g_slots[slot].inst;
+    slot_unlock(slot);
+    if (!inst) { set_err("create_instance failed for slot %d", slot); return -1; }
     return 0;
 }
 
 void sb_slot_destroy(int slot) {
     if (!sb_slot_alive(slot)) return;
+    slot_lock(slot);
     t_slot = slot;
     g_api->destroy_instance(g_slots[slot].inst);
     t_slot = -1;
     g_slots[slot].inst = NULL;
+    slot_unlock(slot);
 }
 
 void sb_set_param(int slot, const char *key, const char *val) {
     if (!sb_slot_alive(slot)) return;
+    slot_lock(slot);
     t_slot = slot;
     g_api->set_param(g_slots[slot].inst, key, val);
     t_slot = -1;
+    slot_unlock(slot);
 }
 
 int sb_get_param(int slot, const char *key, char *buf, int buf_len) {
     if (!sb_slot_alive(slot) || buf_len <= 0) return -1;
     buf[0] = 0;
+    slot_lock(slot);
     t_slot = slot;
     int n = g_api->get_param(g_slots[slot].inst, key, buf, buf_len);
     t_slot = -1;
+    slot_unlock(slot);
     if (n >= buf_len) n = buf_len - 1;
     if (n >= 0) buf[n] = 0;
     return n;
 }
 
-void sb_midi(int slot, const uint8_t *msg, int len, int source) {
+void sb_midi_nolock(int slot, const uint8_t *msg, int len, int source) {
     if (!sb_slot_alive(slot)) return;
     t_slot = slot;
     g_api->on_midi(g_slots[slot].inst, msg, len, source);
     t_slot = -1;
+}
+
+void sb_midi(int slot, const uint8_t *msg, int len, int source) {
+    if (!sb_slot_alive(slot)) return;
+    slot_lock(slot);
+    sb_midi_nolock(slot, msg, len, source);
+    slot_unlock(slot);
 }
 
 static inline int16_t to_i16(float v) {
@@ -244,6 +295,17 @@ static inline int16_t to_i16(float v) {
 }
 
 float sb_render(int slot, float *out, const float *in, int frames) {
+    if (!sb_slot_alive(slot)) {
+        memset(out, 0, sizeof(float) * 2 * frames);
+        return 0;
+    }
+    slot_lock(slot);
+    float peak = sb_render_nolock(slot, out, in, frames);
+    slot_unlock(slot);
+    return peak;
+}
+
+float sb_render_nolock(int slot, float *out, const float *in, int frames) {
     float peak = 0;
     if (!sb_slot_alive(slot)) {
         memset(out, 0, sizeof(float) * 2 * frames);
@@ -279,7 +341,13 @@ float sb_render(int slot, float *out, const float *in, int frames) {
                 g_inject(s->inst, s->inject, SB_BLOCK);
             }
             t_slot = slot;
+            struct timespec c0, c1;
+            clock_gettime(CLOCK_MONOTONIC, &c0);
             g_api->render_block(s->inst, s->carry, SB_BLOCK);
+            clock_gettime(CLOCK_MONOTONIC, &c1);
+            long long ns = (c1.tv_sec - c0.tv_sec) * 1000000000LL + (c1.tv_nsec - c0.tv_nsec);
+            if (ns > atomic_load_explicit(&s->chain_ns_max, memory_order_relaxed))
+                atomic_store_explicit(&s->chain_ns_max, ns, memory_order_relaxed);
             t_slot = -1;
             s->carry_pos = 0;
             s->carry_len = SB_BLOCK;
@@ -298,16 +366,23 @@ float sb_render(int slot, float *out, const float *in, int frames) {
     return peak;
 }
 
+long long sb_chain_max_ns(int slot) {
+    if (!valid(slot)) return 0;
+    return atomic_exchange(&g_slots[slot].chain_ns_max, 0);
+}
+
 void sb_warm(int slot, int blocks) {
     if (!sb_slot_alive(slot)) return;
     int16_t scratch[SB_BLOCK * 2];
     /* the mailbox input stays silent for warm-up blocks */
+    slot_lock(slot);
     memset(g_mailbox + MB_AUDIO_IN, 0, SB_BLOCK * 4);
     for (int i = 0; i < blocks; i++) {
         t_slot = slot;
         g_api->render_block(g_slots[slot].inst, scratch, SB_BLOCK);
         t_slot = -1;
     }
+    slot_unlock(slot);
 }
 
 void sb_set_tempo(float bpm) { if (bpm > 20 && bpm < 999) atomic_store(&g_bpm, bpm); }

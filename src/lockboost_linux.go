@@ -17,7 +17,9 @@ package main
 // tried, and it made the drops worse).
 
 import (
+	"os"
 	"runtime"
+	"strconv"
 	"syscall"
 )
 
@@ -35,5 +37,37 @@ func lockBoost() (restore func()) {
 	return func() {
 		syscall.Setpriority(syscall.PRIO_PROCESS, 0, prev)
 		runtime.UnlockOSThread()
+	}
+}
+
+// ordinaryNice: the nice Pung's ordinary threads run at, whatever the
+// service started it with (push-catalog's template starts hacks at nice 19).
+//
+// The devices' realtime threads depend on them: a collection stops only when
+// every thread has reached it, and a realtime goroutine the scheduler took
+// off its processor runs again only once an ordinary thread hands one back.
+// At nice 19, beside Live and an emulator, those threads waited milliseconds
+// for a core and Live played silence. Playing OsTIrus for two minutes,
+// 2026-11-21: 5 late blocks at nice 19, 2 at nice 0, the longest collector
+// pause 2.5 ms against 1.2 ms. Realtime threads keep their own scheduling.
+const ordinaryNice = 0
+
+// unniceThreads lifts every thread of Pung's that is niced below
+// ordinaryNice. Called first thing in main: the threads made after it
+// inherit their maker's nice.
+func unniceThreads() {
+	ents, err := os.ReadDir("/proc/self/task")
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		tid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		raw, err := syscall.Getpriority(syscall.PRIO_PROCESS, tid)
+		if err == nil && 20-raw > ordinaryNice {
+			syscall.Setpriority(syscall.PRIO_PROCESS, tid, ordinaryNice)
+		}
 	}
 }

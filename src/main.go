@@ -23,7 +23,9 @@ import (
 var buildVersion = "dev"
 
 func main() {
-	setProcs() // before any device thread starts (procs.go)
+	unniceThreads() // the service starts Pung at nice 19 (lockboost_linux.go)
+	setProcs()      // before any device thread starts (procs.go)
+	setGC()
 	exe, _ := os.Executable()
 	base := filepath.Dir(exe)
 	modules := flag.String("modules", filepath.Join(base, "modules"), "Schwung module tree")

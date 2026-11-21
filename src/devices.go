@@ -556,6 +556,12 @@ type device struct {
 	previewFrames atomic.Uint64
 	// Process timing, in ns, the worst since Stats last read them
 	procLast, procMax, procGapMax atomic.Int64
+	// of that: waiting for the slot's lock, and the module's render
+	acqMax, renderMax atomic.Int64
+	// loop: the device's blocks run on a C thread of its own (rtloop.go);
+	// nil: Process runs them. loopMu: held while it is read or freed.
+	loopMu sync.RWMutex
+	loop   *rtState
 	// the MIDI clock made for the MIDI effect (Process): the realtime thread's only
 	clkPlaying bool
 	clkTick    int64
@@ -702,7 +708,12 @@ func (d *device) Process(b *livedevice.Block) {
 			setClock(1, -1)
 		}
 	}
-	if !d.s.acquire() {
+	ta := time.Now().UnixNano()
+	got := d.s.acquire()
+	if w := time.Now().UnixNano() - ta; w > d.acqMax.Load() {
+		d.acqMax.Store(w)
+	}
+	if !got {
 		// a module is loading (or the chain is busy this period): silence,
 		// never a wait. But the block's notes are not thrown away with its
 		// audio: a note-off lost here is a note that never ends (reported
@@ -769,7 +780,11 @@ func (d *device) Process(b *livedevice.Block) {
 	}
 	if n > 0 {
 		o := d.out[:n*2]
+		tr := time.Now().UnixNano()
 		d.s.setPeak(cRender(d.s.Index, o, input)) // the meter (surface.level)
+		if r := time.Now().UnixNano() - tr; r > d.renderMax.Load() {
+			d.renderMax.Store(r)
+		}
 		d.s.live.feedAudio(o)
 		if cb := d.capBuf.Load(); cb != nil {
 			buf := *cb
@@ -1227,9 +1242,34 @@ func (d *device) Stats() map[string]any {
 		e := d.recentMidi[(n-1-i)%16]
 		recent = append(recent, fmt.Sprintf("% X", e[:e[3]]))
 	}
-	return map[string]any{"module": d.c.module, "midi_fx": fx, "midi_recent": recent, "peak_db": peakDB(d.s.peak()),
+	m := map[string]any{"module": d.c.module, "midi_fx": fx, "midi_recent": recent, "peak_db": peakDB(d.s.peak()),
 		"preview_frames": d.previewFrames.Load(), "previewing": d.previewing(),
-		"proc_max_us": d.procMax.Swap(0) / 1000, "gap_max_us": d.procGapMax.Swap(0) / 1000}
+		"proc_max_us": d.procMax.Swap(0) / 1000, "gap_max_us": d.procGapMax.Swap(0) / 1000,
+		"acquire_max_us": d.acqMax.Swap(0) / 1000, "render_max_us": d.renderMax.Swap(0) / 1000,
+		"chain_max_us": cChainMaxNs(d.s.Index) / 1000, "own_thread": false}
+	if st, ok := d.loopStats(); ok {
+		// the realtime thread counts what core's loop would have (blocks,
+		// notes, peaks) and what Process did
+		m["own_thread"] = true
+		m["blocks"], m["notes_in"], m["notes_out"] = uint64(st.blocks), uint64(st.notes_in), uint64(st.notes_out)
+		m["out_peak"], m["in_peak"] = float32(st.out_peak), float32(st.in_peak)
+		m["preview_frames"] = uint64(st.preview_frames)
+		m["proc_max_us"], m["gap_max_us"] = int64(st.proc_max_ns)/1000, int64(st.gap_max_ns)/1000
+		m["acquire_max_us"], m["render_max_us"] = int64(st.acquire_max_ns)/1000, int64(st.render_max_ns)/1000
+	}
+	return m
+}
+
+// counts: blocks that could not run, their notes delivered later, and
+// doubled note-ons the key guard ended first, from whichever loop runs.
+func (d *device) counts() (skipped, heldSent, rekeyed uint64) {
+	skipped, heldSent, rekeyed = d.skipped.Load(), d.heldSent.Load(), d.s.rekeyed.Load()
+	if st, ok := d.loopStats(); ok {
+		skipped += uint64(st.skipped)
+		heldSent += uint64(st.held_sent)
+		rekeyed += uint64(st.rekeyed)
+	}
+	return
 }
 
 // sinkMIDI makes a chain's MIDI FX output the device's MIDI out: the

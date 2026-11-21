@@ -226,6 +226,17 @@ func cRender(i int, out, in []float32) float32 {
 	return float32(C.sb_render(C.int(i), (*C.float)(unsafe.Pointer(&out[0])), inp, C.int(len(out)/2)))
 }
 
+// cSlotBusy: a long call holds slot i's chain (Slot.Set of a heavy key).
+func cSlotBusy(i int, on bool) {
+	v := 0
+	if on {
+		v = 1
+	}
+	C.sb_slot_busy(C.int(i), C.int(v))
+}
+
+func cChainMaxNs(i int) int64 { return int64(C.sb_chain_max_ns(C.int(i))) }
+
 func cTakeMidiOut(i int, buf []byte) int {
 	return int(C.sb_take_midi_out(C.int(i), (*C.uint8_t)(unsafe.Pointer(&buf[0])), C.int(len(buf))))
 }

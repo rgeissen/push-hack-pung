@@ -46,6 +46,17 @@ float sb_render(int slot, float *out, const float *in, int frames);
  * their one-time setup in the first render_block (Hera: 8 ms), which on the
  * render thread would make every slot late. */
 void sb_warm(int slot, int blocks);
+long long sb_chain_max_ns(int slot);
+
+/* For a device's own realtime thread (rtloop.c): the slot's lock, taken with
+ * a deadline (0: held; -1: not, or the slot is busy loading), and the calls
+ * it makes while holding it. */
+#include <time.h>
+int sb_slot_lock_until(int slot, const struct timespec *abs_realtime);
+void sb_slot_unlock(int slot);
+void sb_slot_busy(int slot, int on);
+float sb_render_nolock(int slot, float *out, const float *in, int frames);
+void sb_midi_nolock(int slot, const uint8_t *msg, int len, int source);
 
 /* Transport, for the clock callbacks every module can call. */
 void sb_set_tempo(float bpm);
