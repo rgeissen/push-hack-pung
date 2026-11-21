@@ -380,6 +380,16 @@ const int AHEAD = 320;      // frames kept ready for the host (7 ms)
 // OsTIrus does. Only for a sound change: a knob whose parameter only a dump
 // carries must not get the longer latency.
 const int AHEAD_DUMP = 1280; // 29 ms
+// After an underrun the ring stays that deep for a while: whenever the
+// emulator catches up it builds a reserve for the next slow moment, instead
+// of running again with 7 ms in hand. (OsTIrus with a chord renders about
+// 1.2 times as fast as it must, and the Push shares two cores between four
+// threads: a busy moment beside it, and it fell behind, 25 underruns in a
+// burst while played, 2026-11-21.)
+const int64_t MISS_DEEP_US = 3000000;
+// A block that ends short fades out over its last frames, and the one after
+// it fades in: the gap is a dip, not a click.
+const uint32_t FADE = 32;
 
 struct Instance {
     std::string dir;
@@ -407,6 +417,8 @@ struct Instance {
     int16_t ring[RING * 2];
     std::atomic<uint32_t> wr{0}, rd{0};
     std::atomic<uint32_t> underruns{0};
+    std::atomic<int64_t> missAt{0}; // the last underrun (now_us), from render_block
+    bool hole = false;              // render_block's: the block before ended short
     std::atomic<uint32_t> blockUs{0}, blockMaxUs{0};
 
     // the sound, under mu
@@ -695,7 +707,8 @@ void emu_main(Instance *in) {
 
     while (!in->quit.load(std::memory_order_relaxed)) {
         uint32_t fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
-        const bool deep = in->soundDump.load() || now_us() < in->deepUntil;
+        const int64_t tnow = now_us(), miss = in->missAt.load(std::memory_order_relaxed);
+        const bool deep = in->soundDump.load() || tnow < in->deepUntil || (miss && tnow - miss < MISS_DEEP_US);
         const uint32_t target = deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
         while (fill < target && !in->quit.load(std::memory_order_relaxed)) {
             const int64_t t0 = now_us();
@@ -1287,9 +1300,25 @@ void v2_render(void *instance, int16_t *out, int frames) {
         out[i * 2] = in->ring[k * 2];
         out[i * 2 + 1] = in->ring[k * 2 + 1];
     }
+    if (in->hole && n > 0) { // the block before ended short: back in with a fade
+        const uint32_t f = std::min<uint32_t>(n, FADE);
+        for (uint32_t i = 0; i < f; i++) {
+            out[i * 2] = int16_t(int32_t(out[i * 2]) * int32_t(i) / int32_t(f));
+            out[i * 2 + 1] = int16_t(int32_t(out[i * 2 + 1]) * int32_t(i) / int32_t(f));
+        }
+        in->hole = false;
+    }
     if (n < uint32_t(frames)) {
+        const uint32_t f = std::min<uint32_t>(n, FADE);
+        for (uint32_t i = 0; i < f; i++) { // out with a fade, not a cut
+            const uint32_t k = n - f + i;
+            out[k * 2] = int16_t(int32_t(out[k * 2]) * int32_t(f - 1 - i) / int32_t(f));
+            out[k * 2 + 1] = int16_t(int32_t(out[k * 2 + 1]) * int32_t(f - 1 - i) / int32_t(f));
+        }
         memset(out + n * 2, 0, size_t(uint32_t(frames) - n) * 2 * sizeof(int16_t));
+        in->hole = true;
         if (!in->error[0]) in->underruns.fetch_add(1, std::memory_order_relaxed);
+        in->missAt.store(now_us(), std::memory_order_relaxed);
     }
     in->rd.store(r + n, std::memory_order_release);
     sem_post(&in->wake);
