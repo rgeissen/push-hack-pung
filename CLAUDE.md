@@ -57,6 +57,12 @@ python3 scripts/build-catalog.py --base-url "" # the catalog -> build/catalog
   `PUNG_SCAN_LOG`, `PUNG_MC68K_LOG`. The args go through `sh -c $*`: a value with a space breaks (use a
   bank's number, not "Bank B"); in zsh quote `'?key'`.
 - Docker `go build` under amd64 emulation occasionally crashes at random: retry.
+- **core comes from a fork for now**: `src/go.mod` replaces push-hack's core with
+  `rgeissen/ableton-push-hack` branch `feat/livedevice-native-loop` (`livedevice.Looper`, which
+  `rtloop.go` needs) until that is in a core release. To change core: clone it next to Pung, point the
+  replace at `../../ableton-push-hack/core` and mount it at `/ableton-push-hack` in Docker; push, then
+  point the replace at the new commit again. `src/livedevice_ipc.h` is core's header, byte for byte
+  (`TestIPCHeaderIsCores`).
 
 ## The device
 
@@ -187,5 +193,23 @@ back as of the previous restart. Then ask the user to save the Set.
 - Realtime device threads (FIFO 70) needed `GOMAXPROCS` well above the core count and a nice -15 boost
   while calling into a module (`gomaxprocs.go`, `lockboost_linux.go`), or emulators dropped blocks for
   everyone.
+- **A device's blocks run on a C thread of its own** (`rtloop.c`, `pung-rt`, FIFO 70), not in Go. Go's
+  scheduler preempts even a realtime goroutine (sysmon, every 10 ms it has not passed the scheduler) and
+  it ran again only when an ordinary thread handed back a processor: up to 1-2 ms, past Live's half
+  block. Played OsTIrus, 2026-11-21: 5 late blocks in 2 min (Go, nice 19), 2 (Go, nice 0), 0 in 3 min
+  (C thread); the slowest block 2.3 ms against 0.12 ms. What is not audio runs in Go 2 ms later (the
+  pump: Live's parameter changes, reports, the screens' audio and MIDI). `PUNG_GO_LOOP=1` in Pung's
+  environment serves blocks from Go again. The slot's lock is a priority-inheriting pthread mutex.
+- Pung sets GOGC 800 and a 1 GiB memory limit (`setGC`): it keeps about 9 MB live and allocates 20-40
+  MB/s (the view), and at Go's default collected twice a second, each a stop of up to 1-2.5 ms. It
+  lowers its threads from the service's nice 19 to 0 (`unniceThreads`).
+- **Never let four emulators boot at once.** The probes after a release that changed all four ran in
+  parallel, starved one another ("RT throttling activated" in dmesg) and all four were left out of
+  Live; Pung's own modules are now probed one at a time (`probeAlone`), and a probe that only ran out
+  of time is tried again at the next start.
+- Counters for a drop: `late` in `/api/devices` (Live gave up on Pung), `proc_max_us`/`gap_max_us`/
+  `acquire_max_us`/`render_max_us` there (Pung's block), `skipped_blocks` in `/api/pung-devices`, and
+  the module's `debug_info` (`underruns`, `block_max_us`: the emulator). `/api/debug/gc`, and
+  `/api/debug/trace?seconds=N` for `go tool trace`.
 - The Push's own device view is the model for Pung's (jog wheel goes into a device, volume and tempo
   encoders stay Live's, Add and Swap stay Push's: Swap is Hot-Swap and can replace the device itself).

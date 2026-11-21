@@ -49,6 +49,30 @@ It is not a new plugin format. Only where the source lives and what it may assum
    each envelope, the spectrum behind each filter, an LFO's playhead or restart). A curve drawn by hand
    stands still; Vavra's and Xenia's did, until `TestNativeScreensMove` caught it.
 
+## Dropouts: where they came from (2026-11-21)
+
+Played on a Push 3 (OsTIrus, chords, sound changes, knobs, Pung's pages), most dropouts were not the
+emulator's. Live's plugin waits half a block (1.45 ms) for Pung; a block later than that is silence,
+counted as `late` in `/api/devices`. Pung served blocks from a Go goroutine, and Go stopped it now and
+then: its garbage collector (twice a second at Go's default), and its scheduler, which takes even a
+realtime goroutine off its processor and gives it back only through an ordinary thread. Both waited
+for Pung's threads at nice 19, behind the emulators and Live.
+
+| Played, 2 to 3 min | Late blocks | Slowest block in Pung |
+|---|---|---|
+| Go loop, GOGC 100, nice 19 | about 2.5 a minute | 2.3 ms |
+| Go loop, GOGC 800, nice 19 | 5 in 2 min | 2.3 ms |
+| Go loop, GOGC 800, nice 0 | 2 in 2 min | 2.1 ms |
+| C thread (`rtloop.c`) | 0 in 3 min | 0.12 ms |
+
+The emulator's own misses (`underruns` in `debug_info`) are rarer: OsTIrus renders a chord about 1.2
+times as fast as it must, and once in 3 minutes of play one of its blocks took 83 ms (a sound's DSP
+code compiled on first use, or RT throttling). Every engine now fades a short block out over 32 frames
+and the next one in (a dip, not a click), and keeps the ring deep (1280 frames) for 3 s after a miss.
+
+`scripts/render-check.sh` runs the container with `--shm-size=1g`: OsTIrus died with a bus error in
+Docker's 64 MB.
+
 ## Layout
 
 ```
