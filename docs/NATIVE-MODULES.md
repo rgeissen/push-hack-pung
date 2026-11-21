@@ -281,7 +281,7 @@ time (`/dev/shm/pung-vavra.lock`), the firmware found by gearmulator's own loade
 - **Heard without Live**: `scripts/render-check.sh vavra <assets>` loads the shipping `dsp.so` as the
   chain host does and measures a chord. Measured 2026-11-20: every bank plays, the pitches are right
   (C3 at 130.5 Hz), closing Filter 1 moves the chord from -26 to -49 dB.
-- **In Live, 2026-11-20**: 128 parameters; a parameter set from Live reaches the synth; beside OsTIrus
+- **In Live, 2026-11-20**: 128 entries in Live's list, 97 of them Vavra's (the rest "Device On" and page padding); a parameter set from Live reaches the synth; beside OsTIrus
   and Braids, all three playing, the Push 53% idle and no dropout of Vavra's own; a sound and its edits
   survive a restart of Pung.
 
@@ -320,9 +320,11 @@ engine Vavra uses (`waldorf_engine.cpp`, built with `WALDORF_XT`; one instance a
 - **On the Push, 2026-11-20**: every page walked with the real values; tables 0 (Resonant), 3, 5, 13,
   100 drawn from the synth's waves and 40 named as computed; beside Vavra and Tablor no dropout of its
   own (one late block a minute on all three at once); its sound survives a restart of Pung.
-- **In Live, after an Apply, 2026-11-21**: Live keeps 89 of the 214 parameters, whole pages only (the
-  front panel through the effect page; `fitLive` leaves the MIDI FX selector its room); a value set in
-  Live reaches the synth (F1 Cutoff 76, then 25), a wavetable chosen in Live brings its waves to the
+- **In Live, after an Apply, 2026-11-21**: Live keeps 119 of the 214 parameters (128 entries with
+  "Device On" and page padding): every page up to LFO Shape, so all but the play parameters, the
+  modulation matrix and the arpeggiator. **Count on a device inserted after the Apply**: the one
+  inserted before it took Xenia's names but kept its old list's length (90 entries), which read as
+  "89 kept" until a fresh instance showed 119. A value set in Live reaches the synth (F1 Cutoff 76, then 25), a wavetable chosen in Live brings its waves to the
   screens, and an edit in Pung shows in Live. The state round-trips with its edits (`state` read, the
   sound changed, `state` written back: the sound and its cutoff return). An Apply before Xenia could
   read its parameters had registered Pung's own 89 instead: install a ROM-needing module's ROM before
