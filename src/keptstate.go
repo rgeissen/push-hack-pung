@@ -31,6 +31,11 @@ import (
 //
 // The plugin goes on holding the old state, so the device remembers it
 // (liveKey) and the next stop files the newer state under it again.
+//
+// A kept state no device took is filed again at the next stop, while it is
+// still the same Live: its device may not have come at all this time (its
+// module left out after a probe ran out of time, and the next restart lost
+// OsTIrus's sound to Live's last saved one, 2026-11-21).
 
 const keptStatesFile = "kept-states.json"
 
@@ -51,8 +56,9 @@ type keptFile struct {
 
 type keptStates struct {
 	mu      sync.Mutex
-	entries []keptEntry
+	entries []keptEntry // not taken yet
 	until   time.Time
+	live    string // the Live they were kept for
 }
 
 func stateKey(state string) string {
@@ -74,7 +80,7 @@ func loadKeptStates(dir, live string, now time.Time) *keptStates {
 	if json.Unmarshal(raw, &f) != nil || live == "" || f.Live != live {
 		return k // another Live (or none known): the Set's states are the truth
 	}
-	k.entries, k.until = f.Entries, now.Add(keptWindow)
+	k.entries, k.until, k.live = f.Entries, now.Add(keptWindow), f.Live
 	return k
 }
 
@@ -86,8 +92,7 @@ func (k *keptStates) take(held, module string, now time.Time) (string, bool) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if now.After(k.until) {
-		k.entries = nil
-		return "", false
+		return "", false // too late to be a reconnect (still filed again: untaken)
 	}
 	key := stateKey(held)
 	for i, e := range k.entries {
@@ -97,6 +102,17 @@ func (k *keptStates) take(held, module string, now time.Time) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// untaken: the kept states no device took, if live is still the Live they
+// were kept for.
+func (k *keptStates) untaken(live string) []keptEntry {
+	if k == nil || live == "" || k.live != live {
+		return nil
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return append([]keptEntry(nil), k.entries...)
 }
 
 // writeKeptStates files the devices' states for the Pung that starts next.
@@ -134,10 +150,22 @@ func (p *provider) keepStates() {
 		}
 		entries = append(entries, keptEntry{Key: key, Module: d.c.module, State: st})
 	}
-	if err := writeKeptStates(p.h.dataDir, liveIdentity(), entries); err != nil {
+	live := liveIdentity()
+	devices, carried := len(entries), 0
+	for _, e := range p.kept.untaken(live) {
+		dup := false
+		for _, c := range entries[:devices] {
+			dup = dup || c.Key == e.Key && c.Module == e.Module
+		}
+		if !dup {
+			entries = append(entries, e)
+			carried++
+		}
+	}
+	if err := writeKeptStates(p.h.dataDir, live, entries); err != nil {
 		log.Printf("keeping the devices' states across the restart: %v", err)
 	} else if len(entries) > 0 {
-		log.Printf("kept the state of %d device(s) for the next start", len(entries))
+		log.Printf("kept the state of %d device(s) for the next start (%d of them from the start before, never taken)", len(entries), carried)
 	}
 }
 

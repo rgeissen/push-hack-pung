@@ -66,3 +66,30 @@ func TestKeptStatesComeBackOnceForTheSameLive(t *testing.T) {
 		t.Error("an empty keep left the old file")
 	}
 }
+
+// A kept state no device took (its module was left out this time) is filed
+// again at the next stop, for the same Live; a taken one is not.
+func TestUntakenKeptStatesAreKeptAgain(t *testing.T) {
+	dir, now := t.TempDir(), time.Now()
+	taken, left := keptEntry{Key: stateKey("a"), Module: "minijv", State: "A"}, keptEntry{Key: stateKey("b"), Module: "ostirus", State: "B"}
+	if err := writeKeptStates(dir, "920@4711", []keptEntry{taken, left}); err != nil {
+		t.Fatal(err)
+	}
+	k := loadKeptStates(dir, "920@4711", now)
+	if _, ok := k.take("a", "minijv", now); !ok {
+		t.Fatal("minijv's kept state not given")
+	}
+	got := k.untaken("920@4711")
+	if len(got) != 1 || got[0] != left {
+		t.Fatalf("untaken %v, want only ostirus's", got)
+	}
+	if k.untaken("1500@9000") != nil {
+		t.Error("untaken states carried into another Live")
+	}
+	if _, ok := k.take("b", "ostirus", now.Add(keptWindow+time.Second)); ok {
+		t.Error("a kept state given long after the start")
+	}
+	if len(k.untaken("920@4711")) != 1 {
+		t.Error("a state too late to be given is no longer filed again")
+	}
+}

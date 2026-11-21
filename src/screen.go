@@ -40,10 +40,21 @@ const (
 	screenWorkers  = 4
 )
 
+// Pung's own modules (origin "pung": the emulators) are probed one at a
+// time, beside the workers for the rest. Each boots its emulator, threads at
+// SCHED_FIFO 45, and four of them booting at once (a release that changed
+// all four) starved one another on the Push's two cores: every probe ran out
+// of time and all four were left out of Live (2026-11-21). One alone is
+// ready in half a second.
+func probeAlone(m ModuleInfo) bool { return m.Origin == "pung" }
+
 type screenVerdict struct {
 	Key string `json:"key"`
 	OK  bool   `json:"ok"`
 	Why string `json:"why,omitempty"`
+	// Timeout: the probe ran out of time, which says nothing of the module
+	// (a busy Push): left out now, probed again at the next start
+	Timeout bool `json:"timeout,omitempty"`
 	// what the child read once the module was ready (probeRecord)
 	Probe *probeRecord `json:"probe,omitempty"`
 }
@@ -123,26 +134,41 @@ func (h *Host) screenModules(mods []ModuleInfo) []ModuleInfo {
 		log.Printf("modules: probing %d new or changed module(s) in child processes", len(todo))
 	}
 	var mu sync.Mutex
-	jobs := make(chan int)
+	probe := func(i int) {
+		m := mods[i]
+		v := runProbeChild(exe, h.modulesDir, m)
+		v.Key = screenKey(m)
+		mu.Lock()
+		cache[m.ID] = v
+		mu.Unlock()
+	}
+	jobs, alone := make(chan int), make(chan int, len(todo))
 	var wg sync.WaitGroup
 	for w := 0; w < screenWorkers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				m := mods[i]
-				v := runProbeChild(exe, h.modulesDir, m)
-				v.Key = screenKey(m)
-				mu.Lock()
-				cache[m.ID] = v
-				mu.Unlock()
+				probe(i)
 			}
 		}()
 	}
+	wg.Add(1)
+	go func() { // the emulators, one after another (probeAlone)
+		defer wg.Done()
+		for i := range alone {
+			probe(i)
+		}
+	}()
 	for _, i := range todo {
-		jobs <- i
+		if probeAlone(mods[i]) {
+			alone <- i
+		} else {
+			jobs <- i
+		}
 	}
 	close(jobs)
+	close(alone)
 	wg.Wait()
 
 	// forget modules that are gone
@@ -155,7 +181,13 @@ func (h *Host) screenModules(mods []ModuleInfo) []ModuleInfo {
 			delete(cache, id)
 		}
 	}
-	if raw, err := json.MarshalIndent(cache, "", " "); err == nil {
+	keep := map[string]screenVerdict{}
+	for id, v := range cache {
+		if !v.Timeout { // a timeout is tried again at the next start
+			keep[id] = v
+		}
+	}
+	if raw, err := json.MarshalIndent(keep, "", " "); err == nil {
 		os.WriteFile(cachePath, raw, 0o644) //nolint:errcheck
 	}
 	screenMu.Lock()
@@ -196,7 +228,7 @@ func runProbeChild(exe, modulesDir string, m ModuleInfo) screenVerdict {
 	case <-time.After(screenTimeout):
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) //nolint:errcheck
 		<-done
-		return screenVerdict{OK: false, Why: fmt.Sprintf("its probe did not finish in %v", screenTimeout)}
+		return screenVerdict{OK: false, Timeout: true, Why: fmt.Sprintf("its probe did not finish in %v", screenTimeout)}
 	}
 	syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) //nolint:errcheck // whatever it left running
 	if werr != nil {
