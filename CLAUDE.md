@@ -100,6 +100,19 @@ is filed under that alias). The Push has no curl: use `wget` on it.
 - Do not load emulators into the user's Set beyond what a test needs. With two emulators running, loading
   a third (OsTIrus in place of a test Xenia, 2026-11-21) left the Push unreachable on the network.
 
+## When the Push froze: getting an unsaved Set back
+
+After a hard freeze Live may open its empty default Set instead of asking to recover ("Detected a prior
+crash ... no EventRecording available"): the freeze cut off the recovery history it was writing. Each
+start after a crash moves the recovery data aside into `/data/.config/Ableton/Live <ver>/Crash/<time>_`
+`{BaseFiles,Undo,CrashRecoveryInfo.cfg}`; an earlier one (from the last Live restart) usually holds the
+Set as it was then (its `Undo/0.band` is megabytes, a cut-off one is under a kilobyte). To restore it,
+with the user's go: `kill -STOP` Live (so it writes nothing more), back up the live `BaseFiles`, `Undo`,
+`CrashRecoveryInfo.cfg` and `CrashDetection.cfg`, copy the chosen `<time>_*` contents in their place
+(owner `ableton:users`), `kill -9` Live; the launcher starts it again, it asks "Would you like to recover
+your work?", and the same CC 27 that `restart-live.sh` sends answers Yes. Done 2026-11-21: the Set came
+back as of the previous restart. Then ask the user to save the Set.
+
 ## Release
 
 1. Bump `VERSION`, `hack.json` `version`, and the manual's eyebrow (`site/manual.src.html`).
