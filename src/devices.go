@@ -835,6 +835,8 @@ func (d *device) Process(b *livedevice.Block) {
 	}
 }
 
+// applyParam: Live's value of parameter idx into the chain. Caller holds the
+// slot's lock (d.s.own).
 func (d *device) applyParam(idx int, norm float64) {
 	if idx < len(d.norms) {
 		d.norms[idx].Store(math.Float64bits(norm))
@@ -857,7 +859,9 @@ func (d *device) applyParam(idx int, norm float64) {
 		return // belongs to a MIDI effect that is not loaded
 	}
 	if m := d.c.meta[idx]; m != nil {
-		cur, _ := d.s.Get(d.c.Params[idx].Key)
+		// the slot's lock is held here (rtloop.go): cGet, not s.Get, which
+		// takes it again and stood Pung still (2026-11-22)
+		cur, _ := cGet(d.s.Index, d.c.Params[idx].Key)
 		cSet(d.s.Index, d.c.Params[idx].Key, m.fromNormAs(norm, cur))
 		if m.Selector {
 			d.wantResync.Store(true) // the other parameters read something else now (keepLiveInSync)
