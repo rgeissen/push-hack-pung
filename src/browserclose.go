@@ -102,7 +102,14 @@ func closeBrowserFor(name string, made time.Time) {
 		if !ok {
 			return
 		}
-		if s.DeviceView.App != "pung" || s.DeviceView.Key == "" || s.DeviceView.Key == before.DeviceView.Key {
+		// the new device selected: Live's selection names it, or (a rack
+		// around it, named by its preset) the selection moved. A Swap
+		// replaces the device where it stands, and push-manager's key (from
+		// Live's selection topic, which does not fire again) stays the old
+		// one: only the name says it (2026-11-22, Braids swapped for JE-8086)
+		named := s.DeviceView.Selected == name && before.DeviceView.Selected != name
+		moved := s.DeviceView.Key != "" && s.DeviceView.Key != before.DeviceView.Key
+		if s.DeviceView.App != "pung" || !(named || moved) {
 			continue // not (yet) the new device selected
 		}
 		if s.DeviceView.PushView == "device" || s.Owner != "outside" {
