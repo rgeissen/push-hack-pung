@@ -934,15 +934,19 @@ void send_byte(Instance *in, int idx) {
 void param_set(Instance *in, const tbl::Param &knob, const char *val) {
     const tbl::Param *p = resolve(in, &knob);
     if (!p) return;
+    // An option by its name first: Pung writes Live's values as the option's
+    // name, and "24 dB LP" read as a number is 24, past the last option, so
+    // the filter jumped to Comb- (2026-11-22). A number only where no name is.
     char *end = nullptr;
-    long v = strtol(val, &end, 10);
-    if (end == val) { // an option by its name
-        if (p->list < 0) return;
-        v = -1;
+    long v = -1;
+    if (p->list >= 0)
         for (int i = 0; i < tbl::kListLen[p->list]; i++)
             if (!strcasecmp(tbl::kLists[p->list][i], val)) v = i;
-        if (v < 0) return;
+    if (v >= 0) {
         if (p->kind == tbl::kLabels) v += p->min - p->offset;
+    } else {
+        v = strtol(val, &end, 10);
+        if (end == val) return; // neither a name nor a number
     }
     const int raw = raw_from(*p, int(v));
     uint8_t &b = in->single[size_t(p->byte)];

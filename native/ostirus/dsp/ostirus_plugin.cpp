@@ -708,14 +708,17 @@ int param_get(const Instance *in, const ti::Param &p) {
 
 // mu held
 void param_set(Instance *in, const ti::Param &p, const char *val) {
+    // An option by its name first (Pung writes Live's values as the option's
+    // name; a name that starts with a digit read as a number was another
+    // value, 2026-11-22 on Vavra). A number only where no name is.
     char *end = nullptr;
-    long v = strtol(val, &end, 10);
-    if (end == val) {
-        if (p.kind != ti::kEnum || p.list < 0) return;
-        v = -1;
+    long v = -1;
+    if (p.kind == ti::kEnum && p.list >= 0)
         for (int i = 0; i < ti::kListLen[p.list]; i++)
             if (!strcasecmp(ti::kLists[p.list][i], val)) v = i;
-        if (v < 0) return;
+    if (v < 0) {
+        v = strtol(val, &end, 10);
+        if (end == val) return; // neither a name nor a number
     }
     if (p.kind == ti::kSoft) {
         const int t = soft_target(in, p.key[4] - '1');

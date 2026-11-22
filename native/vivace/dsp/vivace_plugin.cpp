@@ -411,15 +411,20 @@ void param_set(Instance *in, int i, const char *val) {
     const vv::Param &p = vv::kParams[i];
     vital::Value *a = in->ctl[i][0];
     if (!a) return;
+    // An option by its name first: Pung writes Live's values as the option's
+    // name, and "1/16" read as a number is 1 (another option); a number only
+    // where no name is (2026-11-22, found on Vavra's filter types).
     char *end = nullptr;
-    float x = strtof(val, &end);
-    if (end == val) { // an option by its name
-        if (p.list < 0 || (p.kind != vv::kEnum && p.kind != vv::kType)) return;
-        int k = -1;
+    float x = 0;
+    int k = -1;
+    if (p.list >= 0 && (p.kind == vv::kEnum || p.kind == vv::kType))
         for (int j = 0; j < vv::kListLen[p.list]; j++)
             if (!strcasecmp(vv::kLists[p.list][j], val)) k = j;
-        if (k < 0) return;
+    if (k >= 0) {
         x = float(k);
+    } else {
+        x = strtof(val, &end);
+        if (end == val) return; // neither a name nor a number
     }
     if (p.kind == vv::kType) {
         const int t = std::max(0, std::min(vv::kNumFilterTypes - 1, int(std::round(x))));
