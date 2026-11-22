@@ -68,6 +68,7 @@ namespace tbl = mq;
 #define HAVE_PARAMS 1
 #elif defined(WALDORF_XT)
 #include "xtLib/xtDevice.h"
+#include "xtLib/xtHardware.h" // the DSP's wave memory (patches/0004: Device::getXt)
 #include "xtLib/xtState.h"
 #include <map>
 typedef xt::Device SynthDevice;
@@ -213,6 +214,14 @@ struct Instance {
     std::vector<uint16_t> wavesMissing;      // asked one at a time: the XT drops a burst
     int waveAsked = -1;                      // the wave asked for, until it comes
     int64_t tableAskedAt = 0, waveAskedAt = 0; // the emulator thread's
+    // A table the synth computes, as it computed it: read from the DSP's wave
+    // memory (read_computed_waves). Under mu.
+    std::vector<int8_t> computed;  // 16 positions (0, 4 .. 60), 128 samples each
+    int computedFor = -1;          // the table they are of
+    bool computedFailed = false;   // the wave memory was not where it should be
+    // the emulator thread's: the wave memory when the table changed, the read before
+    std::vector<int8_t> memAtChange, memPrev;
+    int64_t memReadAt = 0;
 #endif
 };
 
@@ -227,6 +236,72 @@ void send(Instance *in, synthLib::SMidiEvent &ev) {
 }
 
 #if defined(WALDORF_XT)
+// The sound's table as the synth plays it. The 68000 writes all 64 slots of
+// the table (its key waves and the crossfades between them; a table the
+// synth computes, its computed waves) into the DSP's external memory, from
+// Y:0x24000 in Single mode, 256 words a slot: 128 samples, then the halved
+// copies down to one. A sample is bits 16..23 of its word, the cycle begun
+// three samples early. Measured 2026-11-22: tables 0 and 5 there are their
+// sysex waves exactly at the key slots, their crossfades in between; it is
+// written over about 170 ms after a sound arrives; with it zeroed the
+// oscillators fall silent. Slot 61 is the fixed triangle in every table: if
+// it is not there, this is not the wave memory. The emulator thread's (the
+// DSP thread writes it meanwhile: a read can catch a table half written).
+const uint32_t WAVE_MEM = 0x24000, WAVE_SLOT = 256, WAVE_LEAD = 3;
+bool read_wave_mem(Instance *in, std::vector<int8_t> &out) {
+    if (!in->device) return false;
+    auto &mem = in->device->getXt().getHardware()->getDSP(0).dsp().memory();
+    auto at = [&](int slot, int i) { return mem.get(dsp56k::MemArea_Y, WAVE_MEM + uint32_t(slot) * WAVE_SLOT + uint32_t(i + WAVE_LEAD) % 128); };
+    for (int i = 0; i < 128; i++) {
+        const int j = i & 63, tri = 2 + 3 * (j < 32 ? j : 63 - j);
+        const uint32_t v = at(61, i);
+        if ((v & 0xffff) || int8_t(v >> 16) != (i < 64 ? tri : -tri)) return false;
+    }
+    out.resize(16 * 128);
+    for (int p = 0; p < 16; p++)
+        for (int i = 0; i < 128; i++) {
+            const uint32_t v = at(p * 4, i);
+            if (v & 0xffff) return false;
+            out[size_t(p * 128 + i)] = int8_t(v >> 16);
+        }
+    return true;
+}
+
+// The emulator thread's, after ask_waves: a computed table's waves, once the
+// synth has written them (the same in two reads 100 ms apart, and not still
+// the table before; that one only after 1.5 s, the new table being as it).
+void read_computed_waves(Instance *in) {
+    int64_t since;
+    int t;
+    {
+        std::lock_guard<std::mutex> l(in->mu);
+        if (!in->tableAlgorithmic || in->tableHave != in->tableWanted || in->computedFor == in->tableHave || in->computedFailed) return;
+        t = in->tableHave;
+        since = in->tableAskedAt;
+    }
+    const int64_t now = now_us();
+    if (now - since < 250000 || now - in->memReadAt < 100000) return;
+    in->memReadAt = now;
+    std::vector<int8_t> w;
+    if (!read_wave_mem(in, w)) {
+        if (now - since > 3000000) {
+            plog("no wave memory at Y:%x: table %d is named, not drawn", unsigned(WAVE_MEM), t);
+            std::lock_guard<std::mutex> l(in->mu);
+            in->computedFailed = true;
+        }
+        return;
+    }
+    if (w != in->memPrev) { // still being written
+        in->memPrev = std::move(w);
+        return;
+    }
+    if (w == in->memAtChange && now - since < 1500000) return; // the table before, still
+    std::lock_guard<std::mutex> l(in->mu);
+    if (in->tableHave != t) return;
+    in->computed = std::move(w);
+    in->computedFor = t;
+}
+
 // mu held: the emulator thread asks for what the screen needs of the wavetable
 void ask_waves(Instance *in) {
     if (!in->haveSingle) return;
@@ -248,9 +323,13 @@ void ask_waves(Instance *in) {
     if (t == in->tableHave || now_us() - in->tableAskedAt < 300000) return;
     in->tableAskedAt = now_us();
     in->tableAlgorithmic = xt::wave::isAlgorithmicTable(xt::TableId(uint16_t(t)));
-    if (in->tableAlgorithmic) {
+    if (in->tableAlgorithmic) { // nothing to ask: read from the DSP (read_computed_waves)
         in->tableHave = t;
         in->tableWaves.clear();
+        in->computedFor = -1;
+        in->computedFailed = false;
+        in->memPrev.clear();
+        if (!read_wave_mem(in, in->memAtChange)) in->memAtChange.clear();
         return;
     }
     synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
@@ -302,11 +381,23 @@ void take_wave_answer(Instance *in, const synthLib::SMidiEvent &e) {
 // mu held: sixteen of the table's positions (0, 4 .. 60), 32 points each, as
 // two hex digits a point (0x80 the middle). A position between two key waves
 // is their crossfade, as the synth plays it; after the last key wave, that
-// one. (61-63 are the fixed triangle, square and saw, and not drawn.) "" while
-// the waves are still coming, "algo" for a table the synth computes.
+// one. (61-63 are the fixed triangle, square and saw, and not drawn.) A table
+// the synth computes is its computed waves, read from the DSP. "" while the
+// waves are still coming, "algo" for a computed table that could not be read.
 std::string wave_view(const Instance *in) {
     if (in->tableHave != in->tableWanted || in->tableWanted < 0) return "";
-    if (in->tableAlgorithmic) return "algo";
+    if (in->tableAlgorithmic) {
+        if (in->computedFailed) return "algo";
+        if (in->computedFor != in->tableWanted || in->computed.size() != 16 * 128) return "";
+        std::string o;
+        char b[3];
+        for (int pos = 0; pos < 16; pos++)
+            for (int i = 0; i < 128; i += 4) {
+                snprintf(b, sizeof(b), "%02x", uint8_t(in->computed[size_t(pos * 128 + i)] + 128));
+                o += b;
+            }
+        return o;
+    }
     if (in->tableWaves.size() != 64 || !in->wavesMissing.empty()) return "";
     std::vector<int> keys; // the positions with a wave of their own
     for (int i = 0; i <= 60; i++) {
@@ -671,6 +762,7 @@ void emu_main(Instance *in) {
                 std::lock_guard<std::mutex> l(in->mu);
                 ask_waves(in);
             }
+            read_computed_waves(in);
 #endif
             // 6 dB of headroom, and a soft limiter above 3/4 of full scale
             const float g = float(in->gain) * 0.01f * 0.5f * 32767.0f;
