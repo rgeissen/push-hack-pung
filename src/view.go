@@ -147,7 +147,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			// whole band, with every one of its keys' values; the encoders'
 			// names and values stay under it
 			pl := placement{w: &ovWidget{keys: skeys, draw: screen}, col: 0, span: 8, info: u.takeoverInfo(p, cm, b, comp),
-				live: ls, liveOut: u.liveOut, liveKey: fmt.Sprintf("push/%s/%s/screen", p.Module, b.Name), fx: p.Kind == "fx"}
+				live: ls, liveOut: u.liveOut, liveKey: fmt.Sprintf("push/%s/%s/screen", p.Module, b.Name), fx: p.Kind == "fx", pal: th}
 			if set.render(img, pl, u.ovValues(p, cm, skeys), touchedKey, sc) {
 				for c := range covered {
 					covered[c] = true
@@ -158,7 +158,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		} else {
 			for _, pl := range set.place(b.Keys) {
 				pl.info = map[string]any{"$live": u.liveInfo()}
-				pl.live, pl.liveOut, pl.fx = ls, u.liveOut, p.Kind == "fx"
+				pl.live, pl.liveOut, pl.fx, pl.pal = ls, u.liveOut, p.Kind == "fx", th
 				pl.liveKey = fmt.Sprintf("push/%s/%s/w%d", p.Module, b.Name, pl.col)
 				touched := ""
 				if u.touched >= pl.col && u.touched < pl.col+pl.span {
@@ -531,7 +531,7 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 			for k := 0; k < n; k++ {
 				c := P.line
 				if k == i {
-					c = sc
+					c = P.accentOr(sc)
 				}
 				disc(img, float64(x0+k*9), 102, 2.2, c)
 			}

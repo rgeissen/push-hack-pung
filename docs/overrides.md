@@ -180,6 +180,9 @@ push.theme({ ground: "#d4740f", panel: "#2a221d", ink: "#2b1606", dim: "#5a2e08"
   `g.*`. Only `ground` and `ink` are needed: the rest is mixed from them.
 - `knob`: `"ring"` (Pung's), `"pointer"` (a hardware knob: a cap with its pointer, the value as an arc
   around it), `"fader"` (a slot and its cap).
+- On a themed page a band screen's named colours are the theme's (`"fg"` its ink, `"dim"`, `"faint"`,
+  `"line"`), and a `g.envelope`, `g.filter`, `g.lfo` or `g.mix` without a `color` takes its accent. A
+  pointer's line and a fader cap's line are drawn in whichever of ink and ground stands out on the cap.
 - The touched control stays in the slot's colour, as on every front panel; Push's two rows (the device,
   the pages) stay Push's. A front panel and a page's own screen draw themselves: the theme is for the
   pages Pung draws. Choose it from the front panel's and band screens' own colours, so a page turn stays

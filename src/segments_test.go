@@ -515,3 +515,29 @@ push.theme({ ground: "#204060", ink: "#f0e0a0", knob: "pointer" });
 		t.Error("front panel: Pung's theme drawn over it")
 	}
 }
+
+// A band screen on a themed page: Pung's named colours are the theme's
+// ("fg" on a light ground is its ink, never Pung's white).
+func TestThemeNamesColoursOnBandScreens(t *testing.T) {
+	scr := segScreen + `
+push.compartment({ id: "band2", label: "Band 2", keys: ["y"], screen: function (g, v) { g.fill(0, 40, 20, 10, "fg"); } });
+push.theme({ ground: "#e8e0c8", ink: "#201810" });
+`
+	u := segView(t, scr)
+	_, cm, _ := u.currentBank()
+	page := -1
+	for i, bk := range cm.Banks {
+		if bk.Compartment == "band2" {
+			page = i
+		}
+	}
+	if page < 0 {
+		t.Fatal("no Band 2 page")
+	}
+	u.setBank(page)
+	img := u.render(0)
+	ink := color.NRGBA{0x20, 0x18, 0x10, 255}
+	if c := img.NRGBAAt(10, ovTop+44); c != ink {
+		t.Errorf("a band screen's \"fg\" on a themed page is %v, want the theme's ink %v", c, ink)
+	}
+}

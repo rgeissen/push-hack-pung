@@ -489,6 +489,7 @@ type placement struct {
 	liveOut   liveOut        // ... its latest frame
 	liveKey   string         // names this placement's pictures across frames
 	fx        bool           // the module is an audio effect: its envelopes follow audio, not notes
+	pal       *palette       // the module's theme, on a page Pung draws (theme.go); nil on a front panel
 }
 
 // place finds the widgets whose keys a bank shows side by side, in order.
@@ -551,6 +552,25 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		}
 		return true
 	}
+	// on a page Pung draws in the module's theme, Pung's named colours are
+	// the theme's ("fg" on a light ground is its ink, not white)
+	oc := func(c string, slot color.NRGBA) color.NRGBA {
+		if p.pal != nil {
+			switch c {
+			case "fg":
+				return p.pal.fg
+			case "dim":
+				return p.pal.dim
+			case "faint":
+				return p.pal.faint
+			case "line":
+				return p.pal.line
+			case "slot", "":
+				return slot
+			}
+		}
+		return ovColor(c, slot)
+	}
 	moving := false
 	var segs map[string][4]int // g.segment: where this frame put its segments
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
@@ -558,7 +578,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	g := vm.NewObject()
 	g.Set("w", w)
 	g.Set("h", h)
-	col := func(v goja.Value) color.NRGBA { return ovColor(v.String(), sc) }
+	col := func(v goja.Value) color.NRGBA { return oc(v.String(), sc) }
 	// g.layer(key, fn): the part of a screen that does not change. fn draws
 	// it once; from then on the kept picture is copied in, which costs
 	// nothing next to drawing it (a panel's ground, its frames and legends:
@@ -623,9 +643,9 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	// marks stay in the modulation colour, as everywhere.
 	accent := func(o map[string]any) color.NRGBA {
 		if c, ok := o["color"].(string); ok && c != "" {
-			return ovColor(c, sc)
+			return oc(c, sc)
 		}
-		return sc
+		return p.pal.accentOr(sc)
 	}
 	// keyOf: the key a role names, when it names one this screen was given
 	keyOf := func(o map[string]any, role string) string {
@@ -677,6 +697,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				moving = true // notes on the envelope: the next frame differs
 			}
 		}
+		e.Pal = p.pal
 		drawEnvelope(img, image.Rect(int(x), int(y), int(x+ww), int(y+hh)), e, accent(o))
 		return vm.ToValue(true)
 	})
@@ -735,7 +756,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				f.Known = f.Known && v.Known
 			}
 		}
-		c := sc
+		c := p.pal.accentOr(sc)
 		if o, ok := call.Argument(4).Export().(map[string]any); ok {
 			c = accent(o)
 			// live: the sound's spectrum behind the response, as on Pung's
@@ -748,6 +769,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				}
 			}
 		}
+		f.Pal = p.pal
 		drawFilter(img, rectOf(call), f, c)
 		return goja.Undefined()
 	})
@@ -765,7 +787,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				l.Rate, l.Known = v.Frac, l.Known && v.Known
 			}
 		}
-		c := sc
+		c := p.pal.accentOr(sc)
 		if o, ok := call.Argument(4).Export().(map[string]any); ok {
 			c = accent(o)
 			// live: a playhead where its phase can be known (synced to Live's
@@ -799,6 +821,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				}
 			}
 		}
+		l.Pal = p.pal
 		drawLFO(img, rectOf(call), l, c)
 		return goja.Undefined()
 	})
@@ -814,10 +837,11 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				m.Levels, m.Known = append(m.Levels, v.Frac), m.Known && v.Known
 			}
 		}
-		c := sc // g.mix(x, y, w, h, [levels], {color}): in the instrument's colour
+		c := p.pal.accentOr(sc) // g.mix(x, y, w, h, [levels], {color}): in the instrument's colour
 		if o, ok := call.Argument(5).Export().(map[string]any); ok {
 			c = accent(o)
 		}
+		m.Pal = p.pal
 		drawMix(img, rectOf(call), m, c)
 		return goja.Undefined()
 	})
@@ -848,7 +872,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	g.Set("knobs", func(call goja.FunctionCall) goja.Value {
 		o, _ := call.Argument(0).Export().(map[string]any)
 		top := 104
-		ac := sc
+		ac := p.pal.accentOr(sc)
 		per := map[string]any{}
 		if o != nil {
 			switch t := o["top"].(type) {
@@ -858,7 +882,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				top = int(t)
 			}
 			if c, ok := o["accent"].(string); ok && c != "" {
-				ac = ovColor(c, sc)
+				ac = oc(c, sc)
 			}
 			if m, ok := o["colors"].(map[string]any); ok {
 				per = m
@@ -883,20 +907,20 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 			tabs, segRow = true, true
 		}
 		knobs, _ := p.info["$knobs"].([]string)
-		cLine, cFaint, cDim, cFg := ovColor("line", sc), ovColor("faint", sc), ovColor("dim", sc), ovColor("fg", sc)
+		cLine, cFaint, cDim, cFg := oc("line", sc), oc("faint", sc), oc("dim", sc), oc("fg", sc)
 		cTrack := cLine
 		if c, ok := o["track"].(string); ok && c != "" {
-			cTrack = ovColor(c, sc)
+			cTrack = oc(c, sc)
 		}
 		if c, ok := o["label"].(string); ok && c != "" {
-			cDim = ovColor(c, sc)
+			cDim = oc(c, sc)
 		}
 		rules := true
 		if r, ok := o["rules"].(bool); ok {
 			rules = r
 		}
 		if g, ok := o["ground"].(string); ok && g != "" {
-			rect(img, 0, top, w, h-top, ovColor(g, sc))
+			rect(img, 0, top, w, h-top, oc(g, sc))
 		}
 		// the row's lines: the name, the ring's centre, the value's baseline
 		yName, yRing, yVal, rr, bottom := top+20, top+40, top+47, 11.0, h-4
@@ -937,7 +961,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 			if e.Known {
 				c := ac
 				if pc, ok := per[k].(string); ok && pc != "" {
-					c = ovColor(pc, sc)
+					c = oc(pc, sc)
 				}
 				if hot {
 					c = sc
@@ -997,7 +1021,7 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				case t != "":
 					if i == cur {
 						rect(img, i*colW+6, y-13, colW-12, 15, ac)
-						label(img, cx, y-1, fitLabel(strings.ToUpper(t), colW-16), ovColor("black", sc), 0)
+						label(img, cx, y-1, fitLabel(strings.ToUpper(t), colW-16), oc("black", sc), 0)
 					} else {
 						label(img, cx, y-1, fitLabel(strings.ToUpper(t), colW-16), cDim, 0)
 					}
@@ -1181,7 +1205,7 @@ var ovMovedAt atomic.Int64
 // frameSig: everything a screen's picture depends on.
 func frameSig(w, h int, sc color.NRGBA, p placement, vals map[string]ovValue, touched string) uint64 {
 	hh := fnv.New64a()
-	fmt.Fprint(hh, w, h, sc, p.full, p.offline, touched, "|")
+	fmt.Fprintf(hh, "%v %v %v %v %v %v %p|", w, h, sc, p.full, p.offline, touched, p.pal) // the theme draws another picture
 	for _, k := range p.w.keys {
 		e := vals[k]
 		fmt.Fprint(hh, k, "=", e.Value, "\x00", e.Display, "\x00", e.Frac, e.Known, e.Name, ";")
