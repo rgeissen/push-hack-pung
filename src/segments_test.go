@@ -7,6 +7,7 @@ package main
 
 import (
 	"encoding/json"
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
@@ -477,5 +478,40 @@ func TestSegmentMovedByThePanel(t *testing.T) {
 	u.vals[u.valKey(p, "cut")] = "0.1"
 	if c := u.render(0).NRGBAAt(470, 28); c != sc {
 		t.Errorf("back: no bar at the declared place (%v)", c)
+	}
+}
+
+// A theme (push.theme) draws Pung's default pages in the instrument's
+// colours: the band between Push's rows on its ground, the values in its
+// ink; a front panel and the rows are untouched.
+func TestThemeOnDefaultPages(t *testing.T) {
+	themed := segScreen + `
+push.theme({ ground: "#204060", ink: "#f0e0a0", knob: "pointer" });
+`
+	u := segView(t, themed)
+	// a page Pung draws itself: the band compartment's (no screen of its own)
+	_, cm, _ := u.currentBank()
+	plain := -1
+	for i, bk := range cm.Banks {
+		if bk.Compartment != "panel" && bk.Compartment != "plain" {
+			plain = i
+			break
+		}
+	}
+	if plain < 0 {
+		t.Fatal("the test screen has no page Pung draws itself")
+	}
+	u.setBank(plain)
+	img := u.render(0)
+	ground := color.NRGBA{0x20, 0x40, 0x60, 255}
+	if c := img.NRGBAAt(5, topH+4); c != ground {
+		t.Errorf("default page: the band's ground is %v, want the theme's %v", c, ground)
+	}
+	if c := img.NRGBAAt(5, botY+8); c == ground {
+		t.Error("default page: the theme covers Push's lower row")
+	}
+	u.setBank(0) // the front panel draws itself
+	if c := u.render(0).NRGBAAt(5, topH+4); c == ground {
+		t.Error("front panel: Pung's theme drawn over it")
 	}
 }

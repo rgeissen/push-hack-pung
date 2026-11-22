@@ -225,6 +225,7 @@ type envShape struct {
 	Hot    int  // the segment under a finger (-1: none)
 	Corner int  // the point whose handle is touched (-1: none); point i ends segment i-1
 	Live   *envLive
+	Pal    *palette // the module's theme (theme.go); nil: Pung's
 }
 
 // plateau: the index of the plateau segment (-1: it runs through by itself).

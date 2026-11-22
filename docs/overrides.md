@@ -163,6 +163,28 @@ push.compartment({
   `src/gallery_test.go`) writes `<id>-<compartment>-segments.png` and one
   `<id>-<compartment>-segment-<segment>.png` per segment.
 
+## The instrument's look on Pung's pages (`push.theme`)
+
+A custom screen is the instrument; Pung's default pages (every page without a screen of its own: its
+cells, knobs, enum boxes, and the envelopes, filters, LFOs and mixers it recognizes) are drawn in Pung's
+grey unless the screen file says how its instrument looks:
+
+```js
+push.theme({ ground: "#d4740f", panel: "#2a221d", ink: "#2b1606", dim: "#5a2e08", rule: "#a85a0b",
+             faint: "#b8640e", accent: "#f0dfb8", knob: "pointer" });
+```
+
+- `ground`: the band between Push's two rows. `ink`: values and curves. `dim`: names. `rule`: lines,
+  boxes, a knob's rim. `faint`: tracks, dividers. `panel`: a pointer knob's cap, a fader's cap. `accent`:
+  a value's arc and a curve's fill (left out: the slot's colour, as on Pung's own pages). Colours as in
+  `g.*`. Only `ground` and `ink` are needed: the rest is mixed from them.
+- `knob`: `"ring"` (Pung's), `"pointer"` (a hardware knob: a cap with its pointer, the value as an arc
+  around it), `"fader"` (a slot and its cap).
+- The touched control stays in the slot's colour, as on every front panel; Push's two rows (the device,
+  the pages) stay Push's. A front panel and a page's own screen draw themselves: the theme is for the
+  pages Pung draws. Choose it from the front panel's and band screens' own colours, so a page turn stays
+  in the same instrument.
+
 ## How the module's values read (`push.display`)
 
 A module that answers bare numbers (Surge's attack as a log2 of seconds, a cutoff 0..1) shows them

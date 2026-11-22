@@ -122,6 +122,8 @@ type surface struct {
 	// buttons choose a segment, "segment" the encoders play segID's keys;
 	// segComp: the front panel's compartment it belongs to
 	segMode, segID, segComp string
+	// pal: the shown module's theme while its default page is drawn (theme.go)
+	pal *palette
 	// segAt: where the shown panel drew its segments this frame (g.segment)
 	segAt map[string][4]int
 

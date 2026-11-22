@@ -200,6 +200,9 @@ type overrideSet struct {
 	dispMu     sync.Mutex
 	dispMemo   map[string][2]string // key|raw -> value, unit ("\x00" in [0]: Pung's own)
 	mu         sync.Mutex           // the VM is one goroutine's at a time: the Push's draw, a web page's
+	// themeSpec: push.theme's object; themes: it resolved, by slot colour
+	themeSpec map[string]any
+	themes    map[color.NRGBA]*palette
 	// segAt: where the last full-panel frame put its segments (g.segment),
 	// over their declared rects; nil: where they were declared
 	segAt map[string][4]int
@@ -440,6 +443,16 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 			panic(vm.NewTypeError("push.display needs a function"))
 		}
 		set.display = fn
+		return goja.Undefined()
+	})
+	// push.theme({ground, panel, ink, dim, faint, rule, accent, knob}): the
+	// instrument's look for Pung's default pages (theme.go)
+	push.Set("theme", func(call goja.FunctionCall) goja.Value {
+		o, ok := call.Argument(0).Export().(map[string]any)
+		if !ok {
+			panic(vm.NewTypeError("push.theme needs an object"))
+		}
+		set.themeSpec = o
 		return goja.Undefined()
 	})
 	vm.Set("push", push)
@@ -1119,6 +1132,28 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	}
 	putFrame(dst, img, p, w, h)
 	return true
+}
+
+// theme: the module's theme for Pung's default pages, nil where it has none
+// (or its screens are off).
+func (s *overrideSet) theme(sc color.NRGBA) *palette {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.themeSpec == nil || s.failed != "" || s.off {
+		return nil
+	}
+	if p := s.themes[sc]; p != nil {
+		return p
+	}
+	if s.themes == nil || len(s.themes) > 16 {
+		s.themes = map[color.NRGBA]*palette{}
+	}
+	p := themeFrom(s.themeSpec, sc)
+	s.themes[sc] = p
+	return p
 }
 
 // segRects: where the last full-panel frame put its segments (g.segment).

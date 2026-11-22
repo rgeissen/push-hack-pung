@@ -123,6 +123,14 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		// their names and values, under the widget
 		covered := make([]bool, 8)
 		set := u.ov.get(u.h.modulesDir, p.Module)
+		// the module's theme (push.theme, theme.go): the band between Push's
+		// rows in the instrument's colours and knobs
+		th := set.theme(sc)
+		u.pal = th
+		defer func() { u.pal = nil }()
+		if th != nil {
+			rect(img, 0, topH, scrW, botY-topH, th.ground)
+		}
 		touchedKey := ""
 		if u.touched >= 0 && u.touched < len(b.Keys) {
 			touchedKey = b.Keys[u.touched]
@@ -188,7 +196,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 					return x, x.Known
 				})
 			}
-			drawPictureLive(img, r, g, gv, touchedKey, sc, ls, u.liveOut, key)
+			drawPictureThemed(img, r, g, gv, touchedKey, th.accentOr(sc), ls, u.liveOut, key, th)
 			for c := g.start; c < g.end; c++ {
 				covered[c] = true
 			}
@@ -196,7 +204,7 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		}
 		for i := 1; i < 8; i++ {
 			if !(covered[i] && covered[i-1]) || starts[i] || u.ovBoundary(set, b.Keys, i) {
-				rect(img, i*colW, 30, 1, 102, cFaint)
+				rect(img, i*colW, 30, 1, 102, palOf(th).faint)
 			}
 		}
 		for i, key := range b.Keys {
@@ -481,6 +489,7 @@ func drawTrackCells(img *image.NRGBA, y, h int, page []liveTrack, first, sel, to
 }
 
 func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, key string, sc color.NRGBA) {
+	P := palOf(u.pal) // the module's theme on its default pages (theme.go)
 	cx := col*colW + colW/2
 	v, ok := u.vals[u.valKey(p, key)]
 	if m == nil {
@@ -490,37 +499,37 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 	// card is a setting, settings.go): the range at the gauge's ends, a
 	// list's neighbouring options, and fine adjustment.
 	touched := u.touched == col
-	nameCol := cDim
+	nameCol := P.dim
 	if touched {
-		nameCol = cFg
+		nameCol = P.fg
 		rect(img, cx-16, 43, 32, 2, sc)
 	}
 	label(img, cx, 38, fitLabel(strings.ToUpper(m.Name), colW-10), nameCol, 0)
 	val, unit := m.display(v, ok)
 	switch {
 	case m.Type == "enum":
-		box := cLine
+		box := P.line
 		if touched {
 			box = sc
 		}
 		frameRect(img, cx-44, 64, 88, 28, box)
 		ev, ef := fitValue(val, 80)
-		styled(img, cx, valueBaseline(78, ef), ev, cFg, ef, 0)
+		styled(img, cx, valueBaseline(78, ef), ev, P.fg, ef, 0)
 		if n := len(m.Options); touched && n > 1 && ok {
 			// where a turn goes next, either way
 			i, _ := m.enumIndex(v)
 			if i > 0 {
-				label(img, cx-55, 124, "<"+fitLabel(strings.ToUpper(m.Options[i-1]), 47), cDim, -1)
+				label(img, cx-55, 124, "<"+fitLabel(strings.ToUpper(m.Options[i-1]), 47), P.dim, -1)
 			}
 			if i < n-1 {
-				label(img, cx+55, 124, fitLabel(strings.ToUpper(m.Options[i+1]), 47)+">", cDim, 1)
+				label(img, cx+55, 124, fitLabel(strings.ToUpper(m.Options[i+1]), 47)+">", P.dim, 1)
 			}
 		}
 		if n := len(m.Options); n > 1 && n <= 12 {
 			i, _ := m.enumIndex(v)
 			x0 := cx - (n-1)*9/2
 			for k := 0; k < n; k++ {
-				c := cLine
+				c := P.line
 				if k == i {
 					c = sc
 				}
@@ -528,22 +537,26 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 			}
 		} else if n > 12 {
 			i, _ := m.enumIndex(v)
-			label(img, cx, 106, fmt.Sprintf("%d/%d", i+1, n), cDim, 0)
+			label(img, cx, 106, fmt.Sprintf("%d/%d", i+1, n), P.dim, 0)
 		}
 	case m.Type == "string":
 		sv, sf := fitValue(val, colW-10)
-		styled(img, cx, valueBaseline(78, sf), sv, cFg, sf, 0)
+		styled(img, cx, valueBaseline(78, sf), sv, P.fg, sf, 0)
 		return
 	default:
-		gauge(img, cx, knobCY, m.frac(v), m.Bipolar, sc, m.ReadOnly, touched)
+		arcCol := P.accentOr(sc)
+		if touched {
+			arcCol = sc
+		}
+		gaugeP(img, cx, knobCY, m.frac(v), m.Bipolar, arcCol, m.ReadOnly, touched, P)
 		if touched && !m.ReadOnly && m.Max > m.Min {
 			// the range, at the ends of the arc
 			lo, _ := m.display(strconv.FormatFloat(m.Min, 'f', -1, 64), true)
 			hi, _ := m.display(strconv.FormatFloat(m.Max, 'f', -1, 64), true)
 			// numbers never cut: -24000 is -24K, or not shown
 			lo, hi = fitRange(lo, hi, 40)
-			label(img, cx-52, 107, lo, cDim, -1)
-			label(img, cx+52, 107, hi, cDim, 1)
+			label(img, cx-52, 107, lo, P.dim, -1)
+			label(img, cx+52, 107, hi, P.dim, 1)
 			// fine adjustment, beside the dial: there while Shift would
 			// give it, lit while Shift is held
 			if m.fineApplies() {
@@ -551,7 +564,7 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 					rect(img, cx+29, knobCY-6, 30, 13, sc)
 					label(img, cx+44, knobCY+4, "FINE", cBlack, 0)
 				} else {
-					label(img, cx+44, knobCY+4, "FINE", cLine, 0)
+					label(img, cx+44, knobCY+4, "FINE", P.line, 0)
 				}
 			}
 		}
@@ -572,9 +585,9 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 		}
 		w := textWidth(v, f)
 		x := cx - (w+uw)/2
-		styled(img, x, 127, v, cFg, f, -1)
+		styled(img, x, 127, v, P.fg, f, -1)
 		if unit != "" {
-			label(img, x+w+3, 127, unit, cDim, -1)
+			label(img, x+w+3, 127, unit, P.dim, -1)
 		}
 	}
 }
@@ -591,15 +604,16 @@ func (u *surface) ovBoundary(set *overrideSet, keys []string, i int) bool {
 
 // drawUnderWidget: a covered column keeps its name and value, below the widget.
 func (u *surface) drawUnderWidget(img *image.NRGBA, col int, p position, m *paramMeta, key string, sc color.NRGBA) {
+	P := palOf(u.pal) // the module's theme on its default pages (theme.go)
 	cx := col*colW + colW/2
 	if m == nil {
 		m = &paramMeta{Key: key, Name: key, Type: "string", ReadOnly: true}
 	}
 	v, ok := u.vals[u.valKey(p, key)]
 	val, unit := m.display(v, ok)
-	nameCol := cDim
+	nameCol := P.dim
 	if u.touched == col {
-		nameCol = cFg
+		nameCol = P.fg
 	}
 	if unit != "" {
 		val += " " + unit

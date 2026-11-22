@@ -28,9 +28,10 @@ func mixColor(c color.NRGBA, t float64) color.NRGBA {
 // (envclock.go). Widths are the knobs' travel, never a time scale: the
 // shape is what the hand turns, the dot is what the sound does.
 func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGBA) {
-	fg, accent := cFg, sc
+	P := palOf(e.Pal)
+	fg, accent := P.fg, sc
 	if !e.Known {
-		fg, accent = cDim, cDim
+		fg, accent = P.dim, P.dim
 	}
 	x0, x1 := float64(r.Min.X+6), float64(r.Max.X-6)
 	top, base := float64(r.Min.Y+8), float64(r.Max.Y-6)
@@ -46,7 +47,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 		floor = (top + base) / 2
 	}
 	// the fill, column by column between the line and its floor
-	fill := mixColor(accent, 0.28)
+	fill := P.mix(accent, 0.28)
 	for i := 1; i < len(pts); i++ {
 		a, b := pts[i-1], pts[i]
 		for px := int(a.X); px < int(b.X); px++ {
@@ -56,16 +57,16 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 			rect(img, px, int(lo), 1, int(hi-lo)+1, fill)
 		}
 	}
-	aaLine(img, x0, base, x1, base, 1, cLine)
+	aaLine(img, x0, base, x1, base, 1, P.line)
 	if e.Signed {
-		aaLine(img, x0, floor, x1, floor, 1, cLine)
+		aaLine(img, x0, floor, x1, floor, 1, P.line)
 	}
 	// the plateau's level, as a guide from the start
 	pl := e.plateau()
 	if pl > 0 {
 		sy := pts[pl].Y
 		for gx := x0; gx < pts[pl].X; gx += 6 {
-			aaLine(img, gx, sy, min(gx+3, x1), sy, 1, mixColor(fg, 0.45))
+			aaLine(img, gx, sy, min(gx+3, x1), sy, 1, P.mix(fg, 0.45))
 		}
 	}
 	// the segments, the touched one thick and in the slot's color
@@ -103,7 +104,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 	lit := map[int]bool{}
 	if lv != nil {
 		if lv.Retrig > 0 { // a note began: the envelope starts again
-			aaLine(img, x0, top, x0, base, 2.4, mixColor(cMod, lv.Retrig))
+			aaLine(img, x0, top, x0, base, 2.4, P.mix(cMod, lv.Retrig))
 		}
 		dt := 0.0 // the frame's ages, carried on to now
 		if lv.At > 0 {
@@ -124,7 +125,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 				if q := envAt(v, back, e); !q.Done {
 					if x, y, i := at(q); i >= 0 {
 						f := 1 - float64(k)/float64(trailLen+1)
-						disc(img, x, y, 1.2+1.6*f, mixColor(cMod, 0.1+0.4*f))
+						disc(img, x, y, 1.2+1.6*f, P.mix(cMod, 0.1+0.4*f))
 					}
 				}
 			}
@@ -136,11 +137,11 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 			if n == 0 {
 				aaLine(img, pts[i].X, pts[i].Y, x, y, 3.4, cMod) // the segment so far
 				for gy := y + 7; gy < base-2; gy += 5 {
-					aaLine(img, x, gy, x, math.Min(gy+2, base-2), 1, mixColor(cMod, 0.6))
+					aaLine(img, x, gy, x, math.Min(gy+2, base-2), 1, P.mix(cMod, 0.6))
 				}
 				rad = 4.6
 			}
-			disc(img, x, y, rad+1.8, cBlack)
+			disc(img, x, y, rad+1.8, P.ground)
 			disc(img, x, y, rad, cMod)
 		}
 	}
@@ -162,9 +163,9 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 				continue
 			}
 			s := e.Segs[i-1]
-			bg, ink := cStageOff, cDim
+			bg, ink := P.stageOff, P.dim
 			if !e.Known {
-				bg = cFaint
+				bg = P.faint
 			}
 			if lit[i-1] {
 				bg, ink = cMod, cBlack

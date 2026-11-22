@@ -179,6 +179,7 @@ type filterShape struct {
 	Known       bool
 	Touched     string    // "cutoff", "resonance", "type" or ""
 	Spectrum    []float64 // the sound's spectrum, dB per column of the axis (livefx.go); nil: none
+	Pal         *palette  // the module's theme (theme.go); nil: Pung's
 }
 
 // the spectrum's scale in the filter picture (dB, after the analyzer's tilt)
@@ -203,7 +204,7 @@ func lighten(img *image.NRGBA, x, y int, c color.NRGBA) {
 }
 
 // drawSpectrum lays the sound's spectrum over a filter's frequency axis.
-func drawSpectrum(img *image.NRGBA, cols []float64, x0, x1, top, base float64) {
+func drawSpectrum(img *image.NRGBA, P *palette, cols []float64, x0, x1, top, base float64) {
 	n := len(cols)
 	if n < 2 {
 		return
@@ -225,10 +226,14 @@ func drawSpectrum(img *image.NRGBA, cols []float64, x0, x1, top, base float64) {
 		t := math.Max(0, math.Min(1, (db-specBotDB)/(specTopDB-specBotDB)))
 		y := base - t*(base-top)
 		for py := int(y); py < int(base); py++ {
-			lighten(img, int(x), py, cSpecFill)
+			if P.themed { // on a light ground lightening shows nothing
+				img.SetNRGBA(int(x), py, P.specFill)
+			} else {
+				lighten(img, int(x), py, P.specFill)
+			}
 		}
 		if x > x0 {
-			aaLine(img, prev[0], prev[1], x, y, 1.2, cSpecLine)
+			aaLine(img, prev[0], prev[1], x, y, 1.2, P.specLine)
 		}
 		prev = [2]float64{x, y}
 	}
@@ -365,13 +370,14 @@ func filterDB(f filterShape, u float64) float64 {
 // cutoff's handle and a line down from it, or the whole curve for the
 // resonance or the type.
 func drawFilter(img *image.NRGBA, r image.Rectangle, f filterShape, sc color.NRGBA) {
+	P := palOf(f.Pal)
 	known := f.Known
 	if !known {
 		f = filterShape{Cutoff: 0.6, Res: 0.35, HasRes: true, Kind: "lp", Poles: 2}
 	}
-	fg, accent := cFg, sc
+	fg, accent := P.fg, sc
 	if !known {
-		fg, accent = cDim, cDim
+		fg, accent = P.dim, P.dim
 	}
 	x0, x1 := float64(r.Min.X+6), float64(r.Max.X-6)
 	top, base := float64(r.Min.Y+6), float64(r.Max.Y-6)
@@ -382,37 +388,37 @@ func drawFilter(img *image.NRGBA, r image.Rectangle, f filterShape, sc color.NRG
 	// the decades, faint, and 0 dB, dashed
 	for d := 1.0; d < fltDecades; d++ {
 		x := x0 + (x1-x0)*d/fltDecades
-		rect(img, int(x), int(top), 1, int(base-top), cFaint)
+		rect(img, int(x), int(top), 1, int(base-top), P.faint)
 	}
 	zero := yOf(0)
 	for gx := x0; gx < x1; gx += 6 {
-		aaLine(img, gx, zero, math.Min(gx+3, x1), zero, 1, cLine)
+		aaLine(img, gx, zero, math.Min(gx+3, x1), zero, 1, P.line)
 	}
-	aaLine(img, x0, base, x1, base, 1, cLine)
+	aaLine(img, x0, base, x1, base, 1, P.line)
 	xc := x0 + (x1-x0)*f.Cutoff
 	if f.Kind == "?" || f.Kind == "off" {
 		if known {
-			drawSpectrum(img, f.Spectrum, x0, x1, top, base)
+			drawSpectrum(img, P, f.Spectrum, x0, x1, top, base)
 		}
 		// a type Pung cannot read draws no curve (never a guess); off passes all
 		if f.Kind == "off" {
-			aaLine(img, x0, zero, x1, zero, 2.2, mixColor(fg, 0.6))
+			aaLine(img, x0, zero, x1, zero, 2.2, P.mix(fg, 0.6))
 		}
-		aaLine(img, xc, top, xc, base, 1.5, mixColor(fg, 0.6))
+		aaLine(img, xc, top, xc, base, 1.5, P.mix(fg, 0.6))
 		name := strings.ToUpper(asciiOnly(f.TypeName))
 		if f.Kind == "off" {
 			name = "OFF"
 		} else if strings.Trim(name, "0123456789.- ") == "" {
 			name = "" // a type that reads as a number says nothing
 		}
-		label(img, int((x0+x1)/2), int(top)+14, fitLabel(name, int(x1-x0)-8), cDim, 0)
+		label(img, int((x0+x1)/2), int(top)+14, fitLabel(name, int(x1-x0)-8), P.dim, 0)
 		return
 	}
 	var pts [][2]float64
 	for x := x0; x <= x1; x += 2 {
 		pts = append(pts, [2]float64{x, yOf(filterDB(f, (x-x0)/(x1-x0)))})
 	}
-	fill := mixColor(accent, 0.28)
+	fill := P.mix(accent, 0.28)
 	for i := 1; i < len(pts); i++ {
 		a, b := pts[i-1], pts[i]
 		for px := int(a[0]); px < int(b[0]); px++ {
@@ -421,7 +427,7 @@ func drawFilter(img *image.NRGBA, r image.Rectangle, f filterShape, sc color.NRG
 		}
 	}
 	if known {
-		drawSpectrum(img, f.Spectrum, x0, x1, top, base) // the sound itself, behind the curve that shapes it
+		drawSpectrum(img, P, f.Spectrum, x0, x1, top, base) // the sound itself, behind the curve that shapes it
 	}
 	w, c := 2.2, fg
 	if f.Touched == "resonance" || f.Touched == "type" {
@@ -534,6 +540,7 @@ type lfoShape struct {
 	Known    bool
 	Touched  string   // "shape", "rate" or ""
 	Live     *lfoLive // its phase as it runs (livefx.go); nil: a still picture
+	Pal      *palette // the module's theme (theme.go); nil: Pung's
 }
 
 // lfoWave: a wave as the module names it, as one Pung draws. A name Pung
@@ -640,23 +647,24 @@ func lfoValue(wave string, ph float64) float64 {
 // around a centre line, filled toward it in the slot's colour faded. Turning
 // the wave or the rate draws it hot.
 func drawLFO(img *image.NRGBA, r image.Rectangle, l lfoShape, sc color.NRGBA) {
+	P := palOf(l.Pal)
 	known := l.Known
 	if !known {
 		l = lfoShape{Wave: "sine", Rate: 0.25}
 	}
-	fg, accent := cFg, sc
+	fg, accent := P.fg, sc
 	if !known {
-		fg, accent = cDim, cDim
+		fg, accent = P.dim, P.dim
 	}
 	x0, x1 := float64(r.Min.X+6), float64(r.Max.X-6)
 	top, base := float64(r.Min.Y+8), float64(r.Max.Y-8)
 	mid := (top + base) / 2
 	amp := (base - top) / 2
 	for gx := x0; gx < x1; gx += 6 {
-		aaLine(img, gx, mid, math.Min(gx+3, x1), mid, 1, cLine)
+		aaLine(img, gx, mid, math.Min(gx+3, x1), mid, 1, P.line)
 	}
 	if l.Wave == "" {
-		label(img, int((x0+x1)/2), int(mid)-6, fitLabel(strings.ToUpper(asciiOnly(l.WaveName)), int(x1-x0)-8), cDim, 0)
+		label(img, int((x0+x1)/2), int(mid)-6, fitLabel(strings.ToUpper(asciiOnly(l.WaveName)), int(x1-x0)-8), P.dim, 0)
 		return
 	}
 	n := lfoCycles(l.Rate)
@@ -666,7 +674,7 @@ func drawLFO(img *image.NRGBA, r image.Rectangle, l lfoShape, sc color.NRGBA) {
 		v := lfoValue(l.Wave, n*math.Min((x-x0)/(x1-x0), 0.9999)) // the last pixel ends the cycle, not the next
 		pts = append(pts, [2]float64{x, mid - v*amp})
 	}
-	fill := mixColor(accent, 0.28)
+	fill := P.mix(accent, 0.28)
 	for _, p := range pts {
 		y := p[1]
 		rect(img, int(p[0]), int(math.Min(y, mid)), 1, int(math.Abs(mid-y))+1, fill)
@@ -686,7 +694,7 @@ func drawLFO(img *image.NRGBA, r image.Rectangle, l lfoShape, sc color.NRGBA) {
 		return
 	}
 	if lv.Restart > 0 {
-		aaLine(img, x0, top, x0, base, 2.4, mixColor(cMod, lv.Restart))
+		aaLine(img, x0, top, x0, base, 2.4, P.mix(cMod, lv.Restart))
 	}
 	if lv.Phase < 0 {
 		return
@@ -701,13 +709,13 @@ func drawLFO(img *image.NRGBA, r image.Rectangle, l lfoShape, sc color.NRGBA) {
 	for i := 0; i+1 < len(lv.Trail); i++ {
 		x, y := pos(lv.Trail[i])
 		k := float64(i+1) / float64(len(lv.Trail))
-		disc(img, x, y, 1.4+1.6*k, mixColor(cMod, 0.12+0.45*k))
+		disc(img, x, y, 1.4+1.6*k, P.mix(cMod, 0.12+0.45*k))
 	}
 	x, y := pos(lv.Phase)
 	for gy := top; gy < base; gy += 5 {
-		aaLine(img, x, gy, x, math.Min(gy+2, base), 1, mixColor(cMod, 0.5))
+		aaLine(img, x, gy, x, math.Min(gy+2, base), 1, P.mix(cMod, 0.5))
 	}
-	disc(img, x, y, 6, cBlack)
+	disc(img, x, y, 6, P.ground)
 	disc(img, x, y, 4.3, cMod)
 }
 
@@ -777,7 +785,8 @@ func mixGroups(keys []string) []picGroup {
 type mixShape struct {
 	Levels  []float64
 	Known   bool
-	Touched int // the source under a finger, or -1
+	Touched int      // the source under a finger, or -1
+	Pal     *palette // the module's theme (theme.go); nil: Pung's
 }
 
 func mixShapeOf(g picGroup, vals map[string]ovValue, touchedKey string) mixShape {
@@ -800,6 +809,7 @@ func mixShapeOf(g picGroup, vals map[string]ovValue, touchedKey string) mixShape
 // across the top each source's share of the whole, so that what the sound
 // is made of shows at once. Levels in their knobs' terms.
 func drawMix(img *image.NRGBA, r image.Rectangle, m mixShape, sc color.NRGBA) {
+	P := palOf(m.Pal)
 	n := len(m.Levels)
 	if n == 0 {
 		return
@@ -811,9 +821,9 @@ func drawMix(img *image.NRGBA, r image.Rectangle, m mixShape, sc color.NRGBA) {
 			m.Levels[i] = 0.5
 		}
 	}
-	fg, accent := cFg, sc
+	fg, accent := P.fg, sc
 	if !known {
-		fg, accent = cDim, cDim
+		fg, accent = P.dim, P.dim
 	}
 	cw := float64(r.Dx()) / float64(n)
 	// the shares, across the top
@@ -823,14 +833,14 @@ func drawMix(img *image.NRGBA, r image.Rectangle, m mixShape, sc color.NRGBA) {
 		sum += v
 	}
 	if sum <= 0 {
-		frameRect(img, int(sx), sy, int(sw), sh, cLine)
+		frameRect(img, int(sx), sy, int(sw), sh, P.line)
 	} else {
 		x := sx
 		for i, v := range m.Levels {
 			w := sw * v / sum
-			c := mixColor(fg, 0.75)
+			c := P.mix(fg, 0.75)
 			if i%2 == 1 {
-				c = mixColor(fg, 0.5)
+				c = P.mix(fg, 0.5)
 			}
 			if i == m.Touched {
 				c = accent
@@ -845,9 +855,9 @@ func drawMix(img *image.NRGBA, r image.Rectangle, m mixShape, sc color.NRGBA) {
 	top, base := float64(r.Min.Y+22), float64(r.Max.Y-6)
 	for i, v := range m.Levels {
 		cx := float64(r.Min.X) + cw*(float64(i)+0.5)
-		rect(img, int(cx)-3, int(top), 6, int(base-top), cLine)
+		rect(img, int(cx)-3, int(top), 6, int(base-top), P.line)
 		y := base - v*(base-top)
-		c, cap := mixColor(accent, 0.45), fg
+		c, cap := P.mix(accent, 0.45), fg
 		if i == m.Touched {
 			c, cap = accent, accent
 		}
@@ -868,23 +878,30 @@ func drawPicture(img *image.NRGBA, r image.Rectangle, g picGroup, vals map[strin
 // (its live state is worked out every tick, livehub.go) and drawn with the
 // session's latest frame.
 func drawPictureLive(img *image.NRGBA, r image.Rectangle, g picGroup, vals map[string]ovValue, touchedKey string, sc color.NRGBA, ls *liveSession, out liveOut, key string) {
+	drawPictureThemed(img, r, g, vals, touchedKey, sc, ls, out, key, nil)
+}
+
+// drawPictureThemed: drawPictureLive in a module's theme (theme.go).
+func drawPictureThemed(img *image.NRGBA, r image.Rectangle, g picGroup, vals map[string]ovValue, touchedKey string, sc color.NRGBA, ls *liveSession, out liveOut, key string, pal *palette) {
 	if ls != nil {
 		ls.want(key, g, vals)
 	}
 	switch g.kind {
 	case "env":
 		e := envShapeOf(g.keys, vals, touchedKey)
-		e.Live = out.Envs[key]
+		e.Live, e.Pal = out.Envs[key], pal
 		drawEnvelope(img, r, e, sc)
 	case "filter":
 		f := filterShapeOf(g, vals, touchedKey)
-		f.Spectrum = out.Spec
+		f.Spectrum, f.Pal = out.Spec, pal
 		drawFilter(img, r, f, sc)
 	case "lfo":
 		l := lfoShapeOf(g, vals, touchedKey)
-		l.Live = out.LFOs[key]
+		l.Live, l.Pal = out.LFOs[key], pal
 		drawLFO(img, r, l, sc)
 	case "mix":
-		drawMix(img, r, mixShapeOf(g, vals, touchedKey), sc)
+		m := mixShapeOf(g, vals, touchedKey)
+		m.Pal = pal
+		drawMix(img, r, m, sc)
 	}
 }

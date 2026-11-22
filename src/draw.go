@@ -298,17 +298,82 @@ const (
 // draws modulation (the live value) as an outer arc.
 // gauge: hot is the touched one: its track lighter, its value arc thicker.
 func gauge(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.NRGBA, readOnly, hot bool) {
+	gaugeP(img, cx, cy, frac, bipolar, col, readOnly, hot, defaultPal)
+}
+
+// gaugeP: gauge in a module's theme (theme.go), as its instrument's knob:
+// "ring" (Pung's), "pointer" (a hardware knob: a cap with a pointer, the
+// value as an arc around it), "fader" (a slot and a cap).
+func gaugeP(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.NRGBA, readOnly, hot bool, P *palette) {
+	frac = math.Max(0, math.Min(1, frac))
+	switch {
+	case readOnly || P.knob == "ring" || P.knob == "":
+	case P.knob == "pointer":
+		x, y := float64(cx), float64(cy)
+		w := 2.5
+		if hot {
+			w = 4
+		}
+		arc(img, x, y, knobR, gaugeA0, gaugeSW, w, P.faint)
+		if bipolar {
+			mid, e := gaugeA0+gaugeSW/2, gaugeA0+gaugeSW*frac
+			arc(img, x, y, knobR, math.Min(mid, e), math.Abs(e-mid), w, col)
+		} else {
+			arc(img, x, y, knobR, gaugeA0, gaugeSW*frac, w, col)
+		}
+		disc(img, x, y, knobR-6, P.line)
+		disc(img, x, y, knobR-8, P.panel)
+		a := gaugeA0 + gaugeSW*frac
+		ink := P.fg
+		if hot {
+			ink = col
+		}
+		aaLine(img, x+math.Cos(a)*3, y+math.Sin(a)*3, x+math.Cos(a)*(knobR-9), y+math.Sin(a)*(knobR-9), 3, ink)
+		return
+	case P.knob == "fader":
+		top, bot := cy-knobR+2, cy+knobR-2
+		rect(img, cx-2, top, 4, bot-top, P.faint)
+		lvl := bot - int(math.Round(frac*float64(bot-top)))
+		from := bot
+		if bipolar {
+			from = (top + bot) / 2
+		}
+		rect(img, cx-1, min(lvl, from), 2, max(1, abs(from-lvl)), col)
+		cw := 26
+		if hot {
+			cw = 30
+		}
+		rect(img, cx-cw/2, lvl-4, cw, 9, P.line)
+		rect(img, cx-cw/2+1, lvl-3, cw-2, 7, P.panel)
+		ink := P.fg
+		if hot {
+			ink = col
+		}
+		rect(img, cx-cw/2+3, lvl, cw-6, 1, ink)
+		return
+	}
+	gaugeRing(img, cx, cy, frac, bipolar, col, readOnly, hot, P)
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func gaugeRing(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.NRGBA, readOnly, hot bool, P *palette) {
 	frac = math.Max(0, math.Min(1, frac))
 	x, y := float64(cx), float64(cy)
-	track, w := cFaint, 3.0
+	track, w := P.faint, 3.0
 	if hot {
-		track, w = cLine, 5
+		track, w = P.line, 5
 	}
 	if readOnly {
 		// a read-only value is a dotted ring: same place, no promise of a knob
 		for i := 0; i <= 30; i++ {
 			a := gaugeA0 + gaugeSW*float64(i)/30
-			disc(img, x+math.Cos(a)*knobR, y+math.Sin(a)*knobR, 1.1, cLine)
+			disc(img, x+math.Cos(a)*knobR, y+math.Sin(a)*knobR, 1.1, P.line)
 		}
 	} else {
 		arc(img, x, y, knobR, gaugeA0, gaugeSW, w, track)
@@ -325,7 +390,7 @@ func gauge(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.N
 		arc(img, x, y, knobR, gaugeA0, gaugeSW*frac, w, col)
 	}
 	a := gaugeA0 + gaugeSW*frac
-	disc(img, x+math.Cos(a)*(knobR-8), y+math.Sin(a)*(knobR-8), 2.2, cFg)
+	disc(img, x+math.Cos(a)*(knobR-8), y+math.Sin(a)*(knobR-8), 2.2, P.fg)
 }
 
 // rect fills a rectangle. A solid colour is written straight into the
