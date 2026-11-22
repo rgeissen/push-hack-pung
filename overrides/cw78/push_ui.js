@@ -442,6 +442,8 @@ for (var sp = 0; sp < 7; sp++) {
     keys: [va + "_tune", va + "_decay", va + "_drive", va + "_level", vb + "_tune", vb + "_decay", vb + "_drive", vb + "_level"] });
 }
 SEGS.push({ id: "rhythm", label: "Rhythm", rect: [RX - 4, 21, 402, 80], keys: ["rhy_mode", "rhy_style", "rhy_ab", "rhy_style2"] });
+// Pung's default pages in the CR-78's colours: dark panel, cream print, black knobs, amber lamps
+push.theme({ ground: PANEL, ink: CREAM, dim: CREAM2, rule: KNOB_RIM, panel: KNOB, accent: AMBER, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true,
   pages: [

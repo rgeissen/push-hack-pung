@@ -295,6 +295,8 @@ function row(g, v) {
   if (ps.length > 1) g.text(950, 31, up(ps[v.$page] || "") + "  " + ((v.$page || 0) + 1) + "/" + ps.length, INK_DIM, 1);
 }
 
+// Pung's default pages in undyed wool: cream ink, the ochre yarn round each knob
+push.theme({ ground: GROUND, panel: KNOB, ink: INK, dim: INK_DIM, rule: KNOB_RIM, faint: RULE, accent: YARN, knob: "pointer" });
 push.compartment({
   id: "hank", label: "Hank", front_panel: true,
   pages: [{ label: "Hank", keys: ["ratio", "bright", "bite", "tone", "attack", "decay", "sustain", "noise"] }],

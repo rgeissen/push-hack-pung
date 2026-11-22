@@ -928,6 +928,8 @@ function segmentMark(g, v) {
   if (segLit(v, "envelope")) g.text(ENV.x + 4, 14, "ENVELOPE", "slot", -1);
 }
 
+// Pung's default pages in the monk's robe, with its saffron knobs
+push.theme({ ground: ROBE_DK, panel: SAFFRON, ink: INK, dim: INK_DIM, rule: SAFF_DIM, accent: SAFFRON, knob: "pointer" });
 push.compartment({
   id: "voice", label: "Voice", front_panel: true, segments: SEGMENTS, draws_segments: true,
   pages: [

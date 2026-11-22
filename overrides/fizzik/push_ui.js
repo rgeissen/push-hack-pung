@@ -589,6 +589,8 @@ function segMark(g, v) {
 var PANEL_EXTRA = ["preset", "exc_mix", "exc_crackle", "exc_color", "exc_attack", "exc_decay", "exc_reso",
   "a_model", "a_struct", "a_decay", "a_damp", "a_pos", "a_tone", "a_tune", "b_model", "b_struct", "b_decay", "b_damp",
   "b_pos", "b_tone", "b_tune", "couple", "balance", "cutoff", "resonance", "ftype", "voicing", "amp_attack", "amp_release"];
+// Pung's default pages in the notebook's night blue, the measured curves in the scope's green
+push.theme({ ground: GROUND, panel: GRID, ink: INK, dim: INK2, rule: RULE, faint: GRID2, accent: SCOPE, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Fizzik", front_panel: true, segments: SEGS, draws_segments: true,
   pages: [

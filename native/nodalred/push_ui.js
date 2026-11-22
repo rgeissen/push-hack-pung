@@ -289,6 +289,8 @@ function segmentLit(g, v) {
     g.text(x + 5, 31, s.label.toUpperCase(), "black", -1);
   }
 }
+// Pung's default pages in the Nord's red, with its black knobs
+push.theme({ ground: RED, panel: KNOB, ink: INK, dim: SOFT, rule: KNOB_RIM, faint: "#d2646b", accent: LED_ON, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true,
   pages: [

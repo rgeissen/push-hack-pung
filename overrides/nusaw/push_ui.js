@@ -238,6 +238,8 @@ function row(g, v) {
   if (ps.length > 1) g.text(950, 31, up(ps[v.$page] || "") + "  " + ((v.$page || 0) + 1) + "/" + ps.length, INK_DIM, 1);
 }
 
+// Pung's default pages in NuSaw's violet and neon
+push.theme({ ground: PANEL, ink: INK, dim: INK_DIM, rule: RULE, faint: SEG_OFF, accent: NEON, knob: "ring" });
 push.compartment({
   id: "nusaw", label: "NuSaw", front_panel: true,
   pages: [{ label: "NuSaw", keys: ["saw_count", "detune", "spread", "sub_level", "cutoff", "resonance", "attack", "release"] }],

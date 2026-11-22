@@ -292,6 +292,8 @@ function segLit(g, v) {
 }
 NAMES.speaker = "SPEAKER"; NAMES.tune = "TUNE"; NAMES.preset = "PRESET";
 
+// Pung's default pages in the Wurlitzer's lid, ivory and amber, its knobs
+push.theme({ ground: LID, panel: CAP, ink: INK, dim: INK_DIM, rule: CAP_RIM, faint: INK_FAINT, accent: AMBER, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Wurl", front_panel: true, draws_segments: true, segments: SEGS,
   pages: [

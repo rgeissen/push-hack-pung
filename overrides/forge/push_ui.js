@@ -178,6 +178,8 @@ for (var sq = 0; sq < 4; sq++) {
 }
 function across(p) { var out = []; for (var i = 1; i <= 8; i++) out.push(p.replace("#", i)); return out; }
 var PEX = ["kit", "morph", "morph_curve", "morph_src"].concat(across("v#_lvl"), across("v#_pan"));
+// Pung's default pages in the smithy's iron, its knobs' steel arcs
+push.theme({ ground: IRON, panel: IRON2, ink: WHITEHOT, dim: ASH, rule: RULE, faint: IRON3, accent: "#8fb3c9", knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true,
   pages: [

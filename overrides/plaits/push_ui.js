@@ -305,6 +305,8 @@ function panel(g, v) {
   g.fill(760, 92, 128, 1, INK2);
   if (known(v, "lpg_colour")) g.fill(cx - 2, 87, 4, 10, t === "lpg_colour" ? "slot" : INK);
 }
+// Pung's default pages on Plaits' aluminium, with its white trimmers
+push.theme({ ground: ALU, panel: TRIM, ink: INK, dim: INK2, rule: INK3, faint: ALU_DK, accent: INK2, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Plaits", front_panel: true,
   pages: [{ label: "Plaits", keys: ["engine", "harmonics", "timbre", "morph", "fm_amount", "aux_mix", "decay", "lpg_colour"] }],

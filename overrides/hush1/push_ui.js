@@ -368,6 +368,8 @@ function panel(g, v) {
   rowValues(g, v, keys, tight);
 }
 
+// Pung's default pages in the SH-101's grey, its black slots and light caps
+push.theme({ ground: PANEL, panel: CAP, ink: PRINT, dim: PRINT_DIM, rule: FRAME_DIM, faint: SLOT, accent: CURVE, knob: "fader" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true,
   pages: [{ label: PAGES[0].label, keys: PAGES[0].keys }, { label: PAGES[1].label, keys: PAGES[1].keys }],

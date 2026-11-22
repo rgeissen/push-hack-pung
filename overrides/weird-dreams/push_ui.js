@@ -241,6 +241,8 @@ for (var sv = 1; sv <= 8; sv++) {
   SEGS.push({ id: "v" + sv, label: "Voice " + sv, rect: [(sv - 1) * 120 + 4, 24, 112, 76],
     keys: [sp + "freq", sp + "decay", sp + "wave", sp + "penv", sp + "mix", sp + "cutoff", sp + "vol", sp + "pan"] });
 }
+// Pung's default pages in Weird Dreams' night and lavender, its rings
+push.theme({ ground: NIGHT, panel: CARD, ink: MOON, dim: LAV2, rule: LAV2, faint: RULE, accent: LAV, knob: "ring" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true,
   pages: [

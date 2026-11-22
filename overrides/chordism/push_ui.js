@@ -364,6 +364,8 @@ var SEGMENTS = [
   { id: "filter", label: "Filter", rect: [586, 2, 164, 100], keys: ["filter_cutoff", "filter_resonance", "filter_mode", "filter_slope", "filter_env_depth", "filter_env_attack", "filter_env_decay", "drive"] },
   { id: "amp", label: "Amp", rect: [754, 2, 204, 100], keys: ["attack", "release", "vca_mode", "volume", "width", "vca_drone", "reverb_mix", "delay_mix"] }
 ];
+// Pung's default pages in Chordism's night blue
+push.theme({ ground: GROUND, panel: PANEL, ink: INK, dim: INK_DIM, rule: RULE, accent: LEGEND, knob: "ring" });
 push.compartment({
   id: "chord", label: "Chord", front_panel: true, segments: SEGMENTS, draws_segments: true,
   pages: [

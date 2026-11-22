@@ -400,6 +400,8 @@ function segMark(g, v, r) {
     g.text(bx + 5, BOXY + 10, id === "vcw" ? "VCW" : "VCF", "slot", -1);
   }
 }
+// Pung's default pages on the Maze's plate, with its metal knobs
+push.theme({ ground: PLATE_HI, panel: METAL, ink: INK, dim: INK_DIM, rule: METAL_LO, faint: SKIRT_HI, accent: CABLE, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true, segments: SEGS, draws_segments: true,
   pages: [

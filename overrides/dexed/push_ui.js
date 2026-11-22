@@ -600,6 +600,8 @@ function panelSig(v) {
   return out.join("|");
 }
 
+// Pung's default pages on the DX's brown chassis, its print, and its one data slider
+push.theme({ ground: CHASSIS, panel: KEY, ink: PRINT, dim: PRINT_DIM, rule: PRINT_DIM, faint: KEY_EDGE, knob: "fader" });
 push.compartment({
   id: "algorithm", label: "Algorithm", front_panel: true,
   pages: [{ label: "Algorithm", keys: ALG_PAGE }],

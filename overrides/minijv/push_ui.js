@@ -354,6 +354,8 @@ function faceSig(v) {
   return out.join("|");
 }
 
+// Pung's default pages in the JV-880's green LCD
+push.theme({ ground: LCD_BG, ink: LCD_INK, dim: LCD_DIM, accent: LCD_INK, knob: "ring" });
 push.compartment({
   id: "macros", label: "Macros", front_panel: true,
   pages: MACRO_PAGES,

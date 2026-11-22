@@ -392,6 +392,8 @@ function segMark(g, v, P) {
 }
 var PANEL_EXTRA = ["preset", "preset_name", "preset_count", "chip", "alloc_mode", "channel_mask", "noise_mode", "duty", "wavetable", "volume",
   "detune", "octave_transpose", "vibrato_depth", "vibrato_rate", "pitch_env_depth", "sweep", "env_attack", "env_decay", "env_sustain", "env_release"];
+// Pung's default pages in the NES palette (the theme is fixed: it cannot follow the GB chip)
+push.theme({ ground: NES.ground, panel: NES.cell, ink: NES.ink, dim: NES.dim, faint: NES.faint, rule: NES.rule, accent: NES.env, knob: "fader" });
 push.compartment({
   id: "panel", label: "Chiptune", front_panel: true,
   pages: [

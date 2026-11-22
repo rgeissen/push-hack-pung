@@ -647,6 +647,8 @@ function responses(g, v, x, y, w, h, s) {
   }
   if (s.f1on || !s.f2on) g.filter(x, y, w, h, { cutoff: "filter1_cutoff", at: axisAt(s1), resonance: "filter1_resonance", type: pungType(s.f1), color: C.or });
 }
+// Pung's default pages in Surge's colours and sliders
+push.theme({ ground: C.bg, panel: C.raised, ink: C.ink, dim: C.label, rule: C.edge, faint: C.faint, accent: C.or, knob: "fader" });
 push.compartment({
   id: "patch", label: "Patch", front_panel: true,
   pages: [

@@ -379,6 +379,8 @@ var SYN = [], AMPK = [], FLTK = [], FXK = [], ALL_LFO = [];
 for (var n0 = 1; n0 <= 16; n0++) { SYN.push("syn" + n0); AMPK.push("amp" + n0); FLTK.push("flt" + n0); FXK.push("fx" + n0); }
 for (var l0 = 1; l0 <= 3; l0++) for (var n1 = 1; n1 <= 16; n1++) ALL_LFO.push("lfo" + l0 + "_" + n1);
 
+// Pung's default pages in the mono voice's blue-white LCD
+push.theme({ ground: LCD_BG, panel: LCD_BG, ink: LCD, dim: LCD_DIM, rule: LCD_DIM, faint: LCD_FAINT, accent: LCD, knob: "pointer" });
 push.compartment({
   id: "machine", label: "Machine", front_panel: true, segments: SEGMENTS, draws_segments: true,
   pages: [

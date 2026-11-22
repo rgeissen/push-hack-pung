@@ -216,6 +216,8 @@ var NAMES = { vcf_cutoff: "VCF FREQ", vcf_resonance: "VCF RES", vcf_env: "VCF EN
   pitch_range: "RANGE", saw_level: "SAW", pulse_level: "PULSE", sub_level: "SUB OSC", noise_level: "NOISE", hpf: "HPF",
   vca_depth: "VCA LEVEL", vca_type: "VCA MODE", chorus_i: "CHORUS I", chorus_ii: "CHORUS II", volume: "VOLUME", octave_transpose: "OCTAVE" };
 
+// Pung's default pages in the Juno's charcoal, its fader slots and cream caps
+push.theme({ ground: PANEL, panel: CAPC, ink: INK, dim: LEG, rule: CAPLINE, faint: SLOT, knob: "fader" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true, draws_segments: true,
   // the Juno's sections, each under the hands, its faders in panel order

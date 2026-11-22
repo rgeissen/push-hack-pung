@@ -301,6 +301,8 @@ function row(g, v) {
   var ps = v.$pages || [];
   if (ps.length > 1) g.text(950, 30, up(ps[v.$page] || "") + "  " + ((v.$page || 0) + 1) + "/" + ps.length, DIM, 1);
 }
+// Pung's default pages in Helm's charcoal, its white ring knobs
+push.theme({ ground: BG, panel: SEC, ink: INK, dim: DIM, rule: RULE, faint: TRACK, accent: INK, knob: "ring" });
 push.compartment({
   id: "helm", label: "Helm", front_panel: true,
   pages: [{ label: "Helm", keys: ["cutoff", "resonance", "fil_env_depth", "amp_attack", "amp_decay", "amp_sustain", "amp_release", "volume"] }],

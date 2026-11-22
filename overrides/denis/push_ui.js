@@ -493,6 +493,8 @@ function segMark(g, v) {
 var PANEL_KEYS = ["osc1_freq", "osc1_timbre", "osc2_pitch", "osc2_harmonics", "osc_mix", "noise_mix", "noise_type",
   "fold_depth", "fold_type", "filter_cutoff", "filter_q", "filter_type", "attack", "decay", "sustain", "release",
   "lfo_rate", "sh_rate", "mod_depth_env", "mod_depth_noise", "portamento", "legato", "patch_mode", "preset"];
+// Pung's default pages in the Easel's navy, its black knobs and cream traces
+push.theme({ ground: PANEL, panel: KNOB, ink: INK, dim: INK_DIM, rule: KNOB_RIM, faint: DEEP, accent: TRACE, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Denis", front_panel: true,
   pages: [

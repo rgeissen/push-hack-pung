@@ -254,6 +254,8 @@ var NAMES = { cutoff: "CUTOFF", resonance: "RESONANCE", filter_env: "ENV AMT", o
   unison_det: "SPREAD", osc1_pitch: "OSC 1", noise: "NOISE", key_follow: "KEY", brightness: "BRIGHT" };
 function short(v, k) { return NAMES[k] || (v[k] && v[k].name ? String(v[k].name).toUpperCase() : k.toUpperCase()); }
 
+// Pung's default pages in the OB-X's colours: black, silver legends, its knobs, the loudness blue
+push.theme({ ground: BLACK, panel: CAP, ink: INK, dim: LEG, rule: RULE, accent: BLUE, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true, draws_segments: true,
   // the OB-X's sections (the two crowded ones by their rows), each under the hands

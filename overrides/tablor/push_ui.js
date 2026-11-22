@@ -267,6 +267,8 @@ function filterFront(g, v) {
   g.envelope(x + 30, FP.top + 56, w - 32, FP.bot - FP.top - 56, { attack: "vca_a", decay: "vca_d", sustain: "vca_s", release: "vca_r", color: TXT });
 }
 
+// Pung's default pages in Tablor's colours and knobs
+push.theme({ ground: BG, panel: BAR, ink: TXT, dim: DIM, rule: EDGE, accent: ACC, knob: "pointer" });
 push.compartment({
   id: "tablor", label: "Tablor", front_panel: true,
   pages: [{ label: "Tablor", keys: ["wt1_select", "wt1_pos", "wt1_level", "wt2_select", "wt2_pos", "wt2_level", "flt_freq", "flt_res"] }],

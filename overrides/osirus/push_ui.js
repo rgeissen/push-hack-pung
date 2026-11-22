@@ -191,6 +191,8 @@ function segmentLit(g, v) {
     g.text(r[0] + 10, 34, s.label.toUpperCase(), "slot", -1);
   }
 }
+// Pung's default pages in the Virus's colours: its deep red, its printed ink, its knobs
+push.theme({ ground: CV.deep, panel: CV.panel, ink: CV.ink, dim: CV.dim, accent: CV.red, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Osirus", front_panel: true, segments: SEGMENTS, draws_segments: true,
   pages: [

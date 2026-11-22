@@ -307,6 +307,8 @@ function keys(g, v) {
     g.text(x0 + 64, y + 10, up(s), lit ? INK : "#bdbdb7", 0, 80);
   }
 }
+// Pung's default pages as the 606's knob row: its dark strip, white knobs, silver print, red LEDs
+push.theme({ ground: STRIP, ink: SILVER_LT, dim: GREY, faint: "#4a4a46", rule: GREY, panel: SILVER_LT, accent: RED, knob: "pointer" });
 push.compartment({
   id: "kit", label: "Kit", front_panel: true, draws_tabs: true, segments: SEGS, draws_segments: true,
   pages: VOICES.map(function (vo) { return { label: vo.short, keys: vo.keys }; }),
@@ -333,7 +335,7 @@ function sends(g, v, x, w, suffix, t) {
   for (var i = 0; i < 8; i++) {
     var vo = VOICES[i], cx = x + cw * i + cw / 2, k = vo.id + suffix, f = frac(v, k, 0), lit = h[i] !== undefined && h[i] < LIT;
     g.text(cx, 82, vo.short, lit ? "fg" : "dim", 0);
-    g.fill(cx - 6, 20, 12, 52, "#1c1c1c");
+    g.fill(cx - 6, 20, 12, 52, SIL_FILL);
     if (f > 0) g.fill(cx - 6, 72 - f * 52, 12, f * 52, t === k ? "slot" : "fg");
     else g.fill(cx - 6, 71, 12, 1, "faint");
   }
@@ -416,7 +418,7 @@ push.compartment({
       ["VOLUME", disp(v, "volume") || "--", true, "volume"]];
     for (var i = 0; i < stages.length; i++) {
       var s = stages[i], x = 12 + i * 104, hot = s[3] && s[3].split("|").indexOf(t) >= 0;
-      g.fill(x, 22, 88, 42, hot ? "#3a3a3a" : "#1c1c1c");
+      g.fill(x, 22, 88, 42, hot ? "#3a3a3a" : SIL_FILL);
       if (hot) g.fill(x, 22, 88, 2, "slot");
       g.text(x + 8, 38, s[0], hot ? "slot" : (s[2] ? "fg" : "dim"), -1, 76);
       g.value(x + 8, 58, s[1], hot ? "slot" : (s[2] ? "fg" : "faint"), -1, 76);
@@ -436,7 +438,7 @@ push.compartment({
     for (var j = 0; j < 8; j++) {
       var col = j % 4, row = 1 - Math.floor(j / 4), cx = nx + col * 71, cy = 20 + row * 33;
       var ns = gm ? GM_NOTES[j].map(noteName).join(" ") : noteName(36 + j), lit = h[j] !== undefined && h[j] < LIT;
-      g.fill(cx, cy, 67, 29, lit ? "#e7e7e2" : "#1c1c1c");
+      g.fill(cx, cy, 67, 29, lit ? "#e7e7e2" : SIL_FILL);
       g.text(cx + 6, cy + 12, VOICES[j].short + (muted(v, j) ? " MUTE" : ""), lit ? INK : (muted(v, j) ? RED : "fg"), -1);
       g.text(cx + 6, cy + 24, ns, lit ? INK : (t === "note_map" ? "slot" : "dim"), -1, 58);
     }

@@ -261,6 +261,8 @@ var SEGMENTS = [
 // Pung's bar marks the active section; the panel names it in the title
 // block, lit (titleBlock), where the page's name stands otherwise
 
+// Pung's default pages in the swarm's night green and its glowing LED rings
+push.theme({ ground: PANEL, ink: INK, dim: INK_DIM, rule: RULE, faint: FAINT, accent: GLOW, knob: "ring" });
 push.compartment({
   id: "swarm", label: "Swarm", front_panel: true, segments: SEGMENTS, draws_segments: true,
   pages: [

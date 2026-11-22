@@ -295,6 +295,8 @@ function row(g, v) {
   if (ps.length > 1) g.text(950, 31, up(ps[v.$page] || "") + "  " + ((v.$page || 0) + 1) + "/" + ps.length, DIM, 1);
 }
 
+// Pung's default pages in Noisemaker's grey, with its knobs and orange LED
+push.theme({ ground: INSET, panel: KNOB, ink: INK, dim: DIM, rule: KNOB_RIM, faint: RULE, accent: INK, knob: "pointer" });
 push.compartment({
   id: "panel", label: "NoiseMaker", front_panel: true,
   pages: [{ label: "Macros", keys: ["wave", "tune2", "cutoff", "resonance", "filter_env", "fenv_time", "aenv_time", "volume"] }],

@@ -546,6 +546,8 @@ var SOUND = ["preset_name", "bank_name", "patch_info", "wave_view", "wavetable_n
 // the panel's sections as segments: each oscillator and the filter, with
 // their first pages' knobs (Pung draws the bar over the one in the hands)
 function pageKeys(label) { return PAGES.filter(function (p) { return p.label === label; })[0].keys; }
+// Pung's default pages in Vivace's colours, its knobs, its lilac
+push.theme({ ground: GROUND, panel: PANEL2, ink: INK, dim: DIM, rule: RULE, accent: LILAC, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Vivace", front_panel: true, draws_segments: true,
   pages: pagesOf("play"), extra_keys: SOUND,

@@ -374,6 +374,8 @@ Object.assign(NAMES, { v1_wave: "VCO1 WAVE", v1_pitch: "VCO1 SCALE", v1_pw: "VCO
   pb_kbd_cv: "VCO 1+2 CV", pb_total: "TOTAL", pb_freq: "FREQ", pb_hpf_cv: "HP CUTOFF", pb_lpf_cv: "LP CUTOFF", pb_vca_in: "INIT GAIN",
   pb_pwm_in: "PWM", pb_ext_sig: "EXT SIGNAL" });
 
+// Pung's default pages in the MS-20's colours: black panel, white print, black knobs
+push.theme({ ground: PANEL, ink: SILK, dim: SILK_DIM, rule: SILK_LINE, faint: SILK_FAINT, panel: CAP, accent: SILK, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true, draws_segments: true, segments: SEGS,
   pages: [

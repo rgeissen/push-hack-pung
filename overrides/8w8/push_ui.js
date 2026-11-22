@@ -354,6 +354,8 @@ function panel(g, v) {
     valUnit(g, x + 43, 137, v, k, hot ? "slot" : LEGEND, hot ? "slot" : "#c9c5ba");
   }
 }
+// Pung's default pages in the 808's colours: its grey panel, cream legends, orange knobs
+push.theme({ ground: PANEL, ink: LEGEND, dim: MUTED_TX, rule: RULE, panel: KNOB, accent: PLATE, knob: "pointer" });
 push.compartment({
   id: "kit", label: "Kit", front_panel: true, draws_tabs: true, segments: SEGS, draws_segments: true,
   pages: VOICES.map(function (vo) { return { label: vo.short, keys: vo.keys }; }),

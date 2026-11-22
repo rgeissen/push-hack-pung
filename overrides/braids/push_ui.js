@@ -457,6 +457,8 @@ function panel(g, v) {
 }
 var FM_ST = function (v) { var st = fr(v, "fm", 0) * 12; return known(v, "fm") ? (st < 0.05 ? "0 ST" : "+" + st.toFixed(1) + " ST") : "--"; };
 function octText(v) { var o = Math.round(num(v, "octave_transpose", 0)); return known(v, "octave_transpose") ? (o > 0 ? "+" + o : String(o)) + " OCT" : "--"; }
+// Pung's default pages in Braids' colours: black panel, white print, light grey knobs
+push.theme({ ground: PANEL, ink: SILK, dim: SILK2, rule: EDGE, panel: CAP, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Braids", front_panel: true,
   pages: [{ label: "Braids", keys: ["engine", "timbre", "color", "fm", "cutoff", "resonance", "filt_env", "octave_transpose"] }],

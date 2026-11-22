@@ -443,6 +443,8 @@ function panelSig(v) {
   return out.join("|");
 }
 
+// Pung's default pages in the JP-8000's slate, with its black pointer knobs
+push.theme({ ground: SLATE, panel: KNOB, ink: INK, dim: LEGEND, rule: KNOB_RIM, faint: BTN, accent: INK, knob: "pointer" });
 push.compartment({
   id: "patch", label: "Patch", front_panel: true,
   pages: PATCH_PAGES,

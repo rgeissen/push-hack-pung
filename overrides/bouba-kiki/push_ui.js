@@ -368,6 +368,8 @@ function segLabel(v) {
   for (var i = 0; i < ss.length; i++) if (ss[i].id === v.$segment) return ss[i].label;
   return "";
 }
+// Pung's default pages in Bouba-Kiki's colours and its own thin rings
+push.theme({ ground: GROUND, panel: PANEL, ink: INK, dim: INK_DIM, rule: RULE, accent: INK, knob: "ring" });
 push.compartment({
   id: "shape", label: "Shape", front_panel: true,
   pages: [

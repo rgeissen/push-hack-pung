@@ -342,6 +342,8 @@ function panel(g, v) {
   if (known(v, "lpg_color")) g.fill(758 + 128 * col, 89, 4, 10, t === "lpg_color" ? "slot" : COPPER);
   g.text(712, 98, known(v, "filter_cutoff") && fr(v, "filter_cutoff", 1) >= 0.999 && fr(v, "filter_resonance", 0) <= 0.0001 && mi === 0 ? "OPEN: BYPASSED" : "", PRINT3, 1);
 }
+// Pung's default pages on the black body, white print and copper plates
+push.theme({ ground: BODY, panel: BODY2, ink: PRINT, dim: PRINT2, rule: COPPER_DK, faint: BODY2, accent: COPPER, knob: "pointer" });
 push.compartment({
   id: "panel", label: "MrHyde", front_panel: true,
   pages: [

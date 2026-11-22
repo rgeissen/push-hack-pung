@@ -402,6 +402,8 @@ function panel(g, v) {
   rowValues(g, v, keys, tight);
 }
 
+// Pung's default pages in the 303's colours: silver panel, black print, black knobs
+push.theme({ ground: SILVER, ink: INK, dim: INK_DIM, rule: RULE, faint: SILVER_LO, panel: KNOB, accent: INK_DIM, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true,
   pages: [{ label: "303", keys: P_KEYS }],
@@ -503,7 +505,7 @@ function drive(g, v) {
   var on = d > 0 && mix > 0 && known(v, "drive");
   // the box: its model, its lamp
   var x = colX(0) + 10;
-  g.fill(x, y + 4, 100, 76, "#1c1c1c");
+  g.fill(x, y + 4, 100, 76, KEY);
   box(g, x, y + 4, 100, 76, t === "drive_model" ? "slot" : "#3a3a3a");
   g.value(x + 50, y + 30, m ? "RAT" : "SOFT", t === "drive_model" ? "slot" : "fg", 0);
   g.text(x + 50, y + 46, m ? "OP-AMP CLIP" : "WARM TANH", "dim", 0);

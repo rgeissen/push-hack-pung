@@ -415,6 +415,8 @@ function panel(g, v) {
     valUnit(g, x + 43, 137, v, kk, hot ? "slot" : INK, hot ? "slot" : LEGEND_TX);
   }
 }
+// Pung's default pages in the 909's colours: cream panel, dark print, black knobs, burnt orange
+push.theme({ ground: PANEL, ink: INK, dim: LEGEND_TX, rule: KNOB_RIM, faint: FAINT_TX, panel: KNOB, accent: "#b0540a", knob: "pointer" });
 push.compartment({
   id: "kit", label: "Kit", front_panel: true, draws_tabs: true, segments: SEGS, draws_segments: true,
   pages: VOICES.map(function (vo) { return { label: vo.short, keys: vo.keys }; }),
@@ -427,7 +429,7 @@ var SENDERS = VOICES.filter(function (vo) { return vo.p.rev; }); // the kick sta
 var DIVS = { "1/32": 0.125, "1/16T": 1 / 6, "1/16": 0.25, "1/8T": 1 / 3, "1/16.": 0.375, "1/8": 0.5, "1/4T": 2 / 3, "1/8.": 0.75,
   "1/4": 1, "1/2T": 4 / 3, "1/4.": 1.5, "1/2": 2, "1/2.": 3 };
 function hex2(n) { n = Math.max(0, Math.min(255, Math.round(n))); return (n < 16 ? "0" : "") + n.toString(16); }
-function shade(f) { return "#" + hex2(242 * f) + hex2(237 * f) + hex2(226 * f); }
+function shade(f) { return "#" + hex2(226 - 200 * f) + hex2(219 - 193 * f) + hex2(204 - 178 * f); } // f of the way from the cream to ink
 function edge(g) { g.fill(0, 0, 3, g.h, ORANGE); }
 function hdr(g, x, s, lit) { g.text(x, 11, s, lit ? "fg" : "dim", -1); }
 function sends(g, v, x, w, bus, t) {
@@ -435,7 +437,7 @@ function sends(g, v, x, w, bus, t) {
   for (var i = 0; i < SENDERS.length; i++) {
     var vo = SENDERS[i], cx = x + cw * i + cw / 2, k = vo.p[bus], f = frac(v, k, 0), vi = BY[vo.id], lit = h[vi] !== undefined && h[vi] < LIT;
     g.text(cx, 84, vo.short, lit ? "fg" : "dim", 0);
-    g.fill(cx - 8, 20, 16, 54, "#1c1c1c");
+    g.fill(cx - 8, 20, 16, 54, KEY);
     if (f > 0) g.fill(cx - 8, 74 - f * 54, 16, f * 54, t === k ? "slot" : "fg");
     else g.fill(cx - 8, 73, 16, 1, "faint");
   }
@@ -457,7 +459,7 @@ function reverbScreen(g, v) {
     return out;
   });
   g.fill(x, top, 4, base - top, "dim");
-  g.area(pts, base, hot ? "#4a3a2a" : "#2e2e2e");
+  g.area(pts, base, hot ? "#eabf86" : KEY);
   g.poly(pts, 1, hot ? "slot" : "fg");
   g.fill(x, base, w - 6, 1, "line");
   g.text(x + w - 8, 30, tone < 0.35 ? "DARK" : (tone > 0.7 ? "BRIGHT" : ""), "faint", 1);
@@ -520,8 +522,8 @@ push.compartment({
       ["VOLUME", disp(v, "volume") || "--", true, "volume"]];
     for (var i = 0; i < stages.length; i++) {
       var s = stages[i], x = 12 + i * 96, hot = s[3] && s[3].split("|").indexOf(t) >= 0;
-      g.fill(x, 22, 82, 42, hot ? "#3a3a3a" : "#1c1c1c");
-      g.fill(x, 22, 82, 2, hot ? "slot" : (s[2] ? ORANGE : "#3a3a3a"));
+      g.fill(x, 22, 82, 42, hot ? KEY : SECTION);
+      g.fill(x, 22, 82, 2, hot ? "slot" : (s[2] ? ORANGE : LINE));
       g.text(x + 7, 38, s[0], hot ? "slot" : (s[2] ? "fg" : "dim"), -1, 70);
       g.value(x + 7, 58, s[1], hot ? "slot" : (s[2] ? "fg" : "faint"), -1, 70);
       if (i < 3) g.poly([x + 84, 43, x + 94, 43], 2, "line");
@@ -533,7 +535,7 @@ push.compartment({
     g.fill(vx, 74, vw, 1, "line");
     g.fill(vx, topY, vw, 1, t === "accent" ? "slot" : "faint");
     g.text(vx + vw, topY - 3, "ACCENT", t === "accent" ? "slot" : "dim", 1);
-    g.area([vx, lowY, vx + vw, topY], 74, t === "vel_depth" ? "#4a3a2a" : "#262626");
+    g.area([vx, lowY, vx + vw, topY], 74, t === "vel_depth" ? "#eabf86" : KEY);
     g.poly([vx, lowY, vx + vw, topY], 2, t === "vel_depth" || t === "accent" ? "slot" : "fg");
     g.text(vx, 84, "SOFT", "faint", -1); g.text(vx + vw, 84, "HARD", "faint", 1);
     var nx = 596, gm = isGM(v);
@@ -541,7 +543,7 @@ push.compartment({
     for (var j = 0; j < RACK_ORDER.length; j++) {
       var id = RACK_ORDER[j], vi = BY[id], col = j % 4, row = 3 - Math.floor(j / 4), cx = nx + col * 88, cy = 16 + (row - 1) * 22 + 2;
       var lit = h[vi] !== undefined && h[vi] < LIT, mm = muted(v, VOICES[vi]);
-      g.fill(cx, cy, 84, 19, lit ? "#f2ede2" : "#1c1c1c");
+      g.fill(cx, cy, 84, 19, lit ? ORANGE : SECTION);
       g.text(cx + 7, cy + 13, VOICES[vi].short, lit ? INK : (mm ? LED : "fg"), -1);
       g.text(cx + 78, cy + 13, noteName(gm ? GM_OF[id] : NOTE_OF[id]), lit ? INK : (t === "note_map" ? "slot" : "dim"), 1);
     }

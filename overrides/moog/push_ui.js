@@ -308,6 +308,8 @@ Object.assign(NAMES, { lfo_rate: "LFO RATE", lfo_pitch: "LFO > PITCH", lfo_filte
 (function () { for (var i = 1; i <= 4; i++) { NAMES["osc" + i + "_range"] = "OSC " + i + " RANGE"; NAMES["osc" + i + "_wave"] = "OSC " + i + " WAVE";
   NAMES["osc" + i + "_detune"] = "OSC " + i + " TUNE"; NAMES["osc" + i + "_volume"] = "OSC " + i; } })();
 
+// Pung's default pages on the Model D's black panel, with its knobs and white print
+push.theme({ ground: PANEL, panel: CAP, ink: PRINT, dim: PRINT_DIM, rule: CAP_RIM, faint: PRINT_FAINT, accent: CURVE, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true, draws_segments: true, segments: SEGS,
   pages: [{ label: "Panel", keys: ["cutoff", "resonance", "contour", "attack", "decay", "sustain", "release", "octave_transpose"] }],

@@ -224,6 +224,8 @@ for (var sc = 0; sc < 8; sc++) {
   SEGS.push({ id: "c" + sc, label: "Pads " + a + "+" + b, rect: [sc * 120 + 4, 21, 112, 77],
     keys: [pk(a, "tune"), pk(a, "decay"), pk(a, "metal"), pk(a, "color"), pk(b, "tune"), pk(b, "decay"), pk(b, "metal"), pk(b, "color")] });
 }
+// Pung's default pages in Sophie's black and chrome, its knobs, its pink
+push.theme({ ground: BLACK, panel: CHROME, ink: CHROME, dim: CHROME2, rule: CHROME3, faint: RULE, accent: PINK, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true,
   pages: [

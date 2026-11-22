@@ -299,6 +299,8 @@ var SEGS = [
 var EXTRA = ["rhythm_1", "rhythm_2", "rhythm_3", "rhythm_4", "rhythm_5", "rhythm_6", "rhythm_7", "rhythm_8", "tempo", "tempo_mode",
   "density", "drift", "all_decay", "delay_type", "delay_time", "delay_sync", "delay_mix", "reverb_type", "reverb_mix"];
 for (var bi = 0; bi < 8; bi++) EXTRA.push(BARS[bi][0]);
+// Pung's default pages on the rhythm unit's fascia, with its chrome knobs, in ivory and brass
+push.theme({ ground: FASCIA, panel: CHROME, ink: IVORY, dim: IVORY2, rule: CHROME_RIM, faint: RULE, accent: BRASS, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Panel", front_panel: true,
   pages: [
