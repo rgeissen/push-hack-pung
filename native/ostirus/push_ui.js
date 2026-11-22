@@ -355,6 +355,8 @@ function segmentLit(g, v) {
     if (s.id === v.$segment && s.id !== "soft") g.text(s.rect[0] + 6, 34, s.label.toUpperCase(), "slot", -1);
   }
 }
+// Pung's default pages on the TI's dark blue-black, its aluminium knobs, Virus red
+push.theme({ ground: BG, panel: ALU, ink: INK, dim: DIM, rule: ALU_RIM, faint: FAINT, accent: RED, knob: "pointer" });
 push.compartment({
   id: "virus", label: "OsTIrus", front_panel: true, segments: SEGMENTS, draws_segments: true,
   pages: [{ label: "Panel", keys: ["soft1", "soft2", "soft3", "cutoff", "filter1_resonance", "filter1_env_amt", "delay_send", "reverb_send"] }],

@@ -279,6 +279,16 @@ instance at a time (`/dev/shm/pung-ostirus.lock`).
   names them; the device opens on a front panel whose first three encoders are those knobs under the
   patch's names, beside cutoff, resonance, filter envelope and the two sends. Above them the display
   and what the patch is made of: oscillator models, filter modes and routing, the effects that are on.
+- **The screens draw the real wavetables** (2026-11-22). The TI's tables are in its DSP's memory after
+  boot: a directory of 100 entries (two words each: the table, and where the DSP builds its waves once a
+  voice plays it), found by its shape, not an address; each table a header (log2 of harmonics a wave,
+  waves, a flag, a gain) and its waves as harmonic spectra, a byte a harmonic. A wave is
+  sum (b_h/127)^2 (-1)^h sin(2 pi h (n+0.5)/N): sample for sample the waves the DSP builds (tables 1, 2, 4,
+  9, 12, 33, 61, 92, 99; the flag-1 tables within 3%). Index i plays the crossfade at i (waves-1)/127
+  (fitted from rendered notes). `read_tables()` runs on the emulator thread after boot (patch 0002:
+  `Device::getDspA()`), `wave_view_1`/`_2` hand a table to the screens (`"<waves>:<hex>"`). Not modelled:
+  what Wave PWM does to the wave, the step between waves at Interpolation 127; the Classic model's
+  "spectral waves", Osc 3's waves and Grain/Formant still draw a stand-in.
 - **Not yet:** the TI's multi mode (16 parts), the vocoder and input (an instrument has no input).
 
 ## Vavra (Waldorf microQ)
@@ -334,8 +344,14 @@ engine Vavra uses (`waldorf_engine.cpp`, built with `WALDORF_XT`; one instance a
   the engine asks for it (`F0 3E 0E 7F 03 hh ll F7`, a 64-slot table) and then for each key wave in it
   (`02`), one at a time because the XT drops a burst of requests, parsed by `xt::State`. A slot between
   two key waves is their crossfade, as the synth plays it. `get_param("wave_view")` hands the screen
-  positions 0, 4 .. 60, 32 points each, as hex: `""` while the waves are coming, `"algo"` for the tables
-  the synth computes (28..51, 64..95), which cannot be asked for and are named rather than drawn.
+  positions 0, 4 .. 60, 32 points each, as hex: `""` while the waves are coming.
+- **The tables the synth computes (28..51, 64..95) are drawn too** (2026-11-22). They cannot be asked for
+  over sysex, but the 68000 writes the sound's whole table (key waves, crossfades and computed waves) into
+  the DSP's Y memory at 0x24000 in Single mode, 256 words a slot (128 samples, then halved copies), a
+  sample in bits 16..23, the cycle starting 3 samples early. Checked: tables 0 and 5 there equal their
+  sysex waves exactly; zeroing the block under a held note drops the level to 40% (it is what plays).
+  The engine reads it off the audio thread (patch 0004: `Device::getXt()`) once two reads 100 ms apart
+  agree and slot 61 is the exact triangle; `"algo"` only if that check fails for 3 s.
 - **The effect panel names A, B and C** by the effect (Delay: Time, Feedback, Mix).
 - **Heard without Live**: `RENDER_SETTLE_MS=1500 scripts/render-check.sh xenia <assets>` (`?wave_view`
   reads the table after the chord). Measured 2026-11-20: of ten sounds, nine give nine different

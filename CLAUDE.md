@@ -175,7 +175,10 @@ back as of the previous restart. Then ask the user to save the Set.
   Multi mode: send a Single-mode dump after boot). XT wavetables: request a table `F0 3E 0E 7F 03 hh ll
   F7` (answer cmd 0x13, 64 wave ids, 65535 = interpolated slot) and its waves `02` (answer 0x12, 128
   samples) **one at a time** (the XT drops a burst); parse with `xt::State`. Tables 28..51 and 64..95 are
-  computed by the synth and cannot be asked for; slots 61..63 are fixed triangle/square/saw.
+  computed by the synth and cannot be asked for: read from DSP Y:0x24000 instead (NATIVE-MODULES.md,
+  Xenia); slots 61..63 are fixed triangle/square/saw. The microQ (Vavra) has no wavetables: its Alt 1/2
+  waves are neither in its ROM nor in DSP memory, so they are named, not drawn. OsTIrus reads the TI's
+  tables from DSP memory after boot.
 
 ## Writing screens (`push_ui.js`)
 

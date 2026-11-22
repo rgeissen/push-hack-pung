@@ -371,8 +371,6 @@ function oscWave(name, pw) {
   case "Saw": return function (t) { return 0.9 - 1.8 * t; };
   case "Triangle": return function (t) { return t < 0.5 ? -0.9 + 3.6 * t : 2.7 - 3.6 * t; };
   case "Sine": return function (t) { return 0.9 * Math.sin(t * 2 * Math.PI); };
-  case "Alt 1": return function (t) { return 0.9 * (Math.sin(t * 2 * Math.PI) * 0.6 + Math.sin(t * 6 * Math.PI) * 0.4); };
-  case "Alt 2": return function (t) { return 0.9 * (Math.sin(t * 2 * Math.PI) * 0.5 + (t < 0.5 ? 0.5 : -0.5)); };
   default: return function () { return 0; };
   }
 }
@@ -389,8 +387,14 @@ function oscPlate(g, v, m, lit) {
   var sub = m < 3 ? num(v, p + "sub_volume", 0) / 31 : 0;
   if (on && sub > 0)
     wave(g, wx, wy + wh / 2 - wh * sub / 2, ww, wh * sub, oscWave("Pulse", 0.5), hot(v, p + "sub_volume") ? "slot" : AMBER_GL, 1, 1);
-  if (on) wave(g, wx, wy, ww, wh, oscWave(shape, frac(v, p + "pulse_width", 0.5)),
+  // Alt 1 and Alt 2 are the microQ's own waves, shaped by the pulse width:
+  // no table of them can be read (not in the ROM, not in the DSP's memory),
+  // so they are named, never drawn as a guess
+  var alt = shape === "Alt 1" || shape === "Alt 2";
+  if (on && !alt) wave(g, wx, wy, ww, wh, oscWave(shape, frac(v, p + "pulse_width", 0.5)),
     hot(v, p + "shape") || hot(v, p + "pulse_width") ? "slot" : lit ? AMBER_LT : DIM, 2);
+  if (on && alt) g.text(wx + ww / 2, wy + wh / 2 + 4, up(shape) + "  /  PW " + (disp(v, p + "pulse_width") || "--") + " SHAPES IT",
+    hot(v, p + "shape") || hot(v, p + "pulse_width") ? "slot" : lit ? AMBER_LT : DIM, 0, ww);
   // the pitch
   var rows = [["Octave", p + "octave"], ["Semi", p + "semi"], ["Detune", p + "detune"]];
   for (var i = 0; i < 3; i++) {
@@ -765,6 +769,8 @@ function waiting(v) { return disp(v, "status").indexOf("Waiting") === 0; }
 // every key of a section's pages: a screen shows the whole section at once
 function keysOf(list) { var out = []; list.forEach(function (pg) { out = out.concat(pg.keys); }); return out; }
 
+// Pung's default pages on the microQ's charcoal, amber legends, its knobs
+push.theme({ ground: GROUND, panel: CAP, ink: INK, dim: DIM, rule: RULE, faint: FAINT, accent: AMBER, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Vavra", front_panel: true, draws_tabs: true, draws_segments: true,
   pages: PAGES.panel,

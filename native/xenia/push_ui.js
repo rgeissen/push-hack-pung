@@ -734,6 +734,8 @@ function arpScreen(first) {
 
 // ---- the compartments ----------------------------------------------------------------
 function keysOf(list) { var out = []; list.forEach(function (pg) { out = out.concat(pg.keys); }); return out; }
+// Pung's default pages in the XT's orange body, its dark knobs
+push.theme({ ground: BODY, panel: KNOB, ink: SILK, dim: "#5a2e08", rule: BODY_DK, faint: "#b8640e", accent: CREAM, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Xenia", front_panel: true, draws_tabs: true, draws_segments: true,
   pages: PAGES.panel, extra_keys: SOUND.concat(["effect_type"]),
