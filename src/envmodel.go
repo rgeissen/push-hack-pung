@@ -211,6 +211,19 @@ type envSeg struct {
 	Release bool     // it runs from the key's let-go
 	TimeKey string   // the knob that times it ("" for the plateau)
 	Keys    []string // every knob that shapes it (its touch lights it)
+	Curve   float64  // its bend: the level runs (e^(c*t)-1)/(e^c-1) of the way in time t (0: a straight line)
+}
+
+// envCurve: how far along its levels a segment of curve c is at time t
+// (0..1): (e^(c*t)-1)/(e^c-1), a straight line for c near 0. The bend a
+// synth with curve knobs gives its stages (Vivace's engine: futils
+// powerScale), so the picture and its note dots follow the sound.
+func envCurve(t, c float64) float64 {
+	t = math.Max(0, math.Min(1, t))
+	if math.Abs(c) < 0.01 {
+		return t
+	}
+	return (math.Exp(c*t) - 1) / (math.Exp(c) - 1)
 }
 
 // envShape: an envelope to draw and to run notes through.

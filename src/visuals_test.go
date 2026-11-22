@@ -129,3 +129,20 @@ func TestDrawEnvelope(t *testing.T) {
 		}
 	}
 }
+
+// A stage's curve bends it as a synth's curve knob does: (e^(c t)-1)/(e^c-1)
+// of the way at time t; straight at 0.
+func TestEnvCurve(t *testing.T) {
+	if got := envCurve(0.5, 0); got != 0.5 {
+		t.Errorf("straight: %v at half time, want 0.5", got)
+	}
+	if got := envCurve(0.5, 5); got > 0.1 {
+		t.Errorf("c=5 (a slow start): %v of the way at half time, want under 0.1", got)
+	}
+	if got := envCurve(0.5, -5); got < 0.9 {
+		t.Errorf("c=-5 (a fast start): %v of the way at half time, want over 0.9", got)
+	}
+	if envCurve(0, 7) != 0 || envCurve(1, 7) != 1 {
+		t.Error("a curve must start at 0 and end at 1")
+	}
+}

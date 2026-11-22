@@ -110,6 +110,14 @@ function known(v, k) { return !!(k && v[k] && v[k].known); }
 function frac(v, k, d) { return known(v, k) ? v[k].frac : (d === undefined ? 0 : d); }
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value || "") : ""; }
 function raw(v, k) { return known(v, k) ? String(v[k].value || "") : ""; }
+// an envelope's three curve knobs as the engine bends its stages: the
+// level runs (e^(c t)-1)/(e^c-1) of its way; the attack's knob is negated
+// there (envelope.cpp: -kAttackPower), decay and release as they are
+// (the knob's -64..64 is the engine's -20..20: vivace_params.h, kPos)
+function envCurves(v, p) {
+  function c(k) { return num(v, p + k) * 20 / 64; }
+  return { attack: -c("attack_power"), decay: c("decay_power"), release: c("release_power") };
+}
 function num(v, k, d) { var n = parseFloat(raw(v, k)); return isNaN(n) ? (d || 0) : n; }
 function up(s) { return String(s || "").toUpperCase(); }
 function hot(v, k) { return !!k && v.$touched === k; }
@@ -490,7 +498,7 @@ function frontPanel(g, v) {
   g.filter(FLT_X + 4, CARD_Y + 18, FLT_W - 8, CARD_H - 21, { cutoff: "filter_1_cutoff", resonance: "filter_1_resonance", type: filterKind(v, "filter_1_"), color: f1 ? FLT : MUTED });
   if (segLit(v, "env")) g.text(ENV_X + 21, CARD_Y + 11, "ENV 1", "slot", -1);
   g.envelope(ENV_X + 4, CARD_Y + 18, ENV_W - 8, CARD_H - 21, { delay: "env_1_delay", attack: "env_1_attack", hold: "env_1_hold", decay: "env_1_decay",
-    sustain: "env_1_sustain", release: "env_1_release", color: MODC });
+    sustain: "env_1_sustain", release: "env_1_release", curves: envCurves(v, "env_1_"), color: MODC });
   rowLive(g, v, rowNames, colors, captions);
 }
 // what bends a table: its spectral morph and its warp, where they are on
@@ -827,7 +835,7 @@ function envScreen(n) {
   return function (g, v) {
     modFrame(g);
     g.envelope(4, 4, 584, 80, { delay: p + "delay", attack: p + "attack", hold: p + "hold", decay: p + "decay", sustain: p + "sustain",
-      release: p + "release", labels: true, color: MODC });
+      release: p + "release", curves: envCurves(v, p), labels: true, color: MODC });
     targets(g, v, 606, 2, 336, 82, routesFrom(v, "env_" + n), n === 1 ? [{ name: "Amplitude", fixed: true }] : []);
   };
 }
@@ -1098,7 +1106,8 @@ push.envelopeTimes(function (env) {
 // ---- the compartments -------------------------------------------------------------------------------------
 var SOUND = ["preset_name", "bank_name", "patch_info", "wave_view", "wavetable_names", "mod_routes"].concat(MOD_KEYS, ON_K, FR_K,
   ["filter_1_on", "filter_1_type", "filter_1_cutoff", "filter_1_resonance", "filter_1_blend",
-    "env_1_delay", "env_1_attack", "env_1_hold", "env_1_decay", "env_1_sustain", "env_1_release"]);
+    "env_1_delay", "env_1_attack", "env_1_hold", "env_1_decay", "env_1_sustain", "env_1_release",
+    "env_1_attack_power", "env_1_decay_power", "env_1_release_power"]);
 [1, 2, 3].forEach(function (n) { ["distortion_type", "distortion_amount", "distortion_phase"].forEach(function (s) { SOUND.push("osc_" + n + "_" + s); }); });
 // Pung's own pages in the editor's colours: its knobs (a cap, the hand, the arc), its violet
 push.theme({ ground: "#16191c", panel: "#262a2e", ink: TEXT, dim: MUTED, rule: LINE, faint: HEAD, accent: OSC, knob: "pointer" });

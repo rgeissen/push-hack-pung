@@ -677,6 +677,29 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		}
 		e := envShapeOf(keys, vv, touched)
 		e.Labels = labels
+		// {curves: {attack: c, decay: c, release: c}}: each stage's bend, a
+		// number or a key whose value is one: the level runs
+		// (e^(c*t)-1)/(e^c-1) of its way at time t (envCurve)
+		if cv, ok := o["curves"].(map[string]any); ok {
+			for role, x := range cv {
+				i := e.seg(role)
+				if i < 0 {
+					continue
+				}
+				switch c := x.(type) {
+				case float64:
+					e.Segs[i].Curve = c
+				case int64:
+					e.Segs[i].Curve = float64(c)
+				case string:
+					if ov, ok := vals[c]; ok && ov.Known {
+						if f, err := strconv.ParseFloat(strings.TrimSpace(ov.Value), 64); err == nil {
+							e.Segs[i].Curve = f
+						}
+					}
+				}
+			}
+		}
 		real := true // every stage a key: the envelope can be watched
 		for _, k := range keys {
 			if strings.HasPrefix(k, "#") {

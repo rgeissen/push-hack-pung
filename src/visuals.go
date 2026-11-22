@@ -50,9 +50,10 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 	fill := P.mix(accent, 0.28)
 	for i := 1; i < len(pts); i++ {
 		a, b := pts[i-1], pts[i]
+		c := e.Segs[i-1].Curve
 		for px := int(a.X); px < int(b.X); px++ {
 			t := (float64(px) - a.X) / max(1, b.X-a.X)
-			y := a.Y + (b.Y-a.Y)*t
+			y := a.Y + (b.Y-a.Y)*envCurve(t, c)
 			lo, hi := math.Min(y, floor), math.Max(y, floor)
 			rect(img, px, int(lo), 1, int(hi-lo)+1, fill)
 		}
@@ -75,7 +76,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 		if e.Hot == i-1 {
 			w, c = 3.6, accent
 		}
-		aaLine(img, pts[i-1].X, pts[i-1].Y, pts[i].X, pts[i].Y, w, c)
+		envSegLine(img, pts[i-1], pts[i], 1, e.Segs[i-1].Curve, w, c)
 	}
 	// handles where segments meet
 	for i := 1; i < len(pts)-1; i++ {
@@ -99,7 +100,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 		}
 		a, b := pts[i], pts[i+1]
 		t := math.Max(0, math.Min(1, p.Prog))
-		return a.X + (b.X-a.X)*t, a.Y + (b.Y-a.Y)*t, i
+		return a.X + (b.X-a.X)*t, a.Y + (b.Y-a.Y)*envCurve(t, e.Segs[i].Curve), i
 	}
 	lit := map[int]bool{}
 	if lv != nil {
@@ -135,7 +136,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 			}
 			rad := 3.2 + 1.4*v.Vel
 			if n == 0 {
-				aaLine(img, pts[i].X, pts[i].Y, x, y, 3.4, cMod) // the segment so far
+				envSegLine(img, pts[i], pts[i+1], math.Max(0, math.Min(1, cur.Prog)), e.Segs[i].Curve, 3.4, cMod) // the segment so far
 				for gy := y + 7; gy < base-2; gy += 5 {
 					aaLine(img, x, gy, x, math.Min(gy+2, base-2), 1, P.mix(cMod, 0.6))
 				}
@@ -184,6 +185,23 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 				label(img, sx+w/2, by+bh-2, txt, ink, 0)
 			}
 		}
+	}
+}
+
+// envSegLine: a segment from a to b, as far as time upto (0..1) along it,
+// bent by its curve (envCurve); straight segments are one line.
+func envSegLine(img *image.NRGBA, a, b envPt, upto, curve, w float64, c color.NRGBA) {
+	if math.Abs(curve) < 0.01 {
+		aaLine(img, a.X, a.Y, a.X+(b.X-a.X)*upto, a.Y+(b.Y-a.Y)*upto, w, c)
+		return
+	}
+	n := max(2, int(math.Ceil(math.Abs(b.X-a.X)*upto/3))) // a point every 3 px
+	px, py := a.X, a.Y
+	for k := 1; k <= n; k++ {
+		t := upto * float64(k) / float64(n)
+		x, y := a.X+(b.X-a.X)*t, a.Y+(b.Y-a.Y)*envCurve(t, curve)
+		aaLine(img, px, py, x, y, w, c)
+		px, py = x, y
 	}
 }
 
