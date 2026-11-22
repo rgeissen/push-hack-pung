@@ -33,6 +33,10 @@ func TestNativeScreensMove(t *testing.T) {
 		{"ostirus", "filter", "", map[string]string{"filter1_mode": "LP", "filter2_mode": "HP"}, want{filter: true}},
 		{"ostirus", "env", "Amp Env", nil, want{env: true}},
 		{"ostirus", "lfo", "LFO 1", map[string]string{"lfo1_shape": "Sine", "lfo1_clock": "Off", "lfo1_keytrigger": "1"}, want{lfo: true}},
+		{"vivace", "panel", "", map[string]string{"filter_1_on": "On", "filter_1_type": "Analog 12dB"}, want{filter: true}},
+		{"vivace", "filter", "Filter 1", map[string]string{"filter_1_on": "On", "filter_1_type": "Analog 24dB"}, want{filter: true}},
+		{"vivace", "env", "Env 1", nil, want{env: true}},
+		{"vivace", "lfo", "LFO 1", map[string]string{"lfo_1_sync": "Seconds", "lfo_1_sync_type": "Trigger"}, want{lfo: true}},
 		{"nodalred", "filter", "", map[string]string{"filter_type": "LP 24"}, want{env: true, filter: true}},
 		{"nodalred", "mod", "", map[string]string{"lfo1_wave": "Triangle", "lfo1_sync": "Off", "lfo2_sync": "Off"}, want{env: true}},
 	}

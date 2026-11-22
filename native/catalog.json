@@ -96,6 +96,29 @@
      "commit": "e72bedbc94682c4e0eaf000513ce03d7c75e0375"
     }
    }
+  },
+  {
+   "id": "vivace",
+   "name": "Vivace",
+   "description": "Spectral warping wavetable synthesizer: three wavetable oscillators, spectral morph and phase warp, two filters, six envelopes, eight LFOs, a modulation matrix, nine effects (a port of GPLv3 open-source code)",
+   "author": "rgeissen (Pung module), on GPLv3 open-source synthesis code",
+   "component_type": "sound_generator",
+   "github_repo": "rgeissen/push-hack-pung",
+   "default_branch": "main",
+   "native": true,
+   "modsrc": "pung-vivace",
+   "subcategory": "polysynth",
+   "tags": [
+    "wavetable",
+    "polyphonic"
+   ],
+   "deps": {
+    "libs/engine": {
+     "local": "../vivace-engine",
+     "repo": "https://github.com/mtytel/vital.git",
+     "commit": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+    }
+   }
   }
  ]
 }

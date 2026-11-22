@@ -1,0 +1,26 @@
+Vivace: a Pung module (https://github.com/rgeissen/push-hack-pung, native/vivace)
+
+Vivace's synthesis engine is built, unchanged, from the source code of an
+open-source spectral warping wavetable synthesizer:
+
+    https://github.com/mtytel/vital  (commit 636ca0ef517a4db087a6a08a6a8a5e704e21f836)
+    Copyright 2013-2022 Matt Tytel
+    Licensed under the GNU General Public License, version 3 or later (LICENSE).
+
+That synthesizer's name and logo are its author's trademarks. Vivace is not
+that product, is not made, endorsed or supported by its author, and does not
+use the name or the logo. Its factory presets are not included: Vivace's
+Factory bank is made by Vivace's own code (dsp/vivace_factory.cpp) and is
+GPL-3.0-or-later like the rest.
+
+Vivace's own code (dsp/, tools/, push_ui.js): Copyright 2026 Pung
+contributors, GPL-3.0-or-later. The complete corresponding source of this
+package is the source archive the Pung catalog links for it.
+
+Linked in:
+  JUCE 6.0.5 (in the engine's third_party/JUCE): juce_core, juce_events and
+    juce_audio_basics under the ISC licence (JUCE-ISC.txt); juce_data_structures,
+    juce_audio_formats and juce_dsp under the GNU GPL v3 (LICENSE).
+    Copyright (c) 2020 Raw Material Software Limited.
+  moodycamel ConcurrentQueue (concurrentqueue-BSD.txt).
+  JSON for Modern C++, Niels Lohmann (nlohmann-json-MIT.txt).

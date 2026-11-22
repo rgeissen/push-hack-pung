@@ -354,3 +354,42 @@ engine Vavra uses (`waldorf_engine.cpp`, built with `WALDORF_XT`; one instance a
   read its parameters had registered Pung's own 89 instead: install a ROM-needing module's ROM before
   the Apply that brings it into Live.
 
+
+## Vivace (a spectral warping wavetable synth)
+
+Not an emulator: a port of an open-source (GPLv3) software synth's engine, built unchanged from its
+repository at the commit pinned in `native/catalog.json` (`deps`), with JUCE reduced to six modules (core,
+events, audio_basics, data_structures, audio_formats with every codec off, dsp). The original's name
+appears nowhere (its licence forbids naming a build after it); the source is credited, as GPLv3 asks, in
+`licenses/NOTICE.txt` only. Its factory presets may not be shipped either: the 12 factory sounds are
+Vivace's own, written by the engine at build time (`vivace-export factory`, `dsp/vivace_factory.cpp`).
+
+- **Built for the Push only**: `-march=x86-64-v3` (AVX2), fast math. The `dsp.so` unloads cleanly
+  (`-fno-gnu-unique`, `--exclude-libs`, static libstdc++).
+- **The engine pattern without an emulator.** The engine renders on its own thread (`vivace`, FIFO 45)
+  into a ring, 64 frames at a time, 256 kept ready, 1024 for 3 s after a miss; 6 dB of headroom and a soft
+  limiter; a short block fades out and in. A second, ordinary thread (`vivace-io`) builds the engine and
+  loads sounds (75 to 220 ms) while the ring plays silence: a sound change is a short gap, never an
+  underrun. Knobs write the engine directly and MIDI goes through a lock-free queue: the host's calls
+  never wait. LFOs follow Live's tempo and beat. **No one-instance lock**: two Vivaces run side by side.
+- **The state names the sound, it does not carry it.** A sound with its wavetables is about 200 KB and
+  the chain host drops a state over 16 KB (`MAX_SYNTH_STATE_LEN`): the state is the preset file the
+  sound came from plus every control that differs from it (159 bytes for a typical edited sound).
+- **Your own sounds**: `.vital` files (the original's JSON preset format, wavetables inside) in the
+  module's `presets/` asset folder; each folder a bank in SOUNDS. A sound asking for more than 16
+  voices or more than 2x oversampling is played with 16 and 2x.
+- **444 parameters on 61 pages**, from the engine's own definitions: `vivace-export params` writes
+  `tools/engine_params.json`, `tools/gen_params.py` turns it into `dsp/vivace_params.h` and the page list
+  in `push_ui.js`. Knobs read in the synth's units (Hz, s, dB, %, cents, degrees) through 64 value lists;
+  each filter's model and style are one 32-entry type list, as the synth's menu offers them. The first 15
+  pages (120 parameters: Play, Osc 1-3, Sources, Filter 1-2, Env 1-3, LFO 1-2, the effects most used)
+  are the ones a limited list in Live keeps.
+- **Measured on a Push 3, 2026-11-22**, the engine thread's share of one logical core beside a running
+  Live (2x oversampling): an init sound 9% at 8 voices, 15% at 16; a pad of 5 unison voices with a second
+  oscillator 8.5% / 19% / 33% at 1 / 8 / 16 voices; the worst case (three oscillators at 16 unison, the
+  sample, both filters, all nine effects) 15% / 37% / 65%, its slowest block 3.7 ms of 5.8 ms buffered, no
+  underrun. About 1.6% of a core a voice plus 7%; 1x oversampling costs a fifth less.
+- **In Live**: played about 6.5 minutes in three runs with nine sound changes, 0 late blocks, 0
+  underruns; an edited sound returned intact after a restart of Pung.
+- **Heard without Live**: `scripts/render-check.sh vivace <empty dir> 3 preset=2` (Sync Lead: peak
+  -16.3 dB); all 12 factory sounds pass (peaks -3.4 to -20 dB).
