@@ -187,7 +187,7 @@ struct Instance {
     // priority, and two of them leave a Push nothing. An instance that finds
     // the emulator taken waits for it, silent, and says so.
     std::atomic<int> waiting{0};
-    int lockFd = -1;
+    bool hasLock = false; // holds the one-at-a-time lock (emu_try_lock)
     sem_t wake;
     std::unique_ptr<virusLib::Device> device;
     std::unique_ptr<synthLib::Plugin> plugin;
@@ -427,6 +427,48 @@ bool load_sound(Instance *in, int bank, int preset) {
     return true;
 }
 
+#define EMU_LOCK_PATH "/dev/shm/pung-ostirus.lock"
+#define EMU_LOCK_PATH_TMP "/tmp/pung-ostirus.lock"
+
+// The one-at-a-time lock. A POSIX record lock, not flock: a process the host
+// forks without exec (the JE-8086 module forks its emulator) inherits an
+// flock with the open file and holds it as long as it lives, so after a
+// restart that loaded this module first a second instance waited forever
+// (2026-11-22). A record lock belongs to the process and is not inherited;
+// between the instances of one process the flag decides, and the file stays
+// open once (closing any descriptor of it drops the process's record locks).
+// Between Pung and a probing process the file lock still holds.
+static std::mutex g_emuLockMu;
+static int g_emuLockFd = -1;
+static bool g_emuLockHeld = false;
+
+static bool emu_try_lock() {
+    std::lock_guard<std::mutex> l(g_emuLockMu);
+    if (g_emuLockHeld) return false;
+    if (g_emuLockFd < 0) g_emuLockFd = open(EMU_LOCK_PATH, O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+    if (g_emuLockFd < 0) g_emuLockFd = open(EMU_LOCK_PATH_TMP, O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+    if (g_emuLockFd >= 0) {
+        struct flock fl {};
+        fl.l_type = F_WRLCK;
+        fl.l_whence = SEEK_SET;
+        if (fcntl(g_emuLockFd, F_SETLK, &fl) != 0) return false;
+    }
+    g_emuLockHeld = true; // (no lock file at all: run, as before)
+    return true;
+}
+
+static void emu_unlock() {
+    std::lock_guard<std::mutex> l(g_emuLockMu);
+    if (!g_emuLockHeld) return;
+    if (g_emuLockFd >= 0) {
+        struct flock fl {};
+        fl.l_type = F_UNLCK;
+        fl.l_whence = SEEK_SET;
+        fcntl(g_emuLockFd, F_SETLK, &fl);
+    }
+    g_emuLockHeld = false;
+}
+
 void emu_main(Instance *in) {
     pthread_setname_np(pthread_self(), "ostirus");
     // Below the host's audio threads, above everything ordinary. The
@@ -454,9 +496,7 @@ void emu_main(Instance *in) {
     }
     // (a model switch keeps the lock it had: a waiting OsTIrus must not take
     // the emulator in the moment between the two models)
-    if (in->lockFd < 0) in->lockFd = open("/dev/shm/pung-ostirus.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
-    if (in->lockFd < 0) in->lockFd = open("/tmp/pung-ostirus.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
-    while (in->lockFd >= 0 && flock(in->lockFd, LOCK_EX | LOCK_NB) != 0) {
+    while (!in->hasLock && !(in->hasLock = emu_try_lock())) {
         if (!in->waiting.exchange(1)) {
             set_status(in, "Waiting: another OsTIrus is running, and one is all a Push can run");
             plog("another instance has the emulator; waiting for it");
@@ -620,9 +660,9 @@ void stop(Instance *in, bool keepLock = false) {
         in->plugin.reset();
     }
     in->device.reset();
-    if (in->lockFd >= 0 && !keepLock) {
-        close(in->lockFd); // the emulator is gone: the next instance may start
-        in->lockFd = -1;
+    if (in->hasLock && !keepLock) {
+        emu_unlock(); // the emulator is gone: the next instance may start
+        in->hasLock = false;
     }
     in->wr = 0;
     in->rd = 0;
