@@ -101,8 +101,10 @@ var TEXT = "#d3d6d6", HI = "#ffffff", MUTED = "#8a8d90", FAINT = "#5c5f62";
 var OSC = "#aa88ff", OSC_LT = mix(OSC, HI, 0.4), OSC_MID = mix(BODY, OSC, 0.5), OSC_DK = mix(BODY, OSC, 0.26), OSC_GH = mix(BODY, OSC, 0.12);
 var FLT = "#ffb74d", FLT_DK = mix(BODY, FLT, 0.3);
 var MODC = "#1de9b6", MOD_LT = "#64ffda", MOD_MID = mix(BODY, MODC, 0.5), MOD_DK = mix(BODY, MODC, 0.28);
-var DEPTH = [0, 1, 2, 3].map(function (i) { return mix(BODY, OSC, 0.42 - i * 0.09); }); // the stack, front to back
-var DEPTH_OFF = [0, 1, 2, 3].map(function (i) { return mix(BODY, LINE, 0.5 - i * 0.1); });
+// the stack, front to back: strong enough to read on the Push's display
+// (at 15..42% of the violet it faded into the ground there, 2026-11-22)
+var DEPTH = [0, 1, 2, 3].map(function (i) { return mix(BODY, OSC, 0.75 - i * 0.13); });
+var DEPTH_OFF = [0, 1, 2, 3].map(function (i) { return mix(BODY, MUTED, 0.62 - i * 0.1); }); // off: grey, still readable
 
 function known(v, k) { return !!(k && v[k] && v[k].known); }
 function frac(v, k, d) { return known(v, k) ? v[k].frac : (d === undefined ? 0 : d); }
@@ -297,7 +299,7 @@ function drawPlayed(g, x, y, w, h, t, pos, on, n, wp, c) {
     return { line: framePts(G, p, pts), base: G.y0 - p * G.dy };
   });
   if (on) g.area(e.line, e.base, OSC_DK);
-  g.poly(e.line, on ? 2 : 1, on ? (c || OSC_LT) : FAINT);
+  g.poly(e.line, 2, on ? (c || OSC_LT) : MUTED);
 }
 
 // ---- the sound's modulations (mod_routes) ------------------------------------------------------------
@@ -485,7 +487,7 @@ function frontPanel(g, v) {
   var fw = filterWords(v, "filter_1_");
   g.text(FLT_X + 21, CARD_Y + 11, "FILTER 1", segLit(v, "filter") ? "slot" : f1 ? TEXT : MUTED, -1);
   g.text(FLT_X + FLT_W - 8, CARD_Y + 11, /DB$/.test(fw[1]) ? fw[1] : fw[0], f1 ? mix(FLT, HI, 0.3) : FAINT, 1, 70);
-  g.filter(FLT_X + 4, CARD_Y + 18, FLT_W - 8, CARD_H - 21, { cutoff: "filter_1_cutoff", resonance: "filter_1_resonance", type: filterKind(v, "filter_1_"), color: f1 ? FLT : FAINT });
+  g.filter(FLT_X + 4, CARD_Y + 18, FLT_W - 8, CARD_H - 21, { cutoff: "filter_1_cutoff", resonance: "filter_1_resonance", type: filterKind(v, "filter_1_"), color: f1 ? FLT : MUTED });
   if (segLit(v, "env")) g.text(ENV_X + 21, CARD_Y + 11, "ENV 1", "slot", -1);
   g.envelope(ENV_X + 4, CARD_Y + 18, ENV_W - 8, CARD_H - 21, { delay: "env_1_delay", attack: "env_1_attack", hold: "env_1_hold", decay: "env_1_decay",
     sustain: "env_1_sustain", release: "env_1_release", color: MODC });
@@ -594,7 +596,7 @@ function oscScreen(n) {
         return { line: L, base: B };
       });
       g.fill(364, 44, 220, 1, RULE);
-      if (e.base.length) g.poly(e.base, 1, on ? OSC_MID : LINE);
+      if (e.base.length) g.poly(e.base, 1, on ? OSC_MID : FAINT);
       g.area(e.line, 44, on ? OSC_DK : HEAD);
       g.poly(e.line, 2, on ? OSC : MUTED);
     }
@@ -678,7 +680,7 @@ function sourcesScreen(g, v) {
       });
       g.fill(x + 8, 46, 96, 1, RULE);
       g.area(e, 46, on ? OSC_DK : HEAD);
-      g.poly(e, 2, on ? OSC : LINE);
+      g.poly(e, 2, on ? OSC : MUTED);
       g.text(x + 8, 80, up(names[s[3]] || ""), on ? OSC_LT : FAINT, -1, 100);
     } else if (s[3] < 0 && on) {
       g.text(x + 8, 80, "LEVEL " + up(disp(v, "sample_level")), OSC_LT, -1, 100);
@@ -726,7 +728,7 @@ function filterScreen(n) {
     g.text(96 + g.measure(words[0]) + 8, 13, words[1], on ? mix(FLT, HI, 0.35) : FAINT, -1, 200);
     var corners = FORMANT_CORNERS[type];
     if (corners) formantPad(g, v, pre, corners, on);
-    else g.filter(4, 16, 584, 68, { cutoff: pre + "cutoff", resonance: pre + "resonance", type: filterKind(v, pre), color: on ? FLT : FAINT });
+    else g.filter(4, 16, 584, 68, { cutoff: pre + "cutoff", resonance: pre + "resonance", type: filterKind(v, pre), color: on ? FLT : MUTED });
     blendScale(g, v, pre, type, on, 556);
     if (n === 3) fxChainSide(g, v);
     else filterPath(g, v, n);
