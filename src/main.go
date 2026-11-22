@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -63,6 +64,14 @@ func main() {
 		log.Printf("hack.json: %v (port %d)", err, cfg.Port)
 	}
 	pungPort = cfg.Port
+	// the port first, before anything else of Pung's starts: a Pung that is
+	// still stopping holds it, and the service's restart starts this one
+	// the moment it has sent the old one kill -9 (2026-11-22: the new Pung
+	// found the port taken, gave up, and Pung was down until started again)
+	var ln net.Listener
+	if *probeModule == "" && *scoutJobPath == "" && !*survey {
+		ln = listenWaiting(fmt.Sprintf(":%d", cfg.Port), 15*time.Second)
+	}
 	if *nslots < 0 || *nslots > 16 {
 		log.Fatalf("-slots must be 0..16")
 	}
@@ -129,9 +138,8 @@ func main() {
 	h.fileRoutes(mux)
 	h.sounds.libraryRoutes(mux)
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	ln, err := net.Listen("tcp", srv.Addr)
-	if err != nil {
-		log.Fatalf("http: %v", err)
+	if ln == nil {
+		ln = listenWaiting(srv.Addr, 15*time.Second)
 	}
 	// a module's forked child must not keep this port (bridge.c)
 	if rc, err := ln.(*net.TCPListener).SyscallConn(); err == nil {
@@ -287,5 +295,25 @@ func main() {
 		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
 			log.Fatalf("starting again: %v", err)
 		}
+	}
+}
+
+// listenWaiting: the port, waiting up to max for a Pung that still holds it
+// to be gone. Fatal after that, as before.
+func listenWaiting(addr string, max time.Duration) net.Listener {
+	until := time.Now().Add(max)
+	for said := false; ; {
+		ln, err := net.Listen("tcp", addr)
+		if err == nil {
+			return ln
+		}
+		if !errors.Is(err, syscall.EADDRINUSE) || time.Now().After(until) {
+			log.Fatalf("http: %v", err)
+		}
+		if !said {
+			log.Printf("http: %s is still taken (a Pung stopping?): waiting for it", addr)
+			said = true
+		}
+		time.Sleep(250 * time.Millisecond)
 	}
 }
