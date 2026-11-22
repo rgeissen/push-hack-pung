@@ -50,10 +50,9 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 	fill := P.mix(accent, 0.28)
 	for i := 1; i < len(pts); i++ {
 		a, b := pts[i-1], pts[i]
-		c := e.Segs[i-1].Curve
 		for px := int(a.X); px < int(b.X); px++ {
 			t := (float64(px) - a.X) / max(1, b.X-a.X)
-			y := a.Y + (b.Y-a.Y)*envCurve(t, c)
+			y := a.Y + (b.Y-a.Y)*e.frac(i-1, t)
 			lo, hi := math.Min(y, floor), math.Max(y, floor)
 			rect(img, px, int(lo), 1, int(hi-lo)+1, fill)
 		}
@@ -76,7 +75,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 		if e.Hot == i-1 {
 			w, c = 3.6, accent
 		}
-		envSegLine(img, pts[i-1], pts[i], 1, e.Segs[i-1].Curve, w, c)
+		envSegLine(img, pts[i-1], pts[i], 1, func(t float64) float64 { return e.frac(i-1, t) }, w, c)
 	}
 	// handles where segments meet
 	for i := 1; i < len(pts)-1; i++ {
@@ -100,7 +99,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 		}
 		a, b := pts[i], pts[i+1]
 		t := math.Max(0, math.Min(1, p.Prog))
-		return a.X + (b.X-a.X)*t, a.Y + (b.Y-a.Y)*envCurve(t, e.Segs[i].Curve), i
+		return a.X + (b.X-a.X)*t, a.Y + (b.Y-a.Y)*e.frac(i, t), i
 	}
 	lit := map[int]bool{}
 	if lv != nil {
@@ -136,7 +135,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 			}
 			rad := 3.2 + 1.4*v.Vel
 			if n == 0 {
-				envSegLine(img, pts[i], pts[i+1], math.Max(0, math.Min(1, cur.Prog)), e.Segs[i].Curve, 3.4, cMod) // the segment so far
+				envSegLine(img, pts[i], pts[i+1], math.Max(0, math.Min(1, cur.Prog)), func(t float64) float64 { return e.frac(i, t) }, 3.4, cMod) // the segment so far
 				for gy := y + 7; gy < base-2; gy += 5 {
 					aaLine(img, x, gy, x, math.Min(gy+2, base-2), 1, P.mix(cMod, 0.6))
 				}
@@ -189,9 +188,10 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 }
 
 // envSegLine: a segment from a to b, as far as time upto (0..1) along it,
-// bent by its curve (envCurve); straight segments are one line.
-func envSegLine(img *image.NRGBA, a, b envPt, upto, curve, w float64, c color.NRGBA) {
-	if math.Abs(curve) < 0.01 {
+// bent by f (how far along its levels it is at time t: envShape.frac);
+// a straight one is one line.
+func envSegLine(img *image.NRGBA, a, b envPt, upto float64, f func(float64) float64, w float64, c color.NRGBA) {
+	if math.Abs(f(0.5)-0.5) < 1e-4 && math.Abs(f(0.25)-0.25) < 1e-4 {
 		aaLine(img, a.X, a.Y, a.X+(b.X-a.X)*upto, a.Y+(b.Y-a.Y)*upto, w, c)
 		return
 	}
@@ -199,7 +199,7 @@ func envSegLine(img *image.NRGBA, a, b envPt, upto, curve, w float64, c color.NR
 	px, py := a.X, a.Y
 	for k := 1; k <= n; k++ {
 		t := upto * float64(k) / float64(n)
-		x, y := a.X+(b.X-a.X)*t, a.Y+(b.Y-a.Y)*envCurve(t, curve)
+		x, y := a.X+(b.X-a.X)*t, a.Y+(b.Y-a.Y)*f(t)
 		aaLine(img, px, py, x, y, w, c)
 		px, py = x, y
 	}

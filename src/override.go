@@ -691,6 +691,17 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 					e.Segs[i].Curve = c
 				case int64:
 					e.Segs[i].Curve = float64(c)
+				case map[string]any: // {root: n}: the level's n-th root straight in time; {exp: c}
+					if r, ok := c["root"].(float64); ok {
+						e.Segs[i].Root = r
+					} else if r, ok := c["root"].(int64); ok {
+						e.Segs[i].Root = float64(r)
+					}
+					if x, ok := c["exp"].(float64); ok {
+						e.Segs[i].Curve = x
+					} else if x, ok := c["exp"].(int64); ok {
+						e.Segs[i].Curve = float64(x)
+					}
 				case string:
 					if ov, ok := vals[c]; ok && ov.Known {
 						if f, err := strconv.ParseFloat(strings.TrimSpace(ov.Value), 64); err == nil {

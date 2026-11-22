@@ -212,6 +212,32 @@ type envSeg struct {
 	TimeKey string   // the knob that times it ("" for the plateau)
 	Keys    []string // every knob that shapes it (its touch lights it)
 	Curve   float64  // its bend: the level runs (e^(c*t)-1)/(e^c-1) of the way in time t (0: a straight line)
+	Root    float64  // or: the level's n-th root runs straight in time (Surge's quadratic/cubic stages, its convex attack n=0.5); 0: none
+}
+
+// frac: how far along its levels segment i is at time t (0..1), by its
+// curve (envCurve) or its root (level^(1/n) straight in time, from the
+// level before it to its own).
+func (e envShape) frac(i int, t float64) float64 {
+	if i < 0 || i >= len(e.Segs) {
+		return t
+	}
+	s := e.Segs[i]
+	if s.Root > 0 && math.Abs(s.Root-1) > 1e-6 && !e.Signed {
+		la := e.Start
+		if i > 0 {
+			la = e.Segs[i-1].Level
+		}
+		lb := s.Level
+		if s.Plateau || math.Abs(lb-la) < 1e-6 {
+			return math.Max(0, math.Min(1, t))
+		}
+		t = math.Max(0, math.Min(1, t))
+		r := 1 / s.Root
+		v := math.Pow(math.Pow(math.Max(0, la), r)+t*(math.Pow(math.Max(0, lb), r)-math.Pow(math.Max(0, la), r)), s.Root)
+		return (v - la) / (lb - la)
+	}
+	return envCurve(t, s.Curve)
 }
 
 // envCurve: how far along its levels a segment of curve c is at time t

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,5 +145,18 @@ func TestEnvCurve(t *testing.T) {
 	}
 	if envCurve(0, 7) != 0 || envCurve(1, 7) != 1 {
 		t.Error("a curve must start at 0 and end at 1")
+	}
+}
+
+// A stage whose level's n-th root runs straight in time (Surge's shapes):
+// a cubic release from S runs S(1-t)^3, a convex attack sqrt(t).
+func TestEnvRootStages(t *testing.T) {
+	e := envShape{Start: 0, Segs: []envSeg{{Role: "attack", Level: 1, Root: 0.5}, {Role: "sustain", Level: 0.5, Plateau: true}, {Role: "release", Level: 0, Release: true, Root: 3}}}
+	if got := e.frac(0, 0.25); math.Abs(got-0.5) > 1e-9 {
+		t.Errorf("convex attack at a quarter: %v of the way, want sqrt(0.25)=0.5", got)
+	}
+	// release from 0.5 to 0: level 0.5*(1-t)^3; at t=0.5 that is 0.0625, so 0.875 of the way
+	if got := e.frac(2, 0.5); math.Abs(got-0.875) > 1e-9 {
+		t.Errorf("cubic release at half time: %v of the way, want 0.875", got)
 	}
 }

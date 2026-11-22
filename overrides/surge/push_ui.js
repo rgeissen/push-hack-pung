@@ -49,6 +49,17 @@ var TAU = Math.PI * 2;
 function known(v, k) { return !!(v[k] && v[k].known); }
 function raw(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
 function fr(v, k, d) { return known(v, k) ? v[k].frac : d; }
+// an EG's stages as Surge runs them (ADSRModulationSource.h). Digital: the
+// attack is sqrt(t), t or t^2 (Convex, Linear, Concave); a Quadratic or
+// Cubic decay or release runs the level's square or cube root straight in
+// time. Analog: an RC charge toward 1.5 V that turns at 1 V (the attack:
+// e^-t ln 3 of the way), decay and release falling exponentially.
+function egCurves(v, p) {
+  if (opt(v, p + "mode") === "Analog") return { attack: { exp: -Math.log(3) }, decay: { exp: -3 }, release: { exp: -3 } };
+  var a = { Convex: 0.5, Linear: 1, Concave: 2 }[opt(v, p + "attack_shape")] || 1;
+  var n = function (k) { return { Linear: 1, Quadratic: 2, Cubic: 3 }[opt(v, p + k)] || 1; };
+  return { attack: { root: a }, decay: { root: n("decay_shape") }, release: { root: n("release_shape") } };
+}
 function opt(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : ""; }
 // a text the module answers (a name): its display, else the raw value
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
@@ -614,8 +625,8 @@ function patchPanel(g, v) {
   // the envelopes
   g.text(714, 40, "AMP EG", t.indexOf("env1_") === 0 || sg === "aeg" ? "slot" : C.label, -1);
   g.text(836, 40, "FILTER EG", t.indexOf("env2_") === 0 || sg === "feg" ? "slot" : C.label, -1);
-  g.envelope(712, 44, 116, 56, { attack: "env1_attack", decay: "env1_decay", sustain: "env1_sustain", release: "env1_release", color: C.or });
-  g.envelope(834, 44, 118, 56, { attack: "env2_attack", decay: "env2_decay", sustain: "env2_sustain", release: "env2_release", color: C.blue });
+  g.envelope(712, 44, 116, 56, { attack: "env1_attack", decay: "env1_decay", sustain: "env1_sustain", release: "env1_release", curves: egCurves(v, "env1_"), color: C.or });
+  g.envelope(834, 44, 118, 56, { attack: "env2_attack", decay: "env2_decay", sustain: "env2_sustain", release: "env2_release", curves: egCurves(v, "env2_"), color: C.blue });
   // the encoders
   var kn = v.$knobs || [], items = [];
   for (var i = 0; i < 8; i++) items.push(knobItem(v, kn[i] || ""));
@@ -677,7 +688,9 @@ push.compartment({
     "level_o1", "level_o2", "level_o3", "mute_o1", "mute_o2", "mute_o3", "fm_switch", "fm_depth",
     "fb_config", "feedback", "f_balance", "filter1_type", "filter2_type", "filter2_cutoff", "filter2_resonance",
     "f2_cf_is_offset", "f2_link_resonance", "ws_type", "ws_drive",
-    "env2_attack", "env2_decay", "env2_sustain", "env2_release"],
+    "env2_attack", "env2_decay", "env2_sustain", "env2_release",
+    "env1_attack_shape", "env1_decay_shape", "env1_release_shape", "env1_mode",
+    "env2_attack_shape", "env2_decay_shape", "env2_release_shape", "env2_mode"],
   screen: patchPanel
 });
 
@@ -968,7 +981,7 @@ function egHalf(g, v, n, x, w, title, col) {
     g.text(sx, 11, lab, t === k ? "slot" : C.label, 1);
     sx -= g.measure(lab) + 12;
   }
-  g.envelope(x, 16, w, 70, { attack: p + "attack", decay: p + "decay", sustain: p + "sustain", release: p + "release", labels: true, color: col });
+  g.envelope(x, 16, w, 70, { attack: p + "attack", decay: p + "decay", sustain: p + "sustain", release: p + "release", curves: egCurves(v, p), labels: true, color: col });
 }
 push.compartment({
   id: "env", label: "Envelopes",
