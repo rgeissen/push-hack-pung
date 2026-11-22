@@ -86,14 +86,70 @@ function spectral(p, n) { // a "spectral wave": a sine with the wave number's ha
   var s = Math.sin(p * TAU), h = 2 + (n % 7);
   return (s * 0.7 + Math.sin(p * TAU * h) * 0.3 * ((n % 3) / 2 + 0.3));
 }
+// ---- wavetables ------------------------------------------------------------------
+// In Wavetable and Wave PWM an oscillator plays one of the TI's 100
+// wavetables: Wave picks the table, Shape is the Index that moves through
+// it. The engine reads the tables from the firmware as the DSP holds them
+// (wave_view_<osc>: "<waves>:" and then each wave as 64 points of one cycle,
+// two hex digits a point; "" while there is nothing yet, "none" when the
+// firmware's tables were not found). Between two waves the TI crossfades:
+// Index i plays the wave at i * (waves - 1) / 127.
+var TABLE_NAMES = ["Sine", "HarmncSweep", "Glass Sweep", "Draw Bars", "Clusters", "Insine Out", "Landing", "Liquid Metal", "Opposition",
+  "Overtunes 1", "Overtunes 2", "Scale Trix", "Sine Rider", "Sqr Series", "Upsine Down", "Thumbs Up", "Waterphone", "E-Chime", "Tinkabell",
+  "Bellfizz", "Bellentine", "Robot Wars", "Alternator", "Finger Bass", "Fizzybar", "Flutes", "HP Love", "Majestix", "Hotch Potch", "Resynater",
+  "Smooth Rough", "Sawsalito", "Bells 1", "Bells 2", "SportReport", "Metal Guru", "Bat Cave", "Acetate", "Buzzbizz", "Buzzpartout", "Vanish",
+  "Overbones", "Pulsechecker", "Stratosfear", "Sooty Sweep", "Throaty", "Didgitalis", "Evil", "Chords", "FM Grit", "Bellsarnie", "Octavius",
+  "Eat Pulse", "Sinzin", "Sine System", "Clip Sweep", "Roughage", "Waving", "Pling Saw", "E-Peas", "Bump Sweep", "Filter Sqr", "Fourmant",
+  "Formantera", "Sundial 1", "Sundial 2", "Sundial 3", "Clipdial 1", "Clipdial 2", "Voxonix", "Solenoid", "KlingKlang", "Violator",
+  "Potassium", "Pile Up", "Tincanali", "Sniper", "Squeezy", "Decomposer", "Morfants", "Pingvox", "Adenoids", "Nasal", "Partialism",
+  "TableDance", "Cascade", "Prismism", "Friction", "Robotix", "Whizzfizz", "Spangly", "Fluxbin", "Fiboglide", "Fibonice", "Fibonasty",
+  "Penetrator", "Blinder", "Element 5", "Bad Signs", "Domina7rix"];
+var VIEW_POINTS = 64;
+function tableMode(mode) { return mode === "Wavetable" || mode === "Wave PWM"; }
+function tableName(v, n) {
+  var t = Math.round(num(v, "osc" + n + "_wave_select", 0));
+  return (TABLE_NAMES[t] || "TABLE " + t).toUpperCase();
+}
+// the oscillator's table as parsed waves (one parse a view)
+var PARSED = {};
+function parseTable(raw) {
+  if (!raw || raw === "none") return null;
+  var c = PARSED[raw];
+  if (c) return c;
+  var colon = raw.indexOf(":"), nw = parseInt(raw.substr(0, colon), 10);
+  if (!(nw > 0) || raw.length < colon + 1 + nw * VIEW_POINTS * 2) return null;
+  var waves = [];
+  for (var w = 0; w < nw; w++) {
+    var pts = [];
+    for (var i = 0; i < VIEW_POINTS; i++) pts.push((parseInt(raw.substr(colon + 1 + (w * VIEW_POINTS + i) * 2, 2), 16) - 128) / 127);
+    waves.push(pts);
+  }
+  var keys = 0;
+  for (var k in PARSED) keys++;
+  if (keys > 6) PARSED = {};
+  return (PARSED[raw] = { n: nw, waves: waves });
+}
+function tableOf(v, n) { return parseTable(disp(v, "wave_view_" + n)); }
+// the wave at a position (0 .. waves-1) in the table: the crossfade the TI plays
+function waveAt(T, pos) {
+  var a = Math.max(0, Math.min(T.n - 1, Math.floor(pos))), b = Math.min(T.n - 1, a + 1), f = pos - a, out = [];
+  for (var i = 0; i < VIEW_POINTS; i++) out.push(T.waves[a][i] * (1 - f) + T.waves[b][i] * f);
+  return out;
+}
+// where the oscillator stands in its table: Index 0..127 as a position
+function tablePos(v, n, T) { return Math.max(0, Math.min(127, num(v, "osc" + n + "_shape", 0))) * (T.n - 1) / 127; }
+// what the table says when it draws no wave: still reading, or not found
+function tableWhy(v, n) {
+  var raw = disp(v, "wave_view_" + n);
+  return raw === "none" ? "WAVETABLES NOT FOUND IN THIS FIRMWARE" : "READING THE WAVETABLE";
+}
+
 // what an oscillator plays in its model, from its shape (0 wave, .5 saw, 1 pulse)
 function oscFn(mode, shape, wave, pw, density) {
   if (mode === "HyperSaw") {
     var n = 2 + Math.round(density * 7);
     return function (p) { var s = 0; for (var i = 0; i < n; i++) s += saw(p * (1 + (i - n / 2) * 0.012) + i * 0.137); return s / n * 1.4; };
   }
-  if (mode === "Wavetable" || mode === "Wave PWM")
-    return function (p) { return spectral(p, wave) * (1 - shape) + Math.sin(p * TAU * (1 + Math.round(shape * 5))) * shape; };
   if (mode.indexOf("Grain") === 0 || mode.indexOf("Formant") === 0)
     return function (p) { var env = Math.sin(Math.PI * ((p * 2) % 1)); return Math.sin(p * TAU * (3 + wave % 5)) * env; };
   // Classic: wave .. saw .. pulse
@@ -105,12 +161,51 @@ function osc3Fn(m) {
   return m === "Saw" || m === "Slave" ? saw : m === "Pulse" ? function (p) { return pulse(p, 0.5); } : m === "Triangle" ? tri
     : m === "Sine" ? function (p) { return Math.sin(p * TAU); } : function (p) { return spectral(p, parseInt(m.replace(/\D/g, ""), 10) || 3); };
 }
+// an oscillator's wave as a curve; null where there is none to draw (a
+// table not read)
 function oscCurve(v, n, x, y, w, h, cycles) {
   var p = "osc" + n + "_", mode = disp(v, p + "mode") || "Classic", shape = frac(v, p + "shape", 0.5), wave = num(v, p + "wave_select", 0), pw = frac(v, p + "pulsewidth", 0.5);
+  if (tableMode(mode)) {
+    var T = tableOf(v, n);
+    if (!T) return null;
+    var pos = tablePos(v, n, T);
+    return cached(["t", n, x, y, w, h, cycles, disp(v, "wave_view_" + n).length, wave, pos.toFixed(3)].join("|"), function () {
+      // the wave's own points, every one: a table's waves are smooth sums of
+      // harmonics, no edge to square off
+      var wv = waveAt(T, pos), pts = [], mid = y + h / 2, a = h / 2 - 2, m = cycles * VIEW_POINTS;
+      for (var j = 0; j <= m; j++) pts.push(x + j / m * w, mid - wv[j % VIEW_POINTS] * a);
+      return pts;
+    });
+  }
   return cached(["o", n, x, y, w, h, cycles, mode, shape.toFixed(2), wave, pw.toFixed(2)].join("|"), function () {
     var f = oscFn(mode, shape, wave, pw, shape);
     return wavePts(x, y, w, h, function (q) { return f(q * cycles); });
   });
+}
+// The table as a landscape: its first wave in front, its last at the back,
+// each one hiding what stands behind it; the wave the oscillator plays (its
+// Index, between two of the drawn ones) lit where it stands.
+function landscape(g, v, n, x, y, w, h, lit) {
+  var T = tableOf(v, n), rows = 16;
+  if (!T) {
+    g.text(x + w / 2, y + h / 2 + 4, tableWhy(v, n), FAINT, 0, w - 12);
+    return;
+  }
+  var dx = Math.floor((w * 0.42) / (rows - 1)), dy = (h * 0.5) / (rows - 1), ww = w - dx * (rows - 1) - 4, amp = h * 0.24;
+  var pos = tablePos(v, n, T), r = T.n > 1 ? pos / (T.n - 1) * (rows - 1) : 0;
+  function rowPts(depth, wave) {
+    var bx = x + depth * dx, by = y + h - amp - 2 - depth * dy, pts = [];
+    for (var j = 0; j <= VIEW_POINTS; j++) pts.push(bx + j / VIEW_POINTS * ww, by - wave[j % VIEW_POINTS] * amp);
+    return { pts: pts, base: by + amp + 2 };
+  }
+  // back to front, each row hiding what stands behind it; the playing wave
+  // over them all, where it stands
+  for (var i = rows - 1; i >= 0; i--) {
+    var p = rowPts(i, waveAt(T, T.n > 1 ? i / (rows - 1) * (T.n - 1) : 0));
+    g.area(p.pts, p.base, PANEL);
+    g.poly(p.pts, 1, i % 5 === 0 ? DIM : FAINT);
+  }
+  g.poly(rowPts(r, waveAt(T, pos)).pts, 2, lit ? "slot" : RED);
 }
 
 // ---- the front panel ---------------------------------------------------------------
@@ -188,7 +283,8 @@ function panel(g, v) {
     if (live) {
       var pts = o < 3 ? oscCurve(v, o, 384, y, 58, 14, 2)
         : cached("p3|" + m, function () { var f = osc3Fn(m); return wavePts(384, y, 58, 14, function (q) { return f(q * 2); }); });
-      g.poly(pts, 1.5, INK);
+      if (pts) g.poly(pts, 1.5, INK);
+      else g.fill(384, y + 7, 58, 1, RULE); // a wavetable not read (yet): no wave
     } else g.fill(384, y + 7, 58, 1, RULE);
     g.text(452, y + 9, (m || "--").toUpperCase(), live ? INK : FAINT, -1, 102);
   }
@@ -265,7 +361,7 @@ push.compartment({
   extra_keys: ["status", "soft1_name", "soft2_name", "soft3_name", "preset", "preset_name", "bank_name", "category", "model",
     "osc1_mode", "osc2_mode", "osc3_mode", "filter1_mode", "filter2_mode", "filter_routing", "reverb_mode", "chorus_type",
     "phaser_mix", "distortion_curve", "arp_mode", "unison_mode", "key_mode", "cutoff2", "filter2_resonance", "transpose",
-    "osc1_shape", "osc1_wave_select", "osc1_pulsewidth", "osc2_shape", "osc2_wave_select", "osc2_pulsewidth"],
+    "osc1_shape", "osc1_wave_select", "osc1_pulsewidth", "osc2_shape", "osc2_wave_select", "osc2_pulsewidth", "wave_view_1", "wave_view_2"],
   screen: function (g, v) { panel(g, v); }
 });
 
@@ -284,11 +380,19 @@ function oscScreen(n) {
     var p = "osc" + n + "_", mode = disp(v, p + "mode") || "Classic", t = v.$touched || "";
     head(g, 12, "OSC " + n, t.indexOf(p) === 0);
     g.fill(8, 18, 444, 66, PANEL);
-    g.fill(12, 51, 436, 1, RULE);
-    g.poly(oscCurve(v, n, 14, 20, 432, 62, 2), 2, t === p + "shape" || t === p + "wave_select" || t === p + "pulsewidth" ? "slot" : RED);
+    var wl = t === p + "shape" || t === p + "wave_select" || t === p + "pulsewidth";
+    if (tableMode(mode)) landscape(g, v, n, 12, 20, 436, 62, wl); // the table it plays, and where in it
+    else {
+      g.fill(12, 51, 436, 1, RULE);
+      g.poly(oscCurve(v, n, 14, 20, 432, 62, 2), 2, wl ? "slot" : RED);
+    }
     // the model, and what its knobs are in it
     g.value(470, 30, mode, t === p + "mode" ? "slot" : INK, -1, 280);
     var means = MEANS[mode] || (mode.indexOf("Grain") === 0 || mode.indexOf("Formant") === 0 ? [["SHAPE", "INDEX"], ["WAVE", "TABLE"], ["PW", "--"]] : MEANS.Classic);
+    if (tableMode(mode)) { // the table by its name, the Index by its number
+      var T = tableOf(v, n);
+      means = [["SHAPE", "INDEX " + Math.round(num(v, p + "shape", 0))], ["WAVE", tableName(v, n) + (T && T.n > 1 ? "  " + T.n + " WAVES" : "")], means[2]];
+    }
     var keys = [p + "shape", p + "wave_select", p + "pulsewidth"];
     for (var i = 0; i < 3; i++) {
       var lit = t === keys[i], y = 50 + i * 15;
@@ -312,7 +416,9 @@ function labels(g, x, w, names, keys, v) {
   for (var i = 0; i < names.length; i++) g.text(x + w * (i + 0.5) / names.length, 84, names[i], t === keys[i] ? "slot" : DIM, 0, w / names.length - 4);
 }
 push.compartment({
-  id: "osc", label: "Oscillators", extra_keys: ["status"],
+  // Mix + FM draws both oscillators: their models and waves are read there too
+  id: "osc", label: "Oscillators", extra_keys: ["status", "wave_view_1", "wave_view_2", "osc1_mode", "osc1_shape", "osc1_wave_select",
+    "osc1_pulsewidth", "osc2_mode", "osc2_shape", "osc2_wave_select", "osc2_pulsewidth"],
   pages: [
     { label: "Osc 1", keys: ["osc1_mode", "osc1_shape", "osc1_wave_select", "osc1_pulsewidth", "osc1_semitone", "osc1_keyfollow",
       "osc1_wavetable_formantshift", "osc1_wavetable_internal_detune"], screen: oscScreen(1) },
@@ -355,8 +461,9 @@ push.compartment({
         head(g, 12, "BALANCE", t === "osc_balance");
         g.text(300, 12, disp(v, "osc_balance") || "--", t === "osc_balance" ? "slot" : INK, 1);
         g.fill(8, 18, 296, 40, PANEL);
-        g.poly(oscCurve(v, 1, 12, 20, 140, 36, 2), 1.5, b < 0.75 ? INK : FAINT);
-        g.poly(oscCurve(v, 2, 160, 20, 140, 36, 3), 1.5, b > 0.25 ? INK : FAINT);
+        var c1 = oscCurve(v, 1, 12, 20, 140, 36, 2), c2 = oscCurve(v, 2, 160, 20, 140, 36, 3);
+        if (c1) g.poly(c1, 1.5, b < 0.75 ? INK : FAINT); else g.fill(12, 38, 140, 1, RULE);
+        if (c2) g.poly(c2, 1.5, b > 0.25 ? INK : FAINT); else g.fill(160, 38, 140, 1, RULE);
         g.text(14, 74, "OSC 1", b < 0.5 ? INK : DIM, -1); g.text(300, 74, "OSC 2", b > 0.5 ? INK : DIM, 1);
         g.fill(60, 70, 196, 2, RULE);
         g.fill(60 + Math.round(190 * b), 64, 6, 14, t === "osc_balance" ? "slot" : RED);

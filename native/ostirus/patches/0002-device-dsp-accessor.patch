@@ -1,0 +1,12 @@
+--- a/source/axel/virusLib/device.h
++++ b/source/axel/virusLib/device.h
+@@ -60,6 +60,9 @@
+ 		static void applyDspMemoryPatches(const DspSingle* _dspA, const DspSingle* _dspB, const ROMFile& _rom);
+ 		void applyDspMemoryPatches() const;
+ 
++		// Pung: the first DSP, for reading what the firmware put in its memory
++		const DspSingle* getDspA() const { return m_dsp.get(); }
++
+ 	private:
+ 		bool sendMidi(const synthLib::SMidiEvent& _ev, std::vector<synthLib::SMidiEvent>& _response) override;
+ 		void readMidiOut(std::vector<synthLib::SMidiEvent>& _midiOut) override;

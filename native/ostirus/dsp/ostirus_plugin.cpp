@@ -12,6 +12,10 @@
 // loaded as the synth's own single dump into the edit buffer, and that dump
 // is the device's state.
 //
+// Wavetables. The firmware's 100 wavetables are read from the DSP's memory
+// after boot (read_tables), and the screens draw the table an oscillator
+// plays from them (wave_view_1, wave_view_2).
+//
 // Parameters. Every one is a byte of the single (512 bytes: pages A, B, 6E,
 // 6F), read from the sound as loaded and sent to the synth as a parameter
 // change when it is turned, so the dump is always the sound as it is. Their
@@ -42,11 +46,13 @@
 #include <unistd.h>
 
 #include "dsp56kBase/logging.h"
+#include "dsp56kEmu/memory.h"
 #include "synthLib/deviceException.h"
 #include "synthLib/midiTypes.h"
 #include "synthLib/plugin.h"
 #include "virusLib/device.h"
 #include "virusLib/deviceModel.h"
+#include "virusLib/dspSingle.h"
 #include "virusLib/microcontroller.h"
 #include "virusLib/microcontrollerTypes.h"
 #include "virusLib/romfile.h"
@@ -158,6 +164,20 @@ const uint32_t FADE = 32;
 
 typedef virusLib::ROMFile::TPreset Preset;
 
+// A wavetable as the TI's firmware keeps it: each of its waves a spectrum,
+// one byte a harmonic (h1 first), the harmonic's amplitude (byte/127)^2,
+// its phase that of a sine, odd harmonics inverted. The DSP builds the waves
+// it plays from these when a voice first needs the table, and moves through
+// them by the oscillator's Index, the wave at Index i the crossfade of the
+// two around i * (waves - 1) / 127. (Measured 2026-11-22: these sums are the
+// waves the DSP builds, sample for sample, for 15 tables, and notes rendered
+// at Index 32, 64, 96 are those crossfades.)
+struct Wavetable {
+    int nh = 0, nw = 0;       // harmonics a wave, waves; nw 0 for the sine (table 0, computed by the DSP)
+    std::vector<uint8_t> amp; // nw * nh bytes
+    std::string view;         // wave_view, made when first asked for
+};
+
 struct Instance {
     std::string dir;
     std::thread emu;
@@ -196,6 +216,12 @@ struct Instance {
     std::string romName;
     char status[160] = "Starting";
     char error[200] = "";
+
+    // The firmware's wavetables, as the DSP holds them (read_tables), and
+    // each one's view for the screens once asked for: under tabMu.
+    std::mutex tabMu;
+    std::vector<Wavetable> tables; // [100] once read; empty: not read, or not found
+    bool tablesRead = false;       // tried (empty tables then: this firmware's were not found)
 };
 
 void set_status(Instance *in, const char *s) {
@@ -257,6 +283,119 @@ void read_library(Instance *in) {
         if (ns.empty()) break;
         in->names.push_back(ns);
     }
+}
+
+// ---- wavetables ---------------------------------------------------------------------
+
+const ti::Param *find_param(const char *key);
+
+const int TABLES = 100;   // the TI's wavetables (gearmulator's wavetablesNames)
+const int VIEW_POINTS = 64; // a wave in wave_view: points a cycle
+
+// The emulator thread, once the DSP has booted: the firmware's wavetables
+// from the DSP's memory. They are a directory of 100 entries (two words
+// each: where the table is, and where the DSP has built its waves, 0 until
+// a voice plays it), table 0 the sine (computed, no data), table 1 right
+// after the directory, each table then the one before plus its size: a
+// header (log2 of harmonics a wave, waves, a flag, a gain) and the bytes,
+// three a word, high byte first. Found by that shape, not by an address: a
+// firmware without it (or another one) leaves the tables empty, and the
+// screens say so instead of drawing a wave.
+void read_tables(Instance *in) {
+    std::vector<Wavetable> tabs;
+    const virusLib::DspSingle *dsp = in->device ? in->device->getDspA() : nullptr;
+    if (dsp) {
+        const dsp56k::Memory &m = dsp->getMemory();
+        const dsp56k::TWord n = m.size(dsp56k::MemArea_X);
+        auto at = [&](dsp56k::TWord a) -> uint32_t { return a < n ? (m.get(dsp56k::MemArea_X, a) & 0xffffff) : 0xffffffffu; };
+        auto size = [&](dsp56k::TWord p, int &nh, int &nw) -> uint32_t { // a table's words, 0 if it is none
+            const uint32_t lg = at(p), w = at(p + 1);
+            if (lg < 3 || lg > 9 || w < 1 || w > 127) return 0;
+            nh = 1 << lg;
+            nw = int(w);
+            return 4 + (uint32_t(nh * nw) + 2) / 3;
+        };
+        for (dsp56k::TWord d = 0; d + 2 * TABLES < n && tabs.empty(); d++) {
+            if (at(d) != 0 || at(d + 2) != d + 2 * TABLES) continue;
+            bool ok = true;
+            for (int t = 1; t < TABLES && ok; t++) {
+                int nh, nw;
+                const dsp56k::TWord p = at(d + 2 * dsp56k::TWord(t));
+                const uint32_t sz = size(p, nh, nw);
+                ok = sz && p + sz <= n && (t == TABLES - 1 || at(d + 2 * dsp56k::TWord(t + 1)) == p + sz);
+            }
+            if (!ok) continue;
+            tabs.resize(TABLES);
+            for (int t = 1; t < TABLES; t++) {
+                Wavetable &w = tabs[size_t(t)];
+                const dsp56k::TWord p = at(d + 2 * dsp56k::TWord(t));
+                size(p, w.nh, w.nw);
+                w.amp.resize(size_t(w.nh * w.nw));
+                for (size_t i = 0; i < w.amp.size(); i++) w.amp[i] = uint8_t(at(p + 4 + dsp56k::TWord(i / 3)) >> (16 - 8 * (i % 3)));
+            }
+        }
+    }
+    plog("%s", tabs.empty() ? "no wavetables found in the DSP's memory" : "wavetables read from the firmware");
+    std::lock_guard<std::mutex> l(in->tabMu);
+    in->tables = std::move(tabs);
+    in->tablesRead = true;
+}
+
+// tabMu held. A table's waves for the screens: "<waves>:" and then each wave
+// as VIEW_POINTS points of one cycle, two hex digits a point (128 + the
+// value, the table's loudest point 127). The sine has one wave.
+const std::string &table_view(Wavetable &w) {
+    if (!w.view.empty()) return w.view;
+    static float sn[VIEW_POINTS];
+    if (sn[1] == 0)
+        for (int i = 0; i < VIEW_POINTS; i++) sn[i] = float(std::sin(2.0 * M_PI * i / VIEW_POINTS));
+    const int nw = w.nw ? w.nw : 1;
+    std::vector<float> x(size_t(nw * VIEW_POINTS), 0.f);
+    float peak = 0;
+    for (int k = 0; k < nw; k++)
+        for (int i = 0; i < VIEW_POINTS; i++) {
+            float v = 0;
+            if (!w.nw) v = -sn[i];
+            else
+                for (int h = 1; h <= w.nh; h++) {
+                    const float a = float(w.amp[size_t(k * w.nh + h - 1)]) / 127.f;
+                    if (a > 0) v += (h & 1 ? -a * a : a * a) * sn[(h * i) % VIEW_POINTS];
+                }
+            x[size_t(k * VIEW_POINTS + i)] = v;
+            peak = std::max(peak, std::fabs(v));
+        }
+    char b[16];
+    snprintf(b, sizeof(b), "%d:", nw);
+    w.view = b;
+    w.view.reserve(w.view.size() + x.size() * 2);
+    for (float v : x) {
+        const int q = 128 + int(lrintf(peak > 0 ? v / peak * 127.f : 0.f));
+        snprintf(b, sizeof(b), "%02x", std::max(1, std::min(255, q)));
+        w.view += b;
+    }
+    return w.view;
+}
+
+// wave_view_<osc>: the table oscillator 1 or 2 plays, while it plays one
+// (Wavetable, Wave PWM). "" while there is nothing to draw (the oscillator
+// in another model, the emulator still booting), "none" when the firmware's
+// tables were not found: the screen says so and draws no wave.
+std::string wave_view(Instance *in, int osc) {
+    static const ti::Param *mode[2] = {find_param("osc1_mode"), find_param("osc2_mode")};
+    static const ti::Param *table[2] = {find_param("osc1_wave_select"), find_param("osc2_wave_select")};
+    if (osc < 1 || osc > 2 || !mode[osc - 1] || !table[osc - 1]) return "";
+    int m, t;
+    {
+        std::lock_guard<std::mutex> l(in->mu);
+        if (!in->haveSingle) return "";
+        m = in->single[size_t(mode[osc - 1]->off)];
+        t = in->single[size_t(table[osc - 1]->off)];
+    }
+    if (m != 2 && m != 3) return ""; // Wavetable, Wave PWM
+    std::lock_guard<std::mutex> l(in->tabMu);
+    if (!in->tablesRead) return "";
+    if (in->tables.empty() || t >= int(in->tables.size())) return "none";
+    return table_view(in->tables[size_t(t)]);
 }
 
 // mu held. The sound in the edit buffer goes to the synth, as its own dump.
@@ -343,8 +482,11 @@ void emu_main(Instance *in) {
         std::unique_ptr<synthLib::Plugin> pl(new synthLib::Plugin(in->device.get(), [](synthLib::Device *d) { return d; }));
         pl->setHostSamplerate(44100.0f, 0.0f);
         pl->setBlockSize(BLOCK);
-        std::lock_guard<std::mutex> l(in->plugMu);
-        in->plugin = std::move(pl);
+        {
+            std::lock_guard<std::mutex> l(in->plugMu);
+            in->plugin = std::move(pl);
+        }
+        read_tables(in);
     } catch (const std::exception &e) {
         std::lock_guard<std::mutex> l(in->mu);
         snprintf(in->error, sizeof(in->error), "The emulator did not start: %s", e.what());
@@ -703,6 +845,7 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     if (!strcmp(key, "debug_info"))
         return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u", in->underruns.load(), in->blockUs.load(),
                         in->blockMaxUs.exchange(0), in->wr.load() - in->rd.load());
+    if (!strncmp(key, "wave_view_", 10)) return snprintf(buf, size_t(len), "%s", wave_view(in, atoi(key + 10)).c_str());
     std::lock_guard<std::mutex> l(in->mu);
     const int nb = int(in->names.size());
     const std::vector<std::string> empty;
