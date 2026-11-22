@@ -2,7 +2,7 @@
     "id": "ostirus",
     "name": "OsTIrus",
     "abbrev": "TI",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "Access Virus TI emulator (Gearmulator OsTIrus): TI, TI2 and Snow from one firmware, with the factory banks it carries",
     "author": "dsp56300/gearmulator (Pung module: rgeissen)",
     "license": "GPL-3.0",
