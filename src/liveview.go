@@ -627,6 +627,27 @@ func (m *paramMeta) fromNorm(n float64) string {
 	return strconv.FormatFloat(m.Min+n*(m.Max-m.Min), 'f', 4, 64)
 }
 
+// fromNormAs: fromNorm in the form the module answers its value in, as
+// Schwung's own interface writes an enum (shadow_ui.js: pluginUsesIndex): an
+// option's name where it answers names, its position where it answers a
+// number. A module that reads a number first took "24 dB LP" for 24 (Vavra's
+// filter type jumped to the last option, 2026-11-22).
+func (m *paramMeta) fromNormAs(n float64, cur string) string {
+	v := m.fromNorm(n)
+	if m.Type != "enum" || len(m.Options) == 0 || cur == "" || numericOptions(m.Options) {
+		return v
+	}
+	for _, o := range m.Options {
+		if o == cur {
+			return v // it answers names
+		}
+	}
+	if _, err := strconv.Atoi(strings.TrimSpace(cur)); err != nil {
+		return v
+	}
+	return strconv.Itoa(int(math.Round(math.Max(0, math.Min(1, n)) * float64(len(m.Options)-1))))
+}
+
 func (m *paramMeta) toNormValue(raw string) float64 {
 	if m.Type == "enum" {
 		if i, ok := m.enumIndex(raw); ok && len(m.Options) > 1 {

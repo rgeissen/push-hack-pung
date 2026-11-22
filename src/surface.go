@@ -271,6 +271,7 @@ func (u *surface) attach() error {
 		return err
 	}
 	u.c, u.push = c, port.Addr
+	pushSeq.Store(c) // browserclose.go presses Device View with it
 	events := make(chan []byte, 512)
 	go func() {
 		err := c.ReadLoop(pushReader{out: events})

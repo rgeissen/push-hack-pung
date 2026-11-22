@@ -497,6 +497,7 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 	p.mu.Unlock()
 	p.gen.Add(1)
 	go p.reviveSiblings(sc.module) // a module that refused to start beside another
+	newDeviceMade(c.Name)          // picked in Push's browser: Pung's view, not the browser (browserclose.go)
 	go d.adoptKept()
 	if lib := p.h.sounds; lib != nil {
 		go lib.warm(d)
@@ -856,7 +857,8 @@ func (d *device) applyParam(idx int, norm float64) {
 		return // belongs to a MIDI effect that is not loaded
 	}
 	if m := d.c.meta[idx]; m != nil {
-		cSet(d.s.Index, d.c.Params[idx].Key, m.fromNorm(norm))
+		cur, _ := d.s.Get(d.c.Params[idx].Key)
+		cSet(d.s.Index, d.c.Params[idx].Key, m.fromNormAs(norm, cur))
 		if m.Selector {
 			d.wantResync.Store(true) // the other parameters read something else now (keepLiveInSync)
 		}

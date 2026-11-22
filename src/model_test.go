@@ -303,3 +303,24 @@ func TestForkingModulesAreKnown(t *testing.T) {
 		}
 	}
 }
+
+// An enum is written in the form the module answers in: its position where
+// it answers a number (Vavra's "10"), its name where it answers names. A
+// name that starts with a digit ("24 dB LP") was read as 24 by a module that
+// reads a number first.
+func TestEnumWrittenAsTheModuleAnswers(t *testing.T) {
+	m := &paramMeta{Type: "enum", Options: []string{"Off", "24 dB LP", "12 dB LP", "Comb+", "Comb-"}}
+	if got := m.fromNormAs(0.25, "4"); got != "1" {
+		t.Errorf("a module answering numbers: wrote %q, want \"1\"", got)
+	}
+	if got := m.fromNormAs(0.25, "Comb-"); got != "24 dB LP" {
+		t.Errorf("a module answering names: wrote %q, want the name", got)
+	}
+	if got := m.fromNormAs(0.25, ""); got != "24 dB LP" {
+		t.Errorf("nothing known yet: wrote %q, want the name", got)
+	}
+	oct := &paramMeta{Type: "enum", Options: []string{"-1", "0", "1"}}
+	if got := oct.fromNormAs(1, "0"); got != "1" {
+		t.Errorf("numeric options: wrote %q, want the option \"1\"", got)
+	}
+}
