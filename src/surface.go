@@ -1618,6 +1618,19 @@ func (u *surface) paintLEDs() {
 		pung = d != nil
 	}
 	u.led(false, push3.CCSave, on(pung))
+	// Add and Swap: Push's own. Where Pung stands in for Push's device view
+	// push-manager passes them on, and they are lit as Push lights them: Add
+	// where there is a track to add a device to, Swap where a device is
+	// selected for Hot-Swap to replace. Opened from Home they do nothing: dark
+	addOK, swapOK := false, false
+	if live && u.standIn.Load() {
+		tracks, sel := u.live.state().trackRow()
+		addOK = sel >= 0 && sel < len(tracks)
+		devs, dsel := u.live.state().deviceRow()
+		swapOK = u.open || (len(devs) > 0 && dsel >= 0)
+	}
+	u.led(false, push3.CCAdd, on(addOK))
+	u.led(false, push3.CCSwap, on(swapOK))
 	// Page < >: lit where they go somewhere, as the header's arrows show
 	pl, pr := u.pageSteps()
 	u.led(false, push3.CCPageLeft, on(pl))

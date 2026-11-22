@@ -431,7 +431,7 @@ screens are `overrides/<id>/push_ui.js` and `native/<id>/push_ui.js`; `PUNG_GALL
 | Nodal Red 2X | the red panel's sections: slots, oscillators, filter, envelopes, LFOs | 6 |
 | OsTIrus | the TI's display naming the patch's three Soft Knobs over the first encoders, beside the five every player reaches for | 4 |
 | Vavra | the microQ's matrix on charcoal with amber legends and red row LEDs, beside the green dot-matrix display | 9 |
-| Vivace | the three wavetables in three dimensions, the playing frame lit, the filter and what modulates what | none yet |
+| Vivace | the three wavetables in three dimensions, the playing frame lit, the filter and what modulates what | 4 |
 | Xenia | the XT's orange body: the 2 x 40 display, the real wavetable in a dark window, the start positions | 9 |
 
 ## 6. The web page

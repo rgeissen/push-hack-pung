@@ -280,7 +280,7 @@ func TestLEDsSayWhatWorks(t *testing.T) {
 		t.Error("Page < > on the first of 12 pages: < must be dark, > lit")
 	}
 	if lit(push3.CCAdd) || lit(push3.CCNew) {
-		t.Error("Add or New is lit: they do nothing here")
+		t.Error("Add or New is lit: opened from Home they do nothing")
 	}
 	// as Push lights them: the chosen one white, every other option lit in
 	// the track's colour, never the near-black that reads as off
@@ -315,5 +315,28 @@ func TestLEDsSayWhatWorks(t *testing.T) {
 	}
 	if u.leds[uint16(push3.CCScreenBot1)] != ledChosen || u.leds[uint16(push3.CCScreenBot1+3)] == ledChosen || u.leds[uint16(push3.CCScreenBot1+7)] == 0 {
 		t.Error("pages: the shown one must be white, the others and the arrow lit")
+	}
+}
+
+// Add and Swap are Push's own, but where Pung stands in for Push's device
+// view (they reach Push from there) they are lit as Push lights them: Add
+// with a track selected, Swap with a device selected (they were dark, and
+// read as "not here"). Opened from Home they do nothing and stay dark.
+func TestAddSwapLit(t *testing.T) {
+	u := pungView(t)
+	u.focused.Store(true)
+	u.paintLEDs()
+	if u.leds[uint16(push3.CCAdd)] != 0 || u.leds[uint16(push3.CCSwap)] != 0 {
+		t.Error("opened from Home: Add or Swap lit, and they do nothing there")
+	}
+	u.standIn.Store(true)
+	u.paintLEDs()
+	if u.leds[uint16(push3.CCAdd)] == 0 || u.leds[uint16(push3.CCSwap)] == 0 {
+		t.Errorf("chain level with a device selected: Add %d, Swap %d, want both lit", u.leds[uint16(push3.CCAdd)], u.leds[uint16(push3.CCSwap)])
+	}
+	u.live.connected.Store(false)
+	u.paintLEDs()
+	if u.leds[uint16(push3.CCAdd)] != 0 || u.leds[uint16(push3.CCSwap)] != 0 {
+		t.Error("without Live: Add or Swap lit")
 	}
 }

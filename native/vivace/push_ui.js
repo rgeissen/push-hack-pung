@@ -201,14 +201,18 @@ function ring(g, cx, cy, r, f, bip, c, track) {
   g.line(cx + Math.cos(a) * (r - 8), cy + Math.sin(a) * (r - 8), cx + Math.cos(a) * (r - 2), cy + Math.sin(a) * (r - 2), 2, INK);
 }
 function isBip(v, k) { var d = disp(v, k); return /^[+-]/.test(d) || (d === "0%" && /pan|keytrack|velocity|tune/.test(k)); }
+// segment mode: Pung names the segments in the bottom 18 pixels, so the row
+// takes its tighter form above them
+function segOn(v) { return !!v.$segmode; }
 function knobGround(g, v, names) {
+  var seg = segOn(v);
   g.fill(0, ROW, 960, 56, PANEL);
   g.fill(0, ROW, 960, 1, RULE);
   var knobs = v.$knobs || [];
-  for (var i = 1; i < 8; i++) g.fill(i * 120, ROW + 8, 1, 40, RULE);
+  for (var i = 1; i < 8; i++) g.fill(i * 120, ROW + 6, 1, seg ? 30 : 40, RULE);
   for (var j = 0; j < 8; j++) {
     var k = knobs[j] || "", nm = names && names[j] ? names[j] : (k && v[k] ? (v[k].name || "") : "");
-    if (nm) g.text(j * 120 + 60, ROW + 14, up(nm), DIM, 0, 112);
+    if (nm) g.text(j * 120 + 60, ROW + (seg ? 12 : 14), up(nm), DIM, 0, 112);
   }
 }
 function knobRow(g, v, names, values) {
@@ -216,14 +220,14 @@ function knobRow(g, v, names, values) {
   for (var i = 0; i < 8; i++) {
     var k = knobs[i] || "";
     if (!k) continue;
-    var on = k === t, x = i * 120, cx = x + 26, cy = ROW + 35;
+    var seg = segOn(v), on = k === t, x = i * 120, cx = x + 26, cy = ROW + (seg ? 26 : 35);
     if (on) {
-      g.fill(x + 6, ROW + 4, 108, 13, PANEL2);
+      g.fill(x + 6, ROW + (seg ? 2 : 4), 108, 13, PANEL2);
       var nm = names && names[i] ? names[i] : (v[k] ? v[k].name || "" : "");
-      g.text(x + 60, ROW + 14, up(nm), "slot", 0, 108);
+      g.text(x + 60, ROW + (seg ? 12 : 14), up(nm), "slot", 0, 108);
     }
-    ring(g, cx, cy, 14, known(v, k) ? v[k].frac : null, isBip(v, k), on ? "slot" : LILAC);
-    g.value(x + 82, ROW + 40, values && values[i] ? values[i] : up(withUnit(v, k)), on ? "slot" : INK, 0, 70);
+    ring(g, cx, cy, seg ? 10 : 14, known(v, k) ? v[k].frac : null, isBip(v, k), on ? "slot" : LILAC);
+    g.value(x + 82, ROW + (seg ? 31 : 40), values && values[i] ? values[i] : up(withUnit(v, k)), on ? "slot" : INK, 0, 70);
   }
 }
 
@@ -271,7 +275,8 @@ function frontPanel(g, v) {
     return m ? macroNames[+m[1] - 1] : "";
   });
   var key = ["vf", raw(v, "wave_view").length, raw(v, "wave_view").slice(0, 48), names.join("|"), onK.map(function (k) { return disp(v, k); }).join(""),
-    soundName(v), disp(v, "bank_name"), info.preset_style || "", (v.$knobs || []).join(","), rowNames.join("|"), v.$page, (v.$pages || []).length].join("#");
+    soundName(v), disp(v, "bank_name"), info.preset_style || "", (v.$knobs || []).join(","), rowNames.join("|"), v.$page, (v.$pages || []).length,
+    v.$segmode || ""].join("#");
   g.layer(key, function () {
     g.fill(0, 0, 960, 160, GROUND);
     // the sound, as the synth's preset bar names it
@@ -281,7 +286,7 @@ function frontPanel(g, v) {
     var st = up([disp(v, "bank_name"), info.preset_style || ""].filter(function (s) { return s; }).join("  /  "));
     g.text(722, 14, st, DIM, -1, 150);
     var pages = v.$pages || [];
-    if (pages.length > 1) g.text(950, 14, up(pages[v.$page] || "") + "  " + (v.$page + 1) + "/" + pages.length, MUTE, 1, 90);
+    if (pages.length > 1 && !segOn(v)) g.text(950, 14, up(pages[v.$page] || "") + "  " + (v.$page + 1) + "/" + pages.length, MUTE, 1, 90);
     for (var o = 0; o < 3; o++) {
       var x = OSC_X[o], on = isOn(v, onK[o]);
       g.fill(x, 24, OSC_W, 76, PANEL);
@@ -299,6 +304,10 @@ function frontPanel(g, v) {
   for (var oo = 0; oo < 3; oo++)
     drawPlayed(g, OSC_X[oo] + 10, 42, OSC_W - 20, 54, tbl ? tbl[oo] : null, num(v, frK[oo]), isOn(v, onK[oo]),
       hot(v, frK[oo]) ? "slot" : LILAC_LT, oo);
+  // the section in the hands (segment mode): its heading lit
+  var sgi = { osc1: 0, osc2: 1, osc3: 2 }[v.$segmode === "segment" ? v.$segment : ""];
+  if (sgi !== undefined) g.text(OSC_X[sgi] + 18, 35, "OSC " + (sgi + 1), "slot", -1);
+  if (v.$segmode === "segment" && v.$segment === "filter") g.text(730, 35, "FILTER 1", "slot", -1);
   g.text(944, 35, up(disp(v, "filter_1_type")), isOn(v, "filter_1_on") ? LILAC_LT : FAINT, 1, 140);
   g.filter(726, 40, 222, 58, { cutoff: "filter_1_cutoff", resonance: "filter_1_resonance", type: filterKind(v, 1), color: isOn(v, "filter_1_on") ? LILAC : FAINT });
   knobRow(g, v, rowNames);
@@ -534,9 +543,18 @@ push.envelopeTimes(function (env) {
 var SOUND = ["preset_name", "bank_name", "patch_info", "wave_view", "wavetable_names", "osc_1_on", "osc_2_on", "osc_3_on",
   "osc_1_wave_frame", "osc_2_wave_frame", "osc_3_wave_frame", "filter_1_on", "filter_1_type", "filter_1_cutoff",
   "filter_1_resonance", "filter_1_blend"];
+// the panel's sections as segments: each oscillator and the filter, with
+// their first pages' knobs (Pung draws the bar over the one in the hands)
+function pageKeys(label) { return PAGES.filter(function (p) { return p.label === label; })[0].keys; }
 push.compartment({
-  id: "panel", label: "Vivace", front_panel: true,
+  id: "panel", label: "Vivace", front_panel: true, draws_segments: true,
   pages: pagesOf("play"), extra_keys: SOUND,
+  segments: [
+    { id: "osc1", label: "Osc 1", rect: [OSC_X[0], 24, OSC_W, 76], keys: pageKeys("Osc 1") },
+    { id: "osc2", label: "Osc 2", rect: [OSC_X[1], 24, OSC_W, 76], keys: pageKeys("Osc 2") },
+    { id: "osc3", label: "Osc 3", rect: [OSC_X[2], 24, OSC_W, 76], keys: pageKeys("Osc 3") },
+    { id: "filter", label: "Filter 1", rect: [722, 24, 230, 76], keys: pageKeys("Filter 1") }
+  ],
   screen: frontPanel
 });
 var OSC_EXTRA = ["wave_view", "wavetable_names", "osc_1_on", "osc_2_on", "osc_3_on", "sample_on", "osc_1_destination",
