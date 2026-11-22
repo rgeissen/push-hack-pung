@@ -355,7 +355,8 @@ function wavetable(g, x, y, w, h, v, starts, bg) {
   }
   for (var i = n - 1; i >= 0; i--) {
     var bx = x + i * dx, by = y + h - amp - 2 - i * dy, pts = [];
-    for (var j = 0; j < 32; j++) pts.push(bx + j / 31 * ww, by - waves[i][j] * amp);
+    // full-scale waves (K+Strong's bursts) stay inside the window
+    for (var j = 0; j < 32; j++) pts.push(bx + j / 31 * ww, Math.max(y + 1, Math.min(y + h - 1, by - waves[i][j] * amp)));
     var lit = startsAt(starts, i);
     g.area(pts, by + amp + 2, bg);
     g.poly(pts, lit ? 2 : 1, lit ? lit.color : i % 4 === 0 ? ORANGE_GL : BROWN_LT);
