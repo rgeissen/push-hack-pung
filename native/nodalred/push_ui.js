@@ -48,10 +48,10 @@ function slots(v) {
   return out;
 }
 // the four letters, top right: lit = in the layer, boxed = the one the knobs edit
-function badge(g, v) {
+function badge(g, v, right) {
   var sl = slots(v);
   if (sl.length < 4) return;
-  var x = g.w - 4 * 17 - 4;
+  var x = (right || g.w) - 4 * 17 - 4;
   g.fill(x - 4, 1, 4 * 17 + 6, 15, "black");
   for (var i = 0; i < 4; i++) {
     var cx = x + i * 17;
@@ -104,19 +104,24 @@ var A0 = Math.PI * 0.75, SWEEP = Math.PI * 1.5; // a dial: from 7 o'clock, three
 
 // ---- PANEL: the instrument, in its red -----------------------------------------------
 // The whole Push screen as the Nord's front panel: every knob where the
-// hardware has it, standing where the sound has it. Nothing is hidden behind
-// a page: the sound can be read at a glance, as on the instrument itself. The
-// encoders play the eight things a hand reaches for first.
-var RED = "#b3101d", RED_DK = "#7d0b15", RED_ROW = "#3a060b", KNOB = "#141414", INK = "#ffffff", SOFT = "#f2b8bd", LED_ON = "#ffe08a", LED_OFF = "#6d0912";
+// hardware has it, standing where the sound has it, the sections in the
+// hardware's order (LFOs, mod envelope, oscillators, filter, amplifier).
+// Nothing is hidden behind a page: the sound can be read at a glance, as on
+// the instrument itself. The encoders play the eight things a hand reaches
+// for first, drawn as the panel's own knobs: black, a white pointer, the
+// legend printed above, the value in the Nord's red LED display.
+var RED = "#b3101d", RED_DK = "#7d0b15", KNOB = "#141414", KNOB_RIM = "#2c2c2c", INK = "#ffffff", SOFT = "#f2b8bd";
+var LED_ON = "#ffe08a", LED_OFF = "#6d0912", LED_RED = "#ff3b30", LED_GLASS = "#0c0203";
 // A knob is drawn in two parts: its body and its legend never change (the
 // kept layer), its pointer does.
 var KNOBS = [ // key, x, y, legend under it, bipolar
-  ["lfo1_rate", 172, 47, "", 0], ["lfo1_amount", 200, 47, "", 0], ["lfo2_rate", 216, 85, "", 0], ["lfo2_amount", 244, 85, "", 0],
+  ["lfo1_rate", 180, 47, "RATE", 0], ["lfo1_amount", 208, 47, "AMT", 0], ["lfo2_rate", 180, 85, "", 0], ["lfo2_amount", 208, 85, "", 0],
   ["modenv_attack", 326, 47, "ATK", 0], ["modenv_decay", 356, 47, "DEC", 0], ["modenv_amount", 388, 47, "AMT", 1],
   ["osc2_semi", 542, 47, "SEMI", 1], ["osc2_fine", 574, 47, "FINE", 1], ["mix", 614, 47, "MIX", 1], ["fm", 440, 83, "", 0], ["pw", 494, 83, "", 0],
-  ["amp_attack", 668, 47, "A", 0], ["amp_decay", 698, 47, "D", 0], ["amp_sustain", 728, 47, "S", 0], ["amp_release", 758, 47, "R", 0], ["amp_gain", 668, 83, "", 0],
-  ["flt_attack", 812, 47, "A", 0], ["flt_decay", 840, 47, "D", 0], ["flt_sustain", 868, 47, "S", 0], ["flt_release", 896, 47, "R", 0],
-  ["cutoff", 810, 83, "", 0], ["resonance", 866, 83, "", 0], ["filter_env", 915, 83, "", 0]
+  ["flt_attack", 670, 47, "A", 0], ["flt_decay", 698, 47, "D", 0], ["flt_sustain", 726, 47, "S", 0], ["flt_release", 754, 47, "R", 0],
+  ["cutoff", 668, 83, "", 0], ["resonance", 722, 83, "", 0], ["filter_env", 774, 83, "", 0],
+  ["amp_attack", 842, 47, "A", 0], ["amp_decay", 870, 47, "D", 0], ["amp_sustain", 898, 47, "S", 0], ["amp_release", 926, 47, "R", 0],
+  ["amp_gain", 842, 83, "", 0]
 ];
 function section(g, x, w, title) {
   g.fill(x, 22, w, 11, "black");
@@ -124,7 +129,7 @@ function section(g, x, w, title) {
   g.fill(x, 33, 1, 66, RED_DK); g.fill(x + w - 1, 33, 1, 66, RED_DK);
 }
 function pill(g, x, y, s, lit) { // a selector's choice, as the lit LED's legend
-  var w = s.length * 7 + 8;
+  var w = g.measure(s) + 8;
   g.fill(x, y - 9, w, 12, lit ? "black" : RED_DK);
   g.text(x + 4, y, s, lit ? LED_ON : SOFT, -1);
   return x + w + 4;
@@ -134,103 +139,166 @@ function short(s) {
   return String(s).toUpperCase().replace("TRIANGLE", "TRI").replace("SOFT RANDOM", "SOFT RND").replace("RANDOM", "RND")
     .replace("SQUARE", "SQR").replace("OSC 1+2", "OSC1+2").replace("LFO ", "").replace("ARP ", "");
 }
+// a Nord knob: the black cap (kept in the layer) and its white pointer
+function capPointer(g, x, y, r, f, color, width) {
+  var a = A0 + f * SWEEP;
+  g.line(x + Math.cos(a) * r * 0.22, y + Math.sin(a) * r * 0.22, x + Math.cos(a) * (r - 1.5), y + Math.sin(a) * (r - 1.5), width, color);
+}
 // everything on the panel that never changes: drawn once, kept (g.layer)
-function panelGround(g) {
-  g.fill(0, 0, 960, 104, RED);
+function panelGround(g, R) {
+  g.fill(0, 0, 960, 160, RED);
   g.value(10, 17, "NODAL RED 2X", INK, -1);
   section(g, 6, 140, "SLOT");
-  g.fill(12, 38, 60, 34, "black");
-  section(g, 152, 150, "LFO 1");
-  g.text(172, 66, "RATE", SOFT, 0); g.text(202, 66, "AMT", SOFT, 0);
+  g.fill(12, 38, 60, 34, LED_GLASS);
+  section(g, 152, 150, "LFO");
+  g.text(180, 66, "RATE", SOFT, 0); g.text(208, 66, "AMT", SOFT, 0);
+  g.text(158, 51, "1", INK, -1);
   section(g, 308, 104, "MOD ENV");
   section(g, 418, 226, "OSCILLATORS");
   g.fill(424, 38, 44, 20, "black"); g.fill(474, 38, 44, 20, "black");
   g.text(446, 68, "OSC 1", SOFT, 0); g.text(496, 68, "OSC 2", SOFT, 0);
   g.text(456, 87, "FM", SOFT, -1); g.text(510, 87, "PW", SOFT, -1);
-  section(g, 650, 138, "AMPLIFIER");
-  g.text(684, 87, "GAIN", SOFT, -1);
-  section(g, 794, 160, "FILTER");
-  g.text(823, 87, "FREQ", SOFT, -1); g.text(879, 87, "RES", SOFT, -1); g.text(928, 87, "ENV", SOFT, -1);
+  section(g, 650, 168, "FILTER");
+  g.text(681, 87, "FREQ", SOFT, -1); g.text(735, 87, "RES", SOFT, -1); g.text(787, 87, "ENV", SOFT, -1);
+  section(g, 824, 130, "AMPLIFIER");
+  g.text(855, 87, "GAIN", SOFT, -1);
   for (var i = 0; i < KNOBS.length; i++) {
     var k = KNOBS[i];
-    g.dot(k[1], k[2], 8.5, KNOB);
-    if (k[3]) g.text(k[1], k[2] + 19, k[3], SOFT, 0);
+    g.dot(k[1], k[2], 9, KNOB_RIM); g.dot(k[1], k[2], 8, KNOB);
+    if (k[3] && k[0].indexOf("lfo") !== 0) g.text(k[1], k[2] + 19, k[3], SOFT, 0);
   }
-  // the encoder row's ground
-  g.fill(0, 104, 960, 56, RED_ROW);
-  g.fill(0, 104, 960, 2, "black");
-  for (var c = 1; c < 8; c++) g.fill(c * 120, 112, 1, 42, RED_DK);
+  // the encoder row: the same red, under a black rule, eight knobs and their LED displays
+  g.fill(0, 102, 960, 2, "black");
+  for (var c = 0; c < 8; c++) {
+    if (c) g.fill(c * 120, 110, 1, R.rule, RED_DK);
+  }
 }
+// The encoder row's geometry: in segment mode the bottom 18 pixels are
+// Pung's (the segments' names), so the row draws tighter, above y 142.
+var ROW = { name: 119, ky: 138, kr: 13.5, ring: 17, glass: 127, glassH: 24, val: 146, rule: 44 };
+var ROW_SEG = { name: 116, ky: 129, kr: 10, ring: 12.5, glass: 120, glassH: 20, val: 136, rule: 30 };
 function panel(g, v) {
-  var t = v.$touched || "", sl = slots(v);
-  g.layer("panel", function () { panelGround(g); });
+  var t = v.$touched || "", sl = slots(v), R = v.$segmode ? ROW_SEG : ROW;
+  // the ground and the encoder row's empty knobs, kept until the knobs change
+  var kn = v.$knobs || [];
+  g.layer("panel|" + kn.join(",") + "|" + (v.$segmode ? 1 : 0), function () {
+    panelGround(g, R);
+    for (var c = 0; c < 8; c++) {
+      if (!kn[c] || !v[kn[c]]) continue;
+      var kx = c * 120 + 28;
+      g.dot(kx, R.ky, R.kr + 1.5, KNOB_RIM); g.dot(kx, R.ky, R.kr, KNOB);
+      // the scale's two ends, printed on the panel
+      g.dot(kx + Math.cos(A0) * (R.kr + 5), R.ky + Math.sin(A0) * (R.kr + 5), 1.2, SOFT);
+      g.dot(kx + Math.cos(A0 + SWEEP) * (R.kr + 5), R.ky + Math.sin(A0 + SWEEP) * (R.kr + 5), 1.2, SOFT);
+      g.fill(c * 120 + 50, R.glass, 64, R.glassH, LED_GLASS);
+    }
+  });
+  segmentLit(g, v);
   // the pointers
   for (var i = 0; i < KNOBS.length; i++) {
-    var k = KNOBS[i], f = frac(v, k[0], k[4] ? 0.5 : 0), a = A0 + f * SWEEP;
-    if (k[0] === t) g.arc(k[1], k[2], 10.5, 0, Math.PI * 2, 2, INK);
-    g.line(k[1] + Math.cos(a) * 2, k[2] + Math.sin(a) * 2, k[1] + Math.cos(a) * 8, k[2] + Math.sin(a) * 8, 2, INK);
+    var k = KNOBS[i];
+    if (k[0] === t) g.arc(k[1], k[2], 11, 0, Math.PI * 2, 2, "slot");
+    if (known(v, k[0])) capPointer(g, k[1], k[2], 8, frac(v, k[0], 0), INK, 2);
   }
   var nm = disp(v, "preset_name");
   var nw = nm ? g.measure(nm.toUpperCase()) : 0;
   g.text(950, 15, nm ? nm.toUpperCase() : "", INK, 1, 420);
   g.text(950 - nw - 14, 15, (disp(v, "bank_name") || "").toUpperCase(), SOFT, 1, 300);
-  // slots: the display and the four buttons
-  var e = disp(v, "slot") || "A";
-  g.value(42, 62, e, "#ff3b30", 0);
+  // slots: the display (the program's number, in the Nord's red LEDs) and the four buttons
+  var pn = known(v, "preset") ? ("0" + (num(v, "preset", 0) + 1)).slice(-2) : "--";
+  g.value(42, 62, pn, LED_RED, 0);
   for (var j = 0; j < 4; j++) {
     var s = sl[j] || { on: j === 0, edit: j === 0 }, bx = 12 + j * 33;
-    if (!s.on && !s.edit) continue; // a slot that is off is not there to choose: its button is not drawn
     led(g, bx + 13, 79, s.on);
     g.fill(bx, 84, 27, 12, s.edit ? INK : KNOB);
-    g.text(bx + 13, 94, "ABCD".charAt(j), s.edit ? "black" : (s.on ? INK : "#777777"), 0);
+    // a slot that is off cannot be chosen to edit: its letter is unlit
+    g.text(bx + 13, 94, "ABCD".charAt(j), s.edit ? "black" : (s.on ? INK : "#5a5a5a"), 0);
   }
   pill(g, 80, 48, disp(v, "voice_mode").toUpperCase() || "POLY", true);
   pill(g, 80, 62, "UNISON", isOn(v, "unison"));
   pill(g, 80, 76, "PORTA", frac(v, "portamento", 0) > 0.01);
-  // LFO 1 over LFO 2 / arpeggiator
-  pill(g, 220, 44, short(disp(v, "lfo1_wave") || "TRI"), true);
-  pill(g, 220, 58, short(disp(v, "lfo1_dest") || ""), frac(v, "lfo1_amount", 0) > 0.005);
-  var d2 = disp(v, "lfo2_dest"), arp = d2 && !/^LFO |off/i.test(d2);
-  g.text(157, 78, arp ? "ARP" : "LFO 2", INK, -1);
-  pill(g, 258, 89, short(d2 || "OFF").slice(0, 6), !!d2 && !/off/i.test(d2));
+  // LFO 1 over LFO 2 / the arpeggiator
+  pill(g, 226, 44, short(disp(v, "lfo1_wave") || "TRI"), true);
+  pill(g, 226, 58, short(disp(v, "lfo1_dest") || ""), frac(v, "lfo1_amount", 0) > 0.005);
+  var d2 = disp(v, "lfo2_dest"), off2 = !d2 || /off/i.test(d2), arp = !off2 && !/^LFO /i.test(d2) ;
+  g.text(158, 89, "2", INK, -1);
+  pill(g, 226, 82, off2 ? "OFF" : (arp ? (/echo/i.test(d2) ? "ECHO" : "ARP " + short(d2)) : short(d2)), !off2);
+  var s2 = disp(v, "lfo2_sync"), s1 = disp(v, "lfo1_sync");
+  if (synced(v, "lfo2_sync")) pill(g, 226, 96, s2, true);
+  if (synced(v, "lfo1_sync")) g.text(296, 31, "SYNC " + s1, LED_ON, 1);
   // the mod envelope, and the wheel
   pill(g, 314, 82, short(disp(v, "modenv_dest") || "NONE"), Math.abs(frac(v, "modenv_amount", 0.5) - 0.5) > 0.01);
   g.text(314, 96, "WHEEL " + short(disp(v, "modwheel_dest") || ""), SOFT, -1, 94);
   // oscillators
   var w1 = WAVES1[waveIndex(v, "osc1_wave", 4)], w2 = WAVES2[waveIndex(v, "osc2_wave", 4)];
-  g.poly(cached("p1|" + w1, function () { return wavePts(426, 39, 40, 18, function (q) { return osc(w1, q * 2, 0); }); }), 1.5, t === "osc1_wave" ? LED_ON : INK);
-  g.poly(cached("p2|" + w2, function () { return wavePts(476, 39, 40, 18, function (q) { return osc(w2, q * 2, 0); }); }), 1.5, t === "osc2_wave" ? LED_ON : INK);
+  g.poly(cached("p1|" + w1, function () { return wavePts(426, 39, 40, 18, function (q) { return osc(w1, q * 2, 0); }); }), 1.5, t === "osc1_wave" ? "slot" : INK);
+  g.poly(cached("p2|" + w2, function () { return wavePts(476, 39, 40, 18, function (q) { return osc(w2, q * 2, 0); }); }), 1.5, t === "osc2_wave" ? "slot" : INK);
   led(g, 548, 83, isOn(v, "sync")); g.text(555, 87, "SYNC", isOn(v, "sync") ? INK : SOFT, -1);
   led(g, 598, 83, isOn(v, "ringmod")); g.text(605, 87, "RING", isOn(v, "ringmod") ? INK : SOFT, -1);
-  // amplifier, filter
+  // filter: its type, distortion
+  pill(g, 772, 44, short(disp(v, "filter_type") || "LP 12").replace("NOTCH+LP", "NOTCH").replace(" ", ""), true);
+  led(g, 777, 56, isOn(v, "distortion")); g.text(784, 60, "DIST", isOn(v, "distortion") ? INK : SOFT, -1);
+  // amplifier: the octave the keys play in
   var oc = disp(v, "octave");
-  if (oc && oc !== "0") pill(g, 730, 87, "OCT " + oc, true);
-  pill(g, 912, 44, short(disp(v, "filter_type") || "LP 12").replace("NOTCH+LP", "NOTCH").replace(" ", ""), true);
-  led(g, 918, 56, isOn(v, "distortion")); g.text(925, 60, "DIST", isOn(v, "distortion") ? INK : SOFT, -1);
+  pill(g, 896, 87, "OCT " + (oc && oc !== "0" && oc.charAt(0) !== "-" ? "+" : "") + (oc || "0"), !!oc && oc !== "0");
 }
-// the encoder row, in the panel's colours: names and values where the hands expect them
+// The encoder row, as the Nord shows a knob: the legend printed on the red,
+// the black knob with its white pointer, and beside it the value in the red
+// LED display the Nord shows a turned knob in. The touched knob: its legend
+// and value in the slot's colour, a ring around the knob.
 function panelRow(g, v) {
-  var knobs = v.$knobs || [], t = v.$touched;
+  var knobs = v.$knobs || [], t = v.$touched || "", R = v.$segmode ? ROW_SEG : ROW;
   for (var i = 0; i < 8; i++) {
-    var k = knobs[i], cx = i * 120 + 60;
+    var k = knobs[i], x0 = i * 120;
     if (!k || !v[k]) continue;
-    var on = k === t;
-    if (on) g.fill(i * 120 + 4, 108, 112, 48, RED);
-    g.text(cx, 124, String(v[k].name).toUpperCase(), on ? INK : SOFT, 0, 112);
-    g.value(cx, 149, disp(v, k) || "--", INK, 0, 112);
+    var hot = k === t, kx = x0 + 28, ky = R.ky;
+    var nm = String(v[k].name).toUpperCase();
+    // the touched one's legend lit on black, as the panel's lit selector legends are
+    if (hot) { var nw = Math.min(112, g.measure(nm) + 10); g.fill(x0 + 60 - nw / 2, R.name - 10, nw, 13, "black"); }
+    g.text(x0 + 60, R.name, nm, hot ? "slot" : INK, 0, 104);
+    if (hot) g.arc(kx, ky, R.ring, 0, Math.PI * 2, 2, "slot");
+    if (known(v, k)) capPointer(g, kx, ky, R.kr, v[k].frac, hot ? "slot" : INK, 3);
+    var val = known(v, k) ? String(v[k].display || v[k].value) : "--", unit = known(v, k) ? String(v[k].unit || "") : "";
+    var uw = unit ? g.measure(unit) + 3 : 0, cx = x0 + 82;
+    var vw = Math.min(g.measure(val, "value"), 58 - uw);
+    g.value(cx - (vw + uw) / 2, R.val, val, hot ? "slot" : LED_RED, -1, 58 - uw);
+    if (unit) g.text(cx - (vw + uw) / 2 + vw + 3, R.val, unit, SOFT, -1);
   }
   var ps = v.$pages || [];
   if (ps.length > 1) g.text(950, 31, String(ps[v.$page] || "").toUpperCase() + "  " + ((v.$page || 0) + 1) + "/" + ps.length, SOFT, 1);
+}
+// The panel's sections, each one press away (segment mode): where it sits,
+// and the knobs a hand reaches for in it, in the panel's order.
+var SEGMENTS = [
+  { id: "slot", label: "Slot", rect: [6, 22, 140, 78], keys: ["slot", "slot_a", "slot_b", "slot_c", "slot_d", "voice_mode", "unison", "portamento"] },
+  { id: "lfo", label: "LFO", rect: [152, 22, 150, 78], keys: ["lfo1_rate", "lfo1_amount", "lfo1_wave", "lfo1_dest", "lfo2_rate", "lfo2_amount", "lfo2_dest", "lfo2_sync"] },
+  { id: "modenv", label: "Mod Env", rect: [308, 22, 104, 78], keys: ["modenv_attack", "modenv_decay", "modenv_amount", "modenv_dest", "modwheel_dest"] },
+  { id: "osc", label: "Oscillators", rect: [418, 22, 226, 78], keys: ["osc1_wave", "osc2_wave", "osc2_semi", "osc2_fine", "mix", "fm", "pw", "sync"] },
+  { id: "filter", label: "Filter", rect: [650, 22, 168, 78], keys: ["cutoff", "resonance", "filter_env", "filter_type", "flt_attack", "flt_decay", "flt_sustain", "flt_release"] },
+  { id: "amp", label: "Amplifier", rect: [824, 22, 130, 78], keys: ["amp_attack", "amp_decay", "amp_sustain", "amp_release", "amp_gain", "octave"] }
+];
+// the segment the encoders play: its section's legend lit (the title bar in
+// the slot's colour); Pung draws the bar above it
+function segmentLit(g, v) {
+  if (v.$segmode !== "segment" || !v.$segment) return;
+  for (var i = 0; i < SEGMENTS.length; i++) {
+    var s = SEGMENTS[i];
+    if (s.id !== v.$segment) continue;
+    var x = s.rect[0], w = s.rect[2];
+    g.fill(x, 22, w, 11, "slot");
+    g.text(x + 5, 31, s.label.toUpperCase(), "black", -1);
+  }
 }
 push.compartment({
   id: "panel", label: "Panel", front_panel: true,
   pages: [
     { label: "Panel", keys: ["slot", "cutoff", "resonance", "filter_env", "mix", "amp_attack", "amp_release", "portamento"] }
   ],
-  extra_keys: ["slots_info", "preset_name", "bank_name", "voice_mode", "unison", "lfo1_rate", "lfo1_amount", "lfo1_wave", "lfo1_dest",
-    "lfo2_rate", "lfo2_amount", "lfo2_dest", "modenv_attack", "modenv_decay", "modenv_amount", "modenv_dest", "modwheel_dest",
-    "osc1_wave", "osc2_wave", "osc2_semi", "osc2_fine", "fm", "pw", "sync", "ringmod", "amp_decay", "amp_sustain", "amp_gain",
-    "octave", "flt_attack", "flt_decay", "flt_sustain", "flt_release", "filter_type", "distortion"],
+  segments: SEGMENTS, draws_segments: true,
+  extra_keys: ["slots_info", "preset", "preset_name", "bank_name", "voice_mode", "unison", "lfo1_rate", "lfo1_amount", "lfo1_wave", "lfo1_dest",
+    "lfo1_sync", "lfo2_rate", "lfo2_amount", "lfo2_dest", "lfo2_sync", "modenv_attack", "modenv_decay", "modenv_amount", "modenv_dest",
+    "modwheel_dest", "osc1_wave", "osc2_wave", "osc2_semi", "osc2_fine", "fm", "pw", "sync", "ringmod", "amp_decay", "amp_sustain",
+    "amp_gain", "octave", "flt_attack", "flt_decay", "flt_sustain", "flt_release", "filter_type", "distortion"],
   screen: function (g, v) { panel(g, v); panelRow(g, v); }
 });
 // every other screen carries the red at its left edge
@@ -253,7 +321,7 @@ function slotTile(g, x, w, s, letter, touched) {
   g.text(x + w - 6, y + 76, MODES[s.mode] + (s.uni ? " U" : ""), s.on ? "dim" : "faint", 1);
   // cutoff: a bar under the waves
   g.fill(x + 6, y + 64, w - 12, 2, "line");
-  g.fill(x + 6, y + 64, Math.round((w - 12) * s.cut), 2, s.on ? "slot" : "faint");
+  g.fill(x + 6, y + 64, Math.round((w - 12) * s.cut), 2, s.on ? "dim" : "faint");
 }
 push.compartment({
   id: "slots", label: "Slots",
@@ -265,15 +333,15 @@ push.compartment({
   screen: function (g, v) {
     red(g);
     var sl = slots(v), t = v.$touched || "";
-    // over the Edit Slot knob: the letter the panel edits
+    // over the Edit Slot knob: the letter the panel edits, in the Nord's LED display
     var e = disp(v, "slot") || "A";
-    g.text(8, 14, "THE KNOBS EDIT", "dim", -1);
-    g.value(60, 62, "SLOT " + e, "slot", 0);
-    var kn = v.$knobs || [];
-    var nOn = 0;
-    for (var q = 0; q < sl.length; q++) if (sl[q].on) nOn++;
+    g.text(60, 13, "THE KNOBS EDIT", "dim", 0);
+    g.fill(14, 20, 92, 40, "#1c0407"); frame(g, 14, 20, 92, 40, false);
+    g.value(60, 47, e, t === "slot" ? "slot" : LED_RED, 0);
+    var kn = v.$knobs || [], onl = "";
+    for (var q = 0; q < sl.length; q++) if (sl[q].on) onl += (onl ? " " : "") + "ABCD".charAt(q);
     // the knob moves among the slots that are on: with one, there is nowhere to go
-    if (kn[0] === "slot") g.text(60, 80, nOn > 1 ? "TURN TO CHANGE" : "THE ONLY SLOT ON", "faint", 0);
+    if (kn[0] === "slot") g.text(60, 76, onl.length > 1 ? "TURN: " + onl : "ONLY SLOT ON", "faint", 0, 104);
     for (var i = 0; i < 4; i++) {
       var s = sl[i] || { on: false, edit: false, w1: 0, w2: 0, cut: 0, res: 0, ft: 0, mix: 0.5, mode: 2, uni: false, name: "" };
       slotTile(g, 124 + i * 120, 112, s, "ABCD".charAt(i), t === "slot_" + "abcd".charAt(i));
@@ -346,6 +414,8 @@ push.compartment({
 });
 
 // ---- FILTER ----------------------------------------------------------------------------
+// a band's heading: the section's name, and what it says beside it
+function heading(g, x, s, lit) { g.text(x, 12, s, lit ? "fg" : "dim", -1); }
 push.compartment({
   id: "filter", label: "Filter",
   pages: [
@@ -355,26 +425,27 @@ push.compartment({
   extra_keys: ["slots_info"],
   screen: function (g, v) {
     red(g);
-    var half = 480;
-    g.filter(4, 2, half - 12, 82, { cutoff: "cutoff", resonance: "resonance", type: "filter_type" });
+    var half = 480, t = v.$touched || "";
+    heading(g, 10, short(disp(v, "filter_type") || "LP 12"), t === "filter_type");
+    // what else shapes it, in the panel's words
+    var flags = [], kt = disp(v, "filter_kbt");
+    if (kt && kt.toLowerCase() !== "off") flags.push("KBD " + kt.toUpperCase());
+    if (isOn(v, "filter_velo")) flags.push("VELOCITY");
+    if (isOn(v, "distortion")) flags.push("DIST");
+    g.text(half - 14, 12, flags.join("  "), "dim", 1, 300);
+    g.filter(4, 16, half - 14, 68, { cutoff: "cutoff", resonance: "resonance", type: "filter_type" });
     // where the envelope takes the cutoff: a mark on the frequency axis
     var env = frac(v, "filter_env", 0), cut = frac(v, "cutoff", 0);
     if (env > 0.01) {
-      var x0 = 10 + (half - 24) * cut, x1 = 10 + (half - 24) * Math.min(1, cut + env * (1 - cut));
-      g.fill(x0, 80, Math.max(2, x1 - x0), 2, "mod");
-      // the label on its own ground: the curve's floor runs through here
-      var lx = x1 + 4 > half - 34 ? x0 - 30 : x1 + 4;
-      g.fill(lx - 2, 76, 28, 10, "#000000");
-      g.text(lx, 84, "ENV", "mod", -1);
+      var x0 = 10 + (half - 26) * cut, x1 = 10 + (half - 26) * Math.min(1, cut + env * (1 - cut));
+      g.fill(x0, 80, Math.max(2, x1 - x0), 2, t === "filter_env" ? "slot" : "mod");
+      var lx = x1 + 4 > half - 40 ? x0 - 30 : x1 + 4;
+      g.fill(lx - 2, 75, 28, 10, "#000000");
+      g.text(lx, 84, "ENV", t === "filter_env" ? "slot" : "mod", -1);
     }
     g.line(half, 6, half, 82, 1, "line");
-    g.envelope(half + 8, 2, half - 16, 82, { attack: "flt_attack", decay: "flt_decay", sustain: "flt_sustain", release: "flt_release", labels: true });
-    var flags = [];
-    if (isOn(v, "filter_velo")) flags.push("VELOCITY");
-    if (isOn(v, "distortion")) flags.push("DISTORTION");
-    var kt = disp(v, "filter_kbt");
-    if (kt && kt.toLowerCase() !== "off") flags.push("KEYS " + kt.toUpperCase());
-    if (flags.length) g.text(half - 12, 13, flags.join("  "), "dim", 1);
+    heading(g, half + 12, "FILTER ENVELOPE", t.indexOf("flt_") === 0);
+    g.envelope(half + 8, 16, half - 16, 68, { attack: "flt_attack", decay: "flt_decay", sustain: "flt_sustain", release: "flt_release", labels: true });
     badge(g, v);
   }
 });
@@ -389,38 +460,58 @@ push.compartment({
   extra_keys: ["slots_info"],
   screen: function (g, v) {
     red(g);
-    var half = 480;
-    g.envelope(4, 2, half - 12, 82, { attack: "amp_attack", decay: "amp_decay", sustain: "amp_sustain", release: "amp_release", labels: true });
+    var half = 480, t = v.$touched || "";
+    heading(g, 10, "AMP ENVELOPE", t.indexOf("amp_") === 0 && t !== "amp_gain");
+    g.envelope(4, 16, half - 14, 68, { attack: "amp_attack", decay: "amp_decay", sustain: "amp_sustain", release: "amp_release", labels: true });
     g.line(half, 6, half, 82, 1, "line");
-    // gain: a level
-    var gain = frac(v, "amp_gain", 1), x = half + 12;
-    g.text(x, 14, "GAIN", "dim", -1);
-    g.fill(x, 22, 96, 6, "line"); g.fill(x, 22, Math.round(96 * gain), 6, hot(v, "amp_gain") ? "slot" : "fg");
+    // gain: the output's level, a meter's scale
+    var x = half + 14, gain = frac(v, "amp_gain", 1);
+    heading(g, x, "GAIN", t === "amp_gain");
+    for (var i = 0; i < 16; i++) {
+      var on = i < Math.round(gain * 16);
+      g.fill(x + i * 7, 20, 5, 10, on ? (t === "amp_gain" ? "slot" : "fg") : "line");
+    }
+    g.text(x, 48, "OCTAVE", "dim", -1);
+    var oc = disp(v, "octave") || "0";
+    g.value(x, 72, (oc !== "0" && oc.charAt(0) !== "-" ? "+" : "") + oc, t === "octave" ? "slot" : "fg", -1);
+    g.text(x + 56, 72, "BEND " + (disp(v, "bend_range") || "--"), t === "bend_range" ? "slot" : "dim", -1);
     // how keys are played, in words
     var mode = disp(v, "voice_mode").toUpperCase() || "POLY", uni = isOn(v, "unison"), porta = frac(v, "portamento", 0);
-    var voices = mode === "POLY" ? (uni ? 2 : 1) : (uni ? 4 : 1);
-    g.value(x + 120, 30, mode, hot(v, "voice_mode") ? "slot" : "fg", -1);
+    var voices = mode === "POLY" ? (uni ? 2 : 1) : (uni ? 4 : 1), x2 = half + 160;
+    g.value(x2, 28, mode, t === "voice_mode" ? "slot" : "fg", -1);
     var say = mode === "POLY" ? "CHORDS" : (mode === "LEGATO" ? "ONE NOTE, TIED NOTES DO NOT RETRIGGER" : "ONE NOTE, EVERY KEY RETRIGGERS");
-    g.text(x + 120, 46, say, "dim", -1, 330);
-    g.text(x + 120, 62, uni ? "UNISON: " + voices + " VOICES A KEY" : "ONE VOICE A KEY", uni ? "mod" : "dim", -1, 330);
-    g.text(x + 120, 78, porta > 0.01 ? "GLIDE" + (isOn(v, "porta_auto") ? " ON TIED NOTES" : " ON EVERY NOTE") : "NO GLIDE", porta > 0.01 ? "fg" : "faint", -1, 330);
-    g.text(x, 46, "OCTAVE", "dim", -1); g.text(x, 62, disp(v, "octave") || "0", "fg", -1);
+    g.text(x2, 46, say, "dim", -1, 300);
+    g.text(x2, 62, uni ? "UNISON: " + voices + " VOICES A KEY" + (disp(v, "unison_detune") ? ", DETUNE " + disp(v, "unison_detune") : "") : "ONE VOICE A KEY",
+      t === "unison" || t === "unison_detune" ? "slot" : (uni ? "mod" : "dim"), -1, 300);
+    g.text(x2, 78, porta > 0.01 ? "GLIDE" + (isOn(v, "porta_auto") ? " ON TIED NOTES" : " ON EVERY NOTE") : "NO GLIDE",
+      t === "portamento" || t === "porta_auto" ? "slot" : (porta > 0.01 ? "fg" : "faint"), -1, 300);
     badge(g, v);
   }
 });
 
 // ---- MODULATION: who moves what ---------------------------------------------------------
-var DESTS = ["OSC 1+2", "OSC 2", "FM", "PW", "FILTER", "AMP", "MORPH"];
-function destOf(name) {
-  var s = String(name).toUpperCase().replace(/^LFO /, "");
-  if (s === "OSC 1+2") return 0;
-  if (s === "OSC 2") return 1;
-  if (s === "FM") return 2;
-  if (s === "PW") return 3;
-  if (s === "FILTER") return 4;
-  if (s === "AMP") return 5;
-  if (s === "MORPH") return 6;
+// The Nord's modulation is a few fixed routes: each source has its selector,
+// and its LEDs name where it can go. Left, the sources that move in time (an
+// LFO, the mod envelope: Pung's pictures, live); on the Wheel / Pedal page,
+// what pressure and the pedal do. Right, the routes as the panel has them: a
+// row a source, a column a destination, a faint dot where its selector could
+// point, the lit one where it does, as large as its amount.
+var DCOLS = ["OSC1+2", "OSC 2", "FM", "PW", "FILTER", "AMP", "LFO 1", "MORPH"];
+function destCol(name) {
+  var s = String(name).toUpperCase();
+  if (s === "LFO 1") return 6;
+  s = s.replace(/^LFO /, "").replace("OSC 1+2", "OSC1+2");
+  for (var i = 0; i < DCOLS.length; i++) if (DCOLS[i] === s) return i;
   return -1;
+}
+var CAN = [[3, 4, 1, 0, 2], [5, 0, 4], [1, 2, 3], [4, 2, 1, 6, 7]]; // LFO 1, LFO 2, mod env, wheel: where each selector can point
+var SRC = ["LFO 1", "LFO 2", "MOD ENV", "WHEEL"];
+var GX = 512, CX0 = 574, GW = 47, GROWS = [29, 45, 61, 77]; // the routes: a column a destination, a row a source
+function lfo2Text(v) {
+  var d2 = disp(v, "lfo2_dest"), a = frac(v, "lfo2_amount", 0), r = Math.round(a * 4);
+  if (!d2 || /off/i.test(d2)) return "OFF";
+  if (/echo/i.test(d2)) return "ECHO  " + Math.round(a * 8) + " REPEATS";
+  return "ARP " + d2.replace(/^Arp /i, "").toUpperCase() + "  " + (r ? r + " OCT" : "RANGE OFF");
 }
 push.compartment({
   id: "mod", label: "Modulation",
@@ -433,72 +524,79 @@ push.compartment({
   extra_keys: ["slots_info"],
   screen: function (g, v) {
     red(g);
-    var t = v.$touched || "", srcX = 250, dstX = 640, rows = [12, 32, 52, 72];
-    // destinations
-    var used = [0, 0, 0, 0, 0, 0, 0];
-    function link(row, name, amount, mine) {
-      var d = destOf(name);
-      if (d < 0 || amount <= 0.004) return;
-      used[d] = 1;
-      var y0 = rows[row], y1 = 8 + d * 11.5;
-      g.poly([srcX, y0, srcX + 60, y0, dstX - 60, y1, dstX, y1], 1 + amount * 3, mine ? "slot" : "mod");
-    }
-    // LFO 1
-    var l1 = t.indexOf("lfo1_") === 0;
-    g.text(8, rows[0] + 4, "LFO 1", l1 ? "fg" : "dim", -1);
-    // synced to the clock (a note value), it runs on Live's beat: the playhead follows it
-    g.lfo(60, rows[0] - 9, 110, 18, { shape: "lfo1_wave", rate: synced(v, "lfo1_sync") ? "lfo1_sync" : "lfo1_rate" });
-    g.text(srcX - 6, rows[0] + 4, disp(v, "lfo1_sync") && disp(v, "lfo1_sync").toLowerCase() !== "off" ? disp(v, "lfo1_sync") : "", "dim", 1);
-    link(0, disp(v, "lfo1_dest"), frac(v, "lfo1_amount", 0), l1);
-    // LFO 2, or the arpeggiator
-    var l2 = t.indexOf("lfo2_") === 0, d2 = disp(v, "lfo2_dest"), isLfo = /^LFO /i.test(d2);
-    g.text(8, rows[1] + 4, isLfo || !d2 || /off/i.test(d2) ? "LFO 2" : "ARP", l2 ? "fg" : "dim", -1);
-    if (isLfo) {
-      g.lfo(60, rows[1] - 9, 110, 18, { shape: "Triangle", rate: synced(v, "lfo2_sync") ? "lfo2_sync" : "lfo2_rate" });
-      link(1, d2, frac(v, "lfo2_amount", 0), l2);
-    } else if (d2 && !/off/i.test(d2)) {
-      var range = Math.round(frac(v, "lfo2_amount", 0) * 4);
-      g.text(60, rows[1] + 4, d2.replace(/^Arp /i, "").toUpperCase() + (/echo/i.test(d2) ? "  " + Math.round(frac(v, "lfo2_amount", 0) * 8) + " REPEATS" : (range ? "  " + range + " OCT" : "  RANGE OFF")), "mod", -1, 180);
+    var t = v.$touched || "", pg = v.$page || 0;
+    var d2 = disp(v, "lfo2_dest"), lfo2 = /^LFO /i.test(d2), amt = (frac(v, "modenv_amount", 0.5) - 0.5) * 2;
+    if (pg < 3) {
+      // the LFO this page is about (LFO 1 on the others): synced to the clock, it runs on Live's beat
+      var n = pg === 1 ? 2 : 1, p = "lfo" + n + "_", sync = synced(v, p + "sync");
+      heading(g, 10, n === 2 && !lfo2 ? (/echo/i.test(d2) ? "ECHO" : "ARPEGGIATOR") : "LFO " + n, t.indexOf(p) === 0);
+      if (n === 1 || lfo2) {
+        g.text(230, 12, (n === 1 ? short(disp(v, "lfo1_wave")) : "TRI") + (sync ? "  " + disp(v, p + "sync") : ""), "dim", 1);
+        g.lfo(4, 16, 232, 70, { shape: n === 1 ? "lfo1_wave" : "Triangle", rate: sync ? p + "sync" : p + "rate" });
+      } else {
+        g.text(230, 12, sync ? disp(v, "lfo2_sync") : "", "dim", 1);
+        g.value(12, 50, lfo2Text(v), /off/i.test(d2) || !d2 ? "faint" : (t.indexOf("lfo2_") === 0 ? "slot" : "fg"), -1, 230);
+        g.text(12, 72, "PLAYED BY LFO 2'S KNOBS", "faint", -1, 230);
+      }
+      // the mod envelope: attack and decay, up or down at its destination (a note runs along it)
+      heading(g, 254, "MOD ENV", t.indexOf("modenv_") === 0);
+      g.text(254 + g.measure("MOD ENV") + 10, 12, (amt < -0.02 ? "INVERTED " : "") + (disp(v, "modenv_amount") || ""), amt < -0.02 ? "mod" : "dim", -1);
+      g.envelope(246, 16, 256, 70, { attack: "modenv_attack", decay: "modenv_decay" });
     } else {
-      g.text(60, rows[1] + 4, "OFF", "faint", -1);
+      // pressure and the pedal: a destination and how much (0 to 7)
+      var rows = [["PRESSURE", "pressure_"], ["PEDAL", "pedal_"]];
+      for (var r = 0; r < 2; r++) {
+        var k = rows[r][1], a = Math.round(num(v, k + "amount", 0)), h = t.indexOf(k) === 0, y = 14 + r * 40;
+        g.text(10, y, rows[r][0], h ? "fg" : "dim", -1);
+        g.value(10, y + 22, a ? disp(v, k + "dest") : "OFF", h ? "slot" : (a ? "fg" : "faint"), -1, 300);
+        for (var q = 0; q < 7; q++) g.fill(330 + q * 24, y + 8, 18, 12, q < a ? (h ? "slot" : "mod") : "line");
+      }
     }
-    // the mod envelope: attack and decay, up or down
-    var me = t.indexOf("modenv_") === 0, amt = (frac(v, "modenv_amount", 0.5) - 0.5) * 2;
-    g.text(8, rows[2] + 4, "MOD ENV", me ? "fg" : "dim", -1);
-    // Pung's envelope (a note runs along it); a negative amount turns it upside down at its destination
-    g.envelope(60, rows[2] - 11, 120, 22, { attack: "modenv_attack", decay: "modenv_decay" });
-    if (amt < -0.02) g.text(186, rows[2] + 4, "INV", "mod", -1);
-    link(2, disp(v, "modenv_dest"), Math.abs(amt), me);
-    // the wheel
-    var mw = t === "modwheel_dest", wd = disp(v, "modwheel_dest");
-    g.text(8, rows[3] + 4, "WHEEL", mw ? "fg" : "dim", -1);
-    if (/lfo 1/i.test(wd)) g.text(60, rows[3] + 4, "RAISES LFO 1", "mod", -1);
-    else link(3, wd, 0.5, mw);
-    for (var i = 0; i < DESTS.length; i++) g.text(dstX + 8, 12 + i * 11.5, DESTS[i], used[i] ? "fg" : "faint", -1);
-    // pressure and the pedal, in words
-    var x = 760, pa = Math.round(frac(v, "pressure_amount", 0) * 7), pe = Math.round(frac(v, "pedal_amount", 0) * 7);
-    g.text(x, 14, "PRESSURE", "dim", -1); g.text(x, 28, pa ? disp(v, "pressure_dest").toUpperCase() + "  " + pa : "OFF", pa ? "fg" : "faint", -1, 190);
-    g.text(x, 50, "PEDAL", "dim", -1); g.text(x, 64, pe ? disp(v, "pedal_dest").toUpperCase() + "  " + pe : "OFF", pe ? "fg" : "faint", -1, 190);
-    badge(g, v);
+    g.line(506, 6, 506, 82, 1, "line");
+    // the routes
+    function reach(row, name, amount, touched) {
+      var can = CAN[row], d = destCol(name), y = GROWS[row];
+      g.text(GX + 4, y + 4, SRC[row], row === pg || touched ? "fg" : "dim", -1);
+      for (var i = 0; i < can.length && (row !== 1 || lfo2); i++) g.dot(CX0 + can[i] * GW + GW / 2, y, 1.8, "line");
+      if (d < 0 || amount <= 0.004) return -1;
+      var cx = CX0 + d * GW + GW / 2;
+      g.line(CX0, y, cx - 6, y, 1, touched ? "slot" : (row === pg ? "dim" : "line"));
+      g.dot(cx, y, 3 + amount * 4, touched ? "slot" : "mod");
+      return d;
+    }
+    var used = {};
+    used[reach(0, disp(v, "lfo1_dest"), frac(v, "lfo1_amount", 0), t === "lfo1_dest" || t === "lfo1_amount")] = 1;
+    used[reach(1, lfo2 ? d2 : "", frac(v, "lfo2_amount", 0), t === "lfo2_dest" || t === "lfo2_amount")] = 1;
+    used[reach(2, disp(v, "modenv_dest"), Math.abs(amt), t === "modenv_dest" || t === "modenv_amount")] = 1;
+    used[reach(3, disp(v, "modwheel_dest"), 0.6, t === "modwheel_dest")] = 1; // the wheel has no amount: it goes the whole way
+    if (!lfo2) g.text(CX0 + 4, GROWS[1] + 4, d2 && !/off/i.test(d2) ? "PLAYS THE ARPEGGIATOR" : "", "faint", -1);
+    for (var c = 0; c < DCOLS.length; c++) g.text(CX0 + c * GW + GW / 2, 13, DCOLS[c], used[c] ? "fg" : "faint", 0, GW - 4);
+    badge(g, v, 500);
   }
 });
 
 // ---- MORPH: every range on its knob ---------------------------------------------------------
 // A range is in the knob's own steps (-128..127): at full morph the knob
-// stands at its value plus the range, kept on the dial.
+// stands at its value plus the range, kept on the dial. Each knob as the
+// panel has it, black with its white pointer; around it, the arc full morph
+// sweeps it through, ending in a dot; under it, from where to where.
 function morphDial(g, col, v, key, base, steps) {
-  var cx = col * 120 + 60, cy = 50, r = 27;
+  var cx = col * 120 + 60, cy = 44, r = 25;
   var b = frac(v, base, 0), range = num(v, key, 0) / steps, to = Math.max(0, Math.min(1, b + range)), on = hot(v, key);
-  g.arc(cx, cy, r, A0, SWEEP, 2, "line");
-  if (Math.abs(to - b) > 0.004) {
+  g.arc(cx, cy, r, A0, SWEEP, 1, "line");
+  g.dot(cx, cy, 16, KNOB_RIM); g.dot(cx, cy, 14.5, KNOB);
+  if (known(v, base)) capPointer(g, cx, cy, 14.5, b, INK, 2.5);
+  if (Math.abs(to - b) > 0.004 && known(v, key)) {
     var from = Math.min(b, to), len = Math.abs(to - b);
-    g.arc(cx, cy, r, A0 + from * SWEEP, len * SWEEP, 5, on ? "slot" : "mod");
+    g.arc(cx, cy, r, A0 + from * SWEEP, len * SWEEP, 4, on ? "slot" : "mod");
     var ta = A0 + to * SWEEP; // the arrow's head: where full morph ends
     g.dot(cx + Math.cos(ta) * r, cy + Math.sin(ta) * r, 4, on ? "slot" : "mod");
+    // from where to where, in the knob's own numbers
+    var raw = num(v, base, 0), lo = raw - b * steps, tgt = Math.round(lo + to * steps);
+    g.text(cx, 84, (known(v, base) ? disp(v, base) : "--") + " > " + tgt, on ? "slot" : "fg", 0, 112);
+  } else {
+    g.text(cx, 84, known(v, key) ? "NO MORPH" : "--", "faint", 0, 112);
   }
-  var ba = A0 + b * SWEEP;
-  g.line(cx + Math.cos(ba) * (r - 9), cy + Math.sin(ba) * (r - 9), cx + Math.cos(ba) * (r + 4), cy + Math.sin(ba) * (r + 4), 2, "fg");
-  g.text(cx, cy + 4, known(v, base) ? disp(v, base) : "", "dim", 0);
 }
 function morphPage(label, pairs) {
   var keys = [], bases = [];
@@ -506,10 +604,17 @@ function morphPage(label, pairs) {
   return {
     label: "Morph " + label, keys: keys,
     screen: function (g, v) {
-    red(g);
-      g.text(8, 12, "MORPH", "dim", -1);
-      g.text(g.w - 84, 12, "LINE: THE KNOB   ARC: WHERE VELOCITY OR THE WHEEL TAKES IT", "dim", 1);
+      red(g);
       for (var i = 0; i < pairs.length; i++) morphDial(g, i, v, keys[i], bases[i], pairs[i][1] || 127);
+      // the legend, where a column is free
+      var x = pairs.length * 120 + 10;
+      if (pairs.length < 8) {
+        g.text(x, 30, "MORPH", "fg", -1);
+        g.text(x, 46, "VELOCITY OR", "dim", -1);
+        g.text(x, 58, "THE WHEEL", "dim", -1);
+        g.text(x, 70, "TURNS EVERY", "dim", -1);
+        g.text(x, 82, "KNOB AT ONCE", "dim", -1);
+      }
       badge(g, v);
     }
   };

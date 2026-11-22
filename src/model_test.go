@@ -95,7 +95,9 @@ func TestUnknownKeyIsReadOnly(t *testing.T) {
 }
 
 func TestDisplayAndStep(t *testing.T) {
-	cm := buildMeta("braids", getter(map[string]string{"chain_params": braidsParams}))
+	// a name of its own: Braids' shipped screen file, loaded by another
+	// test, formats its values (push.display)
+	cm := buildMeta("braids-params-test", getter(map[string]string{"chain_params": braidsParams}))
 	timbre := cm.Params["timbre"]
 	if v, u := timbre.display("0.35", true); v != "35" || u != "%" {
 		t.Fatalf("timbre shows %q %q", v, u)

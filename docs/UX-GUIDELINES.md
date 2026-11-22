@@ -113,7 +113,7 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
 | | Upper display buttons | Lower display buttons |
 |---|---|---|
 | **Chain level** | the track's devices, the selected one filled, then `+` | Live's tracks |
-| **Device open** | button 1: `< NAME`, back; button 8: `SOUNDS` | the device's pages, the shown one filled |
+| **Device open** | button 1: `< NAME`, back; button 7: `SEGMENTS` / `EXIT` (a front panel with segments); button 8: `SOUNDS` | the device's pages, the shown one filled; in segment mode the panel's segments |
 
 - **A device's button selects it; the selected one's opens and closes it.** Another device or track
   selected: back at chain level.
@@ -121,6 +121,31 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
   (`front_panel`), selecting the device opens it at once, so the panel is what you see first. Button 1
   still goes back to chain level, and it stays there until another device is selected.
 - **The encoders edit at both levels**: at chain level they show the selected device's last page.
+- **Segments: any part of a front panel under the hands.** A front panel shows the whole instrument; the
+  screen file may cut it into segments (`segments` in `push.compartment`, overrides.md), each a place on
+  the panel and up to eight keys. In the open device upper button 7 then reads `SEGMENTS` (lit):
+  1. Press it: **select mode**. The lower buttons name the segments, and Pung outlines each one on the
+     panel with its number and name, so the hand sees which button is which part. Upper 7 again, upper 1
+     or a jog nudge left: back to the overview.
+  2. Press a lower button: **segment mode**. The encoders play that segment's keys (names, values, touch,
+     Delete + touch, through Live as always), the panel's encoder row relabels itself, and a bar in the
+     slot colour lies along the active segment's top edge (its heading may light up too, in the panel's
+     idiom). Nothing is dimmed: the rest of the instrument stays in view. The lower
+     buttons keep naming the segments, the active one white: another segment is one press away.
+  3. **The jog wheel walks them without a look at the buttons**: in segment mode (choosing or in one)
+     turning it steps to the next or previous segment (it stops at the ends); a nudge right goes into
+     the first segment from the overview, then on to the next (after the last, the first again); from
+     the overview **Shift + the wheel** goes straight in (right the first, left the last). In the
+     overview the wheel alone steps pages, as always. A nudge left goes back out.
+  4. Upper 7 is EXIT: back to the overview's encoders and page tabs (a jog nudge left too: right is
+     one level in, left one level out, as Push's jog). Choosing, it reads `EXIT`; in a segment Pung
+     draws **no top row at all** (the device's name, SOUNDS and EXIT say nothing there, and the jog
+     turned does not bring them): upper 7's white light and the filled segment name below say the
+     mode. Upper 1 leaves the device, as always; leaving it, a page of another compartment or another
+     device leave segment mode too.
+
+  Upper 7 is lit where the panel has segments and white while the mode is on; the lower buttons are lit
+  for the segments then. While the mode is on, the bottom 18 pixels (the segments' names) are Pung's.
 - **Rows scroll as Push's do**: an arrow on the last button while more follow, on the first once
   scrolled, one step a press (`rowSlots`).
 - **The jog wheel**: at chain level a focus along the devices (framed), its press opens the focused one;
@@ -151,7 +176,7 @@ and a chain of nine devices, 2026-11-16), not taken from a manual, and `src/cont
   that took it for its sounds would take away the way to swap one Pung device for another.
 - **`+` after the last device**, as on Push: it hands the screen to Push and presses Add there (adding a
   device is Push's own browser); backing out of the browser returns to Pung's view.
-- **Not there yet**: the upper buttons 2 to 8 of an open device (Push puts a page's switches there), automation dots, moving a
+- **Not there yet**: the upper buttons 2 to 6 of an open device (Push puts a page's switches there), automation dots, moving a
   device by holding its button.
 - **A full-panel screen** (a front panel, §5) belongs to the open device. It hides the two rows, so they are
   drawn over it for a moment on opening, on a page turn and while the jog wheel is touched: the way back
@@ -345,6 +370,9 @@ If it only restyles the default page, it does not ship.
 6. **A front panel replaces Pung's elements, so it owns their jobs**: every encoder's name and value
    (`v.$knobs`), the touched one in slot colour, which page of how many. The bottom 56 pixels are the
    encoder row, by convention (y 104 to 160), so that the hands find their values where they always are.
+   Draw that row from `v.$knobs`, never from a fixed list: with segments (§3, The controls) they are the
+   active segment's keys, and while segment mode is on the row ends at y 142 (Pung names the segments
+   under it; `g.knobs` does both by itself).
 7. **A picture over knobs is aligned with them** where the parts are places (a keyboard's break point
    over its knob). An envelope is not drawn by a module at all (rule 1): Pung's envelope draws each
    segment as wide as its knob has turned, and names it in the stage bar, on every module alike.
@@ -356,19 +384,55 @@ If it only restyles the default page, it does not ship.
 
 ### Showcase
 
-| Module | Compartment | Kind | What it shows that knobs cannot |
-|---|---|---|---|
-| JE-8086 | Patch | front panel | the JP-8000's LCD (P:A11, the patch name, the parameter being turned), both oscillators' waves, the filter's response, the amp envelope, LFO 1: the patch at a glance while the encoders play its macros |
-| JE-8086 | Osc, Filter & Amp, LFO & Mod, FX, Play & Arp, System | default | the tabs of its own web panel, its numbered sections as pages |
-| Mini-JV | Macros | front panel | the JV-880's LCD and its four tones: which wave, how loud, where panned, their amp envelopes. A JV patch is four tones |
-| Mini-JV | Tone 1-4, Pitch / Filter / Amp Env pages | default | Pung's envelope (T1 T2 T3 S T4), on the JV's own times (`push.envelopeTimes`) |
-| Dexed | Algorithm | front panel | the algorithm as the DX7 prints it (from Dexed's own table), ratios and levels in the operators, the feedback loop, the six envelopes; encoders: algorithm, feedback, six levels |
-| Dexed | Operator 1-6 EG, Pitch EG | default | Pung's envelope (R1 R2 R3 S R4), on msfa's own times (`push.envelopeTimes`) |
-| Dexed | Operator 1-6 Key Scale | page screens | keyboard level scaling over a keyboard |
-| Osirus | Filters, Envelopes | band screens | the filter routing as a signal path with both responses; both envelopes with the sustain slope in words |
-| OB-Xd, Braids | (pages) | default + widgets | their own widgets over their knobs |
-| Hera | DCO, VCF (and Main) | default + widgets | the wave the Juno's DCO puts out (saw, pulse at its width, the sub an octave down, noise as a band) summed at their levels, the pulse width and how far PWM moves it; the filter and where the envelope takes the cutoff |
-| Every other module | (pages) | default | Pung's envelope, filter, LFO and mix wherever one is recognized; pages from the module's sections or names |
+Every instrument below opens on a front panel in its own idiom (its sections, colours, words and the way
+it presents itself; never a maker's logo or name), with the encoder row drawn as that instrument's
+controls, and its segments marked for segment mode. Pages of plain knobs stay on the default view. The
+screens are `overrides/<id>/push_ui.js` and `native/<id>/push_ui.js`; `PUNG_GALLERY` draws them all.
+
+| Module | Its face (front panel) | Segments |
+|---|---|---|
+| 303 | the silver panel: one knob row in the 303's order, the waveform switch, accent, slide and the sweep of the resonant filter; the Devilfish additions | 6 |
+| 6W6 | the small silver box: eight instruments side by side, each over its lower button, a red LED as it is hit, the voice drawn as it sounds | 4 |
+| 8W8 | the wall of sixteen instruments on warm grey: cream (or orange, alternate voice) name plates, orange knobs, the coloured button row | 7 |
+| 9W9 | the light panel of headed instrument sections, each with its knobs in two rows | 6 |
+| Aphex | the black semi-modular panel: sections left, the patch panel right, its cables drawn from what each jack has plugged in | 5 |
+| Bouba-Kiki | the contour itself, from round to spiky, drawn with the module's own geometry, and what it makes of the sound | 3 |
+| Braids | the four-letter LED display naming the algorithm, TIMBRE and COLOR named as the algorithm means them | 3 |
+| Chiptune | the chip, pixel for pixel: pulses at their duty and 4-bit level, the triangle's stairs, the wave table, the noise register, in the chip's palette | 7 |
+| Chordism | the chord the engine builds: four voices wired to the keys they play, the scale marked | 6 |
+| CW-78 | the wooden rhythm box: voice sliders with trim pots and lamps, the coloured rhythm buttons, the A/B lever | 8 |
+| Denis | the Serge wall on dark blue: the fixed patch's modules and the 4 x 8 modulation matrix | 7 |
+| Dexed | the DX7's brown chassis: LED, LCD, the cartridge as membrane keys, the algorithm as the DX7 prints it, six operator envelopes | 8 |
+| Essaim | the swarm: 32 voices, each at its pitch, speed and filter mode, read from the module's state | 5 |
+| Fizzik | a physics notebook: the bodies in section, strike and pickup, their modes and partials | 6 |
+| Forge | a smithy: Kit A in cold steel, Kit B molten, the morph between them, sixteen pads as hot as it has taken them | 5 |
+| MrHyde (freak) | the small white-on-black type screen with its macros, the filter, the copper touch plates' matrix | 4 |
+| Hank | what each of its eight macros does, over its own knob: the partials the ratio and index make, the modulator's wave | 2 |
+| Helm | its dark panel of titled sections with their live displays: both oscillators, filter, envelopes, LFOs | 8 |
+| Hera | the Juno-60's fader row under coloured section strips, the encoders as faders | 5 |
+| Hush One | the SH-101's boxed slider sections, left to right as the signal goes | 7 |
+| JE-8086 | the slate panel: the LCD (P:A11, the name, the parameter turned), MODE and PANEL SELECT buttons with LEDs, waves, filter, envelope, LFO | 6 |
+| KrautDrums | the late-sixties organ-top unit: teak, rhythm tabs, drawbars for the voice levels, a red jewel lamp | 3 |
+| Maze Voice | one signal path: two oscillators, the mixer, the ORDER of folder and filter (their places follow it, `g.segment`), the two decays | 5 |
+| Mini-JV | the one-unit rack: LCD, PATCH / PERFORM with LEDs, the four tones at a glance | 5 |
+| MonkSynth | the character singing: its portrait from the module's rig, the mouth shaped by the vowel, the twelve characters | 4 |
+| Mono Voice | the machine's graphic LCD: four-letter names that change with the machine, three-digit values | 6 |
+| RaffoSynth (moog) | the classic mono between wooden cheeks: controllers, four oscillators, mixer, ladder filter, contours | 7 |
+| NoiseMaker | its macro page as the instrument's panel: the oscillators' summed wave, the filter, both envelopes | 6 |
+| NuSaw | the fan of detuned saws in the stereo field, from the engine's own laws, and the scope | 4 |
+| OB-Xd | the long black panel of knob rows cut by its legends, push buttons with red LEDs | 7 |
+| Osirus | the classic Virus's red-brown panel with printed frames and its two-line display | 4 |
+| Plaits | the engine as one lit LED in a column of eight in its bank's colour, the three knobs named as the engine means them | 3 |
+| Sophie | liquid chrome on black: sixteen pads, each model in its own acid colour | 8 |
+| Surge XT | Surge's dark panel in its orange: sliders, the oscillator display, the filter configuration as Surge draws it | 12 |
+| Tablor | the real wavetable as a waterfall, the playing frame lit | 4 |
+| Weird Dreams | a night: eight voices in the colours of their kinds, each one's strike | 8 |
+| Wurl | the reed bar over the keyboard on the piano's black lid, the vibrato and the amplifier | 4 |
+| Nodal Red 2X | the red panel's sections: slots, oscillators, filter, envelopes, LFOs | 6 |
+| OsTIrus | the TI's display naming the patch's three Soft Knobs over the first encoders, beside the five every player reaches for | 4 |
+| Vavra | the microQ's matrix on charcoal with amber legends and red row LEDs, beside the green dot-matrix display | 9 |
+| Vivace | the three wavetables in three dimensions, the playing frame lit, the filter and what modulates what | none yet |
+| Xenia | the XT's orange body: the 2 x 40 display, the real wavetable in a dark window, the start positions | 9 |
 
 ## 6. The web page
 

@@ -125,7 +125,8 @@ func overlaysDraw(t *testing.T, rel string) {
 			for _, touched := range []string{"", c.keys[0]} {
 				knobs := make([]string, 8)
 				copy(knobs, c.keys)
-				info := map[string]any{"$knobs": knobs, "$pages": []string{"ONE", "TWO"}, "$page": 0, "$name": "X", "$track": "1-X"}
+				info := map[string]any{"$knobs": knobs, "$pages": []string{"ONE", "TWO"}, "$page": 0, "$name": "X", "$track": "1-X",
+					"$segmode": "", "$segment": "", "$segments": segList(c)}
 				pl := placement{w: &ovWidget{keys: c.screenKeys(), draw: c.screen}, col: 0, span: 8, full: c.takeover, info: info}
 				img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
 				if !set.render(img, pl, vals(c.screenKeys()), touched, slotColor(0)) {
@@ -136,6 +137,29 @@ func overlaysDraw(t *testing.T, rel string) {
 					f, _ := os.Create(filepath.Join(dir, fmt.Sprintf("%s-%s-%t.png", e.Name(), c.id, touched != "")))
 					png.Encode(f, img)
 					f.Close()
+				}
+			}
+			// a panel with segments (segments.go): choosing one, and each one's
+			// segment mode, as the Push tells the screen
+			tabs := make([]string, 8)
+			for i, sg := range c.segments {
+				tabs[i] = sg.label
+			}
+			for i := -1; i < len(c.segments); i++ {
+				knobs := make([]string, 8)
+				copy(knobs, c.keys)
+				info := map[string]any{"$pages": []string{"ONE"}, "$page": 0, "$name": "X", "$track": "1-X",
+					"$segmode": "select", "$segment": "", "$segments": segList(c), "$tabs": tabs, "$tab": i}
+				if i >= 0 {
+					knobs = make([]string, 8)
+					copy(knobs, c.segments[i].keys)
+					info["$segmode"], info["$segment"] = "segment", c.segments[i].id
+				}
+				info["$knobs"] = knobs
+				pl := placement{w: &ovWidget{keys: c.screenKeys(), draw: c.screen}, col: 0, span: 8, full: c.takeover, info: info}
+				img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+				if !set.render(img, pl, vals(c.screenKeys()), knobs[0], slotColor(0)) {
+					t.Errorf("%s/%s in segment mode %v: %s", e.Name(), c.id, info["$segment"], set.failed)
 				}
 			}
 		}

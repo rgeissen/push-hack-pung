@@ -295,7 +295,7 @@ func (h *Host) buildClasses() []*sclass {
 		}
 		switch m.Type {
 		case "sound_generator":
-			if moduleWantsAudioIn(m) {
+			if moduleIsInputSource(m) {
 				continue // Line In and friends: Live has its own inputs
 			}
 			ps := toVstParams(cm, "synth")
@@ -377,18 +377,24 @@ func shortName(m ModuleInfo) string {
 	return m.Name
 }
 
-func moduleWantsAudioIn(m ModuleInfo) bool {
+// moduleIsInputSource: a sound generator that takes audio and plays no notes
+// (Line In): Live has its own inputs. A synth with an audio input of its own
+// beside its notes (Aphex's ESP, the MS-20's external signal processor) is
+// an instrument like any other: it was left out of Live with Line In until
+// 2026-11-22.
+func moduleIsInputSource(m ModuleInfo) bool {
 	raw, err := os.ReadFile(filepath.Join(m.Dir, "module.json"))
 	if err != nil {
 		return false
 	}
 	var j struct {
 		Capabilities struct {
-			AudioIn bool `json:"audio_in"`
+			AudioIn bool  `json:"audio_in"`
+			MidiIn  *bool `json:"midi_in"`
 		} `json:"capabilities"`
 	}
 	json.Unmarshal(raw, &j)
-	return j.Capabilities.AudioIn
+	return j.Capabilities.AudioIn && (j.Capabilities.MidiIn == nil || !*j.Capabilities.MidiIn)
 }
 
 // ---- the provider: one Pung chain per device ----------------------------------

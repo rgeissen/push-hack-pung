@@ -205,19 +205,23 @@ func TestLiveModuleScreens(t *testing.T) {
 	dxVals := raws(egKeys, map[string]float64{"eg_r1": 50, "eg_r2": 50, "eg_r3": 50, "eg_r4": 50, "eg_l1": 99, "eg_l2": 80, "eg_l3": 60, "eg_l4": 0}, 99)
 	check("dexed-op1", dx, "Op 1 EG", egKeys, dxVals, []float64{0.1712, 0.2090, 0.2322, -1, 0.9462}, "R1 R2 R3 S R4")
 
-	// Braids' envelope widget, on a live session
+	// Braids' amp envelope (its Amp screen, Pung's g.envelope), on a live session
 	br := load("braids")
 	s := &Slot{}
 	ls := &liveSession{slot: s, pics: map[string]*livePic{}, subs: map[chan []byte]bool{}}
-	w := br.widgets[0]
+	amp := br.compartment("amp")
+	if amp == nil || amp.screen == nil {
+		t.Fatal("braids: no Amp screen")
+	}
+	w := &ovWidget{keys: amp.screenKeys(), draw: amp.screen}
 	vals := map[string]ovValue{}
-	for i, k := range w.keys {
+	for i, k := range []string{"attack", "decay", "sustain", "release"} {
 		f := []float64{0.3, 0.4, 0.6, 0.5}[i]
 		vals[k] = ovValue{Value: fmt.Sprint(f), Name: k, Frac: f, Type: "float", Min: 0, Max: 1, Unit: "%", Known: true}
 	}
 	draw := func(name string) *image.NRGBA {
 		img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
-		pl := placement{w: w, col: 0, span: len(w.keys), live: ls, liveOut: ls.frame(), liveKey: "t/braids"}
+		pl := placement{w: w, col: 0, span: 8, live: ls, liveOut: ls.frame(), liveKey: "t/braids"}
 		if !br.render(img, pl, vals, "", slotColor(0)) {
 			t.Fatalf("braids: %s", br.failed)
 		}
@@ -232,10 +236,12 @@ func TestLiveModuleScreens(t *testing.T) {
 	ls.tick()
 	out := ls.frame()
 	if len(out.Envs) != 1 {
-		t.Fatalf("the widget's envelope is not in the session: %+v", out.Envs)
+		t.Fatalf("the screen's envelope is not in the session: %+v", out.Envs)
 	}
 	for _, l := range out.Envs {
-		if len(l.Voices) != 1 || l.Source != "curve" {
+		// "module": Braids' screen file tells the plugin's own stage times
+		// (push.envelopeTimes), so the note runs on them, not on Pung's estimate
+		if len(l.Voices) != 1 || l.Source != "module" {
 			t.Fatalf("braids live %+v", l)
 		}
 	}

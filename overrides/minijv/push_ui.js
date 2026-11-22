@@ -3,13 +3,15 @@
 // Editor's four tones with that page's sections (Wave, Pitch, Filter, Amp,
 // LFO 1, LFO 2, Mod, Aftertouch, Expression), in its order and names.
 //
-// Two pictures, each showing what knobs cannot:
-// - Macros (front panel): the JV-880's LCD, and its four TONES at a glance:
-//   which sound, which wave, how loud, where panned, their amp envelopes.
-//   A JV patch IS four tones; a row of knobs never shows that. Live, from
-//   the emulated chip itself: every voice's amplitude in the LCD, and every
-//   voice's filter cutoff on one axis, moving as the JV's envelopes and LFOs
-//   move them.
+// Macros (front panel) is the JV-880's own face, a one-unit rack: its LCD
+// (the patch number as Roland counts a bank, the name, the parameter being
+// turned), its PATCH / PERFORM buttons with their LEDs, and its four TONES
+// at a glance: each one's TONE SWITCH, wave, level, pan and amp envelope.
+// A JV patch IS four tones; a row of knobs never shows that. Live, from the
+// emulated chip itself: every voice's amplitude in the LCD, and every
+// voice's filter cutoff on one axis, moving as the JV's envelopes and LFOs
+// move them. The encoders are the LCD's parameter line, as the JV edits
+// everything through its display.
 //
 // The JV's 4-stage envelopes (pitch, filter, amp: T1-T4 and L1-L4) are
 // Pung's own envelope, the picture every module's envelopes get
@@ -18,8 +20,7 @@
 // long its stages take: push.envelopeTimes gives Pung the JV's own times
 // (JV_TIME), so every note's dot runs through them as the chip does.
 
-var ACCENT = "#ff8a3d", LCD_BG = "#1d270c", LCD_EDGE = "#3c4f18", LCD_INK = "#cfe878", LCD_DIM = "#7f9440";
-var CARD = "#1d2026", ON = "#4ade80";
+var LCD_BG = "#1b250b", LCD_EDGE = "#34451a", LCD_INK = "#cfe878", LCD_DIM = "#7f9440";
 var PC = "nvram_patchCommon_";
 
 function known(v, k) { return v[k] && v[k].known; }
@@ -33,6 +34,22 @@ function modeIndex(v) {
   return s.indexOf("perf") === 0 ? 1 : s.indexOf("patch") === 0 ? 0 : s.indexOf("sys") === 0 ? 2 : -1;
 }
 function tk(t, s) { return "nvram_tone_" + t + "_" + s; }
+
+// how the JV's bare numbers read wherever Pung writes them (its pages, the
+// row under a screen): pans as Roland writes them (L64 .. C .. R63), tunings
+// and transposes about their centre, key ranges as notes, parts from 1
+var NOTE = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+function lr(n) { return n === 0 ? "C" : n < 0 ? "L" + -n : "R" + n; }
+function signed(n) { return (n > 0 ? "+" : "") + n; }
+push.display(function (key, raw) {
+  var n = Math.round(parseFloat(raw));
+  if (isNaN(n)) return;
+  if (/^nvram_tone_\d_pan$/.test(key)) return lr(n);
+  if (key === "nvram_patchCommon_patchpan" || key === "partpan") return lr(n - 64);
+  if (key === "partcoarsetune" || key === "partfinetune" || key === "internalkeytranspose") return signed(n - 64);
+  if (key === "internalkeyrangelower" || key === "internalkeyrangeupper") return NOTE[n % 12] + (Math.floor(n / 12) - 1);
+  if (key === "part") return String(n + 1);
+});
 
 // ---- the JV's 4-stage envelope ------------------------------------------------------
 
@@ -81,7 +98,38 @@ push.envelopeTimes(function (env) {
   });
 });
 
+
 // ---- Macros: the front panel ------------------------------------------------------------
+//
+// The JV-880 is a one-unit rack: a dark face between two rack ears, its
+// backlit LCD, rubber buttons with red LEDs, the TONE SWITCH buttons 1-4.
+// Everything is edited through its LCD, so the encoder row is that LCD's
+// parameter line: a name and a value per field, the cursor on the one
+// being turned.
+
+var FACE = "#17181b", EAR = "#26282d", HOLE = "#0b0c0d", RULE = "#34373d";
+var LEGEND = "#b9bcc2", LEGEND_DIM = "#7c8088", BTN = "#2a2d33", BTN_EDGE = "#41454d";
+var LED_ON = "#ff3b2f", LED_OFF = "#3b2220";
+
+var LCD = { x: 22, y: 8, w: 442, h: 58 };
+// the encoder row's LCD: the bottom 56 px, or, while segment mode is on, the
+// part above Pung's segment names (y 142..160 are Pung's then)
+var STRIP_FULL = { x: 16, y: 107, w: 928, h: 49, name: 14, val: 35, blk: 41 };
+var STRIP_SEG = { x: 16, y: 106, w: 928, h: 34, name: 11, val: 27, blk: 29 };
+function strip(v) { return v.$segmode ? STRIP_SEG : STRIP_FULL; }
+var TVF = { x: 232, y: 88, w: 232 };             // the voices' cutoffs
+var TONE_X = 478, TONE_W = 117;                  // the four tones, x 478..946
+
+// the patch number: the bank, then group and number as Roland counts a bank of
+// 64 (11..88); the module's list is Preset A, Preset B, Internal, then
+// the expansions
+function patchNumber(v) {
+  if (!known(v, "preset")) return "---";
+  var i = parseInt(v.preset.value, 10) || 0, b = Math.floor(i / 64), n = i % 64;
+  var bank = b === 0 ? "PR-A" : b === 1 ? "PR-B" : b === 2 ? "INT" : "EXP";
+  if (b > 2) return bank + " " + ("000" + (i - 191)).slice(-4);
+  return bank + " " + (Math.floor(n / 8) + 1) + (n % 8 + 1);
+}
 
 // ---- the chip's voices, live -------------------------------------------------------
 // The module reads them from the emulated PCM chip (live_voices): each
@@ -108,17 +156,17 @@ function voices(v) {
   return null;
 }
 
-// amplitude in the LCD: one bar per voice, dB scaled; a keyed voice in ink,
-// one ringing out after its key in the dim ink
+// amplitude in the LCD: one column per voice, dB scaled, in whole rows of
+// the LCD's dots; a keyed voice in ink, one ringing out after its key dim
 function voiceMeter(g, vs, x, y, w, h) {
   var n = vs.length, cw = w / n;
   for (var i = 0; i < n; i++) {
-    var a = vs[i].amp, bx = x + i * cw + 2, bw = Math.max(2, cw - 4);
-    g.fill(bx, y + h - 1, bw, 1, LCD_EDGE);
+    var a = vs[i].amp, bw = Math.max(2, Math.round(cw * 0.6)), bx = Math.round(x + i * cw + (cw - bw) / 2);
     if (a <= 0) continue;
     var db = 20 * Math.log(a) / Math.LN10, f = Math.max(0, Math.min(1, (db + 48) / 48));
     if (f <= 0) continue;
-    g.fill(bx, y + h - f * h, bw, f * h, vs[i].keyed ? LCD_INK : LCD_DIM);
+    var fh = Math.max(3, Math.round(f * h / 3) * 3);
+    g.fill(bx, y + h - fh, bw, fh, vs[i].keyed ? LCD_INK : LCD_DIM);
   }
 }
 
@@ -126,77 +174,141 @@ function voiceMeter(g, vs, x, y, w, h) {
 // chip's coefficient, on a log scale): a filter envelope or an LFO is seen
 // moving them
 function tvfStrip(g, vs, x, y, w) {
-  g.text(x, y + 11, "TVF", "dim", -1);
-  var ax = x + 30, aw = w - 30, mid = y + 7;
-  g.fill(ax, mid, aw, 1, "line");
   for (var i = 0; i < vs.length; i++) {
     var vo = vs[i];
     if (vo.amp <= 0.0005) continue;
     var u = Math.max(0, Math.min(1, (Math.log(Math.max(1, vo.cut)) / Math.LN2 - 6) / 9)); // 2^6 .. 2^15
-    g.fill(ax + u * aw - 1, mid - 5, 3, 11, vo.keyed ? "mod" : "#2a5a66");
+    g.fill(Math.round(x + u * w) - 1, y - 6, 3, 13, vo.keyed ? "mod" : "#2a5a66");
+  }
+}
+
+// the face, the ears, the LCDs' glass, the printed legends, the encoder
+// fields' dot blocks
+var BLOCKS = 14;
+function blockX(c, b) { return c * 120 + 60 - (BLOCKS * 6 - 2) / 2 + b * 6; }
+function ground(g, v) {
+  var fields = (v.$knobs || []).map(function (k) { return !!(k && v[k]); });
+  g.fill(0, 0, 960, 160, FACE);
+  // the rack ears, each with its two slots
+  [0, 950].forEach(function (x) {
+    g.fill(x, 0, 10, 160, EAR);
+    g.fill(x ? x : 9, 0, 1, 160, HOLE);
+    [22, 138].forEach(function (y) { g.fill(x + 3, y - 6, 4, 12, HOLE); g.dot(x + 5, y - 6, 2, HOLE); g.dot(x + 5, y + 6, 2, HOLE); });
+  });
+  // the LCD
+  g.fill(LCD.x - 3, LCD.y - 3, LCD.w + 6, LCD.h + 6, "#050605");
+  g.fill(LCD.x, LCD.y, LCD.w, LCD.h, LCD_BG);
+  // the TVF axis beside the buttons: every voice's cutoff, low to high
+  g.text(TVF.x - 10, TVF.y + 4, "TVF", LEGEND_DIM, 1);
+  g.fill(TVF.x, TVF.y, TVF.w, 1, RULE);
+  for (var q = 0; q <= 4; q++) g.fill(TVF.x + Math.round(q * (TVF.w - 1) / 4), TVF.y - 2, 1, 5, RULE);
+  // the tone section's rules
+  for (var i = 1; i < 4; i++) g.fill(TONE_X + i * TONE_W, 8, 1, 90, RULE);
+  // the encoder row: the LCD's parameter line, its fields, and each
+  // field's row of dot blocks
+  var STRIP = strip(v);
+  g.fill(STRIP.x - 3, STRIP.y - 3, STRIP.w + 6, STRIP.h + 6, "#050605");
+  g.fill(STRIP.x, STRIP.y, STRIP.w, STRIP.h, LCD_BG);
+  for (var c = 1; c < 8; c++) g.fill(c * 120, STRIP.y + 6, 1, STRIP.h - 12, LCD_EDGE);
+  for (c = 0; c < 8; c++) {
+    if (!fields[c]) continue;
+    for (var b = 0; b < BLOCKS; b++) g.fill(blockX(c, b), STRIP.y + STRIP.blk, 4, 3, LCD_EDGE);
   }
 }
 
 function lcd(g, v) {
-  var x = 8, y = 6, w = 444, h = 70;
-  g.fill(x - 1, y - 1, w + 2, h + 2, LCD_EDGE);
-  g.fill(x, y, w, h, LCD_BG);
-  var num = known(v, "preset") ? ("00" + (parseInt(v.preset.value, 10) + 1)).slice(-3) : "---";
-  g.value(x + 14, y + 24, "#" + num, LCD_INK, -1);
-  var name = disp(v, "preset_name");
-  g.value(x + 92, y + 24, name === "--" ? "" : name.toUpperCase(), LCD_INK, -1);
-  var vs = voices(v);
-  if (vs) voiceMeter(g, vs, x + 10, y + 31, w - 20, 22);
-  var t = v.$touched;
-  if (t && v[t]) {
-    g.text(x + 14, y + 65, String(v[t].name).toUpperCase(), LCD_INK, -1);
-    g.text(x + w - 14, y + 65, disp(v, t) + (v[t].unit ? " " + v[t].unit : ""), LCD_INK, 1);
+  var x = LCD.x + 10, r = LCD.x + LCD.w - 10, t = v.$touched;
+  var perf = modeIndex(v) === 1, num = perf ? "PERF " + (known(v, "performance") ? ("0" + (parseInt(v.performance.value, 10) + 1)).slice(-2) : "--") : patchNumber(v);
+  g.value(x, LCD.y + 21, num, LCD_INK, -1);
+  var nx = x + g.measure(num, "value") + 12, ps = v.$pages || [];
+  var pg = ps.length > 1 ? String(ps[v.$page]).toUpperCase() + " " + (v.$page + 1) + "/" + ps.length : "";
+  if (pg) g.text(r, LCD.y + 19, pg, LCD_DIM, 1);
+  var name = disp(v, "preset_name").replace(/\s+$/, "");
+  g.value(nx, LCD.y + 21, name === "--" ? "" : name.toUpperCase(), LCD_INK, -1, r - nx - (pg ? g.measure(pg) + 12 : 0));
+  if (t && v[t]) { // the second line: what is being turned, as the JV's edit line
+    var val = disp(v, t) + (known(v, t) && v[t].unit ? " " + v[t].unit : "");
+    g.text(r, LCD.y + 52, val.toUpperCase(), LCD_INK, 1);
+    g.text(x, LCD.y + 52, String(v[t].name).toUpperCase(), LCD_INK, -1, r - x - g.measure(val.toUpperCase()) - 14);
   } else {
     var on = [];
-    for (var i = 0; i < 4; i++) if (fr(v, tk(i, "toneswitch"), 1) > 0.5) on.push(i + 1);
+    for (var i = 0; i < 4; i++) on.push(toneOn(v, i) ? String(i + 1) : "-");
+    g.text(x, LCD.y + 52, "TONE " + on.join(" ") + (fr(v, "link_tones", 0) > 0.5 ? "   LINKED" : ""), LCD_DIM, -1);
+  }
+}
+
+// the chip, live: every voice's level in the LCD, how many sound, every
+// voice's cutoff on the TVF axis (drawn over the layer, every frame)
+function chip(g, v, vs) {
+  var x = LCD.x + 10, r = LCD.x + LCD.w - 10;
+  voiceMeter(g, vs, x - 2, LCD.y + 27, r - x + 4, 12);
+  if (!v.$touched || !v[v.$touched]) {
     var sounding = 0;
-    if (vs) for (var j = 0; j < vs.length; j++) if (vs[j].amp > 0.0005) sounding++;
-    g.text(x + 14, y + 65, ("TONES " + (on.length ? on.join(" ") : "OFF")) + (fr(v, "link_tones", 0) > 0.5 ? "   LINKED" : ""), LCD_DIM, -1);
-    if (vs) g.text(x + w - 14, y + 65, sounding + " OF " + vs.length + " VOICES", sounding ? LCD_INK : LCD_DIM, 1);
+    for (var j = 0; j < vs.length; j++) if (vs[j].amp > 0.0005) sounding++;
+    g.text(r, LCD.y + 52, sounding + "/" + vs.length + " VOICES", sounding ? LCD_INK : LCD_DIM, 1);
   }
+  tvfStrip(g, vs, TVF.x, TVF.y, TVF.w);
 }
 
-function chip(g, x, y, s, on) {
-  var w = s.length * 7 + 12;
-  g.fill(x, y, w, 15, on ? ACCENT : "#262a31");
-  g.text(x + 6, y + 12, s, on ? "black" : "dim", -1);
-  return x + w + 6;
+// a rubber button, its LED over it, the legend printed on the face beside it
+function button(g, x, y, s, lit, hot) {
+  g.fill(x, y, 18, 12, hot ? "slot" : BTN_EDGE);
+  g.fill(x + 1, y + 1, 16, 10, BTN);
+  g.dot(x + 9, y - 5, 2.5, lit ? LED_ON : LED_OFF);
+  g.text(x + 24, y + 10, s, hot ? "slot" : lit ? LEGEND : LEGEND_DIM, -1);
 }
 
-function toneCard(g, v, i) {
-  var x = 464 + i * 122, on = fr(v, tk(i, "toneswitch"), 1) > 0.5, ink = on ? "fg" : "dim";
-  g.fill(x, 6, 116, 94, CARD);
-  g.text(x + 8, 19, "TONE " + (i + 1), on ? "fg" : "dim", -1);
-  g.dot(x + 104, 15, 4, on ? ON : "#3a3f48");
-  var grp = disp(v, tk(i, "wavegroup"));
-  g.text(x + 8, 35, (grp === "--" ? "" : grp.toUpperCase() + " ") + "#" + disp(v, tk(i, "wavenumber")), ink, -1);
-  // level, and pan under it
-  var lv = fr(v, tk(i, "level"), 0), pan = fr(v, tk(i, "pan"), 0.5);
-  g.fill(x + 8, 42, 100, 3, "line");
-  g.fill(x + 8, 42, lv * 100, 3, on ? ACCENT : "dim");
-  g.fill(x + 8 + pan * 96, 48, 4, 4, ink);
-  g.envelope(x + 2, 52, 112, 44, { keys: envKeys(i, "Amp") });
+function buttons(g, v) {
+  var m = modeIndex(v), t = v.$touched || "";
+  button(g, LCD.x, 84, "PATCH", m === 0, t === "mode");
+  button(g, LCD.x + 78, 84, "PERFORM", m === 1, t === "mode");
 }
 
-function knobRow(g, v) {
-  var knobs = v.$knobs || [], t = v.$touched;
-  g.fill(0, 104, 960, 1, "line");
+// whether a tone sounds (its TONE SWITCH): unknown until read
+function toneOn(v, i) { return known(v, tk(i, "toneswitch")) && v[tk(i, "toneswitch")].frac > 0.5; }
+
+// a tone: its TONE SWITCH (the LED says it sounds), its wave, level and pan,
+// and its amp envelope (Pung's, on the JV's own times)
+function tone(g, v, i) { // its printed parts (in the layer)
+  var x = TONE_X + i * TONE_W + 8, w = TONE_W - 16, on = toneOn(v, i), t = v.$touched || "";
+  var hot = t.indexOf("nvram_tone_" + i + "_") === 0;
+  button(g, x, 14, "TONE " + (i + 1), on, hot);
+  var grp = disp(v, tk(i, "wavegroup")), wn = known(v, tk(i, "wavenumber")) ? ("00" + disp(v, tk(i, "wavenumber"))).slice(-3) : "---";
+  g.text(x, 41, (grp === "--" ? "" : grp.toUpperCase() + " ") + wn, on ? LCD_INK : LCD_DIM, -1);
+  // its level as a bar, its pan in words beside it
+  var lv = fr(v, tk(i, "level"), 0), pk = tk(i, "pan"), pn = known(v, pk) ? parseInt(v[pk].value, 10) : 0;
+  var pan = !known(v, pk) ? "--" : pn === 0 ? "C" : pn < 0 ? "L" + -pn : "R" + pn;
+  g.fill(x, 47, w - 30, 3, RULE);
+  g.fill(x, 47, Math.round(lv * (w - 30)), 3, on ? LCD_INK : LCD_DIM);
+  g.text(x + w, 51, pan, on ? LEGEND : LEGEND_DIM, 1);
+}
+function toneEnvelope(g, v, i) { // Pung's envelope, live: over the layer
+  var x = TONE_X + i * TONE_W + 8, w = TONE_W - 16;
+  g.envelope(x - 4, 56, w + 8, 44, { keys: envKeys(i, "Amp"), color: toneOn(v, i) ? LCD_INK : LCD_DIM });
+}
+
+// the encoder row: the LCD's parameter line, a field per encoder
+function row(g, v) {
+  var knobs = v.$knobs || [], t = v.$touched || "", STRIP = strip(v);
   for (var i = 0; i < 8; i++) {
-    var k = knobs[i], cx = i * 120 + 60;
-    if (i) g.fill(i * 120, 112, 1, 44, "faint");
+    var k = knobs[i];
     if (!k || !v[k]) continue;
-    var hot = k === t;
-    g.text(cx, 124, String(v[k].name).toUpperCase().slice(0, 15), hot ? "fg" : "dim", 0);
-    g.value(cx, 149, disp(v, k), hot ? ACCENT : "fg", 0);
-    if (hot) g.fill(cx - 20, 154, 40, 2, ACCENT);
+    var cx = i * 120 + 60, hot = k === t, ok = known(v, k);
+    var x0 = i ? i * 120 + 6 : STRIP.x + 6, x1 = i < 7 ? i * 120 + 114 : STRIP.x + STRIP.w - 6;
+    g.text(cx, STRIP.y + STRIP.name, String(v[k].name).toUpperCase(), hot ? "slot" : LCD_DIM, 0, x1 - x0);
+    var val = ok ? String(v[k].display || v[k].value) : "--", unit = ok && v[k].unit ? v[k].unit.toUpperCase() : "";
+    var uw = unit ? g.measure(unit) + 4 : 0;
+    g.value(cx - uw / 2, STRIP.y + STRIP.val, val, hot ? "slot" : LCD_INK, 0, x1 - x0 - uw);
+    if (unit) g.text(cx - uw / 2 + g.measure(val, "value") / 2 + 4, STRIP.y + STRIP.val, unit, LCD_DIM, -1);
+    // where the value sits in its range, in the field's dot blocks (from the
+    // middle for a value either side of zero)
+    if (!ok) continue;
+    var f = v[k].frac, d = String(v[k].display || v[k].value).trim();
+    var both = /^([+-]\d|[LR]\d|C$)/.test(d) || (d === "0" && Math.abs(f - 0.5) < 0.02);
+    var a = both ? Math.min(f, 0.5) : 0, b = both ? Math.max(f, 0.5) : f;
+    for (var s = 0; s < BLOCKS; s++) {
+      if ((s + 1) / BLOCKS > a + 1e-6 && s / BLOCKS < b - 1e-6) g.fill(blockX(i, s), STRIP.y + STRIP.blk, 4, 3, hot ? "slot" : LCD_INK);
+    }
   }
-  var ps = v.$pages || [];
-  if (ps.length > 1) g.text(452, 96, String(ps[v.$page]).toUpperCase() + "  " + (v.$page + 1) + "/" + ps.length, "dim", 1);
 }
 
 var toneExtras = [];
@@ -204,27 +316,69 @@ for (var ti = 0; ti < 4; ti++) {
   ["toneswitch", "wavegroup", "wavenumber", "level", "pan"].concat(ENV.Amp.t, ENV.Amp.l).forEach(function (s) { toneExtras.push(tk(ti, s)); });
 }
 
+// ---- segments: the JV's own sections under the hands ------------------------------------
+// COMMON (the patch's own values, edited on the JV through its LCD) and the
+// four tones, each with what its strip shows and a player reaches for. Pung
+// draws the bar above the active one; a tone's legend is lit too, as the JV
+// marks the tone it edits (TONE SELECT).
+
+var SEGMENTS = [
+  { id: "common", label: "Common", rect: [16, 2, 456, 100], keys: [PC + "patchlevel", PC + "patchpan", PC + "analogfeel", PC + "keyassign", PC + "portamentoswitch", PC + "portamentotime", PC + "bendrangeup", PC + "bendrangedown"] }
+];
+for (var si = 0; si < 4; si++) {
+  SEGMENTS.push({ id: "tone" + (si + 1), label: "Tone " + (si + 1), rect: [TONE_X + si * TONE_W, 2, TONE_W, 100],
+    keys: ["toneswitch", "wavenumber", "level", "pan", "cutofffrequency", "resonance", "tvaenvtime1", "tvaenvtime4"].map(function (s) { return tk(si, s); }) });
+}
+
+function segmentMark(g, v) {
+  if (v.$segmode !== "segment" || !v.$segment) return;
+  var m = /^tone([1-4])$/.exec(v.$segment);
+  if (!m) return;
+  var i = +m[1] - 1, x = TONE_X + i * TONE_W;
+  g.fill(x + 31, 14, 60, 12, FACE);
+  g.text(x + 32, 24, "TONE " + (i + 1), "slot", -1);
+}
+
+var MACRO_PAGES = [
+  { label: "Macros", keys: ["macro_cutoff", "macro_resonance", "macro_attack", "macro_decay", "macro_sustain", "macro_release", "macro_tvf_env_depth", "macro_lfo_depth"] },
+  { label: "Patch", keys: ["mode", "part", "octave_transpose", "link_tones"] }
+];
+var MACRO_EXTRA = ["preset", "preset_name", "performance"].concat(toneExtras);
+// what the face's layer shows depends on: every value but the chip's live
+// voices, the touch and the page
+var MACRO_SIG = MACRO_PAGES[0].keys.concat(MACRO_PAGES[1].keys, MACRO_EXTRA);
+function faceSig(v) {
+  var ks = v.$knobs || [], out = [v.$touched || "", v.$page, v.$segmode || "", v.$segment || "", ks.join(",")];
+  for (var j = 0; j < ks.length; j++) if (ks[j] && v[ks[j]]) out.push(v[ks[j]].value + "~" + v[ks[j]].display);
+  for (var i = 0; i < MACRO_SIG.length; i++) { var k = MACRO_SIG[i]; out.push(known(v, k) ? v[k].value + "~" + v[k].display : "?"); }
+  return out.join("|");
+}
+
 push.compartment({
   id: "macros", label: "Macros", front_panel: true,
-  pages: [
-    { label: "Macros", keys: ["macro_cutoff", "macro_resonance", "macro_attack", "macro_decay", "macro_sustain", "macro_release", "macro_tvf_env_depth", "macro_lfo_depth"] },
-    { label: "Patch", keys: ["mode", "part", "octave_transpose", "link_tones"] }
-  ],
-  extra_keys: ["preset", "preset_name"].concat(toneExtras),
+  pages: MACRO_PAGES,
+  extra_keys: MACRO_EXTRA,
   live_keys: ["live_voices"],
+  segments: SEGMENTS,
+  draws_segments: true,
   screen: function (g, v) {
-    lcd(g, v);
-    var m = modeIndex(v);
-    var x = chip(g, 8, 84, "PATCH", m === 0);
-    x = chip(g, x, 84, "PERFORM", m === 1);
-    x = chip(g, x + 10, 84, "LINK TONES", fr(v, "link_tones", 0) > 0.5);
-    var vs = voices(v), ps = v.$pages || [];
-    var pageW = ps.length > 1 ? g.measure(String(ps[v.$page]).toUpperCase() + "  " + (v.$page + 1) + "/" + ps.length) + 14 : 0;
-    if (vs) tvfStrip(g, vs, x + 8, 84, 452 - x - 8 - pageW);
-    for (var i = 0; i < 4; i++) toneCard(g, v, i);
-    knobRow(g, v);
+    // the face is one layer, drawn again only when a value it shows, the
+    // touch or the page changes; the chip's voices and Pung's envelopes,
+    // which move while the JV plays, are drawn over it
+    g.layer("jv|" + faceSig(v), function () {
+      ground(g, v);
+      lcd(g, v);
+      buttons(g, v);
+      for (var i = 0; i < 4; i++) tone(g, v, i);
+      row(g, v);
+      segmentMark(g, v);
+    });
+    var vs = voices(v);
+    if (vs) chip(g, v, vs);
+    for (var j = 0; j < 4; j++) toneEnvelope(g, v, j);
   }
 });
+
 
 // ---- the web page's other panels -----------------------------------------------------
 

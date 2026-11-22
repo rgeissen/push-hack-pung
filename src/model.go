@@ -23,6 +23,9 @@ import (
 type paramMeta struct {
 	Key  string
 	Name string
+	// module: whose parameter it is; its screen file may say how its values
+	// read (push.display, override.go)
+	module string
 	// Short: the name where it shares a column with its value under a
 	// picture (chain_params "short"), the section the page's title already
 	// says left out: OsTIrus' "AEnv Sus" is "Sustain" on Amp Env
@@ -201,6 +204,7 @@ func buildMeta(module string, get func(string) (string, bool)) *compMeta {
 				if m.Key == "" {
 					continue
 				}
+				m.module = module
 				cm.Params[m.Key] = m
 				cm.Order = append(cm.Order, m.Key)
 			}
@@ -433,8 +437,22 @@ func (cm *compMeta) planFromOrder() {
 
 // enumIndex reads an enum value written either as an index or as the option.
 func (m *paramMeta) enumIndex(v string) (int, bool) {
+	// options that are numbers themselves (Surge's octaves, -3 .. 3): a
+	// value equal to one of them is that option, not a position in the list
+	// (Surge answers "0" for octave 0, which read as the first option, -3)
+	if numericOptions(m.Options) {
+		for i, o := range m.Options {
+			if strings.TrimSpace(o) == strings.TrimSpace(v) {
+				return i, true
+			}
+		}
+	}
 	if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && i >= 0 && i < len(m.Options) {
 		return i, true
+	}
+	// a position written as a float ("7.0000": 9W9 answers its choices so)
+	if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && f == math.Trunc(f) && f >= 0 && int(f) < len(m.Options) {
+		return int(f), true
 	}
 	for i, o := range m.Options {
 		if strings.EqualFold(o, v) {
@@ -442,6 +460,18 @@ func (m *paramMeta) enumIndex(v string) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+func numericOptions(opts []string) bool {
+	if len(opts) == 0 {
+		return false
+	}
+	for _, o := range opts {
+		if _, err := strconv.ParseFloat(strings.TrimSpace(o), 64); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // frac is the value's position in its range, for the dial.
@@ -494,6 +524,13 @@ func (m *paramMeta) label(f float64) (string, bool) {
 func (m *paramMeta) display(v string, ok bool) (val, unit string) {
 	if !ok {
 		return "--", ""
+	}
+	// the module's screen file says how this value reads (push.display):
+	// Surge's attack in ms where the module answers a log2 of seconds
+	if m.module != "" {
+		if t, u, ok := overlayDisplay(m.module, m.Key, v); ok {
+			return t, u
+		}
 	}
 	if m.Type != "enum" && len(m.Labels) > 0 {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {

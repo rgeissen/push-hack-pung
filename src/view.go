@@ -34,7 +34,12 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	if u.drawTakeover(img, p, cm, b, sc) {
 		// the screen is the module's, but the way back and the pages are
 		// Push's: over it for a moment (surface.go: rowsUntil)
-		if time.Now().Before(u.rowsUntil) {
+		segp := u.segPanel() // the panel has segments (segments.go)
+		segc, _ := u.segSync()
+		// in a segment no top row at all: the device's name, SOUNDS and EXIT
+		// say nothing there (the segment's name is filled below, upper 7 lit
+		// white, nudge left leaves)
+		if time.Now().Before(u.rowsUntil) && !(segc != nil && u.segMode == segSegment) {
 			y, h := botY+3, scrH-botY-6
 			rect(img, 0, 0, scrW, topH, cBlack)
 			rect(img, 0, 0, scrW, 2, sc)
@@ -42,12 +47,19 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 			if u.hasSounds() {
 				drawSoundsButton(img, sc)
 			}
-			// (a panel that names its lower buttons keeps them: override.go drawsTabs)
-			if c := u.takeoverComp(p, b); c == nil || !c.drawsTabs {
+			if segp != nil && segc == nil {
+				drawSegmentsButton(img, "", sc)
+			}
+			// (a panel that names its lower buttons keeps them: override.go
+			// drawsTabs; in segment mode the lower row is the segments')
+			if c := u.takeoverComp(p, b); segc == nil && (c == nil || !c.drawsTabs) {
 				rect(img, 0, botY, scrW, scrH-botY, cBlack)
 				drawPageRow(img, y, h, cm, u.pageSlots(), u.bank, sc)
 			}
 		}
+		// segment mode: the segments marked on the panel, their names over
+		// the lower buttons, EXIT over upper 7 (segments.go)
+		u.drawSegments(img, segc, sc)
 		return
 	}
 	rect(img, 0, 0, scrW, 2, sc)
@@ -746,16 +758,19 @@ func (u *surface) drawTakeover(img *image.NRGBA, p position, cm *compMeta, b *ba
 		return false
 	}
 	touched := ""
-	if u.touched >= 0 && u.touched < len(b.Keys) {
-		touched = b.Keys[u.touched]
+	keys := u.encKeys(b) // the page's, or in segment mode the segment's (segments.go)
+	if u.touched >= 0 && u.touched < len(keys) {
+		touched = keys[u.touched]
 	}
 	info := u.takeoverInfo(p, cm, b, comp)
+	u.applySegInfo(info, comp)
 	pl := placement{w: &ovWidget{keys: comp.screenKeys(), draw: comp.screen}, full: true, info: info,
 		live: u.liveSess(), liveOut: u.liveOut, liveKey: fmt.Sprintf("push/%s/%s/takeover", p.Module, b.Name), fx: p.Kind == "fx"}
 	if !set.render(img, pl, u.ovValues(p, cm, comp.screenKeys()), touched, sc) {
 		u.say("MODULE UI OFF: " + set.failed)
 		return false
 	}
+	u.segAt = set.segRects() // where it put its segments this frame (segments.go)
 	return true
 }
 
@@ -786,6 +801,9 @@ func (u *surface) takeoverInfo(p position, cm *compMeta, b *bank, comp *ovCompar
 	// lit one (-1: the page shown is not in the row)
 	tabs, tab := pageTabs(cm, u.pageSlots(), u.bank)
 	// $wheel: the jog wheel is walking the compartment's wheel key now
+	// $segmode, $segment, $segments: segment mode (segments.go): the
+	// overview here; drawTakeover tells the mode the Push is in
 	return map[string]any{"$page": page, "$pages": pages, "$knobs": knobs, "$name": p.Name, "$track": track, "$live": u.liveInfo(),
-		"$wheel": u.open && u.inner && comp.wheel != "", "$tabs": tabs, "$tab": tab}
+		"$wheel": u.open && u.inner && comp.wheel != "", "$tabs": tabs, "$tab": tab,
+		"$segmode": "", "$segment": "", "$segments": segList(comp)}
 }

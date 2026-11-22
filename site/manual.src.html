@@ -2,7 +2,7 @@
 {{TOPBAR}}
 
 <section class="band hero"><div class="wrap">
-  <p class="eyebrow">Pung 0.4.3 · Manual</p>
+  <p class="eyebrow">Pung 0.4.4 · Manual</p>
   <h1>Play Schwung modules on Push 3.</h1>
   <p class="lead">How to install Pung, find its devices in Push's browser, play and edit them on the Push screen, and add more modules. Everything here works from the Push, with an optional web page beside it.</p>
   <dl class="facts">
@@ -116,9 +116,9 @@
   <div class="t keys"><table>
     <thead><tr><th>Control</th><th>In the Pung view</th></tr></thead>
     <tbody>
-      <tr><td>Upper buttons</td><td class="wrap1"><strong>Chain level:</strong> the track's devices, then <code>+</code>. Press a device to select it; press the selected one to open it. <code>+</code> opens Push's own browser to add a device; leave the browser and the Pung view is back. <strong>Device open:</strong> button 1 goes back; button 8, <code>SOUNDS</code>, opens the <a href="#sounds">sound browser</a>.</td></tr>
+      <tr><td>Upper buttons</td><td class="wrap1"><strong>Chain level:</strong> the track's devices, then <code>+</code>. Press a device to select it; press the selected one to open it. <code>+</code> opens Push's own browser to add a device; leave the browser and the Pung view is back. <strong>Device open:</strong> button 1 goes back; button 7, <code>SEGMENTS</code>, where the front panel has them (see <a href="#segments">segments</a>); button 8, <code>SOUNDS</code>, opens the <a href="#sounds">sound browser</a>.</td></tr>
       <tr><td>Lower buttons</td><td class="wrap1"><strong>Chain level:</strong> Live's tracks. <strong>Device open:</strong> the device's pages. An arrow on the last button means more pages; each press moves the row by one, and an arrow on the first button moves it back.</td></tr>
-      <tr><td>Jog wheel</td><td class="wrap1"><strong>Chain level:</strong> turn to move a frame along the devices and <code>+</code>, press to open the one it is on. <strong>Device open:</strong> turn to step through the pages, nudge left to go back, press for the sound browser.</td></tr>
+      <tr><td>Jog wheel</td><td class="wrap1"><strong>Chain level:</strong> turn to move a frame along the devices and <code>+</code>, press to open the one it is on. <strong>Device open:</strong> turn to step through the pages, nudge left to go back, press for the sound browser. On a front panel with segments, nudge right goes into the first segment (and on to the next), and <kbd>Shift</kbd> + turn walks them; in a segment, turning walks the segments and nudge left goes back to the overview.</td></tr>
       <tr><td>Encoders 1–8</td><td class="wrap1">Turn: the parameter above, at both levels. Touch: its range, its neighbouring options, and whether fine steps are there.</td></tr>
       <tr><td><kbd>Shift</kbd> + turn</td><td class="wrap1">Finer steps, where the cell shows <code>FINE</code>.</td></tr>
       <tr><td><kbd>Delete</kbd> + touch an encoder</td><td class="wrap1">The parameter back to its default.</td></tr>
@@ -137,6 +137,7 @@
   </table></div>
   <div class="prose">
     <p><strong>The lights follow the screen.</strong> A button that offers something is lit: the chosen device, page or track in white, every other one in a dimmed version of its track's colour, the arrows too. A button that does nothing is dark.</p>
+    <p id="segments"><strong>Segments.</strong> Most instruments open on a front panel: the whole instrument at a glance, in its own look, with the encoders on what a hand reaches for first. Its sections are <em>segments</em>. Nudge the jog wheel right (or press <code>SEGMENTS</code>, then a lower button) and the encoders play one section, named under them; a bar over that section shows where your hands are, and the rest of the instrument stays in view. Turn the jog wheel for the next section; nudge left (or press button 7 again) to go back to the overview. The lower buttons name the segments while you are in them.</p>
     <p><strong>Full-screen pictures.</strong> Some modules draw a whole screen for a page (Mini-JV's Macros, Dexed's Algorithm). It shows while the device is open. The back button, <code>SOUNDS</code> and the page row are drawn over it when you open the device, turn a page or touch the jog wheel, so the way back is always there. At chain level the same page shows as knobs.</p>
   </div>
 </section>
@@ -301,6 +302,12 @@
     <p><strong>Firmware.</strong> Xenia needs a Microwave II/XT ROM: a 256&nbsp;KB dump, or its two 128&nbsp;KB halves (the Am29F010 chips). An operating system update file alone is not enough, because the ROM holds the wavetables and the sounds; beside a ROM, an update file (<code>mw2_xt_xtk_sys_v233.mid</code>) updates it. Add the files on the module's card. The 256 factory sounds are in banks A and B.</p>
     <p><strong>In Live.</strong> Live keeps 119 of Xenia's 214 parameters for automation and Push's own device view: the front panel, the oscillators, the waves and the mixer, the filters, all four envelopes, the LFOs, the effect and glide, and the voice settings. The play parameters, the modulation matrix and the arpeggiator are edited in the Pung view.</p>
     <p><strong>One at a time.</strong> A second Xenia in a Set stays silent, and its screens say <em>Waiting</em>; it starts when the first one is removed.</p>
+  </div>
+  <div class="prose">
+    <h3>Vivace: a wavetable synth with the spectrum in its hands</h3>
+    <p>Vivace is a spectral warping wavetable synthesizer, a port of open-source (GPLv3) synthesis code to the Push: three wavetable oscillators that scan through up to 257 frames and bend them in the spectrum and in time, a sample source, two filters with 32 models, six envelopes, eight LFOs, a 64-slot modulation matrix and nine effects. It needs no firmware, and two Vivaces can play side by side.</p>
+    <p>It opens on its three wavetables, drawn in three dimensions as the frames recede, the frame each oscillator plays lit; beside them the filter and what modulates what. Its pages follow the synth's sections, with the envelopes, filters and LFOs drawn by Pung, so they move as the sound does. Knobs read in the synth's own units.</p>
+    <p><strong>Sounds.</strong> Twelve factory sounds of its own come with it. Your own sound files (<code>.vital</code>, the format of the synth this engine comes from; the wavetables travel inside) go into the module's Presets folder; each folder becomes a bank. A sound is played with at most 16 voices and 2x oversampling.</p>
   </div>
 </section>
 

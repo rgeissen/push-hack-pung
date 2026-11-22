@@ -86,11 +86,12 @@ type fbState struct {
 // Caller holds u.mu.
 func (u *surface) fileParamAt(enc int) (string, *paramMeta) {
 	_, cm, b := u.currentBank()
-	if b == nil || cm == nil || enc < 0 || enc >= len(b.Keys) || b.Keys[enc] == "" {
+	keys := u.encKeys(b) // the page's, or a segment's (segments.go)
+	if b == nil || cm == nil || enc < 0 || enc >= len(keys) || keys[enc] == "" {
 		return "", nil
 	}
-	if m := cm.Params[b.Keys[enc]]; m != nil && m.Type == "file" && m.File != nil {
-		return b.Keys[enc], m
+	if m := cm.Params[keys[enc]]; m != nil && m.Type == "file" && m.File != nil {
+		return keys[enc], m
 	}
 	return "", nil
 }

@@ -25,7 +25,8 @@ release, and native instruments built from gearmulator (`native/`).
 - `native/<id>/` Pung-native modules: `module.json`, `push_ui.js`, `dsp/`, `tools/gen_params.py`,
   `patches/` (applied to gearmulator at build), listed in `native/catalog.json`, built by
   `scripts/recipes/<id>.sh`. Today: `nodalred` (Nord Lead 2X), `ostirus` (Virus TI), `vavra` (microQ),
-  `xenia` (Microwave II/XT).
+  `xenia` (Microwave II/XT), and `vivace`, a port of an open-source wavetable synth (GPLv3; its licence
+  forbids its name on a build: it appears only in `licenses/NOTICE.txt`).
 - `overrides/<id>/push_ui.js` screens Pung ships for Schwung modules.
 - `scripts/` builds, catalog, release, render-check. `site/` the public pages (GitHub Pages).
 - `build/`, `dist/` are outputs, never committed. Packages and firmware never go into git.
@@ -49,6 +50,11 @@ python3 scripts/build-catalog.py --base-url "" # the catalog -> build/catalog
   0.4.0 shipped OsTIrus untagged because the suite ran first.
 - Screens offline: `PUNG_SHOTS=<dir> go test -run TestShippedOverlaysDraw .` writes every shipped screen
   as PNG (fake values: numbers where enum names belong, so filters and LFOs may draw empty there).
+  **As the Push draws them**: `PUNG_GALLERY=<dir> PUNG_GALLERY_CACHE=<module-screen.json from the Push>
+  [PUNG_GALLERY_VALUES=<dir of <id>.json>] [PUNG_GALLERY_ONLY=a,b] go test -run 'TestGallery$' .`: every
+  page with the module's real metadata and values, Pung's whole frame, and each segment mode. A module
+  is drawn only once the cache holds its probe (copy `/data/push-hack/data/pung/module-screen.json` after
+  the module has been loaded on the Push).
 - `TestNativeScreensMove` plays a note through the native instruments' pages and fails on a still
   envelope, filter or LFO. Add a case for every new instrument page that draws one.
 - **Hear a module without Live**: `scripts/render-check.sh <id> <assets dir> [secs] [key=val | '?key']`
@@ -180,16 +186,28 @@ back as of the previous restart. Then ask the user to save the Set.
 - Budget: 8 ms a band screen, 14 ms a front panel. Thousands of `g.fill` calls (a dot-matrix display)
   only inside a cached layer.
 - A value Pung cannot name (a raw value outside the declared range) should be left out, not shown as
-  a number that means nothing.
+  a number that means nothing. A module that answers bare numbers (0..1, a log2 of seconds) reads in its
+  units everywhere through `push.display(fn(key, raw))` in its screen file.
+- **Segments** (`segments: [{id, label, rect, keys}]` on a front panel, `src/segments.go`): Pung draws
+  the bar over the active one, the same on every panel; a panel adds at most one touch of its own
+  (`draws_segments`) and never dims, frames or underlines. A section that moves with a value says where
+  it is while drawing (`g.segment`). Leave the 3 pixels above a segment's rect free of text.
 - Verify on the Push with real values: walk every page (`Page Right` and capture each frame), play a note
   through the pages that should move, and give the surface back.
 
 ## Facts measured on a Push 3
 
-- Live keeps a limited list of a Pung device's parameters, whole pages only (`fitLive`, `src/devices.go`):
-  Vavra and Xenia get 128 entries in Live including "Device On" and page padding (97 and 119 of them
-  the module's own). OsTIrus's count is not measured yet (the manual's "128 of 234" predates counting
-  only named entries). Everything else is edited in Pung's view.
+- **Live 13 (13.0b25, on the Push since 2026-11-19) showed a plugin's parameters only up to 64** on
+  2026-11-22: a class with 65 or more visible ones got "Device On" alone through the Remote Script (test
+  classes of 60, 64, 65, 128, 129; the four hidden ones an instrument adds do not count), and so did
+  Plaits (97) and every other Pung instrument. **Not settled**: on 2026-11-21, on the same Live, a fresh
+  Xenia showed 119 of its parameters (below). Measure again before acting on either. Pung's view plays
+  every parameter regardless. Live 12.4 showed up to 128. Live rescans the plugin only when the bundle
+  changes (Pung touches `Pung.so`): a hand-edited `classes.json` needs that and a Live restart.
+- A class holds up to 256 entries (`livedevice.MaxParams`, placeholders included); one that has more is
+  cut to whole pages (`fitLive`, `src/devices.go`): the module's first pages while they fit, then its MIDI
+  FX pages. What Live then shows of it is Live's choice (above): on 2026-11-21 Xenia showed 128 entries
+  with "Device On" and page padding (119 its own), Vavra 97. Everything else is edited in Pung's view.
 - Realtime device threads (FIFO 70) needed `GOMAXPROCS` well above the core count and a nice -15 boost
   while calling into a module (`gomaxprocs.go`, `lockboost_linux.go`), or emulators dropped blocks for
   everyone.

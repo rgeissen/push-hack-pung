@@ -17,7 +17,8 @@ package main
 //   jog wheel                 chain level: moves a focus along the devices, its
 //                             press opens the focused one; open: steps the
 //                             pages, its press opens the sounds, nudge left
-//                             goes back
+//                             goes back; in segment mode (or with Shift,
+//                             or nudges right) the panel's segments
 //   encoders                  the 8 parameters over them, at both levels;
 //                             Shift fine; Delete + touch: back to its default
 //   Mute + a device's button  the device off and on; Delete + it: remove it
@@ -26,6 +27,8 @@ package main
 //   Page < >                  the previous / next page (Pung's own shortcut)
 //   upper button 8, open      SOUNDS: the device's sound browser (the jog
 //                             press in an open device opens it too)
+//   upper button 7, open      SEGMENTS / EXIT, where the front panel shown
+//                             declares segments (segments.go)
 //   Save                      save the device's sound
 //   Add, Swap                 Push's own: its browser, and its Hot-Swap,
 //                             which can replace the device itself
@@ -114,6 +117,13 @@ type surface struct {
 	toast     string
 	toastAt   time.Time
 	lastEnum  [8]time.Time
+
+	// segment mode (segments.go): "" the overview, "select" the lower
+	// buttons choose a segment, "segment" the encoders play segID's keys;
+	// segComp: the front panel's compartment it belongs to
+	segMode, segID, segComp string
+	// segAt: where the shown panel drew its segments this frame (g.segment)
+	segAt map[string][4]int
 
 	meta      map[string]*compMeta // slot|prefix|module
 	vals      map[string]string    // slot|prefix:key
@@ -403,6 +413,7 @@ func (u *surface) routes(mux *http.ServeMux) {
 			"module_ui_draw_us": u.overlayDrawUS(p.Module),
 			"position":          p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
 			"toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,
+			"segments": map[string]any{"mode": u.segMode, "segment": u.segID, "compartment": u.segComp, "knobs": u.encKeys(b)},
 			"live_path": func() []int {
 				if u.live == nil {
 					return nil
@@ -607,6 +618,12 @@ func withCompartments(cm *compMeta, comps []*ovCompartment) *compMeta {
 	for _, b := range cm.Banks {
 		var keys []string
 		for _, k := range b.Keys {
+			// a text or a picture the module answers (Tablor's wavetable
+			// digest, Bouba-Kiki's shape, MonkSynth's face) is no encoder:
+			// its screen draws it, and a leftover page of it turned nothing
+			if p := cm.Params[k]; p != nil && (p.Type == "string" || p.Type == "canvas") {
+				continue
+			}
 			if k != "" && !covered[k] {
 				keys = append(keys, k)
 			}
@@ -629,6 +646,17 @@ type compartmentInfo struct {
 	// Pages: its encoder pages, eight keys each, as the Push turns through
 	// them (the web page lays its controls out by them)
 	Pages []compartmentPage `json:"pages,omitempty"`
+	// Segments: a front panel's sections, each with the keys its encoders
+	// play in segment mode (segments.go)
+	Segments      []compartmentSegment `json:"segments,omitempty"`
+	DrawsSegments bool                 `json:"draws_segments,omitempty"`
+}
+
+type compartmentSegment struct {
+	ID    string   `json:"id"`
+	Label string   `json:"label"`
+	Keys  []string `json:"keys"`
+	Rect  [4]int   `json:"rect"` // x, y, w, h on the panel (960 x 160)
 }
 
 type compartmentPage struct {
@@ -651,6 +679,10 @@ func (u *surface) compartmentsOf(module string) ([]compartmentInfo, string) {
 			for _, pg := range c.pages {
 				ci.Pages = append(ci.Pages, compartmentPage{Label: pg.label, Keys: pg.keys, Screen: pg.screen != nil})
 			}
+			for _, sg := range c.segments {
+				ci.Segments = append(ci.Segments, compartmentSegment{ID: sg.id, Label: sg.label, Keys: sg.keys, Rect: sg.rect})
+			}
+			ci.DrawsSegments = c.drawsSegments
 			out = append(out, ci)
 			// (a page's own screen does not make the compartment's web section a screen)
 		}
@@ -873,8 +905,13 @@ func (u *surface) cc(n, v byte) {
 	case n == push3.CCDPadRight:
 		u.stepTrack(1)
 	case n == push3.CCJogClickRight:
-		// one level in, as Push's jog goes deeper: the wheel walks what the
-		// page is about (a module that names nothing has no such level)
+		// a panel with segments: into the first, then on to the next one
+		// (segments.go); otherwise one level in, as Push's jog goes deeper:
+		// the wheel walks what the page is about (a module that names
+		// nothing has no such level)
+		if u.view == "chain" && u.open && u.segNext() {
+			break
+		}
 		if u.view == "chain" && u.open && u.wheelComp() != nil {
 			u.inner = true
 			u.showRows()
@@ -885,7 +922,13 @@ func (u *surface) cc(n, v byte) {
 			u.showRows()
 			break
 		}
+		if u.segSync(); u.segMode != "" {
+			u.leaveSegments() // choosing or in a segment: back to the overview
+			u.showRows()
+			break
+		}
 		u.open = false // back, as Push's jog
+		u.leaveSegments()
 	case n == push3.CCJogPress || n == push3.CCDPadCenter:
 		u.jogPress()
 	case n == push3.CCPageLeft:
@@ -1043,10 +1086,17 @@ func selectedDeviceIndex(devs []liveDevSummary, sel int) int {
 // removed). Open: button 1 goes back.
 func (u *surface) top(i int) {
 	if u.open {
+		u.segSync()
 		switch {
+		case i == 0 && u.segMode == segSelect:
+			u.leaveSegments() // choosing a segment: back to the overview
+			u.showRows()
 		case i == 0:
 			u.open = false
 			u.inner = false
+			u.leaveSegments()
+		case i == segmentsButton:
+			u.segmentsPress() // SEGMENTS / EXIT, where the panel has segments (segments.go)
 		case i == soundsButton && u.hasSounds():
 			u.openSounds() // the device's own action, where Push puts a device's (sounds_view.go)
 		}
@@ -1102,6 +1152,7 @@ func (u *surface) openDevice() {
 	}
 	if _, cm, _ := u.currentBank(); cm != nil && u.liveReady {
 		u.open = true
+		u.leaveSegments() // a device opens on its overview
 		u.bankOff = rowShow(u.bankOff, len(cm.Banks), u.bank)
 		u.showRows()
 	}
@@ -1111,6 +1162,9 @@ func (u *surface) openDevice() {
 // Live's tracks (with Mute or Solo held: that track's).
 func (u *surface) bottom(i int) {
 	if u.open {
+		if u.segmentPick(i) {
+			return // the lower row names the segments (segments.go)
+		}
 		switch s := u.pageSlots()[i]; {
 		case s == slotLeft:
 			u.bankOff--
@@ -1169,6 +1223,9 @@ func (u *surface) stepBank(d int) { u.setBank(u.bank + d) }
 func (u *surface) jog(delta int) {
 	if !u.liveActive() || u.view != "chain" {
 		return
+	}
+	if u.open && (u.shift || u.segActive()) && u.segStep(sign(delta)) {
+		return // in segment mode the wheel, else Shift + it: the segments (segments.go)
 	}
 	if u.open && u.inner && u.wheelComp() != nil {
 		u.wheel(delta)
@@ -1229,11 +1286,12 @@ func (u *surface) turn(enc, delta int) {
 		u.turnAt = time.Now()
 	}
 	p, cm, b := u.currentBank()
-	if b == nil || enc >= len(b.Keys) || b.Keys[enc] == "" {
+	keys := u.encKeys(b) // the page's, or the segment's (segments.go)
+	if b == nil || enc >= len(keys) || keys[enc] == "" {
 		u.lastTurn = fmt.Sprintf("enc %d: no key on this page", enc)
 		return
 	}
-	key := b.Keys[enc]
+	key := keys[enc]
 	m := cm.Params[key]
 	_, has := u.vals[u.valKey(p, key)]
 	u.lastTurn = fmt.Sprintf("enc %d: %s meta=%t readonly=%t value=%t", enc, key, m != nil, m != nil && m.ReadOnly, has)
@@ -1345,10 +1403,11 @@ func (u *surface) wheel(delta int) {
 // default, as on Push: the module's own where it states one, else Live's.
 func (u *surface) resetParam(enc int) {
 	p, cm, b := u.currentBank()
-	if b == nil || enc >= len(b.Keys) || b.Keys[enc] == "" {
+	keys := u.encKeys(b)
+	if b == nil || enc >= len(keys) || keys[enc] == "" {
 		return
 	}
-	key := b.Keys[enc]
+	key := keys[enc]
 	m := cm.Params[key]
 	if m == nil || m.ReadOnly {
 		return
@@ -1490,12 +1549,18 @@ func (u *surface) paintLEDs() {
 	}
 	// upper row: the track's devices, or the way back
 	var top, bot [8]uint8
+	segc, _ := u.segSync() // segment mode, if it is on (segments.go)
 	switch {
 	case !live:
 	case u.open:
 		top[0] = ledChosen // the open device, and the way back
 		if u.hasSounds() {
 			top[soundsButton] = opt
+		}
+		if segc != nil { // SEGMENTS / EXIT: white while the mode is on
+			top[segmentsButton] = ledChosen
+		} else if u.segPanel() != nil {
+			top[segmentsButton] = opt
 		}
 	default:
 		devs, sel := u.live.state().deviceRow()
@@ -1514,6 +1579,14 @@ func (u *surface) paintLEDs() {
 	// lower row: the open device's pages, or Live's tracks
 	switch {
 	case !live:
+	case u.open && segc != nil: // the segments, the active one white
+		cur := u.segCur(segc)
+		for i := range segc.segments {
+			bot[i] = opt
+			if i == cur {
+				bot[i] = ledChosen
+			}
+		}
 	case u.open:
 		for i, s := range u.pageSlots() {
 			switch {
@@ -1682,6 +1755,7 @@ func (u *surface) enterSelection(v liveView) {
 	u.lvIdx = map[string]int{}
 	u.open, u.focus = false, -1 // another device: the chain level, as on Push
 	u.inner = false
+	u.leaveSegments()
 	u.autoOpen = true // ... unless its page is a front panel (refreshLive)
 	u.peekUntil = time.Time{}
 	m := u.bankMem[v.key]

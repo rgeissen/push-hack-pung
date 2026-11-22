@@ -44,13 +44,14 @@ The frame starts at the widget's top left. Nothing you draw can leave it.
 | `g.poly(points, width, color)` | a curve through `[[x, y], ...]` (or `[x0, y0, x1, y1, ...]`) in one call |
 | `g.area(points, baseY, color)` | the area between such a curve and the line `y = baseY`, filled |
 | `g.envelope(x, y, w, h, {keys: [...], labels})` | Pung's envelope, the one picture every envelope gets (UX-GUIDELINES.md, *Envelopes*): Pung finds the envelope among the keys by its own rules, draws it, and runs it live (every note a dot on its clock). Or name the stages: `{attack, decay, hold, sustain, slope, release, delay}` or `{time1.., rate1.., level1..}`, each a key (its value and touch are read for you) or a number 0..1. `labels: true` adds the stage bar. `color` draws it in the module's own colour (its live marks stay in the modulation colour). `still: true` where the module knows its envelope does not run as a held note would (a one-shot, a loop): the shape, no dots. Returns whether it drew one |
-| `g.filter(x, y, w, h, {cutoff, resonance, type})` | Pung's filter response. `cutoff` and `resonance` are keys or numbers 0..1; `type` is a key or a name (`"LP 24 dB"`, `"HP"`, `"BandPass"`); without a type, a lowpass. With `cutoff` a key it is live: the sound's spectrum stands behind the curve while it plays, as on Pung's own pages. `color` as for the envelope |
+| `g.filter(x, y, w, h, {cutoff, resonance, type, at})` | Pung's filter response. `at` (0..1): where the response really stands, when the engine maps its knob unevenly (a 303's cutoff); `cutoff` stays the key, so the spectrum stays live behind it. `cutoff` and `resonance` are keys or numbers 0..1; `type` is a key or a name (`"LP 24 dB"`, `"HP"`, `"BandPass"`); without a type, a lowpass. With `cutoff` a key it is live: the sound's spectrum stands behind the curve while it plays, as on Pung's own pages. `color` as for the envelope |
 | `g.lfo(x, y, w, h, {shape, rate, sync, div, trig})` | Pung's LFO: `shape` a key or a name (`"Sine"`, `"Saw Up"`, `"S&H"`), `rate` a key or a number 0..1 (1 to 5 cycles). Live where its phase can be known (UX-GUIDELINES.md, *Live pictures*): a rate in note values runs on Live's beat, a rate in Hz from the last note when `trig` says notes restart it, and a restart flashes. `sync`, `div` and `trig` are keys (`trig` read as on or off), or `trig` is `true`/`false` where no key says it in words (the Virus's key trigger is Off or a phase). `color` as for the envelope |
-| `g.mix(x, y, w, h, [levels])` | Pung's mixer: a fader per level (a key or a number 0..1), and each one's share of the whole across the top |
+| `g.mix(x, y, w, h, [levels][, {color}])` | Pung's mixer: a fader per level (a key or a number 0..1), and each one's share of the whole across the top; `color` as for the envelope |
 | `g.text(x, y, s, color, align[, maxWidth])` | small capitals (the label face); `y` is the baseline; align -1 left, 0 center, 1 right; with `maxWidth`, cut to fit it (ending in `.`) |
 | `g.value(x, y, s, color, align[, maxWidth])` | the larger value face; with `maxWidth`, a smaller face before a cut, and a number is never cut (`-24000` becomes `-24K`) |
 | `g.measure(s[, "value"])` | the width of `s` in pixels, in the label face or the value face |
 | `g.layer(key, fn)` | the part of a screen that does not change: `fn` draws it once, and while `key` stays the same the kept picture is copied in instead (a dot-matrix display of a thousand dots costs a copy). The layer **replaces the frame drawn so far**, so a screen has one, and it comes first; a second layer wipes the first. Put everything the key decides into the one layer and its key (Xenia's front panel: the display's two lines, the wavetable and the start positions) |
+| `g.segment(id, x, y, w, h)` | this frame the segment `id` sits here, not at its declared `rect`: for a panel that moves a section with a value (Maze Voice's ORDER swaps the folder and the filter). Pung's bar and the outlines while choosing follow it; call it on every frame it applies |
 
 Colors: `"#rrggbb"`, a Push palette name (`"orange"`, `"sky"`, ...), or `"slot"` (the slot's color), `"fg"`,
 `"dim"`, `"faint"`, `"line"`, `"mod"`, `"warn"`, `"black"`. Text is ASCII only.
@@ -94,6 +95,7 @@ push.compartment({
   arrows that move the row along the module's pages, `""` for none), and `v.$tab`, the lit one (-1 when
   the page shown is off the row). On a page turn Pung then shows only its header for a moment (the way
   back, Sounds), not its page row over the panel's own. Vavra's matrix and effects panels.
+- **`segments`** (a front panel): the panel's sections, each one press away. See *Segments* below.
 - **`extra_keys`**: values a screen shows that no encoder edits (a patch name, a mode); they are read with
   the compartment's keys and given in `v`, even without metadata.
 - Band screens and page screens also get `v.$page`, `v.$pages` and `v.$knobs`.
@@ -103,6 +105,80 @@ push.compartment({
 
 The bar for a `screen`: substantially better than the default view, and true to the instrument (its
 structure, its vocabulary). Otherwise leave it out.
+
+### Segments (segment mode)
+
+A front panel shows the whole instrument, but its encoders play one page at a time. **Segments** put any
+section of the panel under the hands: the panel names its sections, where each one sits and which keys
+its encoders play.
+
+```js
+push.compartment({
+  id: "panel", label: "Panel", front_panel: true,
+  pages: [{ label: "Main", keys: ["cutoff", "resonance", "amp_attack", "amp_release"] }],
+  segments: [
+    { id: "osc", label: "Osc",    rect: [8, 26, 300, 74],   keys: ["osc1_wave", "osc1_tune", "", "osc_mix"] },
+    { id: "vcf", label: "Filter", rect: [318, 26, 300, 74], keys: ["cutoff", "resonance", "filter_env"] }
+  ],
+  screen: function (g, v) { /* ... the encoder row from v.$knobs, as always ... */ }
+});
+```
+
+- `id` (unique), `label` (else the id), `rect: [x, y, w, h]` where it sits on the panel (960 x 160; a panel
+  that moves it says so while it draws, `g.segment`), and
+  `keys`: 1 to 8, the encoders in order, `""` for an empty one. A key need not be on a page; give it
+  metadata (it is in `chain_params`), or its encoder says READ ONLY. At most 8 segments (one a lower
+  button); only on a `front_panel`. A mistake fails the file's load, as any other.
+- **On the Push** (UX-GUIDELINES.md, *The controls*): in the open device upper button 7 reads `SEGMENTS`.
+  Pressed, the lower buttons name the segments and Pung outlines each one's `rect` on the panel with its
+  number and name (select mode); upper 7 again, upper 1 or a jog nudge left go back. A lower button then
+  puts that segment's keys on the encoders (segment mode): turning, touching, Delete + touch, Live's
+  automation, all as on a page. The lower buttons keep naming the segments, the active one lit, and upper
+  7, lit white, is EXIT, back to the overview's encoders and page tabs (a jog nudge left too). In a
+  segment Pung draws no top row over the panel at all (no device name, SOUNDS or EXIT label, not even
+  with the jog turned): the panel keeps the screen. The jog wheel in
+  segment mode, nudges right (round, from the overview into the first) and Shift + the wheel from the
+  overview walk the segments in their declared order; a panel with segments takes the nudge right from a compartment's `wheel`: declare them in the order
+  the eye reads the panel. Leaving the device, a page of another
+  compartment, or another device leave the mode. Pages of the same panel keep it.
+- **What the screen is told**: `v.$segmode` (`""`, `"select"` or `"segment"`), `v.$segment` (the active
+  id, `""` none), `v.$segments` (`[{id, label, rect, keys}]`, always). In a segment `v.$knobs` are the
+  segment's keys, so an encoder row drawn from `v.$knobs` relabels itself, and `v` holds their values (a
+  compartment's screen is given every segment's keys). While the mode is on, `v.$tabs` are the segments'
+  names and `v.$tab` the active one (-1 while choosing).
+- **The bottom 18 pixels are Pung's while the mode is on** (y 142 to 160): the segments' names over the
+  lower buttons. `g.knobs` takes its tighter form by itself then; a panel that draws its own encoder row
+  moves its values above y 142 when `v.$segmode` is set, or they are cut.
+- **The highlight**: in segment mode Pung draws a bar in the slot colour just above the active segment's
+  `rect` (3 px, outside it: it covers none of the segment's heading; on the top row, along the edge
+  inside), on every panel alike: the same colour as the active segment's name below. Nothing is dimmed or framed: the rest of the
+  panel stays in view, as the player still reads it. A panel may add a touch in its own idiom from
+  `v.$segment` and say **`draws_segments: true`**: the section's heading or legend lit, a segment's LED.
+  Never dim the rest, and no outline or underline of its own beside Pung's bar. Select mode's outlines and
+  numbers are always Pung's: they say which button is which. Leave the 3 pixels above a segment's `rect` free
+  of text: the bar goes there.
+- Everything Pung draws for segments is its own, outside the screen's budget. `GET
+  /api/devices/<n>/compartments` lists each compartment's `segments` (`id`, `label`, `keys`, `rect`) and
+  `draws_segments`; `GET /api/surface/state` says the mode (`segments`). The gallery (`PUNG_GALLERY`,
+  `src/gallery_test.go`) writes `<id>-<compartment>-segments.png` and one
+  `<id>-<compartment>-segment-<segment>.png` per segment.
+
+## How the module's values read (`push.display`)
+
+A module that answers bare numbers (Surge's attack as a log2 of seconds, a cutoff 0..1) shows them
+as such wherever Pung writes a value: its own pages, the name and value row under a screen, the
+values a screen gets in `v[k].display`. The screen file, which knows what they mean, says it once:
+
+```js
+push.display(function (key, raw) {
+  if (key === "amp_attack") return { value: Math.round(1000 * Math.pow(2, +raw)) + "", unit: "ms" };
+  if (key === "cutoff") return Math.round(20 * Math.pow(1000, +raw)) + " Hz";
+  // nothing: Pung's own
+});
+```
+
+It is asked once per key and value (remembered), never while a frame of the module's own is being
+drawn (then Pung's own text stands), and a script error means Pung's own text.
 
 ## An engine's envelope times (`push.envelopeTimes`)
 
@@ -135,7 +211,7 @@ its sections, and a strip over a module's own `web_ui.html`. On Pung's own page 
 ## Values (`v`)
 
 `v[key]` has `value` (the raw string from the module), `frac` (0..1 in its range), `display` and `unit` (as
-the native page shows them), `name`, and `known` (false until a value has been read: then `frac` is 0 and
+the native page shows them), `name`, `type` (`float`, `int`, `enum`...), `min` and `max` (the range the module states), and `known` (false until a value has been read: then `frac` is 0 and
 means nothing, so draw a neutral shape). `v.$touched` is the key under a finger, or `""`. `t` is a time in
 seconds, for motion.
 

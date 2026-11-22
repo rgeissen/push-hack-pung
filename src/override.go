@@ -104,6 +104,33 @@ type ovCompartment struct {
 	// header for a moment (the way back, Sounds), but not its page row over
 	// the panel's own
 	drawsTabs bool
+	// segments: a front panel's sections (segment mode, segments.go): where
+	// each sits on the panel and the keys its encoders play, at most 8
+	segments []*ovSegment
+	// drawsSegments: the panel highlights the active segment itself, in its
+	// own idiom (v.$segment); Pung then draws no highlight of its own
+	drawsSegments bool
+}
+
+// ovSegment: one section of a front panel (push.compartment's segments):
+// upper button 7 then a lower button puts its keys on the encoders.
+type ovSegment struct {
+	id, label string
+	rect      [4]int   // x, y, w, h on the panel (960 x 160)
+	keys      []string // the encoders' keys, up to 8 ("" for an empty one)
+}
+
+// segment: the compartment's segment with this id, or nil.
+func (c *ovCompartment) segment(id string) *ovSegment {
+	if c == nil {
+		return nil
+	}
+	for _, s := range c.segments {
+		if s.id == id {
+			return s
+		}
+	}
+	return nil
 }
 
 // pageScreen: the band screen for a compartment's page: the page's own,
@@ -118,9 +145,26 @@ func (c *ovCompartment) pageScreen(page int) (goja.Callable, []string) {
 	return c.screen, c.screenKeys()
 }
 
-// screenKeys: every key a compartment's screen is given.
+// screenKeys: every key a compartment's screen is given (a segment's keys
+// too: in segment mode the panel's encoder row shows them).
 func (c *ovCompartment) screenKeys() []string {
-	return append(append(append([]string{}, c.keys...), c.extraKeys...), c.liveKeys...)
+	out := append(append(append([]string{}, c.keys...), c.extraKeys...), c.liveKeys...)
+	if len(c.segments) == 0 {
+		return out
+	}
+	have := map[string]bool{}
+	for _, k := range out {
+		have[k] = true
+	}
+	for _, s := range c.segments {
+		for _, k := range s.keys {
+			if k != "" && !have[k] {
+				have[k] = true
+				out = append(out, k)
+			}
+		}
+	}
+	return out
 }
 
 // ovPage: one encoder page of a compartment (a card of its web section).
@@ -152,7 +196,13 @@ type overrideSet struct {
 	lastDrawUS int64         // the last Push draw, in microseconds (/api/surface/state)
 	off        bool          // the user chose the native UI
 	envTimes   goja.Callable // push.envelopeTimes: the module's engine's stage times (nil: from the knobs)
-	mu         sync.Mutex    // the VM is one goroutine's at a time: the Push's draw, a web page's
+	display    goja.Callable // push.display: how the module's values read (nil: Pung's own)
+	dispMu     sync.Mutex
+	dispMemo   map[string][2]string // key|raw -> value, unit ("\x00" in [0]: Pung's own)
+	mu         sync.Mutex           // the VM is one goroutine's at a time: the Push's draw, a web page's
+	// segAt: where the last full-panel frame put its segments (g.segment),
+	// over their declared rects; nil: where they were declared
+	segAt map[string][4]int
 }
 
 // slowWait: how long a script switched off for being slow stays off.
@@ -245,7 +295,10 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 	})
 	push.Set("compartment", func(call goja.FunctionCall) goja.Value {
 		spec := call.Argument(0).ToObject(vm)
-		c := &ovCompartment{id: spec.Get("id").String(), label: spec.Get("label").String()}
+		c := &ovCompartment{id: jsStr(spec.Get("id")), label: jsStr(spec.Get("label"))}
+		if c.label == "" {
+			c.label = c.id // a compartment without a label: its id (it crashed Pung)
+		}
 		if kv := spec.Get("keys"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
 			vm.ExportTo(kv, &c.keys) //nolint:errcheck
 		}
@@ -308,6 +361,51 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		if c.takeover && c.screen == nil {
 			panic(vm.NewTypeError("push.compartment: front_panel needs a screen"))
 		}
+		// segments: [{id, label, rect: [x, y, w, h], keys: [...up to 8]}] —
+		// the front panel's sections, each one press away (segments.go)
+		if sv := spec.Get("segments"); sv != nil && !goja.IsUndefined(sv) && !goja.IsNull(sv) {
+			if !c.takeover {
+				panic(vm.NewTypeError("push.compartment: segments need a front_panel"))
+			}
+			arr := sv.ToObject(vm)
+			n := int(arr.Get("length").ToInteger())
+			if n > 8 {
+				panic(vm.NewTypeError("push.compartment: at most 8 segments (one a lower button)"))
+			}
+			for i := 0; i < n; i++ {
+				o := arr.Get(fmt.Sprint(i)).ToObject(vm)
+				sg := &ovSegment{}
+				if v := o.Get("id"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+					sg.id = v.String()
+				}
+				sg.label = sg.id
+				if v := o.Get("label"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) && v.String() != "" {
+					sg.label = v.String()
+				}
+				if kv := o.Get("keys"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
+					vm.ExportTo(kv, &sg.keys) //nolint:errcheck
+				}
+				var r []float64
+				if rv := o.Get("rect"); rv != nil && !goja.IsUndefined(rv) && !goja.IsNull(rv) {
+					vm.ExportTo(rv, &r) //nolint:errcheck
+				}
+				switch {
+				case sg.id == "" || c.segment(sg.id) != nil:
+					panic(vm.NewTypeError("push.compartment: each segment needs an id of its own"))
+				case len(sg.keys) == 0 || len(sg.keys) > 8:
+					panic(vm.NewTypeError("push.compartment: segment " + sg.id + " needs keys (1..8)"))
+				case len(r) != 4:
+					panic(vm.NewTypeError("push.compartment: segment " + sg.id + " needs a rect [x, y, w, h]"))
+				}
+				for j := range sg.rect {
+					sg.rect[j] = int(math.Round(r[j]))
+				}
+				c.segments = append(c.segments, sg)
+			}
+		}
+		if v := spec.Get("draws_segments"); v != nil && !goja.IsUndefined(v) && v.ToBoolean() {
+			c.drawsSegments = true
+		}
 		if c.id == "" || c.id == "undefined" || len(c.keys) == 0 {
 			panic(vm.NewTypeError("push.compartment needs an id and keys"))
 		}
@@ -331,6 +429,19 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		set.envTimes = fn
 		return goja.Undefined()
 	})
+	// push.display(fn): how the module's values read, wherever Pung writes
+	// one (its own pages, the row under a screen, the values a screen gets):
+	// fn(key, raw) returns a text, {value, unit}, or nothing for Pung's own.
+	// For a module that answers bare numbers (Surge's attack as a log2 of
+	// seconds, a cutoff 0..1) the screen file knows what they mean.
+	push.Set("display", func(call goja.FunctionCall) goja.Value {
+		fn, ok := goja.AssertFunction(call.Argument(0))
+		if !ok {
+			panic(vm.NewTypeError("push.display needs a function"))
+		}
+		set.display = fn
+		return goja.Undefined()
+	})
 	vm.Set("push", push)
 	timer := time.AfterFunc(200*time.Millisecond, func() { vm.Interrupt("push_ui.js took too long to load") })
 	_, err = vm.RunScript(path, string(src))
@@ -341,6 +452,9 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		return set
 	}
 	log.Printf("override %s: %d widget(s), %d compartment(s)", path, len(set.widgets), len(set.compartments))
+	displaySetsMu.Lock()
+	displaySets[id] = set // push.display, for this module's values everywhere
+	displaySetsMu.Unlock()
 	return set
 }
 
@@ -419,9 +533,13 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	sig := frameSig(w, h, sc, p, vals, touched)
 	if k := s.kept[slot]; k != nil && k.sig == sig && !k.moving && s.failed == "" {
 		putFrame(dst, k.img, p, w, h)
+		if p.full {
+			s.segAt = k.segs
+		}
 		return true
 	}
 	moving := false
+	var segs map[string][4]int // g.segment: where this frame put its segments
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	vm := s.vm
 	g := vm.NewObject()
@@ -583,6 +701,15 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 			if v, ok := part(o, "cutoff", &f.Touched); ok {
 				f.Cutoff, f.Known = v.Frac, f.Known && v.Known
 			}
+			// {at}: where the response really stands (0..1 across the picture)
+			// when the engine maps its knob unevenly (a 303's cutoff), with
+			// cutoff still the key: the spectrum stays live behind it
+			switch at := o["at"].(type) {
+			case float64:
+				f.Cutoff = math.Max(0, math.Min(1, at))
+			case int64:
+				f.Cutoff = math.Max(0, math.Min(1, float64(at)))
+			}
 			if v, ok := part(o, "resonance", &f.Touched); ok {
 				f.Res, f.HasRes, f.Known = v.Frac, true, f.Known && v.Known
 			}
@@ -674,7 +801,196 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				m.Levels, m.Known = append(m.Levels, v.Frac), m.Known && v.Known
 			}
 		}
-		drawMix(img, rectOf(call), m, sc)
+		c := sc // g.mix(x, y, w, h, [levels], {color}): in the instrument's colour
+		if o, ok := call.Argument(5).Export().(map[string]any); ok {
+			c = accent(o)
+		}
+		drawMix(img, rectOf(call), m, c)
+		return goja.Undefined()
+	})
+	// g.knobs({accent, colors, top, names, values, tabs, ground}): a front
+	// panel's encoder row, the same on every instrument (UX-GUIDELINES.md,
+	// "Front panels"): under each encoder its name, a ring with its value and
+	// the value with its unit, the touched one in the slot's colour. A value
+	// either side of a middle (a pan, a detune: its display is signed) grows
+	// from the top. accent: the rings' colour, the instrument's; colors:
+	// {key: colour} for single knobs (a Dexed operator's role); top: where the
+	// row begins (104, the bottom 56 pixels of the panel); names, values:
+	// eight strings where the panel says what a knob is ("" leaves Pung's);
+	// tabs: the lower buttons too, under a tighter row (a panel that names
+	// them, draws_tabs: v.$tabs, v.$tab); ground: a colour behind the row;
+	// a panel with a ground of its own (Nodal Red's red) may give label (the
+	// names' colour), track (the rings' unlit part) and rules: false (it
+	// draws the row's lines itself).
+	// g.segment(id, x, y, w, h): this frame the segment sits here, not at its
+	// declared rect (a panel that moves its sections with a value: Maze
+	// Voice's ORDER swaps the folder and the filter). Pung's bar and the
+	// outlines while choosing follow it.
+	g.Set("segment", func(id string, x, y, ww, hh float64) {
+		if segs == nil {
+			segs = map[string][4]int{}
+		}
+		segs[id] = [4]int{int(math.Round(x)), int(math.Round(y)), int(math.Round(ww)), int(math.Round(hh))}
+	})
+	g.Set("knobs", func(call goja.FunctionCall) goja.Value {
+		o, _ := call.Argument(0).Export().(map[string]any)
+		top := 104
+		ac := sc
+		per := map[string]any{}
+		if o != nil {
+			switch t := o["top"].(type) {
+			case int64:
+				top = int(t)
+			case float64:
+				top = int(t)
+			}
+			if c, ok := o["accent"].(string); ok && c != "" {
+				ac = ovColor(c, sc)
+			}
+			if m, ok := o["colors"].(map[string]any); ok {
+				per = m
+			}
+		}
+		strs := func(k string) []string {
+			var out []string
+			if l, ok := o[k].([]any); ok {
+				for _, x := range l {
+					s, _ := x.(string)
+					out = append(out, s)
+				}
+			}
+			return out
+		}
+		names, values := strs("names"), strs("values")
+		tabs, _ := o["tabs"].(bool)
+		// segment mode (segments.go): Pung names the lower buttons (the
+		// segments) over y 138..160, so the row takes its tighter form
+		segRow := false
+		if m, _ := p.info["$segmode"].(string); m != "" {
+			tabs, segRow = true, true
+		}
+		knobs, _ := p.info["$knobs"].([]string)
+		cLine, cFaint, cDim, cFg := ovColor("line", sc), ovColor("faint", sc), ovColor("dim", sc), ovColor("fg", sc)
+		cTrack := cLine
+		if c, ok := o["track"].(string); ok && c != "" {
+			cTrack = ovColor(c, sc)
+		}
+		if c, ok := o["label"].(string); ok && c != "" {
+			cDim = ovColor(c, sc)
+		}
+		rules := true
+		if r, ok := o["rules"].(bool); ok {
+			rules = r
+		}
+		if g, ok := o["ground"].(string); ok && g != "" {
+			rect(img, 0, top, w, h-top, ovColor(g, sc))
+		}
+		// the row's lines: the name, the ring's centre, the value's baseline
+		yName, yRing, yVal, rr, bottom := top+20, top+40, top+47, 11.0, h-4
+		if tabs {
+			yName, yRing, yVal, rr, bottom = top+15, top+32, top+38, 10.0, h-22
+		}
+		if rules {
+			rect(img, 0, top, w, 1, cLine)
+			for i := 1; i < 8; i++ {
+				rect(img, i*colW, top+8, 1, bottom-top-8, cFaint)
+			}
+		}
+		for i := 0; i < 8 && i < len(knobs); i++ {
+			k := knobs[i]
+			e, ok := vals[k]
+			name := ""
+			if ok {
+				name = e.Name
+			}
+			if i < len(names) && names[i] != "" {
+				name = names[i]
+			}
+			if (k == "" || !ok) && name == "" {
+				continue
+			}
+			hot := k != "" && k == touched
+			cx := i*colW + colW/2
+			nameC, valC := cDim, cFg
+			if hot {
+				nameC, valC = cFg, sc
+			}
+			label(img, cx, yName, fitLabel(strings.ToUpper(name), colW-8), nameC, 0)
+			if !ok {
+				continue
+			}
+			kx, ky, r := float64(cx-34), float64(yRing), rr
+			arc(img, kx, ky, r, 0.75*math.Pi, 1.5*math.Pi, 3, cTrack)
+			if e.Known {
+				c := ac
+				if pc, ok := per[k].(string); ok && pc != "" {
+					c = ovColor(pc, sc)
+				}
+				if hot {
+					c = sc
+				}
+				d := strings.TrimSpace(e.Display)
+				if d != "" && (d[0] == '+' || d[0] == '-') && d != "-" && d != "--" { // signed: from the top
+					sw := (e.Frac - 0.5) * 1.5 * math.Pi
+					if sw >= 0 {
+						arc(img, kx, ky, r, 1.5*math.Pi, sw, 3, c)
+					} else {
+						arc(img, kx, ky, r, 1.5*math.Pi+sw, -sw, 3, c)
+					}
+				} else if e.Frac > 0 {
+					arc(img, kx, ky, r, 0.75*math.Pi, 1.5*math.Pi*e.Frac, 3, c)
+				}
+			}
+			val, unit := "--", ""
+			if e.Known {
+				val, unit = e.Display, e.Unit
+				if val == "" {
+					val = e.Value
+				}
+			}
+			if i < len(values) && values[i] != "" {
+				val, unit = values[i], ""
+			}
+			uw := 0
+			if unit != "" {
+				uw = textWidth(unit, nil) + 3
+			}
+			s, f := fitValue(val, 74-uw)
+			vw := textWidth(s, f)
+			x := cx + 12 - (vw+uw)/2
+			styled(img, x, yVal, s, valC, f, -1)
+			if unit != "" {
+				label(img, x+vw+3, yVal, unit, cDim, -1)
+			}
+		}
+		if tabs && !segRow { // the lower buttons, as Pung maps them: a page's name, "<" or ">"
+			ts, _ := p.info["$tabs"].([]string)
+			cur := -1
+			if c, ok := p.info["$tab"].(int); ok {
+				cur = c
+			}
+			y := h - 4
+			for i := 0; i < 8 && i < len(ts); i++ {
+				t, cx := ts[i], i*colW+colW/2
+				switch {
+				case t == "<" || t == ">":
+					d := 1.0
+					if t == "<" {
+						d = -1
+					}
+					x := float64(cx)
+					aaLine(img, x-6*d, float64(y-11), x+6*d, float64(y-6), 2, ac)
+					aaLine(img, x+6*d, float64(y-6), x-6*d, float64(y-1), 2, ac)
+				case t != "":
+					if i == cur {
+						rect(img, i*colW+6, y-13, colW-12, 15, ac)
+						label(img, cx, y-1, fitLabel(strings.ToUpper(t), colW-16), ovColor("black", sc), 0)
+					} else {
+						label(img, cx, y-1, fitLabel(strings.ToUpper(t), colW-16), cDim, 0)
+					}
+				}
+			}
+		}
 		return goja.Undefined()
 	})
 	// g.text / g.value (x, y, s, colour, align[, maxWidth]): with a width,
@@ -715,6 +1031,9 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		o.Set("unit", e.Unit)
 		o.Set("name", e.Name)
 		o.Set("known", e.Known)
+		o.Set("type", e.Type) // "float", "int", "enum", ...: a screen need not guess from the text
+		o.Set("min", e.Min)
+		o.Set("max", e.Max)
 		v.Set(k, o)
 	}
 	v.Set("$touched", touched)
@@ -794,9 +1113,19 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	if moving && !p.offline {
 		ovMovedAt.Store(time.Now().UnixNano()) // the Push's next frame is another picture (surface.frames)
 	}
-	s.kept[slot] = &keptFrame{sig: sig, img: img, moving: moving}
+	s.kept[slot] = &keptFrame{sig: sig, img: img, moving: moving, segs: segs}
+	if p.full {
+		s.segAt = segs
+	}
 	putFrame(dst, img, p, w, h)
 	return true
+}
+
+// segRects: where the last full-panel frame put its segments (g.segment).
+func (s *overrideSet) segRects() map[string][4]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.segAt
 }
 
 // keptFrame: a screen's last picture, what it was drawn from, and whether it
@@ -805,6 +1134,7 @@ type keptFrame struct {
 	sig    uint64
 	img    *image.NRGBA
 	moving bool
+	segs   map[string][4]int // g.segment's places in that picture
 }
 
 // ovMovedAt: when a screen on the Push last drew a picture that moves by
@@ -1072,4 +1402,70 @@ func (s *overrideSet) envSecsLocked(keys map[string]string, vals map[string]ovVa
 		}
 	}
 	return out
+}
+
+// displaySets: each module's loaded screen file, for overlayDisplay
+var (
+	displaySetsMu sync.Mutex
+	displaySets   = map[string]*overrideSet{}
+)
+
+// overlayDisplay: how a module's screen file writes one of its values
+// (push.display), remembered per key and raw value. false: Pung's own. The
+// script runs only when its set is free (TryLock): never waits on a frame
+// being drawn, and never deadlocks a draw that asks.
+func overlayDisplay(module, key, raw string) (string, string, bool) {
+	displaySetsMu.Lock()
+	s := displaySets[module]
+	displaySetsMu.Unlock()
+	if s == nil || s.display == nil {
+		return "", "", false
+	}
+	mk := key + "|" + raw
+	s.dispMu.Lock()
+	if r, ok := s.dispMemo[mk]; ok {
+		s.dispMu.Unlock()
+		return r[0], r[1], r[0] != "\x00"
+	}
+	s.dispMu.Unlock()
+	if !s.mu.TryLock() {
+		return "", "", false
+	}
+	val, unit, ok := "", "", false
+	if s.failed == "" && !s.off {
+		func() {
+			defer func() { recover() }() //nolint:errcheck // a script error: Pung's own text
+			out, err := s.display(goja.Undefined(), s.vm.ToValue(key), s.vm.ToValue(raw))
+			if err != nil || out == nil || goja.IsUndefined(out) || goja.IsNull(out) {
+				return
+			}
+			if o, isObj := out.Export().(map[string]any); isObj {
+				val, _ = o["value"].(string)
+				unit, _ = o["unit"].(string)
+				ok = val != ""
+				return
+			}
+			val, ok = out.String(), out.String() != ""
+		}()
+	}
+	s.mu.Unlock()
+	s.dispMu.Lock()
+	if s.dispMemo == nil || len(s.dispMemo) > 4096 {
+		s.dispMemo = map[string][2]string{}
+	}
+	if ok {
+		s.dispMemo[mk] = [2]string{val, unit}
+	} else {
+		s.dispMemo[mk] = [2]string{"\x00", ""}
+	}
+	s.dispMu.Unlock()
+	return val, unit, ok
+}
+
+// jsStr: a script value as text, "" where it is missing
+func jsStr(v goja.Value) string {
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
+		return ""
+	}
+	return v.String()
 }

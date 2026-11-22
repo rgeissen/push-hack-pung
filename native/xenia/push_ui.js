@@ -3,19 +3,22 @@
 // The Microwave is a wavetable synth: a sound is a path through a table of
 // 64 wave positions, and what the panel is about is where in the table each
 // oscillator starts and how the envelopes move it. So the device opens on
-// the table itself, drawn from the real waves the synth holds (wave_view: the
+// the XT's orange body: its 2 x 40 dot-matrix display, the table itself in a
+// dark window, drawn from the real waves the synth holds (wave_view: the
 // engine asks the synth for the sound's table and its waves, as the
-// Microwave's own editors do), beside the XT's 2 x 40 dot-matrix display, in
-// its orange: the two start positions are lit, and the eight encoders are
-// the panel's eight knobs.
+// Microwave's own editors do), the two start positions lit, and under them
+// the panel's eight knobs: black pointer knobs on the orange, their legends
+// printed, each value in a small window. The display says what a turned knob
+// is, as the XT's does.
 //
-// The other pages go through each section with the picture of what its
-// knobs do together: the oscillators' pitches, the table again with its
-// keytracking, the mixer, the two filters as curves, the LFOs as waves, the
-// wave envelope's eight stages as the path through the table, the
-// modulation slots, the arpeggiator's sixteen steps. The effect panel names
-// its own knobs: what A, B and C are depends on the effect. The filter, amp
-// and free envelopes are Pung's own envelope (UX-GUIDELINES.md, Envelopes).
+// The other pages show their whole section at once, the page's part lit:
+// the oscillators' pitches, the table with its keytracking, the mixer and
+// the XT's digital character, the two filters in series, the LFOs, the
+// free envelope and the wave envelope (Pung's envelope), the voices, eight
+// of the sixteen modulation slots, the four modifiers, the arpeggiator's
+// sixteen steps. The effect panel names its own knobs: what A, B and C are
+// depends on the effect. The filter and amp envelopes are Pung's own
+// envelope on its default pages (UX-GUIDELINES.md, Envelopes).
 // docs/NATIVE-MODULES.md, Xenia.
 
 // <pages> written by tools/gen_params.py from its LAYOUT: do not edit here
@@ -77,6 +80,72 @@ var PAGES = {
 };
 // </pages>
 
+// ---- the XT's colours ------------------------------------------------------------------
+var BODY = "#d4740f", BODY_DK = "#a85a0b", SILK = "#2b1606";             // the orange body, its printing
+var WINDOW = "#1a120c", KNOB = "#2a221d", SKIRT = "#120c08";             // the dark window, the knobs
+var PANEL = "#2a1f17", PANEL_HI = "#3a2b20", RULE = "#4d3c2e", GROUND = "#140e0a";
+var ORANGE = "#e07e18", ORANGE_LT = "#ffa64a", ORANGE_DK = "#6a3a0c", ORANGE_GL = "#a3560c";
+var CREAM = "#f0dfb8", INK = "#f3e7d9", DIM = "#a89886", MUTE = "#7e7064", FAINT = "#574b41";
+var BROWN = "#3b2414", BROWN_LT = "#5a3a22";
+var LCD_BG = "#8fb43a", LCD_ON = "#1c2a0b", LCD_OFF = "#86aa36";
+var LED_ON = "#ff5a26", LED_OFF = "#4a1d10";
+
+function known(v, k) { return !!(k && v[k] && v[k].known); }
+function frac(v, k, neutral) { return known(v, k) ? v[k].frac : (neutral === undefined ? 0 : neutral); }
+function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : ""; }
+function num(v, k, d) { var n = parseFloat(known(v, k) ? v[k].value : ""); return isNaN(n) ? (d || 0) : n; }
+function idx(v, k) { return Math.round(num(v, k, 0)); }
+// a value as the engine names it, as an option index into a list (an enum's display is its name)
+function opt(v, k, list) { var s = disp(v, k), i = list.indexOf(s); return i < 0 ? 0 : i; }
+function up(s) { return String(s || "").toUpperCase(); }
+function hot(v, k) { return !!k && v.$touched === k; }
+function hotIn(v, prefix) { var t = v.$touched || ""; return t !== "" && t.indexOf(prefix) === 0; }
+function isOff(s) { return !s || s === "Off"; }
+function withUnit(v, k) {
+  var d = disp(v, k);
+  if (!d) return "--";
+  var u = v[k].unit || "";
+  if (u && d.slice(-u.length) !== u) d += (u === "%" ? "" : " ") + u;
+  return d;
+}
+function pad(s, n) { s = String(s || ""); while (s.length < n) s += " "; return s.slice(0, n); }
+function padl(s, n) { s = String(s || ""); while (s.length < n) s = " " + s; return s.slice(-n); }
+
+function led(g, x, y, on) { g.dot(x, y, 3.5, on ? LED_ON : LED_OFF); }
+function frame(g, x, y, w, h, c) {
+  g.fill(x, y, w, 1, c); g.fill(x, y + h - 1, w, 1, c); g.fill(x, y, 1, h, c); g.fill(x + w - 1, y, 1, h, c);
+}
+// a section: a dark plate under an orange legend plate, as the XT prints its
+// sections; the one the encoders edit now in full orange
+function plate(g, x, y, w, h, title, lit, right, rightC) {
+  g.fill(x, y, w, h, PANEL);
+  var s = up(title), tw = g.measure(s) + 14;
+  g.fill(x, y, tw, 15, lit ? ORANGE : ORANGE_DK);
+  g.text(x + 7, y + 12, s, lit ? GROUND : ORANGE, -1);
+  if (lit) g.fill(x + tw, y, w - tw, 1, ORANGE);
+  if (right) g.text(x + w - 8, y + 12, up(right), rightC || (lit ? INK : DIM), 1, w - tw - 16);
+}
+function pairs(g, v, x, y, list, maxX, dim) {
+  for (var i = 0; i < list.length; i++) {
+    var p = list[i];
+    if (!p) continue;
+    var lab = up(p[0]), val = up(p[1] || "--"), lw = g.measure(lab), vw = g.measure(val);
+    if (x + lw + 5 + vw > maxX) break;
+    g.text(x, y, lab, dim ? FAINT : MUTE, -1);
+    g.text(x + lw + 5, y, val, p[2] && hot(v, p[2]) ? "slot" : dim ? DIM : INK, -1);
+    x += lw + vw + 19;
+  }
+}
+function bar(g, x, y, w, f, bipolar, c, h) {
+  h = h || 4;
+  g.fill(x, y, w, h, RULE);
+  if (bipolar) {
+    var m = x + w / 2, e = x + w * f;
+    g.fill(Math.min(m, e), y, Math.max(2, Math.abs(e - m)), h, c);
+    g.fill(m - 1, y - 2, 2, h + 4, DIM);
+  } else if (f > 0) g.fill(x, y, Math.max(2, w * f), h, c);
+}
+
 // The XT's characters, 5 x 7 dots each (the same face as Vavra's microQ)
 var GLYPH = {
   "A": ["01110","10001","10001","11111","10001","10001","10001"], "B": ["11110","10001","10001","11110","10001","10001","11110"],
@@ -122,31 +191,6 @@ var GLYPH = {
   ">": ["01000","00100","00010","00001","00010","00100","01000"], "%": ["11000","11001","00010","00100","01000","10011","00011"]
 };
 
-// ---- the XT's colours ------------------------------------------------------------------
-var GROUND = "#1d1916", PANEL = "#2a231e", RULE = "#463d35";
-var ORANGE = "#d4740f", ORANGE_LT = "#f39a3a", ORANGE_DK = "#5a3208", ORANGE_GL = "#a3560c";
-var CREAM = "#eadbb4", INK = "#f3e7d9", DIM = "#a89886", FAINT = "#5c5148";
-var BROWN = "#3b2414", BROWN_LT = "#5a3a22";
-var LCD_BG = "#8fb43a", LCD_ON = "#1c2a0b", LCD_OFF = "#86aa36";
-var LED_ON = "#ff5a26", LED_OFF = "#4a1d10";
-
-function known(v, k) { return v[k] && v[k].known; }
-function frac(v, k, neutral) { return known(v, k) ? v[k].frac : (neutral === undefined ? 0 : neutral); }
-function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : ""; }
-function num(v, k, d) { var n = parseFloat(known(v, k) ? v[k].value : ""); return isNaN(n) ? (d || 0) : n; }
-function idx(v, k) { return Math.round(num(v, k, 0)); }
-// a value as the engine names it, as an option index into a list (an enum's display is its name)
-function opt(v, k, list) { var s = disp(v, k), i = list.indexOf(s); return i < 0 ? 0 : i; }
-
-function edge(g) { g.fill(0, 0, 3, g.h, ORANGE); } // every page carries the XT's orange at its left edge
-function led(g, x, y, on) { g.dot(x, y, 4, on ? LED_ON : LED_OFF); }
-function frame(g, x, y, w, h, c) {
-  g.fill(x, y, w, 1, c); g.fill(x, y + h - 1, w, 1, c); g.fill(x, y, 1, h, c); g.fill(x + w - 1, y, 1, h, c);
-}
-function legend(g, x, y, s, c) { g.text(x, y, String(s).toUpperCase(), c || ORANGE, -1); }
-function pad(s, n) { s = String(s || ""); while (s.length < n) s += " "; return s.slice(0, n); }
-function padl(s, n) { s = String(s || ""); while (s.length < n) s = " " + s; return s.slice(-n); }
-
 // ---- the dot-matrix display ------------------------------------------------------------
 // The XT's 2 x 40 characters, 5 x 7 dots each. A cell is one block of unlit
 // dots and its lit ones on top (2 px on a 2 px pitch: at this size an LCD's
@@ -162,56 +206,94 @@ function lcdLine(g, x, y, s) {
         if (gl[r].charAt(col) === "1") g.fill(cx + col * 2 - 1, y + r * 2 - 1, 2, 2, LCD_ON);
   }
 }
-// the display in its brown surround: 480 x 32 px of characters
-function lcd(g, x, y, l1, l2) {
-  g.fill(x - 14, y - 12, 508, 60, BROWN);
-  g.fill(x - 10, y - 8, 500, 52, BROWN_LT);
-  g.fill(x - 8, y - 6, 496, 48, LCD_BG);
-  lcdLine(g, x, y, l1);
-  lcdLine(g, x, y + 19, l2);
+// the display in its dark surround, on the orange: 480 x 32 px of characters.
+// Its second line changes as a knob turns: it is drawn over the panel's
+// layer (lcd2), not in it
+var LX = 26, LY = 20;
+function lcd(g, l1) {
+  g.fill(LX - 14, LY - 12, 508, 60, BROWN);
+  g.fill(LX - 10, LY - 8, 500, 52, BROWN_LT);
+  g.fill(LX - 8, LY - 6, 496, 48, LCD_BG);
+  lcdLine(g, LX, LY, l1);
 }
+function lcd2(g, l2) { lcdLine(g, LX, LY + 19, l2); }
 // "A001 CS-80 T&WMF" as the XT shows a sound: bank letter, number, name
 function soundTitle(v) {
   var bank = (disp(v, "bank_name") || "").replace("Bank ", "");
   var n = ("00" + (num(v, "preset", 0) + 1)).slice(-3);
   return (bank ? bank.charAt(0) : "-") + n + " " + pad(disp(v, "preset_name"), 16);
 }
+// the display's second line while a knob turns: what it is, where it stands
+function touchLine(name, value) { return pad(up(name), 22) + padl(value || "--", 18); }
 
-// ---- the encoder row a front panel draws itself ---------------------------------------
-function dial(g, cx, cy, r, f, on, bipolar) {
-  g.arc(cx, cy, r, 135, 270, 2, FAINT);
-  if (bipolar) {
-    var m = 270, a = 135 + 270 * f;
-    g.arc(cx, cy, r, Math.min(m, a), Math.abs(a - m) + 1, 3, on ? ORANGE_LT : ORANGE);
-  } else if (f > 0) g.arc(cx, cy, r, 135, 270 * f, 3, on ? ORANGE_LT : ORANGE);
+// ---- the orange body and its knob row -------------------------------------------------------
+// The XT's knobs: black pointer knobs on the orange, a printed scale around
+// each and its legend above, the value in a small dark window beside it; the
+// turned one in the slot's colour. The lower buttons as Pung maps them
+// (draws_tabs): a page's name, "<" or ">" where the row moves along.
+var ROW = 96;
+// a knob's name: the effect's A, B and C by the effect (FX_KNOBS), else the module's
+function knobName(v, k) {
+  if (!k || !v[k]) return "";
+  var m = /^effect_param_([abc])$/.exec(k);
+  if (m) { var n = (FX_KNOBS[disp(v, "effect_type")] || [])["abc".indexOf(m[1])]; return n || ""; }
+  return v[k].name;
 }
-var BIPOLAR = /Env|Detune|Semi|Amount|Amt|Keys|Symmetry|Level/;
-function knobRow(g, v, names, values, y) {
-  var knobs = v.$knobs || [], t = v.$touched;
+// in segment mode Pung names the segments in the bottom 18 px: the knobs move up clear of it
+function lift(v) { return v.$segmode ? -4 : 0; }
+// the row's printing: the legends, each knob's scale, its value window, the
+// lower buttons. Drawn over the panel's layer, not in it: a page turn or a
+// segment changes it, and a layer redrawn would cost the whole display again
+function bodyRow(g, v, names) {
+  var knobs = v.$knobs || [];
+  g.fill(0, ROW, 960, 64, BODY);
+  g.fill(0, ROW, 960, 1, BODY_DK);
   for (var i = 0; i < 8; i++) {
-    var k = knobs[i], x = i * 120, on = k && k === t;
-    var name = names ? names[i] : (k && v[k] ? (v[k].short || v[k].name) : "");
+    var k = knobs[i] || "", x = i * 120, name = names ? names[i] : knobName(v, k);
+    if (i > 0) g.fill(x, ROW + 8, 1, 38, BODY_DK);
     if (!name) continue;
-    if (on) g.fill(x + 4, y - 2, 112, 46, ORANGE_DK);
-    var bip = k && v[k] && BIPOLAR.test(v[k].name || "") && !/Type|Trig/.test(v[k].name || "");
-    g.text(x + 60, y + 9, String(name).toUpperCase(), on ? ORANGE_LT : ORANGE, 0, 110);
-    dial(g, x + 20, y + 30, 10, frac(v, k, 0), on, bip);
-    g.value(x + 36, y + 37, values ? values[i] : (disp(v, k) || "--"), INK, -1, 80);
+    g.text(x + 60, ROW + 14, up(name), SILK, 0, 110);
+    var cx = x + 26, cy = ROW + 34 + lift(v);
+    g.arc(cx, cy, 17, Math.PI * 0.75, Math.PI * 1.5, 1.5, SILK);
+    for (var d = 0; d <= 2; d++) {
+      var a = Math.PI * (0.75 + 0.75 * d);
+      g.dot(cx + Math.cos(a) * 17, cy + Math.sin(a) * 17, 2, SILK);
+    }
+    g.fill(x + 48, ROW + 24 + lift(v), 68, 20, WINDOW);
   }
-}
-// the lower buttons as Pung maps them (draws_tabs): a page's name, "<" or ">"
-function tabs(g, v, y) {
-  var ts = v.$tabs || [], cur = v.$tab === undefined ? -1 : v.$tab;
-  for (var i = 0; i < 8; i++) {
-    var t = ts[i] || "", x = i * 120;
-    if (t === "<" || t === ">") {
-      var cx = x + 60, d = t === "<" ? -1 : 1;
-      g.poly([cx - 6 * d, y - 9, cx + 6 * d, y - 4, cx - 6 * d, y + 1, cx - 6 * d, y - 9], 2, ORANGE);
+  if (v.$segmode) return; // segment mode: the lower buttons are the segments, and Pung names them
+  var ts = v.$tabs || [], cur = v.$tab === undefined ? -1 : v.$tab, y = ROW + 50;
+  for (var j = 0; j < 8; j++) {
+    var s = ts[j] || "", tx = j * 120;
+    if (s === "<" || s === ">") {
+      var c = tx + 60, dd = s === "<" ? -1 : 1;
+      g.poly([c - 4 * dd, y + 1, c + 4 * dd, y + 6, c - 4 * dd, y + 11], 2, SILK);
       continue;
     }
-    if (!t) continue;
-    if (i === cur) g.fill(x + 6, y - 11, 108, 15, ORANGE);
-    g.text(x + 60, y, t.toUpperCase(), i === cur ? GROUND : DIM, 0, 104);
+    if (!s) continue;
+    var lit = j === cur;
+    g.fill(tx + 8, y, 104, 13, lit ? WINDOW : BODY_DK);
+    g.text(tx + 60, y + 10, up(s), lit ? ORANGE_LT : SILK, 0, 98);
+  }
+}
+// what moves: the knobs' pointers and values, the touched one
+function knobRow(g, v, names, values) {
+  var knobs = v.$knobs || [], t = v.$touched || "";
+  for (var i = 0; i < 8; i++) {
+    var k = knobs[i] || "", x = i * 120, name = names ? names[i] : knobName(v, k);
+    if (!name) continue;
+    var on = !!k && k === t, cx = x + 26, cy = ROW + 34 + lift(v);
+    if (on) {
+      g.fill(x + 4, ROW + 3, 112, 14, WINDOW);
+      g.text(x + 60, ROW + 14, up(name), "slot", 0, 108);
+    }
+    g.dot(cx, cy, 13, SKIRT);
+    g.dot(cx, cy, 11, KNOB);
+    if (known(v, k)) {
+      var a = Math.PI * (0.75 + 1.5 * v[k].frac);
+      g.line(cx + Math.cos(a) * 2, cy + Math.sin(a) * 2, cx + Math.cos(a) * 11, cy + Math.sin(a) * 11, 2.5, on ? "slot" : CREAM);
+    }
+    g.value(x + 82, ROW + 40 + lift(v), values ? (values[i] || "--") : withUnit(v, k), on ? "slot" : CREAM, 0, 64);
   }
 }
 
@@ -234,7 +316,7 @@ function parseWaves(s) {
 // it the three waves every table ends in (61-63: triangle, square, saw), lit
 // where an oscillator starts on one of them
 function fixedWaves(g, x, y, h, starts) {
-  var rh = h / 3, a = rh / 2 - 4;
+  var rh = h / 3, a = rh / 2 - 5;
   for (var f = 0; f < 3; f++) {
     var c = RULE, label = "", cy = y + rh * f + rh / 2;
     for (var s = 0; s < starts.length; s++) if (starts[s].fixed === f) { c = starts[s].color; label = label ? label + " " + starts[s].label : starts[s].label; }
@@ -245,25 +327,39 @@ function fixedWaves(g, x, y, h, starts) {
     if (label) g.text(x + 30, cy + 4, label, c, -1);
   }
 }
-function wavetable(g, x, y, w, h, v, starts) {
+// the starts at position i: their labels together ("1 2" where both start
+// on the same wave) and the first one's colour; null where none does
+function startsAt(starts, i) {
+  var label = "", color = null;
+  for (var s = 0; s < starts.length; s++) if (starts[s].pos === i) { label = label ? label + " " + starts[s].label : starts[s].label; color = color || starts[s].color; }
+  return color ? { label: label, color: color } : null;
+}
+// the landscape over a ground of colour bg (each wave hides what is behind it in that colour)
+function wavetable(g, x, y, w, h, v, starts, bg) {
   fixedWaves(g, x + w - 38, y, h, starts);
-  w -= 46;
+  g.fill(x + w - 46, y + 4, 1, h - 8, RULE);
+  w -= 52;
   var raw = disp(v, "wave_view"), waves = parseWaves(raw);
-  var n = 16, dx = Math.floor((w * 0.42) / (n - 1)), dy = (h * 0.5) / (n - 1), ww = w - dx * (n - 1), amp = h * 0.25;
+  var n = 16, dx = Math.floor((w * 0.42) / (n - 1)), dy = (h * 0.5) / (n - 1), ww = w - dx * (n - 1) - 14, amp = h * 0.25;
   if (!waves) {
-    frame(g, x, y, w, h, RULE);
-    var what = raw === "algo" ? "CALCULATED BY THE SYNTH" : known(v, "wave_view") ? "READING THE WAVES" : "";
-    g.text(x + w / 2, y + h / 2 + 4, what, raw === "algo" ? DIM : FAINT, 0, w - 20);
+    // no waves to draw (a table the synth computes, or the waves still
+    // coming): the same landscape as rails, the start positions lit on them
+    for (var r = n - 1; r >= 0; r--) {
+      var rx = x + r * dx, ry = y + h - amp - 2 - r * dy, on = startsAt(starts, r);
+      g.line(rx, ry, rx + ww, ry, on ? 2 : 1, on ? on.color : r % 4 === 0 ? ORANGE_GL : RULE);
+      if (on) g.text(rx + ww + 4, ry + 4, on.label, on.color, -1);
+    }
+    var what = raw === "algo" ? "WAVES COMPUTED BY THE SYNTH" : known(v, "wave_view") ? "READING THE WAVES" : "";
+    g.text(x + 4, y + h - 2, what, MUTE, -1, w - 12);
     return;
   }
   for (var i = n - 1; i >= 0; i--) {
     var bx = x + i * dx, by = y + h - amp - 2 - i * dy, pts = [];
     for (var j = 0; j < 32; j++) pts.push(bx + j / 31 * ww, by - waves[i][j] * amp);
-    var lit = -1;
-    for (var s = 0; s < starts.length; s++) if (starts[s].pos === i) lit = s;
-    g.area(pts, by + amp + 2, GROUND);
-    g.poly(pts, lit >= 0 ? 2 : 1, lit >= 0 ? starts[lit].color : i % 4 === 0 ? ORANGE_GL : BROWN_LT);
-    if (lit >= 0) g.text(bx + ww + 4, by + 4, starts[lit].label, starts[lit].color, -1);
+    var lit = startsAt(starts, i);
+    g.area(pts, by + amp + 2, bg);
+    g.poly(pts, lit ? 2 : 1, lit ? lit.color : i % 4 === 0 ? ORANGE_GL : BROWN_LT);
+    if (lit) g.text(bx + ww + 4, by + 4, lit.label, lit.color, -1);
   }
 }
 // where an oscillator starts in the table: its start wave, 0..60 drawn at
@@ -273,6 +369,7 @@ function startOf(v, k, label, color) {
   if (w > 60) return { pos: -1, fixed: w - 61, label: label, color: color };
   return { pos: Math.max(0, Math.min(15, Math.round(w / 4))), fixed: -1, label: label, color: color };
 }
+function startsKey(s) { return s[0].pos + "/" + s[0].fixed + "|" + s[1].pos + "/" + s[1].fixed; }
 
 // ---- the front panel ----------------------------------------------------------------------
 var SOUND = ["status", "preset", "preset_name", "bank_name", "wave_view"];
@@ -280,25 +377,56 @@ function waiting(v) { return disp(v, "status").indexOf("Waiting") === 0; }
 // the display's second line: what the touched knob says, else where the oscillators start
 function panelLine(v) {
   var t = v.$touched;
-  if (t && v[t]) return pad((v[t].name || t).toUpperCase(), 20) + padl(disp(v, t), 20);
-  return pad("W1 " + (disp(v, "w1_start_w") || "-"), 13) + pad("W2 " + (disp(v, "w2_start_w") || "-"), 13) +
-    padl("CUTOFF " + (disp(v, "f1_cutoff") || "-"), 14);
+  if (t && v[t]) return touchLine(v[t].name || t, withUnit(v, t));
+  return pad("W1 START " + (disp(v, "w1_start_w") || "-"), 14) + pad("W2 START " + (disp(v, "w2_start_w") || "-"), 14) +
+    padl("CUTOFF " + (disp(v, "f1_cutoff") || "-"), 12);
+}
+// the panel's sections, its segments: the table in its window, and a row of
+// lit section buttons on the orange body under the display (the XT's red
+// LEDs); the one under the encoders lit
+var SEGS = [
+  { id: "osc", label: "Osc", keys: PAGES.osc[0].keys },
+  { id: "wave", label: "Wave", keys: ["wave", "w1_start_w", "w2_start_w", "w1_env_amount", "w2_env_amount", "w1_keytrack", "w2_keytrack", "w2_link"] },
+  { id: "mixer", label: "Mixer", keys: PAGES.wave[1].keys },
+  { id: "filter", label: "Filter", keys: ["f1_cutoff", "f1_resonance", "f1_env_amount", "f1_type", "f1_env_attack", "f1_env_decay", "f1_env_sustain",
+    "f1_env_release"] },
+  { id: "amp", label: "Amp", keys: ["amp_volume", "amp_velocity", "amp_keytrack", "", "amp_env_attack", "amp_env_decay", "amp_env_sustain",
+    "amp_env_release"] },
+  { id: "lfo", label: "LFO", keys: PAGES.lfo[0].keys },
+  { id: "fx", label: "FX", keys: PAGES.fx[0].keys }
+];
+var WIN = [530, 4, 424, 88];
+(function () {
+  var b = 0;
+  SEGS.forEach(function (sg) { sg.rect = sg.id === "wave" ? WIN : [92 + (b++) * 71, 71, 68, 20]; });
+})();
+function sectionButtons(g, v) {
+  var act = v.$segmode === "segment" ? v.$segment || "" : "";
+  SEGS.forEach(function (sg) {
+    var r = sg.rect, on = sg.id === act;
+    if (sg.id === "wave") return; // the table's window: Pung's bar over it
+    g.fill(r[0], r[1], r[2], r[3], on ? WINDOW : BODY_DK);
+    led(g, r[0] + 10, r[1] + r[3] / 2, on);
+    g.text(r[0] + 19, r[1] + 14, up(sg.label), on ? ORANGE_LT : SILK, -1, r[2] - 22);
+  });
 }
 function frontPanel(g, v) {
-  var l1 = pad(soundTitle(v), 21) + padl(disp(v, "wave"), 19), l2 = panelLine(v);
+  var l1 = pad(soundTitle(v), 21) + padl("TABLE " + (disp(v, "wave") || "-"), 19), l2 = panelLine(v);
   var starts = [startOf(v, "w1_start_w", "1", ORANGE_LT), startOf(v, "w2_start_w", "2", CREAM)];
   // one layer (a layer replaces the frame drawn so far: there is one, and it comes first)
-  g.layer("xp|" + l1 + "|" + l2 + "|" + disp(v, "wave_view") + "|" + starts[0].pos + "/" + starts[0].fixed + "|" + starts[1].pos + "/" + starts[1].fixed, function () {
-    g.fill(0, 0, 960, 96, GROUND);
-    g.fill(0, 0, 524, 96, ORANGE_GL);
-    g.fill(2, 2, 520, 92, ORANGE);
-    lcd(g, 22, 16, l1, l2);
-    g.text(14, 88, "XENIA", GROUND, -1);
-    g.text(70, 88, "MICROWAVE II/XT", BROWN, -1);
-    g.text(510, 88, "WAVETABLE " + (disp(v, "wave") || "").toUpperCase(), BROWN, 1, 300);
-    wavetable(g, 534, 4, 418, 88, v, starts);
+  g.layer("xp|" + l1 + "|" + disp(v, "wave_view") + "|" + startsKey(starts), function () {
+    g.fill(0, 0, 960, ROW, BODY);
+    lcd(g, l1);
+    g.value(14, 90, "XENIA", SILK, -1);
+    // the table, in its window
+    g.fill(530, 4, 424, 88, BODY_DK);
+    g.fill(532, 6, 420, 84, WINDOW);
+    wavetable(g, 540, 10, 406, 78, v, starts, WINDOW);
   });
-  knobRow(g, v, null, null, 100);
+  sectionButtons(g, v);
+  bodyRow(g, v, null);
+  lcd2(g, l2);
+  knobRow(g, v, null, null);
 }
 
 // ---- the effect panel ---------------------------------------------------------------------
@@ -312,242 +440,268 @@ var FX_KNOBS = {
   "Overdrive": ["Drive", "Gain", "Amp Type"], "Amp Mod": ["Speed", "Spread", "Mix"], "Delay": ["Time", "Feedback", "Mix"],
   "Pan Delay": ["Time", "Feedback", "Mix"], "Mod Delay": ["Time", "Speed", "Depth"]
 };
+var FX_SEGS = [
+  { id: "effect", label: "Effect", rect: [535, 8, 414, 50], keys: ["effect_type", "effect_param_a", "effect_param_b", "effect_param_c"] },
+  { id: "glide", label: "Glide", rect: [535, 60, 414, 30], keys: ["glide_enabled", "glide_time", "glide_type", "glide_mode"] }
+];
 function fxPanel(g, v) {
-  var type = disp(v, "effect_type") || "Off", on = type !== "Off", glide = disp(v, "glide_enabled") === "On";
+  var type = disp(v, "effect_type") || "Off", on = !isOff(type), glide = disp(v, "glide_enabled") === "On";
+  // the names by the keys on the encoders (the page, or a segment of it)
+  var NAME = { effect_type: "Effect", glide_enabled: "Glide", glide_time: "Time", glide_type: "Type", glide_mode: "Mode" };
+  var names = [], values = [], kn = v.$knobs || [];
+  for (var q = 0; q < 8; q++) {
+    var kk = kn[q] || "";
+    names.push(NAME[kk] || (/^effect_param_/.test(kk) ? knobName(v, kk) : ""));
+    values.push(kk === "effect_type" ? type : disp(v, kk));
+  }
+  var t = v.$touched || "", ti = t ? (v.$knobs || []).indexOf(t) : -1;
   var l1 = pad(soundTitle(v), 21) + padl("EFFECT " + type, 19);
-  var l2 = pad("GLIDE " + (glide ? (disp(v, "glide_type") || "") : "OFF"), 24) + padl(glide ? disp(v, "glide_mode") : "", 16);
-  g.layer("xf|" + l1 + "|" + l2, function () {
-    g.fill(0, 0, 960, 96, GROUND);
-    g.fill(0, 0, 524, 96, ORANGE_GL);
-    g.fill(2, 2, 520, 92, ORANGE);
-    lcd(g, 22, 16, l1, l2);
-    g.text(14, 88, "XENIA", GROUND, -1);
-    g.text(70, 88, "EFFECT / GLIDE", BROWN, -1);
+  var l2 = ti >= 0 && names[ti] ? touchLine(names[ti], values[ti])
+    : pad("GLIDE " + (glide ? (disp(v, "glide_type") || "") : "OFF"), 24) + padl(glide ? disp(v, "glide_mode") : "", 16);
+  g.layer("xf|" + l1, function () {
+    g.fill(0, 0, 960, ROW, BODY);
+    lcd(g, l1);
+    g.value(14, 90, "XENIA", SILK, -1);
+    g.text(518, 88, "EFFECT / GLIDE", SILK, 1);
+    g.fill(530, 4, 424, 88, BODY_DK);
+    g.fill(532, 6, 420, 84, WINDOW);
     // the effects, the chosen one lit
     for (var i = 1; i < FX_TYPES.length; i++) {
-      var c = (i - 1) % 5, r = Math.floor((i - 1) / 5), x = 540 + c * 84, y = 8 + r * 26, lit = FX_TYPES[i] === type;
-      g.fill(x, y, 80, 20, lit ? ORANGE : PANEL);
-      if (!lit) frame(g, x, y, 80, 20, RULE);
-      g.text(x + 40, y + 14, FX_TILE[i].toUpperCase(), lit ? GROUND : DIM, 0, 76);
+      var c = (i - 1) % 5, r = Math.floor((i - 1) / 5), x = 540 + c * 82, y = 12 + r * 24, lit = FX_TYPES[i] === type;
+      g.fill(x, y, 78, 19, lit ? ORANGE : PANEL);
+      g.text(x + 39, y + 14, FX_TILE[i].toUpperCase(), lit ? GROUND : on ? DIM : MUTE, 0, 74);
     }
   });
-  // the glide: from one note to the next, as long as its time
-  var gt = frac(v, "glide_time", 0), gx = 540 + 30 + gt * 300;
-  g.fill(540, 62, 412, 30, PANEL);
-  g.line(548, 84, 570, 84, 2, glide ? ORANGE : FAINT);
+  bodyRow(g, v, names);
+  lcd2(g, l2);
+  // the glide: from one note to the next, as long as its time, in steps for a glissando
+  var gt = frac(v, "glide_time", 0), x0 = 548, x1 = 580, gx = x1 + 10 + gt * 260, lo = 84, hi = 66;
+  var gc = !glide ? FAINT : hot(v, "glide_time") || hot(v, "glide_type") || hot(v, "glide_mode") ? "slot" : ORANGE_LT, pts = [x0, lo, x1, lo];
   if (/Gliss/.test(disp(v, "glide_type"))) {
-    var steps = 6, pts = [570, 84];
-    for (var s = 0; s < steps; s++) { var x0 = 570 + (gx - 570) * s / steps, x1 = 570 + (gx - 570) * (s + 1) / steps, yy = 84 - 16 * (s + 1) / steps; pts.push(x0, yy, x1, yy); }
-    g.poly(pts, 2, glide ? ORANGE_LT : FAINT);
-  } else g.line(570, 84, gx, 68, 2, glide ? ORANGE_LT : FAINT);
-  g.line(gx, 68, 944, 68, 2, glide ? ORANGE : FAINT);
-  g.text(944, 86, glide ? (disp(v, "glide_time") || "") : "GLIDE OFF", glide ? INK : FAINT, 1);
-  var knobs = FX_KNOBS[type] || ["", "", ""];
-  knobRow(g, v, ["Type", on ? knobs[0] : "", on ? knobs[1] : "", on ? knobs[2] : "", "Glide", "Time", "Type", "Mode"],
-    [type, disp(v, "effect_param_a"), disp(v, "effect_param_b"), disp(v, "effect_param_c"), disp(v, "glide_enabled"),
-      disp(v, "glide_time"), disp(v, "glide_type"), disp(v, "glide_mode")], 100);
+    for (var s = 1; s <= 6; s++) pts.push(x1 + (gx - x1) * (s - 1) / 6, lo + (hi - lo) * s / 6, x1 + (gx - x1) * s / 6, lo + (hi - lo) * s / 6);
+  } else if (disp(v, "glide_mode") === "Linear") pts.push(gx, hi);
+  else for (var e = 1; e <= 14; e++) { var f = e / 14; pts.push(x1 + (gx - x1) * f, lo + (hi - lo) * (1 - Math.exp(-4 * f)) / (1 - Math.exp(-4))); }
+  pts.push(870, hi);
+  g.poly(pts, 2, gc);
+  g.text(944, 80, glide ? up(disp(v, "glide_time") || "") : "NO GLIDE", glide ? INK : MUTE, 1);
+  knobRow(g, v, names, values);
 }
 
 // ---- pictures (a page's band: 952 x 86) -------------------------------------------------
-// the oscillators: where each one sounds, on a ruler of octaves, the FM and the sync between them
+// the oscillators: where each one sounds on a ruler of octaves, osc 1 above
+// it, osc 2 below; the FM and the sync between them
+var OCT = ["-4", "-3", "-2", "-1", "0", "+1", "+2", "+3", "+4"];
 function oscScreen(g, v) {
-  edge(g);
-  var t = v.$touched || "";
-  // the pitch ruler, in octaves: osc 1 above it, osc 2 below
-  var x0 = 40, W = 600, mid = x0 + W / 2, perOct = W / 8;
-  g.fill(x0, 44, W, 1, RULE);
-  for (var o = -4; o <= 4; o++) g.fill(mid + o * perOct, 40, 1, 9, o === 0 ? DIM : FAINT);
-  g.text(x0 - 8, 48, "-4", FAINT, 1);
-  g.text(x0 + W + 8, 48, "+4 OCT", FAINT, -1);
-  for (var n = 1; n <= 2; n++) {
-    var p = "o" + n + "_", oct = opt(v, p + "octave", ["-4", "-3", "-2", "-1", "0", "+1", "+2", "+3", "+4"]) - 4;
-    var semi = num(v, p + "semi", 0), det = num(v, p + "detune", 0) / 64;
-    var x = mid + (oct + (semi + det) / 12) * perOct, lit = t.indexOf(p) === 0, c = n === 1 ? ORANGE_LT : CREAM;
-    g.fill(x - 1, n === 1 ? 22 : 46, 3, 22, lit ? INK : c);
-    g.text(x, n === 1 ? 16 : 82, "OSC " + n, c, 0);
+  plate(g, 0, 0, 630, 86, "Pitch", true);
+  var x0 = 34, W = 568, mid = x0 + W / 2, perOct = W / 8, y = 48;
+  g.fill(x0, y, W, 1, RULE);
+  for (var o = -4; o <= 4; o++) {
+    g.fill(Math.round(mid + o * perOct), y - 3, 1, 7, o === 0 ? DIM : FAINT);
+    g.text(mid + o * perOct, 82, o > 0 ? "+" + o : String(o), o === 0 ? DIM : FAINT, 0);
   }
-  var fm = frac(v, "o1_fm_amount", 0), sync = disp(v, "o2_sync") === "On";
-  g.text(712, 18, "FM", DIM, -1);
-  g.fill(750, 11, 190, 6, RULE);
-  g.fill(750, 11, 190 * fm, 6, fm > 0 ? ORANGE : FAINT);
-  g.text(712, 40, "SYNC", DIM, -1);
-  led(g, 764, 36, sync);
-  g.text(778, 40, sync ? "OSC 2 TO OSC 1" : "OFF", sync ? INK : FAINT, -1);
-  for (var m = 1; m <= 2; m++)
-    g.text(712, 52 + m * 14, "OSC " + m + "  " + [disp(v, "o" + m + "_octave"), disp(v, "o" + m + "_semi"), disp(v, "o" + m + "_detune")].join(" / "),
-      DIM, -1, 230);
+  for (var n = 1; n <= 2; n++) {
+    var p = "o" + n + "_", oct = opt(v, p + "octave", OCT) - 4;
+    var semi = num(v, p + "semi", 0), det = num(v, p + "detune", 0) / 64;
+    var x = Math.round(mid + (oct + (semi + det) / 12) * perOct), c = hotIn(v, p) ? "slot" : n === 1 ? ORANGE_LT : CREAM;
+    if (n === 1) { g.fill(x - 1, y - 22, 3, 22, c); g.text(x + 6, y - 12, "OSC 1", c, -1); }
+    else { g.fill(x - 1, y + 1, 3, 20, c); g.text(x + 6, y + 18, "OSC 2", c, -1); }
+  }
+  // FM and sync: what osc 2 does to osc 1
+  var x1 = 636, w = 316, fm = frac(v, "o1_fm_amount", 0), sync = disp(v, "o2_sync") === "On";
+  plate(g, x1, 0, w, 86, "Osc 1 / Osc 2", true);
+  var cols = [["OCT", "octave"], ["SEMI", "semi"], ["DETUNE", "detune"]];
+  for (var c2 = 0; c2 < 3; c2++) g.text(x1 + 140 + c2 * 64, 31, cols[c2][0], MUTE, 1);
+  for (var m = 1; m <= 2; m++) {
+    var yy = 31 + m * 15;
+    g.text(x1 + 8, yy, "OSC " + m, m === 1 ? ORANGE_LT : CREAM, -1);
+    for (var k = 0; k < 3; k++) {
+      var key = "o" + m + "_" + cols[k][1];
+      g.text(x1 + 140 + k * 64, yy, disp(v, key) || "--", hot(v, key) ? "slot" : INK, 1);
+    }
+  }
+  g.text(x1 + 8, 81, "FM", MUTE, -1);
+  bar(g, x1 + 30, 76, 120, fm, false, hot(v, "o1_fm_amount") ? "slot" : ORANGE);
+  led(g, x1 + 214, 77, sync);
+  g.text(x1 + 222, 81, "SYNC", hot(v, "o2_sync") ? "slot" : sync ? INK : MUTE, -1);
 }
 // the waves: the table, where each oscillator starts and how far the keys move it
 function wavesScreen(g, v) {
   var starts = [startOf(v, "w1_start_w", "1", ORANGE_LT), startOf(v, "w2_start_w", "2", CREAM)];
-  g.layer("ws|" + disp(v, "wave_view") + "|" + starts[0].pos + "/" + starts[0].fixed + "|" + starts[1].pos + "/" + starts[1].fixed, function () {
-    edge(g);
-    wavetable(g, 12, 2, 460, 82, v, starts);
+  g.layer("ws|" + disp(v, "wave") + "|" + disp(v, "wave_view") + "|" + startsKey(starts), function () {
+    plate(g, 0, 0, 470, 86, "Table " + (disp(v, "wave") || "-"), false);
+    wavetable(g, 6, 16, 458, 68, v, starts, PANEL);
   });
-  legend(g, 500, 14, "Wavetable " + (disp(v, "wave") || ""), ORANGE);
+  var x0 = 476, w = 476;
+  plate(g, x0, 0, w, 86, "Start / Keys", true, disp(v, "w2_link") === "On" ? "Wave 2 follows wave 1" : "", hot(v, "w2_link") ? "slot" : DIM);
   for (var n = 1; n <= 2; n++) {
-    var p = "w" + n + "_", y = 26 + (n - 1) * 30, c = n === 1 ? ORANGE_LT : CREAM;
-    g.text(500, y + 8, "WAVE " + n, c, -1);
+    var p = "w" + n + "_", y = 34 + (n - 1) * 26, c = n === 1 ? ORANGE_LT : CREAM, rx = x0 + 70, rw = 252;
+    g.text(x0 + 8, y + 4, "WAVE " + n, c, -1);
     // the table's 64 positions, the start, and the keys' reach from it
-    g.fill(570, y + 4, 256, 2, RULE);
+    g.fill(rx, y, rw, 1, RULE);
+    for (var q = 0; q <= 64; q += 16) g.fill(rx + q / 64 * rw, y - 3, 1, 7, FAINT);
     var st = num(v, p + "start_w", 0) / 63, kt = (frac(v, p + "keytrack", 0.5) - 0.5) * 2;
-    g.fill(570 + st * 256 - 1, y - 2, 3, 14, c);
-    var reach = Math.max(0, Math.min(1, st + kt * 0.5));
-    g.line(570 + st * 256, y + 5, 570 + reach * 256, y + 5, 3, c);
-    g.text(944, y + 8, "PHASE " + (disp(v, p + "start_p") || "") + (disp(v, p + "limit") === "On" ? "  LIMIT" : ""), DIM, 1, 110);
+    var reach = Math.max(0, Math.min(1, st + kt * 0.5)), kc = hot(v, p + "keytrack") ? "slot" : c;
+    if (Math.abs(reach - st) > 0.004) g.line(rx + st * rw, y, rx + reach * rw, y, 3, kc);
+    g.fill(Math.round(rx + st * rw) - 1, y - 7, 3, 15, c);
+    pairs(g, v, rx + rw + 16, y + 4, [["Phase", disp(v, p + "start_p"), p + "start_p"],
+      disp(v, p + "limit") === "On" || hot(v, p + "limit") ? ["Limit", disp(v, p + "limit"), p + "limit"] : null], x0 + w - 8);
   }
-  g.text(500, 82, disp(v, "w2_link") === "On" ? "WAVE 2 FOLLOWS WAVE 1" : "", DIM, -1);
+  pairs(g, v, x0 + 8, 81, [["Accuracy", disp(v, "accuracy"), "accuracy"]], x0 + w - 8);
 }
-// the mixer: four sources into the filter, and the digital artefacts it can keep
+// the mixer: Pung's faders for the four sources, each over its encoder; the
+// digital character the XT can keep, and where the voice sits
 function mixerScreen(g, v) {
-  edge(g);
-  g.mix(12, 4, 460, 78, ["mix_w1", "mix_w2", "mix_ring_mod", "mix_noise"]);
-  var flags = [["ALIASING", disp(v, "aliasing")], ["QUANTIZE", disp(v, "time_quant")], ["CLIPPING", disp(v, "clipping")],
-    ["ACCURACY", disp(v, "accuracy")]];
-  legend(g, 500, 14, "The Microwave's grit", ORANGE);
+  g.mix(0, 0, 480, 86, ["mix_w1", "mix_w2", "mix_ring_mod", "mix_noise"], { color: ORANGE });
+  var x0 = 488, w = 464;
+  plate(g, x0, 0, w, 86, "Digital Character", true);
+  var flags = [["Aliasing", "aliasing"], ["Quantize", "time_quant"], ["Clipping", "clipping"], ["Accuracy", "accuracy"]];
   for (var i = 0; i < flags.length; i++) {
-    var y = 30 + i * 15, val = flags[i][1] || "", on = val && val !== "Off" && val !== "Saturate";
-    led(g, 506, y - 4, on);
-    g.text(518, y, flags[i][0], DIM, -1);
-    g.text(640, y, val.toUpperCase(), on ? INK : FAINT, -1);
+    var y = 40 + (i % 2) * 22, x = x0 + 8 + Math.floor(i / 2) * 172, val = disp(v, flags[i][1]), on = !!val && !isOff(val) && val !== "Saturate";
+    led(g, x + 4, y - 4, on);
+    g.text(x + 14, y, up(flags[i][0]), MUTE, -1);
+    g.text(x + 160, y, up(val || "--"), hot(v, flags[i][1]) ? "slot" : on ? INK : DIM, 1);
   }
-  var pan = frac(v, "pan", 0.5);
-  g.text(760, 30, "PAN", DIM, -1);
-  g.fill(760, 40, 180, 2, RULE);
-  g.dot(760 + 180 * pan, 41, 5, ORANGE);
+  // the pan, under its encoder
+  var px = x0 + w - 96, pw = 84, pan = frac(v, "pan", 0.5);
+  g.text(px + pw / 2, 30, "PAN", MUTE, 0);
+  g.fill(px, 44, pw, 2, RULE);
+  g.fill(px + pw / 2, 40, 1, 10, DIM);
+  g.dot(px + pw * pan, 45, 5, hot(v, "pan") ? "slot" : ORANGE_LT);
+  g.text(px + pw / 2, 64, up(disp(v, "pan") || "--"), INK, 0);
 }
 // the two filters: Pung's filter picture (the sound's spectrum behind each
 // curve while it plays), in the XT's orange; filter 1 feeds filter 2
 function filterScreen(g, v) {
-  edge(g);
-  var t = v.$touched || "";
-  var t1 = disp(v, "f1_type") || "24 dB LP", t2 = disp(v, "f2_type") || "6 dB LP";
-  g.fill(12, 2, 560, 82, PANEL);
-  legend(g, 20, 16, "Filter 1  " + t1, t.indexOf("f1_") === 0 ? ORANGE_LT : ORANGE);
-  g.text(564, 16, "EXTRA " + (disp(v, "f1_extra") || "0"), DIM, 1);
-  g.filter(16, 20, 552, 62, { cutoff: "f1_cutoff", resonance: "f1_resonance", type: "f1_type", color: ORANGE });
-  g.line(572, 50, 600, 50, 2, ORANGE);
-  g.fill(600, 2, 344, 82, PANEL);
-  legend(g, 608, 16, "Filter 2  " + t2, t.indexOf("f2_") === 0 ? ORANGE_LT : ORANGE);
-  g.filter(604, 20, 336, 62, { cutoff: "f2_cutoff", type: "f2_type", color: ORANGE });
+  var t1 = disp(v, "f1_type") || "--", t2 = disp(v, "f2_type") || "--";
+  plate(g, 0, 0, 586, 86, "Filter 1", true, t1, hot(v, "f1_type") ? "slot" : INK);
+  g.filter(4, 18, 578, 50, { cutoff: "f1_cutoff", resonance: "f1_resonance", type: "f1_type", color: ORANGE });
+  pairs(g, v, 8, 81, [["Cutoff", disp(v, "f1_cutoff"), "f1_cutoff"], ["Reso", disp(v, "f1_resonance"), "f1_resonance"],
+    ["Keys", disp(v, "f1_key_track"), "f1_key_track"], ["Env Vel", disp(v, "f1_env_vel_amount"), "f1_env_vel_amount"],
+    ["Extra", disp(v, "f1_extra"), "f1_extra"]], 578);
+  g.line(588, 43, 612, 43, 2, ORANGE);
+  g.poly([606, 38, 613, 43, 606, 48], 2, ORANGE);
+  plate(g, 616, 0, 336, 86, "Filter 2", true, t2, hot(v, "f2_type") ? "slot" : INK);
+  g.filter(620, 18, 328, 50, { cutoff: "f2_cutoff", type: "f2_type", color: ORANGE });
+  pairs(g, v, 624, 81, [["Cutoff", disp(v, "f2_cutoff"), "f2_cutoff"], ["Keys", disp(v, "f2_key_track"), "f2_key_track"],
+    ["Amp Keys", disp(v, "amp_keytrack"), "amp_keytrack"]], 944);
 }
-// the two LFOs: Pung's LFO picture, in the XT's orange; what bends and
-// delays them beside it. (Their rates have no unit and nothing restarts them
-// on a note that Pung can read: they are drawn still, as their phase cannot
-// be known.)
+// the two LFOs: Pung's LFO picture, in the XT's orange. (Their rates have no
+// unit and nothing restarts them on a note that Pung can read: they are
+// drawn still, as their phase cannot be known.)
 function lfoScreen(g, v) {
-  edge(g);
-  var t = v.$touched || "";
+  var shapePage = (v.$page || 0) === 1;
   for (var n = 1; n <= 2; n++) {
-    var p = "lfo" + n + "_", x = n === 1 ? 12 : 486, shape = disp(v, p + "shape") || "Sine", lit = t.indexOf(p) === 0;
-    g.fill(x, 2, 460, 82, PANEL);
-    legend(g, x + 8, 16, "LFO " + n + "  " + shape, lit ? ORANGE_LT : ORANGE);
-    g.text(x + 452, 16, (disp(v, p + "sync") === "On" ? "SYNC  " : "") + (disp(v, p + "rate") || ""), DIM, 1);
-    g.lfo(x + 4, 20, 452, 50, { shape: p + "shape", rate: p + "rate", color: ORANGE });
-    var extra = "SYMMETRY " + (disp(v, p + "symmetry") || "0") + "   DELAY " + (disp(v, p + "delay") || "Off");
-    if (n === 2 && disp(v, "lfo2_phase")) extra += "   PHASE " + disp(v, "lfo2_phase");
-    g.text(x + 8, 80, extra, DIM, -1, 444);
+    var p = "lfo" + n + "_", x = n === 1 ? 0 : 479, w = 473;
+    plate(g, x, 0, w, 86, "LFO " + n, true, disp(v, p + "shape") || "--", hot(v, p + "shape") ? "slot" : INK);
+    g.lfo(x + 4, 18, w - 8, 44, { shape: p + "shape", rate: p + "rate", color: ORANGE });
+    var list = shapePage
+      ? [["Symmetry", disp(v, p + "symmetry"), p + "symmetry"], ["Humanize", disp(v, p + "humanize"), p + "humanize"],
+         n === 2 ? ["Phase", disp(v, "lfo2_phase"), "lfo2_phase"] : null]
+      : [["Rate", disp(v, p + "rate"), p + "rate"], ["Sync", disp(v, p + "sync"), p + "sync"], ["Delay", disp(v, p + "delay"), p + "delay"]];
+    pairs(g, v, x + 8, 80, list, x + w - 8);
   }
 }
 // the free envelope: three times and levels, a release: Pung's envelope
 function freeEnvScreen(g, v) {
-  edge(g);
-  legend(g, 20, 14, "Free Envelope", ORANGE);
-  g.text(944, 14, (disp(v, "free_env_trigger") || "").toUpperCase(), DIM, 1);
-  g.envelope(10, 18, 940, 66, {
+  plate(g, 0, 0, 952, 86, "Free Envelope", true, "Trigger " + (disp(v, "free_env_trigger") || "--"), hot(v, "free_env_trigger") ? "slot" : DIM);
+  g.envelope(4, 18, 944, 66, {
     time1: "free_env_time1", level1: "free_env_level1", time2: "free_env_time2", level2: "free_env_level2",
     time3: "free_env_time3", level3: "free_env_level3", time4: "free_env_release_time", level4: "free_env_release_level",
     labels: true, color: ORANGE
   });
 }
-// the voices: poly or mono, one, two or many per note, and how far apart
+// the voices: poly or mono, one, two or six per note, how far apart in
+// pitch and in the stereo field; what else plays
 function voiceScreen(g, v) {
-  edge(g);
   var as = disp(v, "assignment") || "Normal", mono = disp(v, "allocation_mode") === "Mono";
   var n = as === "Unisono" ? 6 : as === "Dual" ? 2 : 1, det = frac(v, "detune", 0), sp = frac(v, "de_pan", 0);
-  legend(g, 18, 16, "Voices", ORANGE);
-  g.value(18, 50, (mono ? "MONO" : "POLY") + (n > 1 ? " " + as.toUpperCase() : ""), INK, -1, 260);
+  plate(g, 0, 0, 586, 86, "Voices", true, (mono ? "Mono" : "Poly") + "  " + as, hot(v, "allocation_mode") || hot(v, "assignment") ? "slot" : INK);
+  // a voice a line: across, its pitch (the detune); up and down, its place left to right (the de-pan)
+  var cx = 293, vc = hot(v, "detune") || hot(v, "de_pan") ? "slot" : ORANGE_LT;
+  g.fill(40, 50, 506, 1, RULE);
+  g.fill(cx, 22, 1, 56, FAINT);
+  g.text(36, 54, "LOW", FAINT, 1);
+  g.text(550, 54, "HIGH", FAINT, -1);
   for (var i = 0; i < n; i++) {
-    var off = n > 1 ? i / (n - 1) - 0.5 : 0, x = 420 + off * 260 * Math.max(det, 0.04) * 2, y = 44 + off * 50 * sp;
-    g.fill(x - 2, y - 20, 4, 40, ORANGE);
+    var off = n > 1 ? i / (n - 1) - 0.5 : 0, x = Math.round(cx + off * 480 * Math.max(det, 0.03)), y = Math.round(50 + (i % 2 ? 1 : -1) * Math.abs(off) * 48 * sp);
+    g.fill(x - 1, y - 12, 3, 24, vc);
   }
-  g.text(944, 76, "DETUNE " + (disp(v, "detune") || "") + "   DE-PAN " + (disp(v, "de_pan") || ""), DIM, 1, 300);
-  g.text(940, 16, "CHORUS " + (disp(v, "chorus_enabled") || "Off").toUpperCase(), DIM, 1);
-  g.text(940, 36, "ARP " + (disp(v, "arp_mode") || "Off").toUpperCase(), DIM, 1);
-  g.text(940, 56, "VELOCITY " + (disp(v, "amp_velocity") || ""), DIM, 1);
+  pairs(g, v, 8, 81, [["Detune", disp(v, "detune"), "detune"], ["De-pan", disp(v, "de_pan"), "de_pan"]], 578);
+  var x0 = 592, w = 360;
+  plate(g, x0, 0, w, 86, "Play", true);
+  pairs(g, v, x0 + 8, 36, [["Velocity", disp(v, "amp_velocity"), "amp_velocity"], ["Pan Keys", disp(v, "pan_keytrack"), "pan_keytrack"]], x0 + w - 8);
+  var ch = disp(v, "chorus_enabled") === "On", arp = disp(v, "arp_mode") || "Off";
+  led(g, x0 + 12, 54, ch);
+  g.text(x0 + 22, 58, "CHORUS", hot(v, "chorus_enabled") ? "slot" : ch ? INK : MUTE, -1);
+  led(g, x0 + 12, 76, !isOff(arp));
+  g.text(x0 + 22, 80, "ARP " + up(arp), hot(v, "arp_mode") ? "slot" : !isOff(arp) ? INK : MUTE, -1);
 }
 // the wave envelope: eight stages, each a time and a level that is a place
-// in the table; the key-on loop repeats while a key is held, the key-off
-// loop after it is let go
+// in the table: Pung's envelope, still (where the XT holds a note and how it
+// loops are its own: the loops are named beside it)
 function wenvScreen(g, v) {
-  edge(g);
-  var t = v.$touched || "", x0 = 20, W = 900, top = 18, H = 56, xs = [x0], ys = [];
-  g.text(x0, 12, "WAVE ENVELOPE: WHERE IN THE TABLE, OVER TIME", FAINT, -1);
-  var total = 0, times = [];
-  for (var i = 1; i <= 8; i++) { times.push(0.06 + frac(v, "wave_env_time" + i, 0)); total += times[i - 1]; }
-  var x = x0, pts = [x0, top + H]; // from the start position
-  for (var s = 0; s < 8; s++) {
-    x += times[s] / total * W;
-    var y = top + H - frac(v, "wave_env_level" + (s + 1), 0) * H;
-    xs.push(x); ys.push(y);
-    pts.push(x, y);
+  var spec = { labels: true, color: ORANGE, still: true };
+  for (var i = 1; i <= 8; i++) { spec["time" + i] = "wave_env_time" + i; spec["level" + i] = "wave_env_level" + i; }
+  plate(g, 0, 0, 706, 86, "Wave Envelope", true, "Through the table", DIM);
+  g.envelope(4, 18, 698, 66, spec);
+  var x0 = 712, w = 240;
+  plate(g, x0, 0, w, 86, "Loops", true, disp(v, "wave_env_trigger") || "", hot(v, "wave_env_trigger") ? "slot" : DIM);
+  var loops = [["Key On", "wave_key_on_loop"], ["Key Off", "wave_key_off_loop"]];
+  for (var l = 0; l < 2; l++) {
+    var k = loops[l][1], on = disp(v, k) === "On", y = 40 + l * 24;
+    led(g, x0 + 12, y - 4, on);
+    g.text(x0 + 22, y, up(loops[l][0]), hot(v, k) ? "slot" : on ? INK : MUTE, -1);
+    var a = disp(v, k + "_start") || "-", b = disp(v, k + "_end") || "-";
+    g.text(x0 + w - 8, y, on || hotIn(v, k) ? "STAGE " + a + " TO " + b : "OFF", hot(v, k + "_start") || hot(v, k + "_end") ? "slot" : on ? INK : FAINT, 1);
   }
-  g.fill(x0, top + H, W, 1, RULE);
-  g.area(pts, top + H, ORANGE_DK);
-  g.poly(pts, 2, ORANGE_LT);
-  for (var k = 0; k < 8; k++) {
-    var lit = t === "wave_env_time" + (k + 1) || t === "wave_env_level" + (k + 1);
-    g.dot(xs[k + 1], ys[k], lit ? 5 : 3, lit ? INK : ORANGE);
-    g.text(xs[k + 1], top + H + 12, String(k + 1), lit ? INK : DIM, 0);
-  }
-  // the loops, as brackets over the stages they repeat
-  function loop(on, a, b, y, c, label) {
-    if (!on) return;
-    var xa = xs[Math.max(0, a)], xb = xs[Math.min(8, b + 1)];
-    g.fill(xa, y, Math.max(2, xb - xa), 2, c);
-    g.fill(xa, y, 2, 6, c); g.fill(xb - 2, y, 2, 6, c);
-    g.text(xa + 4, y - 2, label, c, -1);
-  }
-  var LOOP = ["1", "2", "3", "4", "5", "6", "7", "8"];
-  loop(disp(v, "wave_key_on_loop") === "On", opt(v, "wave_key_on_loop_start", LOOP), opt(v, "wave_key_on_loop_end", LOOP), 24, ORANGE_LT, "KEY ON");
-  loop(disp(v, "wave_key_off_loop") === "On", opt(v, "wave_key_off_loop_start", LOOP), opt(v, "wave_key_off_loop_end", LOOP), 34, CREAM, "KEY OFF");
-  g.text(944, 14, (disp(v, "wave_env_trigger") || "").toUpperCase(), DIM, 1);
 }
-// the matrix: a source reaching a destination, the line as strong as the amount
-function slotPair(a) {
+// the matrix: eight of the sixteen slots, the page's two lit: a source
+// reaching a destination, the line as strong as the amount
+function slotRow(g, v, x, y, label, p, lit) {
+  var src = disp(v, p + "source") || "Off", dst = disp(v, p + "destination") || "--", amt = frac(v, p + "amount", 0.5);
+  var on = !isOff(src) && Math.abs(amt - 0.5) > 0.004, a = Math.abs(amt - 0.5) * 2;
+  var txt = on ? (lit ? INK : DIM) : FAINT;
+  var tc = function (k, c) { return hot(v, k) ? "slot" : c; };
+  g.text(x + 12, y + 13, label, lit ? ORANGE : MUTE, 0);
+  g.fill(x + 26, y, 148, 18, lit && on ? ORANGE_DK : lit ? PANEL_HI : PANEL);
+  g.text(x + 100, y + 13, up(src), tc(p + "source", txt), 0, 142);
+  if (on) {
+    var lc = tc(p + "amount", lit ? ORANGE_LT : ORANGE_GL);
+    g.line(x + 174, y + 9, x + 258, y + 9, 1 + a * 5, lc);
+    g.poly([x + 256, y + 4, x + 263, y + 9, x + 256, y + 14], 2, lc);
+  } else g.fill(x + 174, y + 9, 90, 1, RULE);
+  g.fill(x + 264, y, 148, 18, lit ? PANEL_HI : PANEL);
+  if (lit && on) frame(g, x + 264, y, 148, 18, ORANGE);
+  g.text(x + 338, y + 13, up(dst), tc(p + "destination", txt), 0, 142);
+  g.text(x + 468, y + 13, on || hot(v, p + "amount") ? (disp(v, p + "amount") || "") : "", tc(p + "amount", lit ? INK : DIM), 1);
+}
+function slotsScreen(first) {
+  var base = first <= 8 ? 1 : 9;
   return function (g, v) {
-    edge(g);
-    var t = v.$touched || "";
-    for (var i = 0; i < 2; i++) {
-      var n = a + i, p = "slot" + n + "_", y = 8 + i * 42;
-      var src = disp(v, p + "source") || "Off", dst = disp(v, p + "destination") || "", f = frac(v, p + "amount", 0.5);
-      var amt = Math.abs(f - 0.5) * 2, live = src !== "Off" && amt > 0.01, lit = t.indexOf(p) === 0;
-      g.text(18, y + 15, "SLOT " + n, lit ? ORANGE_LT : DIM, -1);
-      g.fill(90, y, 260, 24, live ? ORANGE_DK : PANEL);
-      g.text(220, y + 16, src.toUpperCase(), live ? INK : FAINT, 0, 250);
-      g.line(350, y + 12, 600, y + 12, live ? 1 + amt * 5 : 1, live ? (lit ? ORANGE_LT : ORANGE) : RULE);
-      g.fill(600, y, 260, 24, live ? PANEL : GROUND);
-      frame(g, 600, y, 260, 24, live ? ORANGE : RULE);
-      g.text(730, y + 16, dst.toUpperCase(), live ? INK : FAINT, 0, 250);
-      g.text(944, y + 16, live ? disp(v, p + "amount") : "", DIM, 1);
+    for (var i = 0; i < 8; i++) {
+      var n = base + i;
+      slotRow(g, v, i < 4 ? 0 : 480, 2 + (i % 4) * 21, String(n), "slot" + n + "_", n === first || n === first + 1);
     }
+    g.fill(475, 2, 1, 82, PANEL);
   };
 }
-// a modifier: two sources, an operation, a parameter
+// the four modifiers: two sources, an operation, its parameter; the page's two lit
 function modifierScreen(a) {
   return function (g, v) {
-    edge(g);
-    var t = v.$touched || "";
-    for (var i = 0; i < 2; i++) {
-      var n = a + i, p = "mod" + n + "_", y = 8 + i * 42, lit = t.indexOf(p) === 0;
-      g.text(18, y + 16, "MODIFIER " + n, lit ? ORANGE_LT : DIM, -1);
-      g.fill(150, y, 250, 24, PANEL);
-      g.text(275, y + 16, (disp(v, p + "source1") || "Off").toUpperCase(), INK, 0, 240);
-      g.fill(416, y, 120, 24, ORANGE_DK);
-      g.text(476, y + 16, (disp(v, p + "type") || "+").toUpperCase(), ORANGE_LT, 0, 116);
-      g.fill(552, y, 250, 24, PANEL);
-      g.text(677, y + 16, (disp(v, p + "source2") || "Off").toUpperCase(), INK, 0, 240);
-      g.text(944, y + 16, "PARAM " + (disp(v, p + "parameter") || "0"), DIM, 1);
+    for (var n = 1; n <= 4; n++) {
+      var p = "mod" + n + "_", y = 2 + (n - 1) * 21, lit = n === a || n === a + 1;
+      var s1 = disp(v, p + "source1") || "Off", s2 = disp(v, p + "source2") || "Off", on = !isOff(s1) || !isOff(s2);
+      var txt = on ? (lit ? INK : DIM) : FAINT, tc = function (k, c) { return hot(v, k) ? "slot" : c; };
+      g.text(8, y + 13, "MODIFIER " + n, lit ? ORANGE : MUTE, -1);
+      g.fill(100, y, 250, 18, lit ? PANEL_HI : PANEL);
+      g.text(225, y + 13, up(s1), tc(p + "source1", txt), 0, 244);
+      g.fill(360, y, 90, 18, lit ? ORANGE_DK : PANEL);
+      g.text(405, y + 13, up(disp(v, p + "type") || "+"), tc(p + "type", lit ? ORANGE_LT : DIM), 0, 86);
+      g.fill(460, y, 250, 18, lit ? PANEL_HI : PANEL);
+      g.text(585, y + 13, up(s2), tc(p + "source2", txt), 0, 244);
+      g.text(730, y + 13, "PARAMETER", MUTE, -1);
+      bar(g, 808, y + 7, 100, frac(v, p + "parameter", 0), false, tc(p + "parameter", lit ? ORANGE : ORANGE_GL));
+      g.text(944, y + 13, disp(v, p + "parameter") || "--", tc(p + "parameter", lit ? INK : DIM), 1);
     }
   };
 }
@@ -555,46 +709,49 @@ function modifierScreen(a) {
 function stepKey(i) { return "arp_user_pattern" + (i + 1); }
 function arpScreen(first) {
   return function (g, v) {
-    edge(g);
-    var mode = disp(v, "arp_mode") || "Off", on = mode !== "Off", user = disp(v, "arp_pattern") === "User";
-    var len = Math.max(1, num(v, "arp_user_pattern_length", 16)), t = v.$touched || "";
-    led(g, 22, 12, on);
-    legend(g, 34, 16, "Arpeggiator  " + mode, on ? ORANGE : FAINT);
-    g.text(300, 16, user ? "USER PATTERN, " + len + " STEPS" : "PATTERN " + (disp(v, "arp_pattern") || "").toUpperCase() +
-      " (THE STEPS ARE THE USER PATTERN'S)", user ? DIM : FAINT, -1, 380);
+    var mode = disp(v, "arp_mode") || "Off", on = !isOff(mode), user = disp(v, "arp_pattern") === "User";
+    var len = Math.max(1, num(v, "arp_user_pattern_length", 16));
     // (a tempo the sound holds below the range, 0 in some factory sounds, has no name: it is left out)
-    var tempo = disp(v, "arp_tempo"), bpm = tempo === "External" ? "EXT   " : +tempo >= 50 ? tempo + " BPM   " : "";
-    g.text(944, 16, (disp(v, "arp_clock") || "") + "   " + bpm + (disp(v, "arp_range") || "1") + " OCT", INK, 1, 260);
-    var cw = 57, x0 = 22, y = 32;
+    var tempo = disp(v, "arp_tempo"), bpm = tempo === "External" ? "Ext" : +tempo >= 50 ? tempo + " bpm" : "";
+    plate(g, 0, 0, 952, 86, "Arpeggiator", true, (on ? mode : "Off") + "   " + (disp(v, "arp_clock") || "") + (bpm ? "   " + bpm : "") + "   " +
+      (disp(v, "arp_range") || "1") + " oct", hot(v, "arp_mode") ? "slot" : on ? INK : MUTE);
+    led(g, 112, 7, on);
+    var cw = 58, x0 = 8, y = 22;
     for (var i = 0; i < 16; i++) {
       var x = x0 + i * cw, inPat = i < len, hit = disp(v, stepKey(i)) === "On", lit = first >= 0 && i >= first && i < first + 8;
-      var touched = t === stepKey(i), c = !inPat ? FAINT : touched ? INK : hit ? (lit ? ORANGE_LT : ORANGE) : RULE;
-      if (lit) g.fill(x - 3, y - 5, cw - 2, 44, PANEL);
+      var c = hot(v, stepKey(i)) ? "slot" : !inPat ? FAINT : hit ? (lit ? ORANGE_LT : ORANGE_GL) : RULE;
       if (hit && inPat) g.fill(x, y, cw - 8, 34, c); else frame(g, x, y, cw - 8, 34, c);
       g.text(x + (cw - 8) / 2, y + 22, String(i + 1), hit && inPat ? GROUND : lit ? ORANGE : FAINT, 0);
+      if (lit) g.fill(x, y + 38, cw - 8, 2, ORANGE);
     }
+    if (len < 16) g.fill(x0 + len * cw - 5, y - 2, 2, 38, ORANGE);
+    pairs(g, v, 8, 81, [["Pattern", disp(v, "arp_pattern"), "arp_pattern"], ["Steps", String(len), "arp_user_pattern_length"],
+      ["Direction", disp(v, "arp_direction"), "arp_direction"], ["Order", disp(v, "arp_note_order"), "arp_note_order"],
+      ["Velocity", disp(v, "arp_velocity"), "arp_velocity"], ["Reset", disp(v, "arp_reset"), "arp_reset"]], 944, !on);
+    if (!user) g.text(944, 81, "PLAYS PATTERN " + up(disp(v, "arp_pattern")), MUTE, 1);
   };
 }
 
 // ---- the compartments ----------------------------------------------------------------
+function keysOf(list) { var out = []; list.forEach(function (pg) { out = out.concat(pg.keys); }); return out; }
 push.compartment({
-  id: "panel", label: "Xenia", front_panel: true, draws_tabs: true,
-  pages: PAGES.panel, extra_keys: SOUND,
+  id: "panel", label: "Xenia", front_panel: true, draws_tabs: true, draws_segments: true,
+  pages: PAGES.panel, extra_keys: SOUND.concat(["effect_type"]),
+  segments: SEGS,
   screen: function (g, v) {
     frontPanel(g, v);
-    tabs(g, v, 157);
-    if (waiting(v)) { g.fill(528, 0, 432, 96, GROUND); g.value(744, 54, "WAITING: ANOTHER XENIA PLAYS", ORANGE, 0, 420); }
+    if (waiting(v)) { g.fill(532, 6, 420, 84, WINDOW); g.value(742, 54, "WAITING: ANOTHER XENIA PLAYS", ORANGE, 0, 400); }
   }
 });
 push.compartment({
-  id: "osc", label: "Oscillators", extra_keys: ["status"],
+  id: "osc", label: "Oscillators", extra_keys: ["status"].concat(keysOf(PAGES.osc)),
   pages: [
     { label: PAGES.osc[0].label, keys: PAGES.osc[0].keys, screen: oscScreen },
     { label: PAGES.osc[1].label, keys: PAGES.osc[1].keys }
   ]
 });
 push.compartment({
-  id: "wave", label: "Waves", extra_keys: ["status", "wave", "wave_view", "w1_start_w", "w2_start_w"],
+  id: "wave", label: "Waves", extra_keys: ["status", "wave", "wave_view", "w1_start_w", "w2_start_w"].concat(keysOf(PAGES.wave)),
   pages: [
     { label: PAGES.wave[0].label, keys: PAGES.wave[0].keys, screen: wavesScreen },
     { label: PAGES.wave[1].label, keys: PAGES.wave[1].keys, screen: mixerScreen }
@@ -615,14 +772,14 @@ push.compartment({
 push.compartment({
   id: "lfo", label: "LFOs",
   // each page's picture is both LFOs whole: what the other page edits comes with it
-  extra_keys: ["status", "lfo1_shape", "lfo1_rate", "lfo1_delay", "lfo1_sync", "lfo1_symmetry", "lfo2_shape", "lfo2_rate", "lfo2_delay",
-    "lfo2_sync", "lfo2_symmetry", "lfo2_phase"],
+  extra_keys: ["status"].concat(keysOf(PAGES.lfo)),
   pages: PAGES.lfo.map(function (pg) { return { label: pg.label, keys: pg.keys, screen: lfoScreen }; })
 });
 push.compartment({
   id: "fx", label: "Effect", front_panel: true, draws_tabs: true,
   pages: PAGES.fx, extra_keys: SOUND,
-  screen: function (g, v) { fxPanel(g, v); tabs(g, v, 157); }
+  segments: FX_SEGS,
+  screen: fxPanel
 });
 push.compartment({
   id: "voice", label: "Voice", extra_keys: ["status"],
@@ -631,27 +788,23 @@ push.compartment({
     { label: PAGES.voice[1].label, keys: PAGES.voice[1].keys }
   ]
 });
-var WENV_KEYS = [];
-for (var wi = 1; wi <= 8; wi++) WENV_KEYS.push("wave_env_time" + wi, "wave_env_level" + wi);
 push.compartment({
-  id: "wenv", label: "Wave Env",
-  extra_keys: ["status", "wave_key_on_loop", "wave_key_on_loop_start", "wave_key_on_loop_end", "wave_key_off_loop",
-    "wave_key_off_loop_start", "wave_key_off_loop_end", "wave_env_trigger"].concat(WENV_KEYS),
+  id: "wenv", label: "Wave Env", extra_keys: ["status"].concat(keysOf(PAGES.wenv)),
   pages: PAGES.wenv.map(function (pg) { return { label: pg.label, keys: pg.keys, screen: wenvScreen }; })
 });
 push.compartment({
-  id: "matrix", label: "Matrix", extra_keys: ["status"],
+  id: "matrix", label: "Matrix", extra_keys: ["status"].concat(keysOf(PAGES.matrix)),
   pages: PAGES.matrix.map(function (pg) {
     var m = /^Modifiers (\d)/.exec(pg.label), s = /^Slots (\d+)/.exec(pg.label);
     return m ? { label: pg.label, keys: pg.keys, screen: modifierScreen(+m[1]) }
-      : s ? { label: pg.label, keys: pg.keys, screen: slotPair(+s[1]) } : { label: pg.label, keys: pg.keys };
+      : s ? { label: pg.label, keys: pg.keys, screen: slotsScreen(+s[1]) } : { label: pg.label, keys: pg.keys };
   })
 });
 var STEP_KEYS = [];
 for (var si = 0; si < 16; si++) STEP_KEYS.push(stepKey(si));
 push.compartment({
   id: "arp", label: "Arp",
-  extra_keys: ["status", "arp_mode", "arp_clock", "arp_tempo", "arp_range", "arp_pattern", "arp_user_pattern_length"].concat(STEP_KEYS),
+  extra_keys: ["status", "arp_mode"].concat(keysOf(PAGES.arp)),
   pages: PAGES.arp.map(function (pg) {
     return { label: pg.label, keys: pg.keys, screen: arpScreen(/9-16/.test(pg.label) ? 8 : /1-8/.test(pg.label) ? 0 : -1) };
   })
