@@ -134,7 +134,13 @@ back as of the previous restart. Then ask the user to save the Set.
 3. A module whose package changed needs a new version, or a new revision with its reason in
    `scripts/module-revisions.json` (Pung's own modules may bump `module.json` instead). The built copy of
    `module.json` is what counts: rebuild after bumping.
-4. `python3 scripts/build-catalog.py --base-url ""`. Its guard compares with the LOCAL `build/catalog`;
+4. **The module list is 0.4.2's** (the user's choice for 0.4.3, option "A"): Schwung's catalog as it
+   was then, kept at `build/schwung-0.4.2/module-catalog.json` (the `../schwung` checkout is older and
+   drops eight modules: Bouba-Kiki, Hank, Maze Voice, MonkSynth, Sophie...). Build modules and the
+   catalog with it: `CATALOG=<it> scripts/build-push-modules.sh <id...>` and `PUNG_SCHWUNG=<its dir>`
+   for the catalog. Compare the module count with the last release's (`pung/catalog/catalog.json`
+   inside `dist/pung.tar.gz`).
+   `python3 scripts/build-catalog.py --base-url ""`. Its guard compares with the LOCAL `build/catalog`;
    an unpublished run of your own can trip it. Override (`PUNG_ALLOW_UNREVISED=1`) only after checking
    the published catalog (inside `pung.tar.gz` of the latest release) does not hold that version and
    revision, then rerun without the override: it must pass.

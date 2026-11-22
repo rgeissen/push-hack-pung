@@ -50,6 +50,7 @@
     "sf2":              ["Devices|Sampling"],
     "sfz":              ["Devices|Sampling"],
     "tablor":           ["Devices|Synthesizer|Wavetable"],
+    "vivace":           ["Devices|Synthesizer|Wavetable"],
     "denis":            ["Devices|Synthesizer"],
     "maze-voice":       ["Devices|Synthesizer"],
     "airplay":          ["Devices|Utility"],
