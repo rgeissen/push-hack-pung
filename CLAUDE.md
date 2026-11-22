@@ -206,8 +206,9 @@ back as of the previous restart. Then ask the user to save the Set.
 - **Live 13 (13.0b25, on the Push since 2026-11-19) showed a plugin's parameters only up to 64** on
   2026-11-22: a class with 65 or more visible ones got "Device On" alone through the Remote Script (test
   classes of 60, 64, 65, 128, 129; the four hidden ones an instrument adds do not count), and so did
-  Plaits (97) and every other Pung instrument. **Not settled**: on 2026-11-21, on the same Live, a fresh
-  Xenia showed 119 of its parameters (below). Measure again before acting on either. Pung's view plays
+  Plaits (97) and every other Pung instrument; again after a reboot (a fresh Plaits: Live's log says
+  "parameter count is 101", the Remote Script sees "Device On" alone). **Not explained**: on 2026-11-21,
+  on the same Live 13.0b25, a fresh Xenia showed 119 of its parameters (below). Pung's view plays
   every parameter regardless. Live 12.4 showed up to 128. Live rescans the plugin only when the bundle
   changes (Pung touches `Pung.so`): a hand-edited `classes.json` needs that and a Live restart.
 - A class holds up to 256 entries (`livedevice.MaxParams`, placeholders included); one that has more is
