@@ -324,7 +324,7 @@ func gaugeP(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.
 		disc(img, x, y, knobR-6, P.line)
 		disc(img, x, y, knobR-8, P.panel)
 		a := gaugeA0 + gaugeSW*frac
-		ink := P.fg
+		ink := P.onCap()
 		if hot {
 			ink = col
 		}
@@ -345,7 +345,7 @@ func gaugeP(img *image.NRGBA, cx, cy int, frac float64, bipolar bool, col color.
 		}
 		rect(img, cx-cw/2, lvl-4, cw, 9, P.line)
 		rect(img, cx-cw/2+1, lvl-3, cw-2, 7, P.panel)
-		ink := P.fg
+		ink := P.onCap()
 		if hot {
 			ink = col
 		}

@@ -85,3 +85,25 @@ func themeFrom(o map[string]any, sc color.NRGBA) *palette {
 	}
 	return p
 }
+
+// onCap: a line on a knob's or fader's cap (its pointer, its centre line):
+// whichever of ink and ground stands out more against the cap (a Juno's
+// cream cap has a dark line, a dark knob a light pointer).
+func (p *palette) onCap() color.NRGBA {
+	if lumDiff(p.fg, p.panel) >= lumDiff(p.ground, p.panel) {
+		return p.fg
+	}
+	return p.ground
+}
+
+func lum(c color.NRGBA) float64 {
+	return 0.2126*float64(c.R) + 0.7152*float64(c.G) + 0.0722*float64(c.B)
+}
+
+func lumDiff(a, b color.NRGBA) float64 {
+	d := lum(a) - lum(b)
+	if d < 0 {
+		return -d
+	}
+	return d
+}
