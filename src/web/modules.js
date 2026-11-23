@@ -12,7 +12,7 @@
   };
   const STATE = { queued: "Waiting", downloading: "Downloading", verifying: "Checking", unpacking: "Unpacking", testing: "Testing on the Push" };
   const ORIGIN = { pung: "Pung native", schwung: "Schwung" };
-  const m = { data: null, filter: "all", origin: "all", show: "all", q: "", open: null, timer: null, down: false, busy: {} };
+  const m = { data: null, filter: "all", origin: "all", show: "all", q: "", open: null, timer: null, down: false, busy: {}, shots: {}, face: 0 };
 
   async function api(path, opts) {
     const r = await fetch(path, opts);
@@ -22,7 +22,19 @@
   }
 
   // ---- data ----------------------------------------------------------------------
+  // the pictures of each module's own interface (make screens; src/web.go
+  // serves them from beside Pung): {id: {panel, segments, pages: [{file, label}]}}
+  let shotsAsked = false;
+  function loadShots() {
+    if (shotsAsked) return;
+    shotsAsked = true;
+    fetch("/screens/index.json").then((r) => (r.ok ? r.json() : {})).then((j) => { m.shots = j || {}; render(); }).catch(() => {});
+  }
+  const shotsOf = (x) => m.shots[x.id];
+  const shotURL = (x, f) => `/screens/${encodeURIComponent(x.id)}/${encodeURIComponent(f)}`;
+
   async function load(refresh) {
+    loadShots();
     let d;
     try { d = await api("/api/catalog" + (refresh ? "?refresh=1" : "")); } catch (e) { d = null; }
     if (!d || !d.modules) {
@@ -52,7 +64,7 @@
     return all.filter((x) =>
       (m.filter === "all" || x.component_type === m.filter) &&
       (m.origin === "all" || originOf(x) === m.origin) &&
-      (m.show === "all" || (m.show === "installed" && x.installed) || (m.show === "updates" && x.status === "update")) &&
+      (m.show === "all" || (m.show === "installed" && x.installed) || (m.show === "updates" && x.status === "update") || (m.show === "face" && shotsOf(x))) &&
       (!q || [x.name, x.id, x.author, x.description, x.license && x.license.spdx].join(" ").toLowerCase().includes(q)));
   }
 
@@ -76,6 +88,7 @@
     $("mod-count-pung").textContent = all.filter((x) => originOf(x) === "pung").length;
     $("mod-count-schwung").textContent = all.filter((x) => originOf(x) === "schwung").length;
     $("mod-count-updates").textContent = counts.updates;
+    if ($("mod-count-face")) $("mod-count-face").textContent = all.filter((x) => shotsOf(x)).length || "";
     $("mod-search").placeholder = `Search ${all.length} modules`;
     const grid = $("mod-grid");
     if (!d) { grid.innerHTML = `<div class="empty">Reading the catalog…</div>`; return; }
@@ -159,6 +172,7 @@
 
   function badges(x) {
     const out = [];
+    if (shotsOf(x)) out.push(`<span class="tag iface" title="On the Push it opens on a front panel of its own, drawn in its own design language">Custom interface</span>`);
     if (x.license && x.license.spdx) out.push(`<span class="tag" title="Licence: ${esc(x.license.from || "")}">${esc(shortLicence(x.license.spdx))}</span>`);
     if (x.license && x.license.noncommercial) out.push(`<span class="tag" title="May not be sold or used commercially">Non-commercial</span>`);
     if (needsFiles(x)) out.push(`<span class="tag need" title="${esc(needText(x))}">${x.installed && !x.assets_ready ? "ROM missing" : "Needs ROM"}</span>`);
@@ -203,8 +217,11 @@
     const err = x.job && x.job.state === "failed" ? `<p class="err" role="alert">${esc(x.job.error)}</p>` : "";
     const cat = catLabel(x);
     const tags = (x.tags || []).filter((g) => g !== "needs-assets").slice(0, 3);
-    return `<article class="mod ${t.cls}${originOf(x) === "pung" ? " native" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-label="${esc(x.name)}, ${esc(t.label)}, ${ORIGIN[originOf(x)]}">
-      <div class="top"><h3>${esc(x.name)}</h3><span class="chips">${surfaceChip(x)}${originChip(x)}</span></div>
+    const sh = shotsOf(x);
+    // its own interface on the Push, edge to edge: what it looks like is the first thing told
+    const face = sh ? `<figure class="face"><img src="${shotURL(x, sh.panel)}" alt="${esc(x.name)} on the Push: its front panel" width="960" height="160" loading="lazy" decoding="async"></figure>` : "";
+    return `<article class="mod ${t.cls}${originOf(x) === "pung" ? " native" : ""}${sh ? " has-face" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-label="${esc(x.name)}, ${esc(t.label)}, ${ORIGIN[originOf(x)]}${sh ? ", custom interface" : ""}">
+      ${face}<div class="top"><h3>${esc(x.name)}</h3><span class="chips">${surfaceChip(x)}${originChip(x)}</span></div>
       <span class="badges"><span class="badge kind">${esc(t.label)}</span>${cat ? `<span class="badge cat">${esc(cat)}</span>` : ""}</span>
       <p class="desc" title="${esc(x.description || "")}">${esc(x.description || "")}</p>
       ${tags.length ? `<div class="pills">${tags.map((g) => `<span class="pill">${esc(g)}</span>`).join("")}</div>` : ""}
@@ -229,6 +246,7 @@
 
   // ---- the detail sheet ------------------------------------------------------------
   function openSheet(id) {
+    if (m.open !== id) m.face = 0;
     m.open = id;
     renderSheet();
     const dlg = $("mod-sheet");
@@ -242,6 +260,7 @@
     const t = TYPE[x.component_type] || { label: x.component_type, cls: "" };
     const base = (m.data.catalog && m.data.catalog.base_url) || "";
     const src = x.source || {};
+    const strip = body.querySelector(".face-strip"), stripAt = strip ? strip.scrollLeft : 0; // kept over a refresh
     const facts = [
       ["Version", x.installed ? (x.status === "update" ? (x.repacked ? `${x.installed} installed, a new build of it available` : `${x.installed} installed, ${x.version} available`) : x.installed) : x.version],
       ["Category", catLabel(x) || "—"],
@@ -261,6 +280,7 @@
         <h2 id="mod-sheet-title">${esc(x.name)}</h2>
         <p class="by">${esc(x.author || "")}</p>
       </header>
+      ${facesSection(x)}
       <p class="desc">${esc(x.description || "")}</p>
       ${x.surface_app ? `<p class="note">${x.surface_app_installed
         ? `<b>Takeover.</b> On the Push, opening this device hands the screen, the pads and the buttons to the <b>${esc(x.surface_app)}</b> app, which edits it. That app's own way back to Live ends it.`
@@ -277,10 +297,59 @@
         ${action(x)}
       </div>
       <p class="err" id="mod-sheet-msg" role="alert" hidden></p>`;
+    $("mod-sheet").classList.toggle("wide", !!shotsOf(x));
+    if (body.querySelector(".face-strip")) body.querySelector(".face-strip").scrollLeft = stripAt;
+    wireFaces(x);
     body.querySelectorAll("button[data-act]").forEach((b) => (b.onclick = () => install(x.id)));
     if ($("mod-remove")) $("mod-remove").onclick = () => remove(x);
     body.querySelectorAll(".drop").forEach((z) => wireDrop(z, x));
     body.querySelectorAll("button[data-del]").forEach((b) => (b.onclick = () => delAsset(x, b.dataset.path, b.dataset.del)));
+  }
+
+  // ---- its own interface, in the sheet ------------------------------------------------
+  // the front panel large, then every screen of its own: a strip of them to
+  // step through (click, or the arrow keys as Page < > on the Push)
+  function faceList(x) {
+    const sh = shotsOf(x);
+    if (!sh) return [];
+    const l = [{ file: sh.panel, label: "Front panel", note: "What the Push shows when the device opens. The encoders play the row along its foot." }];
+    if (sh.segments) l.push({ file: sh.segments, label: "Segment mode", note: "Nudge the jog wheel right: the panel's sections are named over the lower buttons, and the encoders play the one chosen. Nudge left to leave." });
+    (sh.pages || []).forEach((p) => l.push({ file: p.file, label: p.label, note: "A page of its own: turn to it with Page < > or the lower buttons." }));
+    return l;
+  }
+  function facesSection(x) {
+    const l = faceList(x);
+    if (!l.length) return "";
+    if (m.face >= l.length) m.face = 0;
+    const cur = l[m.face];
+    return `<section class="faces" aria-label="${esc(x.name)} on the Push">
+      <figure class="face-main"><img id="face-main" src="${shotURL(x, cur.file)}" alt="${esc(x.name)} on the Push: ${esc(cur.label)}" width="960" height="160">
+        <figcaption><b id="face-label">${esc(cur.label)}</b> <span id="face-count">${m.face + 1} of ${l.length}</span><span id="face-note">${esc(cur.note)}</span></figcaption></figure>
+      ${l.length > 1 ? `<div class="face-strip" role="listbox" aria-label="Its screens" tabindex="0">${l.map((f, i) =>
+        `<button type="button" role="option" class="thumb" data-face="${i}" aria-selected="${i === m.face}" title="${esc(f.label)}"><img src="${shotURL(x, f.file)}" alt="" width="960" height="160" loading="lazy" decoding="async"><span>${esc(f.label)}</span></button>`).join("")}</div>` : ""}
+    </section>`;
+  }
+  function wireFaces(x) {
+    const l = faceList(x);
+    if (!l.length) return;
+    const show = (i) => {
+      m.face = (i + l.length) % l.length;
+      const f = l[m.face];
+      $("face-main").src = shotURL(x, f.file);
+      $("face-main").alt = `${x.name} on the Push: ${f.label}`;
+      $("face-label").textContent = f.label;
+      $("face-count").textContent = `${m.face + 1} of ${l.length}`;
+      $("face-note").textContent = f.note;
+      document.querySelectorAll(".face-strip .thumb").forEach((b) => b.setAttribute("aria-selected", String(+b.dataset.face === m.face)));
+      const sel = document.querySelector(`.face-strip .thumb[data-face="${m.face}"]`);
+      if (sel) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
+    };
+    document.querySelectorAll(".face-strip .thumb").forEach((b) => (b.onclick = () => show(+b.dataset.face)));
+    const strip = document.querySelector(".faces");
+    if (strip) strip.onkeydown = (e) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); show(m.face + 1); }
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); show(m.face - 1); }
+    };
   }
 
   function needsFiles(x) {

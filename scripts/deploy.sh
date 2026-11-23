@@ -18,6 +18,10 @@ rsync -a -e "$SSH" LICENSE THIRD_PARTY_LICENSES.md licenses "root@$HOST:$DIR/"
 if [ -f dist/pung/catalog/catalog.json ]; then
   rsync -a --delete -e "$SSH" dist/pung/catalog "root@$HOST:$DIR/"
 fi
+# the pictures of each module's own interface, for the Modules page (make screens)
+if [ -f build/screens/index.json ]; then
+  rsync -a --delete -e "$SSH" build/screens/ "root@$HOST:$DIR/screens/"
+fi
 # the binary is swapped by rename, so a running copy keeps its file
 rsync -a -e "$SSH" pung "root@$HOST:$DIR/pung.new"
 

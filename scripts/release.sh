@@ -25,13 +25,14 @@ GH="${GH:-gh}"
 VERSION=$(python3 -c 'import json; print(json.load(open("hack.json"))["version"])')
 SOURCES_URL="https://github.com/$REPO/releases/download/sources"
 
-for f in pung livedevice.so restart-live.sh "$CATALOG_DIR/catalog.json"; do
-  [ -e "$f" ] || { echo "missing $f (make build; the catalog: build-catalog.py)" >&2; exit 1; }
+for f in pung livedevice.so restart-live.sh "$CATALOG_DIR/catalog.json" build/screens/index.json; do
+  [ -e "$f" ] || { echo "missing $f (make build; make screens; the catalog: build-catalog.py)" >&2; exit 1; }
 done
 
 rm -rf dist && mkdir -p dist/pung/catalog/modules
 cp pung livedevice.so restart-live.sh hack.json LICENSE THIRD_PARTY_LICENSES.md dist/pung/
 cp -R licenses overrides dist/pung/
+cp -R build/screens dist/pung/screens # the Modules page's pictures of each module's own interface
 [ -d build/modules ] && cp -R build/modules dist/pung/
 [ -d build/patches ] && cp -R build/patches dist/pung/
 

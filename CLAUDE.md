@@ -150,7 +150,9 @@ back as of the previous restart. Then ask the user to save the Set.
    an unpublished run of your own can trip it. Override (`PUNG_ALLOW_UNREVISED=1`) only after checking
    the published catalog (inside `pung.tar.gz` of the latest release) does not hold that version and
    revision, then rerun without the override: it must pass.
-5. `make build`, `make test`, `make vet`, `make test-visuals`, `python3 site/build.py`.
+5. `make build`, `make screens`, `make test`, `make vet`, `make test-visuals`, `python3 site/build.py`.
+   `make screens` draws the Modules page's pictures of each module's own interface into build/screens
+   (release.sh refuses without them).
 6. `GH=<gh> scripts/release.sh --publish` (sources first, then `v<version>`; rerunning replaces
    `pung.tar.gz` on an existing release and uploads missing sources). Verify: download `pung.tar.gz`,
    check `hack.json`, the catalog's versions and commits, and that every `source.archive` is on the
@@ -205,6 +207,10 @@ back as of the previous restart. Then ask the user to save the Set.
   units everywhere through `push.display(fn(key, raw))` in its screen file. A long name cut in the row
   under a band screen ("KICK PI.") gets a short one from `push.short(fn(key, name))`; keys that turn
   nothing (a dead switch, an engine never offered) get no leftover page with `push.unused([keys])`.
+- **A new front panel needs its card pictures' inputs** (`TestCardShotInputs`): its probe record from the
+  Push's `module-screen.json` into `scripts/screens/probes.json`, and a sound of its own as
+  `scripts/screens/values/<id>.json`. Never an emulator's values or initial state: they are the player's
+  firmware and factory sounds (its panel is drawn at rest, `neutralValues`).
 - **`push.theme`**: every instrument's screen file declares its look for Pung's default pages (ground,
   ink, knob style; `src/theme.go`), so a page turn never drops into Pung's grey.
 - **Segments** (`segments: [{id, label, rect, keys}]` on a front panel, `src/segments.go`): Pung draws

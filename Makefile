@@ -15,7 +15,7 @@ DOCKER  := docker run --rm --platform linux/amd64 \
 LDFLAGS := -s -w -X main.buildVersion=$(VERSION) -linkmode external \
 	-extldflags -Wl,--dynamic-linker=/lib/ld-linux-x86-64.so.2
 
-.PHONY: all image build modules catalog-modules test test-visuals vet deploy clean
+.PHONY: screens all image build modules catalog-modules test test-visuals vet deploy clean
 
 all: build
 
@@ -40,6 +40,13 @@ test-visuals:
 
 vet:
 	$(DOCKER) -w /w/src $(IMAGE) sh -c "CGO_ENABLED=1 go vet ./..."
+
+# the pictures the Modules page shows of each module's own interface (its
+# card and sheet): front panel, segments, band screens, from the probe
+# records and sounds kept in scripts/screens; shipped beside Pung (screens/)
+screens:
+	rm -rf build/screens
+	$(DOCKER) -w /w/src $(IMAGE) sh -c "PUNG_CARD_SHOTS=/w/build/screens CGO_ENABLED=1 go test -count=1 -run 'TestCardShots$$' ."
 
 # Schwung's chain host and its built-in modules, from the Schwung checkout
 modules:

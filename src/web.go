@@ -219,6 +219,17 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 		files.ServeHTTP(w, r)
 	}))
 
+	// the pictures of each module's own interface for the Modules page
+	// (make screens: front panel, band screens, segments; index.json names
+	// them), shipped beside Pung; none: the page shows the cards as before
+	if exe, err := os.Executable(); err == nil {
+		shots := http.StripPrefix("/screens/", http.FileServer(http.Dir(filepath.Join(filepath.Dir(exe), "screens"))))
+		mux.Handle("GET /screens/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-cache") // a 304 by their date, new ones after an update
+			shots.ServeHTTP(w, r)
+		}))
+	}
+
 	// Pung's devices in Live, and which one Live has selected
 	mux.HandleFunc("GET /api/pung-devices", func(w http.ResponseWriter, r *http.Request) {
 		sel, track := h.selectedDevice()

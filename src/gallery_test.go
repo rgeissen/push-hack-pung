@@ -86,6 +86,59 @@ func TestGallery(t *testing.T) {
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9]+`)
 
 func galleryModule(t *testing.T, out, ovDir, id string, rec *probeRecord, vals map[string]string) {
+	g := openGallery(t, ovDir, id, rec, vals)
+	if g == nil {
+		return
+	}
+	u, cm, put, shot := g.u, g.cm, g.put, g.shot
+	safe := func(s string) string { return strings.Trim(unsafeName.ReplaceAllString(s, "-"), "-") }
+	shotTo := func(fn string) { shot(filepath.Join(out, fn)) }
+	segShots := 0
+	segDone := map[string]bool{}
+	for b := range cm.Banks {
+		u.setBank(b)
+		put() // a page turn reads the values again: from no chain here
+		shotTo(fmt.Sprintf("%s-%02d-%s.png", id, b, safe(cm.Banks[b].Name)))
+		// a front panel with segments (segments.go), once: choosing one
+		// (<id>-<compartment>-segments.png), then each segment's mode
+		// (<id>-<compartment>-segment-<segment id>.png)
+		c := u.segPanel()
+		if c == nil || segDone[c.id] {
+			continue
+		}
+		segDone[c.id] = true
+		u.top(segmentsButton)
+		if u.segMode != segSelect {
+			t.Errorf("%s/%s: SEGMENTS did not open select mode", id, c.id)
+			continue
+		}
+		shotTo(fmt.Sprintf("%s-%s-segments.png", id, safe(c.id)))
+		for i, sg := range c.segments {
+			u.bottom(i)
+			if u.segMode != segSegment || u.segID != sg.id {
+				t.Errorf("%s/%s: lower button %d did not enter segment %s", id, c.id, i+1, sg.id)
+				continue
+			}
+			shotTo(fmt.Sprintf("%s-%s-segment-%s.png", id, safe(c.id), safe(sg.id)))
+			segShots++
+		}
+		u.top(segmentsButton) // EXIT
+	}
+	t.Logf("%s: %d pages, %d segment screens", id, len(cm.Banks), segShots)
+}
+
+// gallery: one module open in Pung's view, off the Push: its pages, its
+// values put back after every page turn (put), and shot(path) writing the
+// frame as the display shows it.
+type galleryRig struct {
+	u    *surface
+	cm   *compMeta
+	set  *overrideSet
+	put  func()
+	shot func(path string)
+}
+
+func openGallery(t *testing.T, ovDir, id string, rec *probeRecord, vals map[string]string) *galleryRig {
 	liveAddr = "127.0.0.1:1" // no Remote Script here
 	name := strings.ToUpper(id[:1]) + id[1:]
 	root := t.TempDir()
@@ -93,7 +146,7 @@ func galleryModule(t *testing.T, out, ovDir, id string, rec *probeRecord, vals m
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"`+id+`","name":"`+name+`","component_type":"sound_generator"}`), 0o644)
 	deviceNames[name] = id
-	defer delete(deviceNames, name)
+	t.Cleanup(func() { delete(deviceNames, name) })
 	h := &Host{modulesDir: root, settings: loadSettings(t.TempDir())}
 	u := &surface{h: h, view: "chain", touched: -1, peekEnc: -1, focus: -1, meta: map[string]*compMeta{}, vals: map[string]string{},
 		leds: map[uint16]uint8{}, ov: newOverrides(ovDir)}
@@ -102,13 +155,13 @@ func galleryModule(t *testing.T, out, ovDir, id string, rec *probeRecord, vals m
 	cm := buildMeta(id, func(k string) (string, bool) { s, ok := rec.Meta[k]; return s, ok })
 	if cm == nil {
 		t.Logf("%s: no metadata", id)
-		return
+		return nil
 	}
 	cm.Initial = rec.Initial
 	set := u.ov.get(root, id)
 	if set == nil || set.failed != "" {
 		t.Errorf("%s: its screens do not load: %+v", id, set)
-		return
+		return nil
 	}
 	cm = withCompartments(liveBanks(cm), set.compartments, set.unused)
 	u.meta["live|"+id] = cm
@@ -124,7 +177,7 @@ func galleryModule(t *testing.T, out, ovDir, id string, rec *probeRecord, vals m
 	u.refreshLive()
 	if !u.liveReady {
 		t.Errorf("%s: the device is not ready", id)
-		return
+		return nil
 	}
 	put := func() {
 		for k, x := range vals {
@@ -133,53 +186,21 @@ func galleryModule(t *testing.T, out, ovDir, id string, rec *probeRecord, vals m
 	}
 	put()
 	u.openDevice()
-	safe := func(s string) string { return strings.Trim(unsafeName.ReplaceAllString(s, "-"), "-") }
-	shot := func(fn string) {
+	shot := func(path string) {
 		u.rowsUntil = time.Time{} // as it looks once the rows over a panel have gone
 		img := u.render(0)
 		// on black, as the display shows it (the frame leaves its ground clear)
 		flat := image.NewNRGBA(img.Bounds())
 		draw.Draw(flat, flat.Bounds(), image.Black, image.Point{}, draw.Src)
 		draw.Draw(flat, flat.Bounds(), img, img.Bounds().Min, draw.Over)
-		f, err := os.Create(filepath.Join(out, fn))
+		f, err := os.Create(path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		png.Encode(f, flat) //nolint:errcheck
 		f.Close()
 	}
-	segShots := 0
-	segDone := map[string]bool{}
-	for b := range cm.Banks {
-		u.setBank(b)
-		put() // a page turn reads the values again: from no chain here
-		shot(fmt.Sprintf("%s-%02d-%s.png", id, b, safe(cm.Banks[b].Name)))
-		// a front panel with segments (segments.go), once: choosing one
-		// (<id>-<compartment>-segments.png), then each segment's mode
-		// (<id>-<compartment>-segment-<segment id>.png)
-		c := u.segPanel()
-		if c == nil || segDone[c.id] {
-			continue
-		}
-		segDone[c.id] = true
-		u.top(segmentsButton)
-		if u.segMode != segSelect {
-			t.Errorf("%s/%s: SEGMENTS did not open select mode", id, c.id)
-			continue
-		}
-		shot(fmt.Sprintf("%s-%s-segments.png", id, safe(c.id)))
-		for i, sg := range c.segments {
-			u.bottom(i)
-			if u.segMode != segSegment || u.segID != sg.id {
-				t.Errorf("%s/%s: lower button %d did not enter segment %s", id, c.id, i+1, sg.id)
-				continue
-			}
-			shot(fmt.Sprintf("%s-%s-segment-%s.png", id, safe(c.id), safe(sg.id)))
-			segShots++
-		}
-		u.top(segmentsButton) // EXIT
-	}
-	t.Logf("%s: %d pages, %d segment screens", id, len(cm.Banks), segShots)
+	return &galleryRig{u: u, cm: cm, set: set, put: put, shot: shot}
 }
 
 // The gallery draws a front panel's segments too: choosing one, and each
