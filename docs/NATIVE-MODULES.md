@@ -32,6 +32,13 @@ It is not a new plugin format. Only where the source lives and what it may assum
 1. **Render off the audio thread when a block can take long.** `render_block` runs on the device's
    audio thread with 1.45 ms to answer. An emulator renders on its own thread into a ring, and
    `render_block` only reads the ring (Nodal Red: 7 ms ahead).
+   **An emulator runs in a process of its own** (OsTIrus since 2026-11-23, `ostirus-engine`): the
+   plugin keeps the sound and starts the engine with `posix_spawn` (never `fork` in Pung), a memory
+   file (`memfd_create`) as its descriptor 3 holding the ring, a queue of MIDI and sound dumps, status
+   and what the engine reads from the emulator (wavetables). The engine dies with its parent
+   (`PR_SET_PDEATHSIG`); a stop asks, then kills; an engine that dies is started again (3 a minute).
+   Emulators hung Pung four times in a week while they booted or shut down; in its own process one
+   never can. Its executables link for the Push's loader, `/lib/ld-linux-x86-64.so.2`.
 2. **Set the priority of your own threads.** Below the host's audio threads (FIFO 70) and the engine
    (60), above ordinary work. Nodal Red: FIFO 45, set on the thread that creates the emulator's threads,
    so they inherit it.
@@ -285,10 +292,14 @@ instance at a time (`/dev/shm/pung-ostirus.lock`).
   waves, a flag, a gain) and its waves as harmonic spectra, a byte a harmonic. A wave is
   sum (b_h/127)^2 (-1)^h sin(2 pi h (n+0.5)/N): sample for sample the waves the DSP builds (tables 1, 2, 4,
   9, 12, 33, 61, 92, 99; the flag-1 tables within 3%). Index i plays the crossfade at i (waves-1)/127
-  (fitted from rendered notes). `read_tables()` runs on the emulator thread after boot (patch 0002:
+  (fitted from rendered notes). `read_tables()` runs in the engine after boot (patch 0002:
   `Device::getDspA()`), `wave_view_1`/`_2` hand a table to the screens (`"<waves>:<hex>"`). Not modelled:
   what Wave PWM does to the wave, the step between waves at Interpolation 127; the Classic model's
   "spectral waves", Osc 3's waves and Grain/Formant still draw a stand-in.
+- **Its own process** (0.1.3, 2026-11-23): `dsp/ostirus_engine.cpp` is the emulator thread that was,
+  `dsp/ostirus_shm.h` what the two share. On the Push: the engine killed with `kill -9` was back
+  playing in 6 s; a model switch is a new engine; a Pung restart leaves none behind; a minute of chords
+  1 underrun, 0 late blocks.
 - **Not yet:** the TI's multi mode (16 parts), the vocoder and input (an instrument has no input).
 
 ## Vavra (Waldorf microQ)

@@ -11,6 +11,8 @@
 #
 # Env: RENDER_SETTLE_MS (a synth silent while it takes a sound in),
 # RENDER_NOTES=36,38,42 (other notes than the chord: a drum machine's pads).
+# A module's own executables (OsTIrus's engine) are linked for the Push's
+# loader path (/lib/ld-linux-x86-64.so.2): the container gets it too.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ID=$1; ASSETS=$(cd "$2" && pwd); shift 2
@@ -24,5 +26,5 @@ mkdir -p "$WORK/$ID"
 cp -a "$MOD/." "$WORK/$ID/"
 cp -a "$ASSETS/." "$WORK/$ID/"
 docker run --rm --platform linux/amd64 --shm-size=1g --network none ${PUNG_MC68K_LOG:+-e PUNG_MC68K_LOG=1} ${RENDER_SETTLE_MS:+-e RENDER_SETTLE_MS=$RENDER_SETTLE_MS} ${RENDER_NOTES:+-e RENDER_NOTES=$RENDER_NOTES} ${PUNG_SCAN_LOG:+-e PUNG_SCAN_LOG=1} -v "$PWD/scripts:/s:ro" -v "$(cd "$SCHWUNG" && pwd)/src:/schwung:ro" \
-    -v "$WORK:/w" "$IMAGE" sh -c "gcc -O1 -I/schwung -o /tmp/rc /s/render-check.c -ldl -lm && /tmp/rc /w/$ID $*"
+    -v "$WORK:/w" "$IMAGE" sh -c "ln -sf /lib64/ld-linux-x86-64.so.2 /lib/ld-linux-x86-64.so.2; gcc -O1 -I/schwung -o /tmp/rc /s/render-check.c -ldl -lm && /tmp/rc /w/$ID $*"
 cp "$WORK/render-check.wav" "build/push-modules/$ID-render-check.wav" 2>/dev/null && echo "kept: build/push-modules/$ID-render-check.wav"

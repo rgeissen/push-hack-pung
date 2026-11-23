@@ -3,18 +3,21 @@
 // emulation needs a Push's processor (a Move runs the older Virus B and C at
 // half their clock).
 //
-// Threads. The emulator renders on its own thread ("ostirus") into a ring;
-// render_block only reads the ring. The emulator's DSP threads are created by
-// that thread and inherit its priority.
+// Processes. The emulator runs in a process of its own, ostirus-engine
+// (ostirus_engine.cpp), and renders into a ring in memory both share
+// (ostirus_shm.h); render_block only reads the ring. A hung or crashed
+// emulator then never holds Pung: a stop kills the engine, and an engine that
+// dies is started again. This plugin keeps the sound and talks to the engine
+// through a queue of MIDI and sound dumps.
 //
 // Sounds. The firmware carries the factory banks: every ROM bank is a bank
 // here, its names read from the firmware without loading a sound. A sound is
 // loaded as the synth's own single dump into the edit buffer, and that dump
 // is the device's state.
 //
-// Wavetables. The firmware's 100 wavetables are read from the DSP's memory
-// after boot (read_tables), and the screens draw the table an oscillator
-// plays from them (wave_view_1, wave_view_2).
+// Wavetables. The engine reads the firmware's 100 wavetables from the DSP's
+// memory after boot, into the shared memory, and the screens draw the table
+// an oscillator plays from them (wave_view_1, wave_view_2).
 //
 // Parameters. Every one is a byte of the single (512 bytes: pages A, B, 6E,
 // 6F), read from the sound as loaded and sent to the synth as a parameter
@@ -31,6 +34,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include <vector>
@@ -38,26 +42,27 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <pthread.h>
-#include <sched.h>
 #include <semaphore.h>
+#include <signal.h>
+#include <spawn.h>
 #include <sys/file.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "dsp56kBase/logging.h"
-#include "dsp56kEmu/memory.h"
-#include "synthLib/deviceException.h"
 #include "synthLib/midiTypes.h"
-#include "synthLib/plugin.h"
-#include "virusLib/device.h"
 #include "virusLib/deviceModel.h"
-#include "virusLib/dspSingle.h"
 #include "virusLib/microcontroller.h"
 #include "virusLib/microcontrollerTypes.h"
 #include "virusLib/romfile.h"
 
+#include "ostirus_shm.h"
 #include "ti_params.h"
+
+extern char **environ;
 #include <unordered_map>
 
 extern "C" {
@@ -140,24 +145,9 @@ bool find_rom(const std::string &dir, virusLib::DeviceModel model, std::vector<u
 
 // ---- the instance ---------------------------------------------------------------
 
-const int RING = 4096;  // stereo frames, a power of two
-const int BLOCK = 64;   // frames the emulator renders at a time
-const int AHEAD = 320;  // frames kept ready for the host (7 ms)
-// A sound goes into the synth as a dump, and the emulator stalls while it
-// takes one: up to 12 ms, measured, against 7 ms ready. So before a dump
-// it renders this far ahead (the latency rises for a moment, then the
-// ring drains back to AHEAD by itself), and sends the dump then. It stays
-// that deep for a moment after: the first notes of a new sound stall the
-// emulator too, while it compiles what that sound runs (measured: one
-// dropout a change with the depth only before the dump).
-const int AHEAD_DUMP = 1280; // 29 ms
-// After an underrun the ring stays that deep for a while: whenever the
-// emulator catches up it builds a reserve for the next slow moment, instead
-// of running again with 7 ms in hand. (OsTIrus with a chord renders about
-// 1.2 times as fast as it must, and the Push shares two cores between four
-// threads: a busy moment beside it, and it fell behind, 25 underruns in a
-// burst while played, 2026-11-21.)
-const int64_t MISS_DEEP_US = 3000000;
+const int RING = oshm::RING; // stereo frames, a power of two (the engine renders; ostirus_engine.cpp)
+// An engine that dies is started again, this many times a minute at most
+const int RESTARTS = 3;
 // A block that ends short fades out over its last frames, and the one after
 // it fades in: the gap is a dip, not a click.
 const uint32_t FADE = 32;
@@ -180,26 +170,21 @@ struct Wavetable {
 
 struct Instance {
     std::string dir;
-    std::thread emu;
+    std::thread starter; // finds the firmware, takes the lock, starts and watches the engine
     std::atomic<bool> quit{false};
-    std::atomic<int> loading{1};
     // One emulator at a time, as Nodal Red 2X: its threads run at realtime
     // priority, and two of them leave a Push nothing. An instance that finds
     // the emulator taken waits for it, silent, and says so.
     std::atomic<int> waiting{0};
     bool hasLock = false; // holds the one-at-a-time lock (emu_try_lock)
-    sem_t wake;
-    std::unique_ptr<virusLib::Device> device;
-    std::unique_ptr<synthLib::Plugin> plugin;
-    std::mutex plugMu; // plugin exists and may be handed MIDI
 
-    // audio ring: the emulator writes, render_block reads
-    int16_t ring[RING * 2];
-    std::atomic<uint32_t> wr{0}, rd{0};
+    // the engine: its process, and the memory shared with it
+    oshm::Layout *L = nullptr;
+    int memfd = -1;
+    std::atomic<pid_t> pid{0};
+    std::mutex qMu;       // the queue's writer side (on_midi and set_param come from different threads)
     std::atomic<uint32_t> underruns{0};
-    std::atomic<int64_t> missAt{0}; // the last underrun (now_us), from render_block
-    bool hole = false;              // render_block's: the block before ended short
-    std::atomic<uint32_t> blockUs{0}, blockMaxUs{0};
+    bool hole = false;    // render_block's: the block before ended short
 
     // the sound and the library, under mu
     std::mutex mu;
@@ -210,38 +195,36 @@ struct Instance {
     int bank = 0, preset = 0;
     Preset single{};     // the sound in the edit buffer, as loaded
     bool haveSingle = false;
-    bool pendingLoad = false; // a sound waits for the emulator to be up
-    std::atomic<bool> dumpPending{false}; // a sound waits for the ring to be full enough (AHEAD_DUMP)
-    int64_t deepUntil = 0; // the emulator thread's: the ring stays deep until then, after a dump
+    bool pendingLoad = false; // a sound waits for the firmware to be read
     std::string romName;
-    char status[160] = "Starting";
+    char status[160] = "Starting"; // the plugin's own (the engine's is in L)
     char error[200] = "";
 
-    // The firmware's wavetables, as the DSP holds them (read_tables), and
-    // each one's view for the screens once asked for: under tabMu.
+    // The firmware's wavetables, as the engine read them, and each one's
+    // view for the screens once asked for: under tabMu.
     std::mutex tabMu;
     std::vector<Wavetable> tables; // [100] once read; empty: not read, or not found
     bool tablesRead = false;       // tried (empty tables then: this firmware's were not found)
 };
+
+// playing: the engine runs and has warmed up
+inline bool playing(const Instance *in) { return in->L && in->L->phase.load(std::memory_order_acquire) == oshm::RUNNING; }
 
 void set_status(Instance *in, const char *s) {
     std::lock_guard<std::mutex> l(in->mu);
     snprintf(in->status, sizeof(in->status), "%s", s);
 }
 
-void send(Instance *in, synthLib::SMidiEvent &ev) {
-    std::lock_guard<std::mutex> l(in->plugMu);
-    if (in->plugin) in->plugin->addMidiEvent(ev);
-}
-
-// What still goes past the headroom bends instead of breaking (Nodal Red 2X
-// taught this: a hard corner is a click on every peak).
-inline float soft_limit(float v) {
-    const float knee = 24576.f, room = 32767.f - knee;
-    const float a = v < 0 ? -v : v;
-    if (a <= knee) return v;
-    const float o = knee + room * std::tanh((a - knee) / room);
-    return v < 0 ? -o : o;
+// An event to the engine (dropped while it boots: the sound goes as a dump).
+void send(Instance *in, synthLib::SMidiEvent &ev, uint8_t kind = oshm::EVENT) {
+    if (!in->L) return;
+    std::lock_guard<std::mutex> l(in->qMu);
+    if (!ev.sysex.empty()) {
+        oshm::put(in->L, kind, ev.sysex.data(), ev.sysex.size());
+    } else {
+        const uint8_t b[3] = {ev.a, ev.b, ev.c};
+        oshm::put(in->L, kind, b, 3);
+    }
 }
 
 // The firmware holds the factory banks of all three synths, the TI's first,
@@ -292,51 +275,30 @@ const ti::Param *find_param(const char *key);
 const int TABLES = 100;   // the TI's wavetables (gearmulator's wavetablesNames)
 const int VIEW_POINTS = 64; // a wave in wave_view: points a cycle
 
-// The emulator thread, once the DSP has booted: the firmware's wavetables
-// from the DSP's memory. They are a directory of 100 entries (two words
-// each: where the table is, and where the DSP has built its waves, 0 until
-// a voice plays it), table 0 the sine (computed, no data), table 1 right
-// after the directory, each table then the one before plus its size: a
-// header (log2 of harmonics a wave, waves, a flag, a gain) and the bytes,
-// three a word, high byte first. Found by that shape, not by an address: a
-// firmware without it (or another one) leaves the tables empty, and the
-// screens say so instead of drawing a wave.
-void read_tables(Instance *in) {
+// tabMu held. The engine's wavetables, once it has read them (ostirus_engine.cpp,
+// read_tables): per table 1..99 its harmonics, its waves and their bytes.
+void take_tables(Instance *in) {
+    if (in->tablesRead || !in->L) return;
+    const int state = in->L->tables.load(std::memory_order_acquire);
+    if (state == 0) return;
     std::vector<Wavetable> tabs;
-    const virusLib::DspSingle *dsp = in->device ? in->device->getDspA() : nullptr;
-    if (dsp) {
-        const dsp56k::Memory &m = dsp->getMemory();
-        const dsp56k::TWord n = m.size(dsp56k::MemArea_X);
-        auto at = [&](dsp56k::TWord a) -> uint32_t { return a < n ? (m.get(dsp56k::MemArea_X, a) & 0xffffff) : 0xffffffffu; };
-        auto size = [&](dsp56k::TWord p, int &nh, int &nw) -> uint32_t { // a table's words, 0 if it is none
-            const uint32_t lg = at(p), w = at(p + 1);
-            if (lg < 3 || lg > 9 || w < 1 || w > 127) return 0;
-            nh = 1 << lg;
-            nw = int(w);
-            return 4 + (uint32_t(nh * nw) + 2) / 3;
-        };
-        for (dsp56k::TWord d = 0; d + 2 * TABLES < n && tabs.empty(); d++) {
-            if (at(d) != 0 || at(d + 2) != d + 2 * TABLES) continue;
-            bool ok = true;
-            for (int t = 1; t < TABLES && ok; t++) {
-                int nh, nw;
-                const dsp56k::TWord p = at(d + 2 * dsp56k::TWord(t));
-                const uint32_t sz = size(p, nh, nw);
-                ok = sz && p + sz <= n && (t == TABLES - 1 || at(d + 2 * dsp56k::TWord(t + 1)) == p + sz);
+    if (state == 1) {
+        tabs.resize(TABLES);
+        size_t at = 0;
+        for (int t = 1; t < TABLES; t++) {
+            const uint8_t *o = in->L->tab + at;
+            Wavetable &w = tabs[size_t(t)];
+            w.nh = o[0] | o[1] << 8;
+            w.nw = o[2] | o[3] << 8;
+            const size_t bytes = size_t(w.nh * w.nw);
+            if (at + 4 + bytes > size_t(oshm::TABDATA)) {
+                tabs.clear();
+                break;
             }
-            if (!ok) continue;
-            tabs.resize(TABLES);
-            for (int t = 1; t < TABLES; t++) {
-                Wavetable &w = tabs[size_t(t)];
-                const dsp56k::TWord p = at(d + 2 * dsp56k::TWord(t));
-                size(p, w.nh, w.nw);
-                w.amp.resize(size_t(w.nh * w.nw));
-                for (size_t i = 0; i < w.amp.size(); i++) w.amp[i] = uint8_t(at(p + 4 + dsp56k::TWord(i / 3)) >> (16 - 8 * (i % 3)));
-            }
+            w.amp.assign(o + 4, o + 4 + bytes);
+            at += 4 + bytes;
         }
     }
-    plog("%s", tabs.empty() ? "no wavetables found in the DSP's memory" : "wavetables read from the firmware");
-    std::lock_guard<std::mutex> l(in->tabMu);
     in->tables = std::move(tabs);
     in->tablesRead = true;
 }
@@ -393,6 +355,7 @@ std::string wave_view(Instance *in, int osc) {
     }
     if (m != 2 && m != 3) return ""; // Wavetable, Wave PWM
     std::lock_guard<std::mutex> l(in->tabMu);
+    take_tables(in);
     if (!in->tablesRead) return "";
     if (in->tables.empty() || t >= int(in->tables.size())) return "none";
     return table_view(in->tables[size_t(t)]);
@@ -403,7 +366,7 @@ void send_single(Instance *in) {
     if (!in->haveSingle || !in->rom) return;
     synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
     ev.sysex = virusLib::Microcontroller::createSingleDump(*in->rom, virusLib::BankNumber::EditBuffer, virusLib::SINGLE, in->single, virusLib::OMNI_DEVICE_ID);
-    send(in, ev);
+    send(in, ev, oshm::DUMP); // the engine sends it when the ring is deep enough, and again after a warm-up
 }
 
 // mu held. A sound of the firmware becomes the device's sound.
@@ -422,8 +385,7 @@ bool load_sound(Instance *in, int bank, int preset) {
     in->haveSingle = true;
     in->bank = bank;
     in->preset = preset;
-    if (in->loading.load()) in->pendingLoad = true;
-    else in->dumpPending = true; // the emulator thread sends it, with the ring full (AHEAD_DUMP)
+    send_single(in);
     return true;
 }
 
@@ -469,16 +431,90 @@ static void emu_unlock() {
     g_emuLockHeld = false;
 }
 
-void emu_main(Instance *in) {
-    pthread_setname_np(pthread_self(), "ostirus");
-    // Below the host's audio threads, above everything ordinary. The
-    // emulator's own threads are made by this one and inherit it. (Tried as
-    // an ordinary thread at nice -5, 2026-11-20: as many dropped blocks
-    // beside other devices, and underruns of its own.)
-    sched_param sp{};
-    sp.sched_priority = 45;
-    if (sched_setscheduler(0, SCHED_FIFO, &sp) != 0) plog("no realtime priority for the emulator (%s)", strerror(errno));
+// A memory file for the engine, made once an instance: the engine's process
+// may come and go (a model switch, an engine that died), the memory stays.
+bool make_memory(Instance *in) {
+    in->memfd = memfd_create("pung-ostirus", MFD_CLOEXEC);
+    if (in->memfd < 0 || ftruncate(in->memfd, sizeof(oshm::Layout)) != 0) return false;
+    void *m = mmap(nullptr, sizeof(oshm::Layout), PROT_READ | PROT_WRITE, MAP_SHARED, in->memfd, 0);
+    if (m == MAP_FAILED) return false;
+    in->L = new (m) oshm::Layout(); // (zeroed by ftruncate; the atomics constructed)
+    in->L->magic = oshm::MAGIC;
+    in->L->version = oshm::VERSION;
+    sem_init(&in->L->wake, 1, 0);
+    return true;
+}
 
+// The engine started for the model, with the firmware at romPath.
+bool spawn(Instance *in, const std::string &romPath) {
+    oshm::Layout *L = in->L;
+    {
+        std::lock_guard<std::mutex> q(in->qMu);
+        L->qw = 0;
+        L->qr = 0;
+    }
+    L->quit = 0;
+    L->phase = oshm::STARTING;
+    L->wr = 0;
+    L->rd = 0;
+    L->missAt = 0;
+    L->tables = 0;
+    L->blockMaxUs = 0;
+    oshm::set_text(L, "Starting", "");
+    {
+        std::lock_guard<std::mutex> l(in->mu);
+        L->model = in->model;
+        L->gain = in->gain;
+        snprintf(L->romPath, sizeof(L->romPath), "%s", romPath.c_str());
+    }
+    {
+        std::lock_guard<std::mutex> l(in->tabMu);
+        in->tables.clear();
+        in->tablesRead = false;
+    }
+    const std::string exe = in->dir + "/ostirus-engine";
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_adddup2(&fa, in->memfd, 3); // (dup2 leaves the copy open across exec)
+    char a0[] = "ostirus-engine", a1[] = "--shm-fd=3";
+    char *argv[] = {a0, a1, nullptr};
+    pid_t pid = 0;
+    const int err = posix_spawn(&pid, exe.c_str(), &fa, nullptr, argv, environ);
+    posix_spawn_file_actions_destroy(&fa);
+    if (err != 0) {
+        std::lock_guard<std::mutex> l(in->mu);
+        snprintf(in->error, sizeof(in->error), "The emulator could not be started (%s: %s)", exe.c_str(), strerror(err));
+        snprintf(in->status, sizeof(in->status), "Failed");
+        return false;
+    }
+    in->pid = pid;
+    {
+        std::lock_guard<std::mutex> l(in->mu);
+        send_single(in); // the sound first: the engine plays it in its warm-up
+    }
+    plog("engine started (pid %d)", int(pid));
+    return true;
+}
+
+// The engine ended: asked first, then killed. Never waits long.
+void end_engine(Instance *in) {
+    const pid_t pid = in->pid.exchange(0);
+    if (!pid) return;
+    if (in->L) {
+        in->L->quit = 1;
+        sem_post(&in->L->wake);
+    }
+    for (int i = 0; i < 100; i++) { // up to 1 s
+        if (waitpid(pid, nullptr, WNOHANG) == pid) return;
+        usleep(10000);
+    }
+    kill(pid, SIGKILL);
+    waitpid(pid, nullptr, 0); // (a killed process is gone at once)
+    plog("engine killed (pid %d): it did not stop when asked", int(pid));
+}
+
+void start_main(Instance *in) {
+    pthread_setname_np(pthread_self(), "ostirus-start");
     int model;
     {
         std::lock_guard<std::mutex> l(in->mu);
@@ -491,49 +527,17 @@ void emu_main(Instance *in) {
         snprintf(in->error, sizeof(in->error),
                  "No firmware: put an Access Virus TI firmware (the installer's .bin file) into the module's roms folder");
         snprintf(in->status, sizeof(in->status), "Firmware missing");
-        in->loading = 0;
         return;
     }
     // (a model switch keeps the lock it had: a waiting OsTIrus must not take
     // the emulator in the moment between the two models)
     while (!in->hasLock && !(in->hasLock = emu_try_lock())) {
-        if (!in->waiting.exchange(1)) {
-            set_status(in, "Waiting: another OsTIrus is running, and one is all a Push can run");
-            plog("another instance has the emulator; waiting for it");
-        }
+        if (!in->waiting.exchange(1)) plog("another instance has the emulator; waiting for it");
         if (in->quit.load()) return;
         usleep(300000);
     }
     in->waiting = 0;
     if (in->quit.load()) return;
-    {
-        char st[80];
-        snprintf(st, sizeof(st), "Booting the Virus %s", o_model[model]);
-        set_status(in, st);
-    }
-    try {
-        synthLib::DeviceCreateParams p;
-        p.romData = rom;
-        p.romName = romName;
-        p.hostSamplerate = 44100.0f;
-        p.customData = uint32_t(k_model[model]);
-        in->device.reset(new virusLib::Device(p));
-        if (!in->device->isValid()) throw std::runtime_error("this firmware has no such model");
-        std::unique_ptr<synthLib::Plugin> pl(new synthLib::Plugin(in->device.get(), [](synthLib::Device *d) { return d; }));
-        pl->setHostSamplerate(44100.0f, 0.0f);
-        pl->setBlockSize(BLOCK);
-        {
-            std::lock_guard<std::mutex> l(in->plugMu);
-            in->plugin = std::move(pl);
-        }
-        read_tables(in);
-    } catch (const std::exception &e) {
-        std::lock_guard<std::mutex> l(in->mu);
-        snprintf(in->error, sizeof(in->error), "The emulator did not start: %s", e.what());
-        snprintf(in->status, sizeof(in->status), "Failed");
-        in->loading = 0;
-        return;
-    }
     {
         std::lock_guard<std::mutex> l(in->mu);
         in->romName = romName;
@@ -546,126 +550,76 @@ void emu_main(Instance *in) {
         if (in->pendingLoad && !in->haveSingle) load_sound(in, in->bank, in->preset);
         if (!in->haveSingle) load_sound(in, 0, 0);
         in->pendingLoad = false;
-        snprintf(in->status, sizeof(in->status), "Warming up the Virus %s", o_model[model]);
     }
-    // Warm-up, before the first note anyone hears: the DSP emulator compiles
-    // the synth's code as it first runs it, and the first chords after a
-    // start dropped out about fifty times while it did (2026-11-20). A chord
-    // is played here, unheard, until that is done.
-    {
-        float wb[12][BLOCK];
-        synthLib::TAudioInputs wi{};
-        synthLib::TAudioOutputs wo{};
-        float z[BLOCK] = {0};
-        for (size_t i = 0; i < wo.size() && i < 12; i++) wo[i] = wb[i];
-        for (size_t i = 0; i < wi.size(); i++) wi[i] = z;
-        std::vector<synthLib::SMidiEvent> sink;
-        { // the sound first: the code a sound runs is the code to compile
+    const std::string romPath = in->dir + "/roms/" + romName;
+    if (!spawn(in, romPath)) return;
+    // watching it: an engine that dies is started again, RESTARTS times a minute at most
+    std::vector<int64_t> deaths;
+    while (!in->quit.load()) {
+        usleep(100000);
+        const pid_t pid = in->pid.load();
+        int wst = 0;
+        if (!pid || waitpid(pid, &wst, WNOHANG) != pid) continue;
+        in->pid = 0;
+        if (in->quit.load()) break;
+        const int64_t t = now_us();
+        deaths.erase(std::remove_if(deaths.begin(), deaths.end(), [&](int64_t d) { return t - d > 60000000; }), deaths.end());
+        deaths.push_back(t);
+        char why[64];
+        if (WIFSIGNALED(wst)) snprintf(why, sizeof(why), "signal %d", WTERMSIG(wst));
+        else snprintf(why, sizeof(why), "exit %d", WEXITSTATUS(wst));
+        if (in->L->phase.load() == oshm::FAILED) break; // it said why (in L): no use starting it again
+        if (int(deaths.size()) > RESTARTS) {
+            plog("the engine stopped (%s), %d times in a minute: not starting it again", why, int(deaths.size()));
             std::lock_guard<std::mutex> l(in->mu);
-            send_single(in);
+            snprintf(in->error, sizeof(in->error), "The emulator stopped %d times in a minute (%s)", int(deaths.size()), why);
+            snprintf(in->status, sizeof(in->status), "Failed");
+            in->L->phase = oshm::FAILED;
+            break;
         }
-        for (int b = 0; b < 44100 / 2 / BLOCK && !in->quit.load(); b++) {
-            in->plugin->process(wi, wo, BLOCK, 120.0f, 0.0f, false);
-            sink.clear();
-            in->plugin->getMidiOut(sink);
-        }
-        const uint8_t notes[] = {36, 48, 55, 60, 64, 67, 72, 79};
-        for (uint8_t n : notes) {
-            synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, 0x90, n, 100);
-            send(in, ev);
-        }
-        for (int b = 0; b < 44100 * 3 / 2 / BLOCK && !in->quit.load(); b++) {
-            in->plugin->process(wi, wo, BLOCK, 120.0f, 0.0f, false);
-            sink.clear();
-            in->plugin->getMidiOut(sink);
-        }
-        synthLib::SMidiEvent off(synthLib::MidiEventSource::Host, 0xb0, 123, 0); // all notes off
-        send(in, off);
-        for (int b = 0; b < 44100 / BLOCK && !in->quit.load(); b++) {
-            in->plugin->process(wi, wo, BLOCK, 120.0f, 0.0f, false);
-            sink.clear();
-            in->plugin->getMidiOut(sink);
-        }
-    }
-    {
-        std::lock_guard<std::mutex> l(in->mu);
-        snprintf(in->status, sizeof(in->status), "Virus %s", o_model[model]);
-        in->loading = 0;
-        send_single(in);
-    }
-    plog("running: Virus %s, firmware %s, %d banks", o_model[model], romName.c_str(), int(in->names.size()));
-
-    std::vector<synthLib::SMidiEvent> midiEv;
-    float buf[12][BLOCK];
-    synthLib::TAudioInputs ins{};
-    synthLib::TAudioOutputs outs{};
-    for (size_t i = 0; i < outs.size() && i < 12; i++) outs[i] = buf[i];
-    float silent[BLOCK] = {0};
-    for (size_t i = 0; i < ins.size(); i++) ins[i] = silent;
-
-    while (!in->quit.load(std::memory_order_relaxed)) {
-        uint32_t fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
-        if (in->dumpPending.load() && fill >= uint32_t(AHEAD_DUMP)) {
-            std::lock_guard<std::mutex> l(in->mu);
-            in->dumpPending = false;
-            send_single(in);
-            in->deepUntil = now_us() + 2500000;
-        }
-        const int64_t tnow = now_us(), miss = in->missAt.load(std::memory_order_relaxed);
-        const bool deep = in->dumpPending.load() || tnow < in->deepUntil || (miss && tnow - miss < MISS_DEEP_US);
-        const uint32_t target = deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
-        while (fill < target && !in->quit.load(std::memory_order_relaxed)) {
-            const int64_t t0 = now_us();
-            for (auto &b : buf) memset(b, 0, sizeof(b));
-            in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
-            midiEv.clear();
-            in->plugin->getMidiOut(midiEv);
-            // 6 dB of headroom, and a soft limiter above 3/4 of full scale
-            const float g = float(in->gain) * 0.01f * 0.5f * 32767.0f;
-            const uint32_t w = in->wr.load(std::memory_order_relaxed);
-            for (int i = 0; i < BLOCK; i++) {
-                const uint32_t k = (w + uint32_t(i)) & (RING - 1);
-                in->ring[k * 2] = int16_t(lrintf(soft_limit(buf[0][i] * g)));
-                in->ring[k * 2 + 1] = int16_t(lrintf(soft_limit(buf[1][i] * g)));
-            }
-            in->wr.store(w + BLOCK, std::memory_order_release);
-            const uint32_t us = uint32_t(now_us() - t0);
-            in->blockUs.store(us, std::memory_order_relaxed);
-            if (us > in->blockMaxUs.load(std::memory_order_relaxed)) in->blockMaxUs.store(us, std::memory_order_relaxed);
-            fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
-        }
-        timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_nsec += 2000000;
-        if (ts.tv_nsec >= 1000000000) {
-            ts.tv_sec++;
-            ts.tv_nsec -= 1000000000;
-        }
-        sem_timedwait(&in->wake, &ts);
+        plog("the engine stopped (%s): starting it again", why);
+        if (!spawn(in, romPath)) break;
     }
 }
 
 void start(Instance *in) {
     in->quit = false;
-    in->loading = 1;
-    in->emu = std::thread(emu_main, in);
+    {
+        std::lock_guard<std::mutex> l(in->mu);
+        in->error[0] = 0;
+        snprintf(in->status, sizeof(in->status), "Starting");
+    }
+    if (in->L) in->L->phase = oshm::STARTING;
+    in->starter = std::thread(start_main, in);
 }
 
 void stop(Instance *in, bool keepLock = false) {
     in->quit = true;
-    sem_post(&in->wake);
-    if (in->emu.joinable()) in->emu.join();
-    {
-        std::lock_guard<std::mutex> l(in->plugMu);
-        in->plugin.reset();
-    }
-    in->device.reset();
+    if (in->starter.joinable()) in->starter.join(); // (it waits 0.1 s at a time, or reads a firmware)
+    end_engine(in);
     if (in->hasLock && !keepLock) {
         emu_unlock(); // the emulator is gone: the next instance may start
         in->hasLock = false;
     }
-    in->wr = 0;
-    in->rd = 0;
+}
+
+// status and error: the plugin's own while the engine is not up, else the engine's
+void texts(Instance *in, char *st, size_t ns, char *err, size_t ne) {
+    {
+        std::lock_guard<std::mutex> l(in->mu);
+        if (in->waiting.load()) {
+            snprintf(st, ns, "Waiting: another OsTIrus is running, and one is all a Push can run");
+            snprintf(err, ne, "%s", "");
+            return;
+        }
+        if (in->error[0] || !in->L || !in->pid.load()) {
+            snprintf(st, ns, "%s", in->status);
+            snprintf(err, ne, "%s", in->error);
+            if (!in->L || in->error[0]) return;
+            if (in->L->phase.load() != oshm::FAILED) return;
+        }
+    }
+    oshm::get_text(in->L, st, ns, err, ne);
 }
 
 // ---- parameters -------------------------------------------------------------------
@@ -729,7 +683,7 @@ void param_set(Instance *in, const ti::Param &p, const char *val) {
     }
     const long raw = p.kind == ti::kEnum ? v + p.min : v + p.offset;
     in->single[size_t(p.off)] = uint8_t(std::max(long(p.min), std::min(long(p.max), raw)));
-    if (!in->loading.load()) send_byte(in, p.off);
+    if (playing(in)) send_byte(in, p.off); // (else the dump the engine plays next carries it)
 }
 
 std::string jesc(const char *s) {
@@ -746,8 +700,11 @@ std::string jesc(const char *s) {
 void *v2_create(const char *module_dir, const char *) {
     Instance *in = new Instance();
     in->dir = module_dir ? module_dir : ".";
-    memset(in->ring, 0, sizeof(in->ring));
-    sem_init(&in->wake, 0, 0);
+    if (!make_memory(in)) {
+        snprintf(in->error, sizeof(in->error), "No memory for the emulator (%s)", strerror(errno));
+        snprintf(in->status, sizeof(in->status), "Failed");
+        return in;
+    }
     start(in);
     return in;
 }
@@ -756,13 +713,17 @@ void v2_destroy(void *instance) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in) return;
     stop(in);
-    sem_destroy(&in->wake);
+    if (in->L) {
+        sem_destroy(&in->L->wake);
+        munmap(in->L, sizeof(oshm::Layout));
+    }
+    if (in->memfd >= 0) close(in->memfd);
     delete in;
 }
 
 void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
     Instance *in = static_cast<Instance *>(instance);
-    if (!in || len < 2 || in->loading.load()) return;
+    if (!in || len < 2 || !playing(in)) return;
     const uint8_t st = msg[0] & 0xf0;
     const uint8_t d1 = msg[1] & 0x7f, d2 = len > 2 ? (msg[2] & 0x7f) : 0;
     switch (st) {
@@ -802,7 +763,10 @@ int hexv(char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' 
 // mu held
 void set_state(Instance *in, const char *val) {
     std::string s;
-    if (json_field(val, "gain", s)) in->gain = std::max(1, std::min(200, atoi(s.c_str())));
+    if (json_field(val, "gain", s)) {
+        in->gain = std::max(1, std::min(200, atoi(s.c_str())));
+        if (in->L) in->L->gain = in->gain;
+    }
     if (json_field(val, "bank", s)) in->bank = std::max(0, atoi(s.c_str()));
     if (json_field(val, "preset", s)) in->preset = std::max(0, atoi(s.c_str()));
     std::string hex;
@@ -813,8 +777,8 @@ void set_state(Instance *in, const char *val) {
             in->single[i] = uint8_t(a * 16 + b);
         }
         in->haveSingle = true;
-        if (in->loading.load()) in->pendingLoad = true;
-        else in->dumpPending = true;
+        if (in->rom) send_single(in);
+        else in->pendingLoad = true; // (the firmware not read yet: the start sends it)
     }
 }
 
@@ -837,7 +801,7 @@ void v2_set_param(void *instance, const char *key, const char *val) {
             in->names.clear();
             in->error[0] = 0;
         }
-        stop(in, true); // the emulator starts again as the other model, still this instance's
+        stop(in, true); // the engine starts again as the other model, still this instance's
         start(in);
         return;
     }
@@ -871,6 +835,7 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         if (in->haveSingle) param_set(in, *p, val);
     } else if (!strcmp(key, "gain")) {
         in->gain = std::max(1, std::min(200, atoi(val)));
+        if (in->L) in->L->gain = in->gain;
     } else if (!strcmp(key, "all_notes_off")) {
         synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, 0xb0, 123, 0);
         send(in, ev);
@@ -885,16 +850,21 @@ void v2_set_param(void *instance, const char *key, const char *val) {
 int v2_get_param(void *instance, const char *key, char *buf, int len) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !buf || len <= 0) return -1;
-    if (!strcmp(key, "debug_info"))
-        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u", in->underruns.load(), in->blockUs.load(),
-                        in->blockMaxUs.exchange(0), in->wr.load() - in->rd.load());
+    if (!strcmp(key, "debug_info")) {
+        if (!in->L) return snprintf(buf, size_t(len), "underruns=%u", in->underruns.load());
+        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u engine_pid=%d", in->underruns.load(),
+                        in->L->blockUs.load(), in->L->blockMaxUs.exchange(0), in->L->wr.load() - in->L->rd.load(), int(in->pid.load()));
+    }
+    if (!strcmp(key, "status") || !strcmp(key, "load_error")) {
+        char st[160], err[200];
+        texts(in, st, sizeof(st), err, sizeof(err));
+        return snprintf(buf, size_t(len), "%s", !strcmp(key, "status") ? st : err);
+    }
     if (!strncmp(key, "wave_view_", 10)) return snprintf(buf, size_t(len), "%s", wave_view(in, atoi(key + 10)).c_str());
     std::lock_guard<std::mutex> l(in->mu);
     const int nb = int(in->names.size());
     const std::vector<std::string> empty;
     const auto &b = in->bank >= 0 && in->bank < nb ? in->names[size_t(in->bank)] : empty;
-    if (!strcmp(key, "status")) return snprintf(buf, size_t(len), "%s", in->status);
-    if (!strcmp(key, "load_error")) return snprintf(buf, size_t(len), "%s", in->error);
     if (!strcmp(key, "rom_name")) return snprintf(buf, size_t(len), "%s", in->romName.c_str());
     if (!strcmp(key, "model")) return snprintf(buf, size_t(len), "%s", o_model[in->model]);
     if (!strcmp(key, "gain")) return snprintf(buf, size_t(len), "%d", in->gain);
@@ -1036,28 +1006,30 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
 int v2_get_error(void *instance, char *buf, int len) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !buf || len <= 0) return 0;
-    std::lock_guard<std::mutex> l(in->mu);
-    if (!in->error[0]) {
+    char st[160], err[200];
+    texts(in, st, sizeof(st), err, sizeof(err));
+    if (!err[0]) {
         buf[0] = 0;
         return 0;
     }
-    return snprintf(buf, size_t(len), "%s", in->error);
+    return snprintf(buf, size_t(len), "%s", err);
 }
 
 void v2_render(void *instance, int16_t *out, int frames) {
     Instance *in = static_cast<Instance *>(instance);
     if (!out || frames <= 0) return;
-    if (!in || in->loading.load(std::memory_order_relaxed)) {
+    if (!in || !playing(in)) {
         memset(out, 0, size_t(frames) * 2 * sizeof(int16_t));
         return;
     }
-    const uint32_t r = in->rd.load(std::memory_order_relaxed);
-    const uint32_t have = in->wr.load(std::memory_order_acquire) - r;
+    oshm::Layout *L = in->L;
+    const uint32_t r = L->rd.load(std::memory_order_relaxed);
+    const uint32_t have = L->wr.load(std::memory_order_acquire) - r;
     const uint32_t n = std::min<uint32_t>(have, uint32_t(frames));
     for (uint32_t i = 0; i < n; i++) {
         const uint32_t k = (r + i) & (RING - 1);
-        out[i * 2] = in->ring[k * 2];
-        out[i * 2 + 1] = in->ring[k * 2 + 1];
+        out[i * 2] = L->ring[k * 2];
+        out[i * 2 + 1] = L->ring[k * 2 + 1];
     }
     if (in->hole && n > 0) { // the block before ended short: back in with a fade
         const uint32_t f = std::min<uint32_t>(n, FADE);
@@ -1076,11 +1048,11 @@ void v2_render(void *instance, int16_t *out, int frames) {
         }
         memset(out + n * 2, 0, size_t(uint32_t(frames) - n) * 2 * sizeof(int16_t));
         in->hole = true;
-        if (!in->error[0]) in->underruns.fetch_add(1, std::memory_order_relaxed);
-        in->missAt.store(now_us(), std::memory_order_relaxed);
+        in->underruns.fetch_add(1, std::memory_order_relaxed);
+        L->missAt.store(now_us(), std::memory_order_relaxed);
     }
-    in->rd.store(r + n, std::memory_order_release);
-    sem_post(&in->wake);
+    L->rd.store(r + n, std::memory_order_release);
+    sem_post(&L->wake);
 }
 
 plugin_api_v2_t g_api;

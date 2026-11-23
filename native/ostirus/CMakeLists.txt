@@ -33,3 +33,8 @@ set_target_properties(ostirus-dsp PROPERTIES PREFIX "" OUTPUT_NAME "dsp" SUFFIX 
 target_include_directories(ostirus-dsp PRIVATE ${SCHWUNG_SRC} ${SCHWUNG_SRC}/host)
 target_link_libraries(ostirus-dsp PRIVATE virusLib synthLib Threads::Threads)
 target_link_options(ostirus-dsp PRIVATE -Wl,--exclude-libs,ALL -static-libstdc++ -static-libgcc)
+
+# the emulator, in a process of its own (ostirus_engine.cpp): the plugin starts it
+add_executable(ostirus-engine dsp/ostirus_engine.cpp)
+target_link_libraries(ostirus-engine PRIVATE virusLib synthLib Threads::Threads)
+target_link_options(ostirus-engine PRIVATE -static-libstdc++ -static-libgcc)
