@@ -117,6 +117,11 @@ is filed under that alias). The Push has no curl: use `wget` on it.
 - **Apply** (`POST :7720/api/catalog/apply`) restarts Pung and **Live**: only on the user's word. It keeps
   the unsaved edits of Pung devices (`armForLiveRestart`, since 2026-11-23; before, an Apply undid them).
   The same restart without the catalog: write `<data>/restart-live-after-start`, restart Pung's service.
+- **A test that restarts Live runs in a throwaway Set**, never the user's working one: Live recovers the
+  Set by replaying its history, and a plugin that changed under it can crash that replay. 2026-11-23: a
+  test class's parameter given an id of 935340406, with automation on the device, crashed the recovery
+  (`ASSERT ... flip/src/Float.cpp:114`) and Live opened an empty Set; the Set was restored from
+  `Crash/<time>_*` (backed up first) after the class was put back. Keep parameter ids small.
 - Never create **audio** tracks through the Remote Script (it crashed Live once and lost its settings);
   MIDI tracks are fine. Say what test tracks you left in the user's Set.
 - Commit and push only when asked; **publish a release only on "Publish"**.
