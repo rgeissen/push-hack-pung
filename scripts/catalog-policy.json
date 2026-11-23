@@ -1,13 +1,19 @@
 {
-  "_doc": "What build-catalog.py may publish, and the licence facts it cannot read from the source. A module publishes when its licence is known: a licence file, the module.json \"license\" field, a README licence section, or an entry in \"licence\" below. A module whose code names no licence is all rights reserved and is withheld; an entry in \"publish\" (with the permission it rests on) publishes it anyway.",
-  "licence": {
-    "jp8000": {
-      "spdx": "GPL-3.0-or-later",
-      "note": "The repository names no licence of its own; the emulator it is built on (gearmulator, libs/gearmulator) is GPL-3.0, so the whole is distributed under the GPL-3.0."
-    }
-  },
-  "publish": {},
-  "withhold": {
-    "stacks": "its repository is still private: Pung publishes the source of what it ships (take this line out when rgeissen/schwung-stacks is public)"
+ "_doc": "What build-catalog.py may publish, and the licence facts it cannot read from the source. A module publishes when its licence is known: a licence file, the module.json \"license\" field, a README licence section, or an entry in \"licence\" below. A module whose code names no licence is all rights reserved and is withheld; an entry in \"publish\" (with the permission it rests on) publishes it anyway.",
+ "licence": {
+  "jp8000": {
+   "spdx": "GPL-3.0-or-later",
+   "note": "The repository names no licence of its own; the emulator it is built on (gearmulator, libs/gearmulator) is GPL-3.0, so the whole is distributed under the GPL-3.0."
   }
+ },
+ "publish": {},
+ "withhold": {
+  "stacks": "its repository is still private: Pung publishes the source of what it ships (take this line out when rgeissen/schwung-stacks is public)",
+  "viz": "a light show for grid controllers and Move's remote UI: nothing it does reaches a device in Live",
+  "chord-display": "shows the chord on Move's own screen: in Live, Push and Live show chords themselves",
+  "elusive-muse": "prompts on Move's screen, drawn by its jog wheel: nothing for a device in Live",
+  "scratch": "played with Move's jog wheel or Serato control vinyl: neither reaches a device in Live on the Push",
+  "strut": "its licence is PolyForm Strict 1.0.0 (no distribution, no changes): Pung may not ship it",
+  "quilt": "its licence is PolyForm Strict 1.0.0 (no distribution, no changes): Pung may not ship it"
+ }
 }
