@@ -134,6 +134,7 @@ func (d *device) pump(l *rtState) {
 			}
 			d.s.own.Unlock()
 			restore()
+			d.touch() // its state is filed again once quiet (keptstate.go)
 		}
 		d.syncLoop(rt)
 

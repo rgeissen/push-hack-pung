@@ -66,8 +66,10 @@ func stateKey(state string) string {
 	return hex.EncodeToString(h[:12])
 }
 
-// loadKeptStates reads what the Pung before this one kept, once: the file is
-// removed, so a crash or a later start never meets an old one.
+// loadKeptStates reads what the Pung before this one kept. The file stays
+// until this Pung files its own (keepWhileRunning, once the kept window is
+// over): one that crashes before then leaves the next start the same
+// states, still the newest there are.
 func loadKeptStates(dir, live string, now time.Time) *keptStates {
 	k := &keptStates{}
 	path := filepath.Join(dir, keptStatesFile)
@@ -75,7 +77,6 @@ func loadKeptStates(dir, live string, now time.Time) *keptStates {
 	if err != nil {
 		return k
 	}
-	os.Remove(path)
 	var f keptFile
 	if json.Unmarshal(raw, &f) != nil || live == "" || f.Live != live {
 		return k // another Live (or none known): the Set's states are the truth
@@ -133,26 +134,48 @@ func writeKeptStates(dir, live string, entries []keptEntry) error {
 	return os.Rename(tmp, path)
 }
 
-// keepStates: at a stop, every device's state as it is now.
+// keepStates: at a stop, every device's state as it is now. Filed last:
+// keepWhileRunning writes nothing after it.
 func (p *provider) keepStates() {
-	var entries []keptEntry
-	for _, d := range p.list() {
+	p.keepMu.Lock()
+	defer p.keepMu.Unlock()
+	p.keepStopped = true
+	devs := p.list()
+	states := map[*device]string{}
+	for _, d := range devs {
+		st, err := d.currentState()
+		if err != nil {
+			log.Printf("%s: its state is not kept across the restart: %v", d.c.Name, err)
+			continue
+		}
+		states[d] = st
+	}
+	entries, carried := p.keptEntries(devs, states)
+	if err := writeKeptStates(p.h.dataDir, runningLive(), entries); err != nil {
+		log.Printf("keeping the devices' states across the restart: %v", err)
+	} else if len(entries) > 0 {
+		log.Printf("kept the state of %d device(s) for the next start (%d of them from the start before, never taken)", len(entries), carried)
+	}
+}
+
+// keptEntries: each device's state filed under what Live's plugin holds for
+// it, and the kept states from the start before that no device took.
+func (p *provider) keptEntries(devs []*device, states map[*device]string) (entries []keptEntry, carried int) {
+	for _, d := range devs {
+		st, ok := states[d]
+		if !ok {
+			continue
+		}
 		d.liveMu.Lock()
 		key := d.liveKey
 		d.liveMu.Unlock()
 		if key == "" {
 			key = stateKey("") // Live's plugin holds no state for it (adoptKept)
 		}
-		st, err := d.currentState()
-		if err != nil {
-			log.Printf("%s: its state is not kept across the restart: %v", d.c.Name, err)
-			continue
-		}
 		entries = append(entries, keptEntry{Key: key, Module: d.c.module, State: st})
 	}
-	live := liveIdentity()
-	devices, carried := len(entries), 0
-	for _, e := range p.kept.untaken(live) {
+	devices := len(entries)
+	for _, e := range p.kept.untaken(runningLive()) {
 		dup := false
 		for _, c := range entries[:devices] {
 			dup = dup || c.Key == e.Key && c.Module == e.Module
@@ -162,12 +185,112 @@ func (p *provider) keepStates() {
 			carried++
 		}
 	}
-	if err := writeKeptStates(p.h.dataDir, live, entries); err != nil {
-		log.Printf("keeping the devices' states across the restart: %v", err)
-	} else if len(entries) > 0 {
-		log.Printf("kept the state of %d device(s) for the next start (%d of them from the start before, never taken)", len(entries), carried)
+	return entries, carried
+}
+
+// The states were filed at a stop only. A Pung that hung (the service's
+// restart kills it 5 s later) or crashed filed nothing, and every device came
+// back with what Live last saved: an unsaved Set lost its sounds (CLAUDE.md,
+// 2026-11-22). Now they are filed while Pung runs, too:
+//
+//   - a device whose chain was written to (Live's parameters, the Pung view,
+//     the web page, a sound, a MIDI effect) is read once it has been quiet for
+//     keepQuiet: a state is one module call, not one per turn of a knob, and
+//     never while automation moves it (the Set holds automation anyway);
+//   - the file is written when what it would hold changed, never more than
+//     once a keepEvery;
+//   - not before the kept window is over, while the states of the Pung before
+//     are still being handed out: that file stays meanwhile.
+const (
+	keepQuiet = 2 * time.Second
+	keepEvery = 2 * time.Second
+)
+
+func (d *device) touch() { d.changedAt.Store(time.Now().UnixNano()) }
+
+func (p *provider) keepWhileRunning(stop <-chan struct{}) {
+	t := time.NewTicker(keepEvery)
+	defer t.Stop()
+	k := &keepRun{start: time.Now(), states: map[*device]string{}}
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			p.keepTick(k, time.Now())
+		}
 	}
 }
+
+// keepRun: what keepWhileRunning knows between its ticks.
+type keepRun struct {
+	start    time.Time
+	states   map[*device]string // each device's state as last read
+	lastKeys string             // the keys Live's plugins held at the last write
+	written  bool
+}
+
+func (p *provider) keepTick(k *keepRun, now time.Time) {
+	devs := p.list()
+	for _, d := range devs {
+		if d.s.dirty.Swap(false) { // written through Slot.Set
+			d.changedAt.Store(now.UnixNano())
+		}
+	}
+	if now.Sub(k.start) < keptWindow {
+		return
+	}
+	changed := false
+	here := map[*device]bool{}
+	for _, d := range devs {
+		here[d] = true
+		at := d.changedAt.Load()
+		if _, have := k.states[d]; have && at == 0 {
+			continue
+		}
+		if at != 0 && now.Sub(time.Unix(0, at)) < keepQuiet {
+			continue // still being changed
+		}
+		st, err := d.currentState()
+		if err != nil {
+			continue // tried again at the next tick
+		}
+		d.changedAt.CompareAndSwap(at, 0)
+		if old, have := k.states[d]; !have || old != st {
+			k.states[d], changed = st, true
+		}
+	}
+	for d := range k.states {
+		if !here[d] {
+			delete(k.states, d)
+			changed = true
+		}
+	}
+	// Live asking a device's state (a save) changes the key it is filed under
+	keys := ""
+	for _, d := range devs {
+		d.liveMu.Lock()
+		keys += d.liveKey + ","
+		d.liveMu.Unlock()
+	}
+	if k.written && !changed && keys == k.lastKeys {
+		return
+	}
+	p.keepMu.Lock()
+	defer p.keepMu.Unlock()
+	if p.keepStopped {
+		return
+	}
+	entries, _ := p.keptEntries(devs, k.states)
+	if err := writeKeptStates(p.h.dataDir, runningLive(), entries); err != nil {
+		log.Printf("filing the devices' states: %v", err)
+		return
+	}
+	k.written, k.lastKeys = true, keys
+}
+
+// runningLive: the running Live (a variable for the tests, which have none)
+var runningLive = liveIdentity
 
 // liveIdentity names the running Live: its pid and when it started. "" when
 // Live is not running.

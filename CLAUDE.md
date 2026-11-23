@@ -98,8 +98,9 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   devices at the same moments are the system's, not one module's.
 - Pung's service script is push-catalog's: its restart sends `kill -9` after 5 s and starts the new Pung at
   once. Pung therefore takes its port first and waits up to 15 s for it (`listenWaiting`); before that a
-  hung Pung left the new one without its port and Pung down (2026-11-22). A Pung that hangs cannot keep
-  its devices' sounds for the next start: an unsaved Set loses them.
+  hung Pung left the new one without its port and Pung down (2026-11-22). The devices' states are filed
+  while Pung runs (`kept-states.json`, 2 s after a device goes quiet), so a Pung that hangs or crashes
+  gives the next start every sound but the last seconds' (killed with `kill -9` on the Push, 2026-11-23).
 - Deploy Pung: `make deploy HOST=<push-ip>` (restarts Pung, not Live). Deploy one module: scp to
   `<file>.new`, then `mv` (never overwrite a loaded `.so` in place), then restart Pung. **Pung keeps a
   module's `push_ui.js` loaded: a new one needs a Pung restart.**

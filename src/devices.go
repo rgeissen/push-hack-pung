@@ -407,6 +407,9 @@ type provider struct {
 	used    map[int]bool    // chain slots in use by devices
 	devs    map[int]*device // by chain slot
 	kept    *keptStates     // the devices' states from the Pung before this one
+
+	keepMu      sync.Mutex // the kept-states file: the stop's write is the last
+	keepStopped bool       // under keepMu
 }
 
 func newProvider(h *Host, classes []*sclass) *provider {
@@ -607,11 +610,14 @@ type device struct {
 	lastChain json.RawMessage // the last state given (SetState), to load again (revive)
 
 	// blocks that could not run, and their notes (Process, heldMidi)
-	held     heldMidi // the realtime thread's only
-	liveMu   sync.Mutex
-	liveKey  string        // stateKey of the state Live's plugin holds for this device
-	skipped  atomic.Uint64 // blocks skipped
-	heldSent atomic.Uint64 // notes of skipped blocks delivered later
+	held    heldMidi // the realtime thread's only
+	liveMu  sync.Mutex
+	liveKey string // stateKey of the state Live's plugin holds for this device
+	// changedAt: when Live's parameters last changed the chain (UnixNano; 0:
+	// filed since, keptstate.go)
+	changedAt atomic.Int64
+	skipped   atomic.Uint64 // blocks skipped
+	heldSent  atomic.Uint64 // notes of skipped blocks delivered later
 
 	// a state loads in the background (SetState): loadMu is held while one
 	// loads, loading says one is on its way, stateSeq makes the newest win

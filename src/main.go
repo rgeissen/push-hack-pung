@@ -254,6 +254,7 @@ func main() {
 	go h.transport.watch()
 	saved := make(chan struct{})
 	go func() { h.autosave(stop); close(saved) }()
+	go h.prov.keepWhileRunning(stop) // the devices' states, for a Pung that does not stop cleanly
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
