@@ -183,3 +183,21 @@ func TestLFOTable(t *testing.T) {
 		t.Errorf("three quarters in: %v, want 0 (halfway back from 1 to -1)", got)
 	}
 }
+
+// g.envelope {signed: true}: a numbered envelope whose levels swing about the
+// middle starts each note there, though its keys say nothing of a pitch and
+// their range is 0..127 (Clementine-XT's free envelope).
+func TestEnvSigned(t *testing.T) {
+	keys := map[string]string{"time1": "fe_t1", "level1": "fe_l1", "time2": "fe_t2", "level2": "fe_l2"}
+	vals := map[string]ovValue{}
+	for _, k := range keys {
+		vals[k] = ovValue{Known: true, Frac: 0.8, Min: 0, Max: 127}
+	}
+	if e := envShapeWith(keys, vals, "", false); e.Signed || e.Start != 0 {
+		t.Fatalf("unsigned: signed %v, starts at %v", e.Signed, e.Start)
+	}
+	e := envShapeWith(keys, vals, "", true)
+	if !e.Signed || math.Abs(e.Start-0.5) > 1e-9 {
+		t.Fatalf("signed: signed %v, starts at %v, want the middle", e.Signed, e.Start)
+	}
+}

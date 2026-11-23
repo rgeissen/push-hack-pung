@@ -304,7 +304,15 @@ func (e envShape) levelBefore(i int) float64 {
 // envShapeOf reads an envelope group's values into its shape. touched is
 // the key under a finger ("" none).
 func envShapeOf(keys map[string]string, vals map[string]ovValue, touched string) envShape {
-	e := envShape{Known: true, Labels: true, Hot: -1, Corner: -1}
+	return envShapeWith(keys, vals, touched, false)
+}
+
+// envShapeWith: envShapeOf, signed where the screen says the levels swing
+// about the middle and each note starts there (g.envelope {signed: true}:
+// Clementine-XT's free envelope, its levels 0..127 with 64 the middle),
+// which the keys' names and ranges do not tell.
+func envShapeWith(keys map[string]string, vals map[string]ovValue, touched string, signed bool) envShape {
+	e := envShape{Known: true, Labels: true, Hot: -1, Corner: -1, Signed: signed}
 	frac := func(role string, def float64) (float64, string, bool) {
 		k, ok := keys[role]
 		if !ok {

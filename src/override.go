@@ -710,7 +710,8 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		if t, ok := o["touched"].(string); ok && t != "" {
 			touched = t
 		}
-		e := envShapeOf(keys, vv, touched)
+		signed, _ := o["signed"].(bool) // levels about the middle, each note from there
+		e := envShapeWith(keys, vv, touched, signed)
 		e.Labels = labels
 		// {levels: {sustain: 0.17, ...}}: where a stage's level is drawn, when
 		// the module's level is not its knob's (TinyK hears its EG squared):
