@@ -254,7 +254,9 @@ func drawBack(img *image.NRGBA, name string, sc color.NRGBA) {
 	for k := 0; k < 5; k++ { // <
 		rect(img, 10+k, 12-k, 1, 2*k+1, sc)
 	}
-	label(img, 22, 17, fitLabel(name, colW-30), sc, -1)
+	// up to 13 letters whole ("CLEMENTINE-XT" was cut to "CLEMENTINE-."):
+	// a little into the second column, whose top row stays empty here
+	label(img, 22, 17, fitLabel(name, colW-6), sc, -1)
 }
 
 // drawSoundsButton: SOUNDS over the open device's last upper button.

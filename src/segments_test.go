@@ -64,7 +64,7 @@ func segView(t *testing.T, screen string) *surface {
 	for _, k := range []string{"cut", "res", "env", "vol", "lfo_rate", "osc_wave", "osc_tune", "osc_mix", "x", "y"} {
 		cm.Params[k] = &paramMeta{Key: k, Name: k, Type: "float", Min: 0, Max: 1, Default: &def}
 	}
-	u.meta["live|seg"] = withCompartments(cm, set.compartments)
+	u.meta["live|seg"] = withCompartments(cm, set.compartments, set.unused)
 	s := u.live.state()
 	s.mu.Lock()
 	s.dev = liveDevice{Track: json.RawMessage("1"), Device: 1, Name: "Seg"}

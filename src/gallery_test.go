@@ -110,7 +110,7 @@ func galleryModule(t *testing.T, out, ovDir, id string, rec *probeRecord, vals m
 		t.Errorf("%s: its screens do not load: %+v", id, set)
 		return
 	}
-	cm = withCompartments(liveBanks(cm), set.compartments)
+	cm = withCompartments(liveBanks(cm), set.compartments, set.unused)
 	u.meta["live|"+id] = cm
 	s := u.live.state()
 	s.mu.Lock()

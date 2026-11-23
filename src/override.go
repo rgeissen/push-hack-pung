@@ -180,6 +180,7 @@ type overrideSet struct {
 	vm           *goja.Runtime
 	widgets      []*ovWidget
 	compartments []*ovCompartment // in the order declared
+	unused       map[string]bool  // push.unused: keys the module declares that do nothing
 	failed       string           // why it is off; "" while it works
 	overruns     int              // frames in a row over ovBudget
 	// slowAt, slowN: it was switched off for being slow, when, and how often.
@@ -445,6 +446,25 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 			panic(vm.NewTypeError("push.display needs a function"))
 		}
 		set.display = fn
+		return goja.Undefined()
+	})
+	// push.unused([keys]): keys the module declares that do nothing (Omega's
+	// grv_type, read by nothing since rumble and sequence run together; its
+	// GEN engine's keys, an engine its model list never offers): no page of
+	// leftovers in Pung's view. Live and the web page still list them.
+	push.Set("unused", func(call goja.FunctionCall) goja.Value {
+		list, ok := call.Argument(0).Export().([]any)
+		if !ok {
+			panic(vm.NewTypeError("push.unused needs a list of keys"))
+		}
+		if set.unused == nil {
+			set.unused = map[string]bool{}
+		}
+		for _, x := range list {
+			if k, _ := x.(string); k != "" {
+				set.unused[k] = true
+			}
+		}
 		return goja.Undefined()
 	})
 	// push.short(fn): what an encoder is called in the row under a screen

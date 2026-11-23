@@ -41,13 +41,47 @@ push.compartment({ id: "env", label: "Envelope", keys: ["a","d","s","r","a2","d2
 		cm.Params[k] = &paramMeta{Key: k}
 	}
 	cm.Banks = []bank{{Name: "Main", Keys: []string{"cut", "spare"}}}
-	got := withCompartments(cm, set.compartments)
+	got := withCompartments(cm, set.compartments, set.unused)
 	var names []string
 	for _, b := range got.Banks {
 		names = append(names, b.Name+"="+strings.Join(b.Keys, ",")+"@"+b.Compartment)
 	}
 	want := "Filter 1=cut,res@flt|Routing=route@flt|Envelope=a,d,s,r,a2,d2,s2,r2@env|Envelope 2=x@env|Main=spare@"
 	if strings.Join(names, "|") != want {
+		t.Fatalf("pages\n got %s\nwant %s", strings.Join(names, "|"), want)
+	}
+}
+
+// Keys that turn nothing get no page of leftovers: those the screen file
+// calls unused (Omega's grv_type, its GEN engine's keys) and a read-only value
+// a screen draws live (Omega's sequencer step). A writable live key keeps its
+// page, and so does a read-only key no screen draws.
+func TestUnusedKeysHaveNoPage(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "sound_generators", "syn")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"syn","name":"Syn","component_type":"sound_generator"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "push_ui.js"), []byte(`
+push.unused(["dead", "gen_seed"]);
+push.compartment({ id: "seq", label: "Sequence", keys: ["vol"], live_keys: ["step", "phase"],
+  screen: function (g, v) {} });
+`), 0o644)
+	set := newOverrides().get(root, "syn")
+	if set == nil || set.failed != "" {
+		t.Fatalf("set %+v", set)
+	}
+	cm := &compMeta{Params: map[string]*paramMeta{}}
+	for _, k := range []string{"vol", "dead", "gen_seed", "step", "phase", "meter", "spare"} {
+		cm.Params[k] = &paramMeta{Key: k}
+	}
+	cm.Params["step"].ReadOnly, cm.Params["meter"].ReadOnly = true, true
+	cm.Banks = []bank{{Name: "More", Keys: []string{"dead", "gen_seed", "step", "phase", "meter", "spare"}}}
+	got := withCompartments(cm, set.compartments, set.unused)
+	var names []string
+	for _, b := range got.Banks {
+		names = append(names, b.Name+"="+strings.Join(b.Keys, ","))
+	}
+	if want := "Sequence=vol|More=phase,meter,spare"; strings.Join(names, "|") != want {
 		t.Fatalf("pages\n got %s\nwant %s", strings.Join(names, "|"), want)
 	}
 }
@@ -310,7 +344,7 @@ func TestDexedRealValues(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"dexed","component_type":"sound_generator"}`), 0o644)
 	initFaces()
 	set := newOverrides(ovDir).get(root, "dexed")
-	cm = withCompartments(cm, set.compartments)
+	cm = withCompartments(cm, set.compartments, set.unused)
 	for _, c := range set.compartments {
 		for pi := range c.pages {
 			scr, keys := c.pageScreen(pi)

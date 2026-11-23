@@ -543,7 +543,7 @@ func (u *surface) metaFor(p position) *compMeta {
 		cm, ok := u.h.probeMeta(m)
 		cm = liveBanks(cm)
 		if set := u.ov.get(u.h.modulesDir, m.ID); set != nil && set.failed == "" && len(set.compartments) > 0 {
-			cm = withCompartments(cm, set.compartments)
+			cm = withCompartments(cm, set.compartments, set.unused)
 		}
 		if ok { // a probe that could not run is asked again
 			u.meta[k] = cm
@@ -580,14 +580,27 @@ func liveBanks(cm *compMeta) *compMeta {
 // withCompartments: the pages of a module that declares compartments. Each
 // compartment is one screen, its keys 8 to a page in the order given; the
 // parameters no compartment names stay reachable after them, on the
-// module's generic banks.
-func withCompartments(cm *compMeta, comps []*ovCompartment) *compMeta {
+// module's generic banks. Not on those: a value the module drives that a
+// screen draws live (Omega's sequencer step, read-only), and the keys the
+// screen file calls unused (push.unused: a switch the engine no longer
+// reads, an engine its list never offers).
+func withCompartments(cm *compMeta, comps []*ovCompartment, unused map[string]bool) *compMeta {
 	if cm == nil {
 		return nil
 	}
 	out := *cm
 	out.Banks = nil
 	covered := map[string]bool{}
+	for k := range unused {
+		covered[k] = true
+	}
+	for _, c := range comps {
+		for _, k := range c.liveKeys {
+			if p := cm.Params[k]; p != nil && p.ReadOnly {
+				covered[k] = true
+			}
+		}
+	}
 	for _, c := range comps {
 		pages := c.pages
 		if len(pages) == 0 {
@@ -2046,7 +2059,7 @@ func (u *surface) compartmentScreen(module, id string, page int, get func(string
 	if cm == nil {
 		return nil, fmt.Errorf("no metadata for %s", module)
 	}
-	cm = withCompartments(liveBanks(cm), set.compartments)
+	cm = withCompartments(liveBanks(cm), set.compartments, set.unused)
 	// values first, without the lock: a read is a call into the chain
 	vals := ovValuesOf(cm, skeys, get)
 

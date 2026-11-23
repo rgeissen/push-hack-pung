@@ -587,6 +587,10 @@ var ENGINE_PAGES = MODELS.map(function (n, i) { return { label: n, keys: ENGINE_
 var ALL_ENGINE_KEYS = [].concat.apply([], ENGINE_KEYS);
 
 // Pung's own pages in the warehouse's colours, the knobs as rings in the kick's red
+// keys Omega declares that do nothing: grv_type (Rumble/Seq) is read by nothing since v0.4,
+// where rumble and sequence run together, each on its own volume (src/ui.c); gen_* are the GEN
+// engine's, which the model list (FM2..USR) never offers. They had a page of leftovers.
+push.unused(["grv_type", "gen_seed", "gen_scale", "gen_density", "gen_seqlen", "gen_lpffreq", "gen_lpfpole"]);
 push.theme({ ground: PANEL, ink: INK, dim: LEG, rule: RULE, faint: LED_OFF, panel: "#22252c", accent: KICK, knob: "ring" });
 
 var KICK_SPEC = {

@@ -218,6 +218,14 @@ touched knob keeps the module's full name. Asked once per key, like `push.displa
 push.short(function (key) { return /^pad\d+_/.test(key) ? nameOf(key) : undefined; });
 ```
 
+### Keys that do nothing (`push.unused`)
+
+The parameters no compartment names get pages of leftovers after the compartments. A module may declare
+keys that turn nothing: a switch its engine no longer reads, the keys of an engine its list never offers.
+`push.unused(["grv_type", "gen_seed", ...])` gives them no page in Pung's view (Live and the web page still
+list them). Say why beside it, from the module's source. A read-only value a compartment draws live
+(`live_keys`, Omega's sequencer step) gets no page of its own either; it needs no entry here.
+
 ## An engine's envelope times (`push.envelopeTimes`)
 
 Pung runs every note through an envelope in time (UX-GUIDELINES.md, *Envelopes*). Where a knob says its
