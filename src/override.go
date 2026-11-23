@@ -691,6 +691,15 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 					e.Segs[i].Curve = c
 				case int64:
 					e.Segs[i].Curve = float64(c)
+				case []any: // a table: how far along its levels at evenly spaced times (0..1)
+					for _, x := range c {
+						switch f := x.(type) {
+						case float64:
+							e.Segs[i].Table = append(e.Segs[i].Table, f)
+						case int64:
+							e.Segs[i].Table = append(e.Segs[i].Table, float64(f))
+						}
+					}
 				case map[string]any: // {root: n}: the level's n-th root straight in time; {exp: c}
 					if r, ok := c["root"].(float64); ok {
 						e.Segs[i].Root = r

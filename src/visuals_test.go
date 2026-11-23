@@ -160,3 +160,15 @@ func TestEnvRootStages(t *testing.T) {
 		t.Errorf("cubic release at half time: %v of the way, want 0.875", got)
 	}
 }
+
+// A stage may carry its curve as a table (an engine's own law, sampled):
+// interpolated between its points.
+func TestEnvTableStage(t *testing.T) {
+	e := envShape{Start: 0, Segs: []envSeg{{Role: "attack", Level: 1, Table: []float64{0, 0.8, 1}}}}
+	if got := e.frac(0, 0.25); math.Abs(got-0.4) > 1e-9 {
+		t.Errorf("a quarter in: %v, want 0.4 (halfway to the table's 0.8)", got)
+	}
+	if got := e.frac(0, 1); got != 1 {
+		t.Errorf("the end: %v, want 1", got)
+	}
+}

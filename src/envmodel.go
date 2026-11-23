@@ -203,16 +203,17 @@ func envNumberedComplete(keys map[string]string) bool {
 
 // envSeg: one drawn segment of an envelope.
 type envSeg struct {
-	Role    string   // attack, hold, decay, sustain (the plateau), release, delay; time<n> / rate<n>
-	Label   string   // what the stage bar says: A, D, S, R, T1, R2, DL, H
-	W       float64  // its drawn width, 0..1: the time knob's travel (a rate knob's, reversed)
-	Level   float64  // where it ends, 0..1 (signed: 0.5 is the middle)
-	Plateau bool     // a held key waits here
-	Release bool     // it runs from the key's let-go
-	TimeKey string   // the knob that times it ("" for the plateau)
-	Keys    []string // every knob that shapes it (its touch lights it)
-	Curve   float64  // its bend: the level runs (e^(c*t)-1)/(e^c-1) of the way in time t (0: a straight line)
-	Root    float64  // or: the level's n-th root runs straight in time (Surge's quadratic/cubic stages, its convex attack n=0.5); 0: none
+	Role    string    // attack, hold, decay, sustain (the plateau), release, delay; time<n> / rate<n>
+	Label   string    // what the stage bar says: A, D, S, R, T1, R2, DL, H
+	W       float64   // its drawn width, 0..1: the time knob's travel (a rate knob's, reversed)
+	Level   float64   // where it ends, 0..1 (signed: 0.5 is the middle)
+	Plateau bool      // a held key waits here
+	Release bool      // it runs from the key's let-go
+	TimeKey string    // the knob that times it ("" for the plateau)
+	Keys    []string  // every knob that shapes it (its touch lights it)
+	Curve   float64   // its bend: the level runs (e^(c*t)-1)/(e^c-1) of the way in time t (0: a straight line)
+	Root    float64   // or: the level's n-th root runs straight in time (Surge's quadratic/cubic stages, its convex attack n=0.5); 0: none
+	Table   []float64 // or: how far along its levels it is at evenly spaced times, 0..1 (any curve an engine computes: SIMIAN's slope)
 }
 
 // frac: how far along its levels segment i is at time t (0..1), by its
@@ -223,6 +224,11 @@ func (e envShape) frac(i int, t float64) float64 {
 		return t
 	}
 	s := e.Segs[i]
+	if n := len(s.Table); n >= 2 {
+		x := math.Max(0, math.Min(1, t)) * float64(n-1)
+		k := min(n-2, int(x))
+		return s.Table[k] + (s.Table[k+1]-s.Table[k])*(x-float64(k))
+	}
 	if s.Root > 0 && math.Abs(s.Root-1) > 1e-6 && !e.Signed {
 		la := e.Start
 		if i > 0 {
