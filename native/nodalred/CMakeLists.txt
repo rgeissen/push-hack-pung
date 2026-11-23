@@ -35,3 +35,8 @@ set_target_properties(nodalred-dsp PROPERTIES PREFIX "" OUTPUT_NAME "dsp" SUFFIX
 target_include_directories(nodalred-dsp PRIVATE ${SCHWUNG_SRC} ${SCHWUNG_SRC}/host)
 target_link_libraries(nodalred-dsp PRIVATE n2xLib synthLib Threads::Threads)
 target_link_options(nodalred-dsp PRIVATE -Wl,--exclude-libs,ALL -static-libstdc++ -static-libgcc)
+
+# the emulator, in a process of its own (nodalred_engine.cpp): the plugin starts it
+add_executable(nodalred-engine dsp/nodalred_engine.cpp)
+target_link_libraries(nodalred-engine PRIVATE n2xLib synthLib Threads::Threads)
+target_link_options(nodalred-engine PRIVATE -static-libstdc++ -static-libgcc)

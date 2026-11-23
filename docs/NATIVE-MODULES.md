@@ -159,6 +159,18 @@ a block and mapped it again; another thread's `mmap` could take the address in b
 DSP threads. `native/nodalred/patches/0001-mmu-remap-atomically.patch` replaces the mapping in one step:
 18 of 18 shutdowns clean. The patch is applied by the recipe and has not been sent upstream.
 
+### Its own process (0.1.3, 2026-11-23)
+
+The emulator runs in `nodalred-engine` (`dsp/nodalred_engine.cpp`), with `dsp/emu_shm.h` and
+`dsp/emu_host.h` (shared by the modules that followed). The plugin's run thread starts and watches it
+and does what the sound needs: the master volume and the whole sound once the engine runs, dumps at the
+synth's pace (`flush_dumps`), the ring deep around a sound change (`wantDeep`, `deepUntil`), and the
+firmware's sounds read once, their answers coming back through the engine's queue. On the Push, as a
+device without Live: the engine killed with `kill -9` was back ("Ready") in 8 s, a destroyed device
+left no engine; offline (`render-check`) a chord at -16 dB, no underruns. gearmulator looks for files
+beside its program: the engine is started under its full path. Its log is silenced in the engine
+(`Logging::setLogFunc`), as it was in the plugin.
+
 ### In Live on the Push, 2026-11-18
 
 Loaded on a MIDI track through the Remote Script. Notes sound (-14 dB for a four-note chord), the audio

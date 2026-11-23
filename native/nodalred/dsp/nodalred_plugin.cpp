@@ -1,9 +1,13 @@
 // Nodal Red 2X for Pung: the Clavia Nord Lead 2X as gearmulator emulates it
 // (n2xLib), behind the chain host's plugin API.
 //
-// Threads. The emulator renders on its own thread ("nodalred") into a ring;
-// render_block only reads the ring. The emulator's two DSP threads and its
-// 68k thread are created by that thread and inherit its priority.
+// Processes. The emulator runs in a process of its own, nodalred-engine
+// (nodalred_engine.cpp), and renders into a ring in memory both share
+// (emu_shm.h, emu_host.h); render_block only reads the ring. A hung or
+// crashed emulator then never holds Pung: a stop kills the engine, and an
+// engine that dies is started again. This plugin keeps the sound and talks
+// to the engine through two queues (MIDI and dumps to it, what the synth
+// sends back from it), on a thread of its own ("nodalred-run").
 //
 // State. Everything the device is told goes through this file, so the sound
 // is kept here as the synth's own dumps (one multi, four singles) and never
@@ -38,14 +42,15 @@
 #include <time.h>
 
 #include "dsp56kBase/logging.h"
-#include "n2xLib/n2xdevice.h"
 #include "n2xLib/n2xmiditypes.h"
+#include "n2xLib/n2xrom.h"
 #include "n2xLib/n2xstate.h"
 #include "n2xLib/n2xtypes.h"
 #include "synthLib/deviceException.h"
 #include "synthLib/midiTranslator.h"
 #include "synthLib/midiTypes.h"
-#include "synthLib/plugin.h"
+
+#include "emu_host.h"
 
 extern "C" {
 #include "host/plugin_api_v1.h"
@@ -371,22 +376,15 @@ bool find_rom(const std::string &dir, std::vector<uint8_t> &rom, std::string &na
 
 // ---- the instance ---------------------------------------------------------------
 
-const int RING = 4096;      // stereo frames, a power of two
-const int BLOCK = 64;       // frames the emulator renders at a time
-const int AHEAD = 320;      // frames kept ready for the host (7 ms)
+const int RING = eshm::RING; // stereo frames, a power of two (the engine renders: nodalred_engine.cpp)
 // A new sound goes into the synth as a dump, and the emulator stalls while
 // it takes one (a dropout of a few ms on every sound change). Before such a
 // dump it renders this far ahead, and stays that deep for a moment, as
 // OsTIrus does. Only for a sound change: a knob whose parameter only a dump
 // carries must not get the longer latency.
 const int AHEAD_DUMP = 1280; // 29 ms
-// After an underrun the ring stays that deep for a while: whenever the
-// emulator catches up it builds a reserve for the next slow moment, instead
-// of running again with 7 ms in hand. (OsTIrus with a chord renders about
-// 1.2 times as fast as it must, and the Push shares two cores between four
-// threads: a busy moment beside it, and it fell behind, 25 underruns in a
-// burst while played, 2026-11-21.)
-const int64_t MISS_DEEP_US = 3000000;
+// An engine that dies is started again, this many times a minute at most
+const int RESTARTS = 3;
 // A block that ends short fades out over its last frames, and the one after
 // it fades in: the gap is a dip, not a click.
 const uint32_t FADE = 32;
@@ -394,10 +392,13 @@ const uint32_t FADE = 32;
 struct Instance {
     std::string dir;
 
-    // the emulator, owned by its thread
-    std::thread emu;
+    // the engine: its process and the memory shared with it, started and
+    // watched by the run thread, which also does what the sound needs of it
+    // (dumps at the synth's pace, the firmware's sounds read once)
+    eshm::Host host;
+    std::thread run;
+    sem_t runWake; // a parameter changed: the run thread sends what it has to
     std::atomic<bool> quit{false};
-    std::atomic<int> loading{1};
     // One emulator on the machine at a time. Its three threads run at
     // realtime priority and take a core and a half; two of them took all four
     // logical cores of a Push and it stood still until it was switched off
@@ -408,18 +409,8 @@ struct Instance {
     // processes that probe a module, and is gone with whoever held it.
     std::atomic<int> waiting{0};
     bool hasLock = false; // holds the one-at-a-time lock (emu_try_lock)
-    sem_t wake;
-    std::unique_ptr<n2x::Device> device;
-    std::unique_ptr<synthLib::Plugin> plugin;
-    std::mutex plugMu; // plugin exists and may be handed MIDI
-
-    // audio ring: the emulator writes, render_block reads
-    int16_t ring[RING * 2];
-    std::atomic<uint32_t> wr{0}, rd{0};
     std::atomic<uint32_t> underruns{0};
-    std::atomic<int64_t> missAt{0}; // the last underrun (now_us), from render_block
-    bool hole = false;              // render_block's: the block before ended short
-    std::atomic<uint32_t> blockUs{0}, blockMaxUs{0};
+    bool hole = false; // render_block's: the block before ended short
 
     // the sound, under mu
     std::mutex mu;
@@ -433,7 +424,6 @@ struct Instance {
     std::atomic<uint64_t> held[2] = {{0}, {0}}; // keys down now, a bit a note (release_held)
     int64_t busyUntil = 0; // a dump is on its way into the synth until then
     std::atomic<bool> soundDump{false}; // the next dump is a sound change: deep first (AHEAD_DUMP)
-    int64_t deepUntil = 0; // the emulator thread's
     std::string slotName[4]; // the sound each slot was given (the Nord keeps no names)
 
     // what the synth sent (dumps it was asked for), under outMu
@@ -453,9 +443,15 @@ void s_set(Single &s, int sp, uint8_t v) { State::packNibbles(s, State::getOffse
 uint8_t m_get(const Multi &m, int mp) { return State::unpackNibbles(m, State::getOffsetInMultiDump(n2x::MultiParam(mp))); }
 void m_set(Multi &m, int mp, uint8_t v) { State::packNibbles(m, State::getOffsetInMultiDump(n2x::MultiParam(mp)), v); }
 
+// An event to the engine (it plays what comes while it runs; the sound
+// goes again as a dump when it starts).
 void send(Instance *in, synthLib::SMidiEvent &ev) {
-    std::lock_guard<std::mutex> l(in->plugMu);
-    if (in->plugin) in->plugin->addMidiEvent(ev);
+    if (!ev.sysex.empty()) {
+        in->host.send(eshm::EVENT, ev.sysex.data(), ev.sysex.size());
+    } else {
+        const uint8_t b[3] = {ev.a, ev.b, ev.c};
+        in->host.send(eshm::EVENT, b, 3);
+    }
 }
 void send_sysex(Instance *in, const uint8_t *d, size_t n) {
     synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
@@ -484,17 +480,6 @@ void compose_multi(Instance *in, Multi &out) {
     out = in->multi;
     out[n2x::IdxMsgType] = n2x::MultiDumpBankEditBuffer;
     out[n2x::IdxMsgSpec] = 0;
-}
-
-// What still goes past the headroom bends instead of breaking: straight up
-// to 3/4 of full scale, then a curve that only reaches full scale at infinity.
-// A hard corner here is a click on every peak.
-inline float soft_limit(float v) {
-    const float knee = 24576.f, room = 32767.f - knee;
-    const float a = v < 0 ? -v : v;
-    if (a <= knee) return v;
-    const float o = knee + room * std::tanh((a - knee) / room);
-    return v < 0 ? -o : o;
 }
 
 // How long the synth takes to receive n bytes at MIDI speed (3125 a second)
@@ -542,7 +527,7 @@ void init_sound(Instance *in) {
 
 // mu held
 void load_sound(Instance *in, const Sound &s) {
-    in->soundDump = true; // the emulator thread sends it with the ring deep (AHEAD_DUMP)
+    in->soundDump = true; // the run thread sends it with the ring deep (AHEAD_DUMP)
     if (s.multi) {
         if (s.dump.size() < n2x::g_multiDumpSize) return;
         in->multi.fill(0);
@@ -677,14 +662,75 @@ static void emu_unlock() {
     g_emuLockHeld = false;
 }
 
-void emu_main(Instance *in) {
-    pthread_setname_np(pthread_self(), "nodalred");
-    // Below the host's audio threads, above everything ordinary. The
-    // emulator's own threads are made by this one and inherit it.
-    sched_param sp{};
-    sp.sched_priority = 45;
-    if (sched_setscheduler(0, SCHED_FIFO, &sp) != 0) plog("no realtime priority for the emulator (%s)", strerror(errno));
+// What the engine sent: an answer to a firmware dump request (rr), or kept
+// for debug_midi_out.
+void take_answers(Instance *in, RomRead &rr) {
+    std::vector<uint8_t> e;
+    uint8_t kind;
+    while (eshm::take(in->host.L->fromEngine, kind, e)) {
+        if (rr.active && rr.waiting && rr.at < rr.todo.size()) {
+            const auto &a = rr.todo[rr.at];
+            if (e.size() == a.wantSize && e[n2x::IdxMsgType] == a.wantType && e[n2x::IdxMsgSpec] == a.spec) {
+                auto &f = rr.files[size_t(a.file)];
+                f.insert(f.end(), e.begin(), e.end());
+                rr.got++;
+                rr.waiting = false;
+                rr.at++;
+                continue;
+            }
+        }
+        std::lock_guard<std::mutex> l(in->outMu);
+        if (in->midiOut.size() < 2048) in->midiOut.push_back(e);
+    }
+}
 
+// The firmware's sounds, asked for one at a time while the synth plays.
+void rom_read_step(Instance *in, RomRead &rr) {
+    if (!rr.active) return;
+    const int64_t t = now_us();
+    if (rr.waiting && t - rr.sentAt > 1500000) { // no answer: on to the next
+        rr.waiting = false;
+        rr.at++;
+    }
+    if (!rr.waiting && rr.at < rr.todo.size()) {
+        const auto &a = rr.todo[rr.at];
+        const uint8_t req[] = {0xf0, n2x::IdClavia, n2x::DefaultDeviceId, n2x::IdN2X, a.type, a.spec, 0xf7};
+        send_sysex(in, req, sizeof(req));
+        rr.waiting = true;
+        rr.sentAt = t;
+        if (rr.at % 16 == 0) {
+            char st[96];
+            snprintf(st, sizeof(st), "Reading the firmware's sounds: %d of %d", int(rr.at), int(rr.todo.size()));
+            set_status(in, st);
+        }
+    } else if (!rr.waiting) {
+        rr.active = false;
+        std::vector<Bank> found;
+        for (size_t i = 0; i < rr.files.size(); i++) {
+            if (rr.files[i].empty()) continue;
+            const std::string path = in->dir + "/banks/" + rr.names[i] + ".syx";
+            if (FILE *f = fopen((path + ".part").c_str(), "wb")) {
+                const bool ok = fwrite(rr.files[i].data(), 1, rr.files[i].size(), f) == rr.files[i].size();
+                fclose(f);
+                if (ok) rename((path + ".part").c_str(), path.c_str());
+            }
+            Bank b;
+            b.name = rr.names[i];
+            parse_bank(rr.files[i], b);
+            name_sounds(in->dir + "/banks/" + rr.names[i] + ".txt", b);
+            if (!b.sounds.empty()) found.push_back(std::move(b));
+        }
+        plog("read %d of %d sounds from the firmware", rr.got, int(rr.todo.size()));
+        std::lock_guard<std::mutex> l(in->mu);
+        for (auto &b : found)
+            if (in->banks.size() < 64) in->banks.push_back(std::move(b));
+        snprintf(in->status, sizeof(in->status), "Ready");
+        rr = RomRead();
+    }
+}
+
+void run_main(Instance *in) {
+    pthread_setname_np(pthread_self(), "nodalred-run");
     std::vector<uint8_t> rom;
     std::string romName;
     if (!find_rom(in->dir + "/roms", rom, romName)) {
@@ -692,157 +738,90 @@ void emu_main(Instance *in) {
         snprintf(in->error, sizeof(in->error),
                  "No ROM: put a Nord Lead 2X firmware (.bin, 524,288 bytes) into the module's roms folder");
         snprintf(in->status, sizeof(in->status), "ROM missing");
-        in->loading = 0;
         return;
     }
     while (!in->hasLock && !(in->hasLock = emu_try_lock())) {
-        if (!in->waiting.exchange(1)) {
-            set_status(in, "Waiting: another Nodal Red 2X is running, and one is all a Push can run");
-            plog("another instance has the emulator; waiting for it");
-        }
+        if (!in->waiting.exchange(1)) plog("another instance has the emulator; waiting for it");
         if (in->quit.load()) return;
         usleep(300000);
     }
     in->waiting = 0;
     if (in->quit.load()) return;
-    set_status(in, "Booting the Nord Lead 2X");
-    try {
-        synthLib::DeviceCreateParams p;
-        p.romData = rom;
-        p.romName = romName;
-        p.hostSamplerate = 44100.0f;
-        in->device.reset(new n2x::Device(p));
-        std::unique_ptr<synthLib::Plugin> pl(new synthLib::Plugin(in->device.get(), [](synthLib::Device *d) { return d; }));
-        pl->setHostSamplerate(44100.0f, 0.0f);
-        pl->setBlockSize(BLOCK);
-        std::lock_guard<std::mutex> l(in->plugMu);
-        in->plugin = std::move(pl);
-    } catch (const std::exception &e) {
-        std::lock_guard<std::mutex> l(in->mu);
-        snprintf(in->error, sizeof(in->error), "The emulator did not start: %s", e.what());
-        snprintf(in->status, sizeof(in->status), "Failed");
-        in->loading = 0;
-        return;
-    }
     {
         std::lock_guard<std::mutex> l(in->mu);
         in->romName = romName;
-        const auto knob = State::createKnobSysex(n2x::KnobType::MasterVol, 0xff);
-        send_sysex(in, knob.data(), knob.size());
-        in->multiDirty = true; // the sound as it is by now: the default, or a state set while booting
-        flush_dumps(in, true);
-        snprintf(in->status, sizeof(in->status), "Ready");
     }
-    in->loading = 0;
-    plog("running, ROM %s", romName.c_str());
-
-    std::vector<synthLib::SMidiEvent> midiEv;
+    const std::string exe = in->dir + "/nodalred-engine", romPath = in->dir + "/roms/" + romName;
+    auto spawn = [&]() -> bool {
+        int gain;
+        {
+            std::lock_guard<std::mutex> l(in->mu);
+            gain = in->gain;
+        }
+        const int err = in->host.spawn(exe, romPath, 0, gain);
+        if (err) {
+            std::lock_guard<std::mutex> l(in->mu);
+            snprintf(in->error, sizeof(in->error), "The emulator could not be started (%s: %s)", exe.c_str(), strerror(err));
+            snprintf(in->status, sizeof(in->status), "Failed");
+            return false;
+        }
+        plog("engine started (pid %d)", int(in->host.pid.load()));
+        return true;
+    };
+    if (!spawn()) return;
+    std::vector<int64_t> deaths;
+    bool up = false; // the engine running, and given the sound
     RomRead rr;
     mkdir((in->dir + "/banks").c_str(), 0755);
-    if (!has_rom_banks(in->dir + "/banks")) rom_read_plan(rr);
-    float buf[4][BLOCK];
-    synthLib::TAudioInputs ins{};
-    synthLib::TAudioOutputs outs{};
-    for (int i = 0; i < 4; i++) outs[size_t(i)] = buf[i];
-
-    while (!in->quit.load(std::memory_order_relaxed)) {
-        uint32_t fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
-        const int64_t tnow = now_us(), miss = in->missAt.load(std::memory_order_relaxed);
-        const bool deep = in->soundDump.load() || tnow < in->deepUntil || (miss && tnow - miss < MISS_DEEP_US);
-        const uint32_t target = deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
-        while (fill < target && !in->quit.load(std::memory_order_relaxed)) {
-            const int64_t t0 = now_us();
-            for (auto &b : buf) memset(b, 0, sizeof(b));
-            in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
-            midiEv.clear();
-            in->plugin->getMidiOut(midiEv);
-            for (auto &e : midiEv) {
-                if (e.sysex.size() < 8) continue;
-                if (rr.active && rr.waiting) {
-                    const auto &a = rr.todo[rr.at];
-                    if (e.sysex.size() == a.wantSize && e.sysex[n2x::IdxMsgType] == a.wantType && e.sysex[n2x::IdxMsgSpec] == a.spec) {
-                        auto &f = rr.files[size_t(a.file)];
-                        f.insert(f.end(), e.sysex.begin(), e.sysex.end());
-                        rr.got++;
-                        rr.waiting = false;
-                        rr.at++;
-                        continue;
-                    }
-                }
-                std::lock_guard<std::mutex> l(in->outMu);
-                if (in->midiOut.size() < 2048) in->midiOut.emplace_back(e.sysex.begin(), e.sysex.end());
-            }
-            float g;
-            {
-                // not worth a lock: an int read
-                // 6 dB of headroom: the synth's two output pairs are summed
-                // here, and a layer of slots at full level went past full
-                // scale (measured 2026-11-18: 18 clipped bursts in 10 s of
-                // playing, heard as crackling)
-                g = float(in->gain) * 0.01f * 0.5f * 32767.0f;
-            }
-            uint32_t w = in->wr.load(std::memory_order_relaxed);
-            for (int i = 0; i < BLOCK; i++) {
-                float l = (buf[0][i] + buf[2][i]) * g, r = (buf[1][i] + buf[3][i]) * g;
-                l = soft_limit(l);
-                r = soft_limit(r);
-                const uint32_t k = (w + uint32_t(i)) & (RING - 1);
-                in->ring[k * 2] = int16_t(lrintf(l));
-                in->ring[k * 2 + 1] = int16_t(lrintf(r));
-            }
-            in->wr.store(w + BLOCK, std::memory_order_release);
-            const uint32_t us = uint32_t(now_us() - t0);
-            in->blockUs.store(us, std::memory_order_relaxed);
-            if (us > in->blockMaxUs.load(std::memory_order_relaxed)) in->blockMaxUs.store(us, std::memory_order_relaxed);
-            fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
-        }
-        // a sound change waits until the ring is deep enough to ride out the dump
-        if ((!in->soundDump.load() || fill >= uint32_t(AHEAD_DUMP)) && in->mu.try_lock()) {
-            if (in->soundDump.exchange(false)) in->deepUntil = now_us() + 2500000;
-            flush_dumps(in, false);
-            in->mu.unlock();
-        }
-        if (rr.active) {
+    eshm::Layout *L = in->host.L;
+    while (!in->quit.load()) {
+        char why[64];
+        if (in->host.died(why, sizeof(why))) {
+            up = false;
+            if (in->quit.load()) break;
+            if (L->phase.load() == eshm::FAILED) break; // it said why: no use starting it again
             const int64_t t = now_us();
-            if (rr.waiting && t - rr.sentAt > 1500000) { // no answer: on to the next
-                rr.waiting = false;
-                rr.at++;
-            }
-            if (!rr.waiting && rr.at < rr.todo.size()) {
-                const auto &a = rr.todo[rr.at];
-                const uint8_t req[] = {0xf0, n2x::IdClavia, n2x::DefaultDeviceId, n2x::IdN2X, a.type, a.spec, 0xf7};
-                send_sysex(in, req, sizeof(req));
-                rr.waiting = true;
-                rr.sentAt = t;
-                if (rr.at % 16 == 0) {
-                    char st[96];
-                    snprintf(st, sizeof(st), "Reading the firmware's sounds: %d of %d", int(rr.at), int(rr.todo.size()));
-                    set_status(in, st);
-                }
-            } else if (!rr.waiting) {
-                rr.active = false;
-                std::vector<Bank> found;
-                for (size_t i = 0; i < rr.files.size(); i++) {
-                    if (rr.files[i].empty()) continue;
-                    const std::string path = in->dir + "/banks/" + rr.names[i] + ".syx";
-                    if (FILE *f = fopen((path + ".part").c_str(), "wb")) {
-                        const bool ok = fwrite(rr.files[i].data(), 1, rr.files[i].size(), f) == rr.files[i].size();
-                        fclose(f);
-                        if (ok) rename((path + ".part").c_str(), path.c_str());
-                    }
-                    Bank b;
-                    b.name = rr.names[i];
-                    parse_bank(rr.files[i], b);
-                    name_sounds(in->dir + "/banks/" + rr.names[i] + ".txt", b);
-                    if (!b.sounds.empty()) found.push_back(std::move(b));
-                }
-                plog("read %d of %d sounds from the firmware", rr.got, int(rr.todo.size()));
+            deaths.erase(std::remove_if(deaths.begin(), deaths.end(), [&](int64_t d) { return t - d > 60000000; }), deaths.end());
+            deaths.push_back(t);
+            if (int(deaths.size()) > RESTARTS) {
+                plog("the engine stopped (%s), %d times in a minute: not starting it again", why, int(deaths.size()));
                 std::lock_guard<std::mutex> l(in->mu);
-                for (auto &b : found)
-                    if (in->banks.size() < 64) in->banks.push_back(std::move(b));
-                snprintf(in->status, sizeof(in->status), "Ready");
-                rr = RomRead();
+                snprintf(in->error, sizeof(in->error), "The emulator stopped %d times in a minute (%s)", int(deaths.size()), why);
+                snprintf(in->status, sizeof(in->status), "Failed");
+                break;
             }
+            plog("the engine stopped (%s): starting it again", why);
+            rr = RomRead();
+            if (!spawn()) break;
+        }
+        if (!up && in->host.playing()) {
+            // the engine is up: the master volume, and the sound as it is by
+            // now (the default, a state set while it booted, the sound before
+            // an engine that died)
+            up = true;
+            std::lock_guard<std::mutex> l(in->mu);
+            const auto knob = State::createKnobSysex(n2x::KnobType::MasterVol, 0xff);
+            send_sysex(in, knob.data(), knob.size());
+            in->multiDirty = true;
+            flush_dumps(in, true);
+            snprintf(in->status, sizeof(in->status), "Ready");
+            plog("running, ROM %s", romName.c_str());
+            if (!has_rom_banks(in->dir + "/banks")) rom_read_plan(rr);
+        }
+        if (up) {
+            take_answers(in, rr);
+            // a sound change waits until the ring is deep enough to ride out the dump
+            const uint32_t fill = L->wr.load(std::memory_order_relaxed) - L->rd.load(std::memory_order_acquire);
+            L->wantDeep = in->soundDump.load() ? 1 : 0;
+            if ((!in->soundDump.load() || fill >= uint32_t(AHEAD_DUMP)) && in->mu.try_lock()) {
+                if (in->soundDump.exchange(false)) {
+                    L->deepUntil = now_us() + 2500000;
+                    L->wantDeep = 0;
+                }
+                flush_dumps(in, false);
+                in->mu.unlock();
+            }
+            rom_read_step(in, rr);
         }
         timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -851,8 +830,39 @@ void emu_main(Instance *in) {
             ts.tv_sec++;
             ts.tv_nsec -= 1000000000;
         }
-        sem_timedwait(&in->wake, &ts);
+        sem_timedwait(&in->runWake, &ts);
     }
+}
+
+// status and error: the waiting, the plugin's own (a missing ROM, the
+// firmware's sounds being read), else the engine's while it boots or failed
+void texts(Instance *in, char *st, size_t ns, char *err, size_t ne) {
+    {
+        std::lock_guard<std::mutex> l(in->mu);
+        if (in->waiting.load()) {
+            snprintf(st, ns, "Waiting: another Nodal Red 2X is running, and one is all a Push can run");
+            snprintf(err, ne, "%s", "");
+            return;
+        }
+        const int ph = in->host.L ? int(in->host.L->phase.load()) : int(eshm::FAILED);
+        if (in->error[0] || !in->host.L || ph == eshm::RUNNING || (ph == eshm::STARTING && !in->host.pid.load())) {
+            snprintf(st, ns, "%s", in->status);
+            snprintf(err, ne, "%s", in->error);
+            return;
+        }
+    }
+    eshm::get_text(in->host.L, st, ns, err, ne);
+}
+
+// still coming up: the module answers, but plays nothing yet
+bool starting(Instance *in) {
+    if (in->waiting.load() || !in->host.L) return false;
+    {
+        std::lock_guard<std::mutex> l(in->mu);
+        if (in->error[0]) return false;
+    }
+    const int ph = in->host.L->phase.load();
+    return ph != eshm::RUNNING && ph != eshm::FAILED;
 }
 
 // ---- the plugin API -------------------------------------------------------------
@@ -860,8 +870,7 @@ void emu_main(Instance *in) {
 void *v2_create(const char *module_dir, const char *) {
     Instance *in = new Instance();
     in->dir = module_dir ? module_dir : ".";
-    memset(in->ring, 0, sizeof(in->ring));
-    sem_init(&in->wake, 0, 0);
+    sem_init(&in->runWake, 0, 0);
     init_sound(in);
     Bank builtin;
     builtin.name = "Built-in";
@@ -873,7 +882,12 @@ void *v2_create(const char *module_dir, const char *) {
     builtin.sounds.push_back(init);
     in->banks.push_back(builtin);
     scan_banks(in->dir + "/banks", in->banks);
-    in->emu = std::thread(emu_main, in);
+    if (!in->host.make("pung-nodalred")) {
+        snprintf(in->error, sizeof(in->error), "No memory for the emulator (%s)", strerror(errno));
+        snprintf(in->status, sizeof(in->status), "Failed");
+        return in;
+    }
+    in->run = std::thread(run_main, in);
     return in;
 }
 
@@ -881,15 +895,12 @@ void v2_destroy(void *instance) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in) return;
     in->quit = true;
-    sem_post(&in->wake);
-    if (in->emu.joinable()) in->emu.join();
-    {
-        std::lock_guard<std::mutex> l(in->plugMu);
-        in->plugin.reset();
-    }
-    in->device.reset();
+    sem_post(&in->runWake);
+    if (in->run.joinable()) in->run.join(); // (it waits 2 ms at a time)
+    if (in->host.end()) plog("engine stopped");
     if (in->hasLock) emu_unlock(); // the emulator is gone: the next instance may start
-    sem_destroy(&in->wake);
+    in->host.free();
+    sem_destroy(&in->runWake);
     delete in;
 }
 
@@ -912,7 +923,7 @@ void release_held(Instance *in) {
 
 void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
     Instance *in = static_cast<Instance *>(instance);
-    if (!in || len < 2 || in->loading.load()) return;
+    if (!in || len < 2 || !in->host.playing()) return;
     const uint8_t st = msg[0] & 0xf0;
     const uint8_t d1 = msg[1] & 0x7f, d2 = len > 2 ? (msg[2] & 0x7f) : 0;
     switch (st) {
@@ -1161,7 +1172,7 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         int v;
         if (parse_value(p, val, v)) apply_param(in, p, v);
     }
-    sem_post(&in->wake);
+    sem_post(&in->runWake);
 }
 
 #define AP(...) do { if (off < len) off += snprintf(buf + off, size_t(len - off), __VA_ARGS__); } while (0)
@@ -1231,12 +1242,20 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !buf || len < 2) return -1;
     // waiting for the emulator is not loading: the module answers, it is only silent
-    if (!strcmp(key, "is_loading")) return snprintf(buf, size_t(len), "%d", in->loading.load() && !in->waiting.load() ? 1 : 0);
+    if (!strcmp(key, "is_loading")) return snprintf(buf, size_t(len), "%d", starting(in) ? 1 : 0);
     if (!strcmp(key, "name")) return snprintf(buf, size_t(len), "Nodal Red 2X");
     if (!strcmp(key, "ui_hierarchy")) return build_hierarchy(buf, len);
-    if (!strcmp(key, "debug_info"))
-        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u", in->underruns.load(), in->blockUs.load(),
-                        in->blockMaxUs.exchange(0), in->wr.load() - in->rd.load());
+    if (!strcmp(key, "debug_info")) {
+        eshm::Layout *L = in->host.L;
+        if (!L) return snprintf(buf, size_t(len), "underruns=%u", in->underruns.load());
+        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u engine_pid=%d", in->underruns.load(),
+                        L->blockUs.load(), L->blockMaxUs.exchange(0), L->wr.load() - L->rd.load(), int(in->host.pid.load()));
+    }
+    if (!strcmp(key, "loading_status") || !strcmp(key, "load_error")) {
+        char st[160], err[200];
+        texts(in, st, sizeof(st), err, sizeof(err));
+        return snprintf(buf, size_t(len), "%s", !strcmp(key, "loading_status") ? st : err);
+    }
     if (!strcmp(key, "debug_midi_out")) { // what the synth sent since the last read: count, sizes, the first bytes of each
         std::lock_guard<std::mutex> l(in->outMu);
         int off = 0;
@@ -1250,8 +1269,6 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     }
     std::lock_guard<std::mutex> l(in->mu);
     const Bank &b = in->banks[size_t(in->bank)];
-    if (!strcmp(key, "loading_status")) return snprintf(buf, size_t(len), "%s", in->status);
-    if (!strcmp(key, "load_error")) return snprintf(buf, size_t(len), "%s", in->error);
     if (!strcmp(key, "rom_name")) return snprintf(buf, size_t(len), "%s", in->romName.c_str());
     if (!strcmp(key, "chain_params")) return build_chain_params(in, buf, len);
     if (!strcmp(key, "preset")) return snprintf(buf, size_t(len), "%d", in->preset);
@@ -1328,17 +1345,18 @@ int v2_get_error(void *instance, char *buf, int len) {
 void v2_render(void *instance, int16_t *out, int frames) {
     Instance *in = static_cast<Instance *>(instance);
     if (!out || frames <= 0) return;
-    if (!in || in->loading.load(std::memory_order_relaxed)) {
+    if (!in || !in->host.playing()) {
         memset(out, 0, size_t(frames) * 2 * sizeof(int16_t));
         return;
     }
-    const uint32_t r = in->rd.load(std::memory_order_relaxed);
-    const uint32_t have = in->wr.load(std::memory_order_acquire) - r;
+    eshm::Layout *L = in->host.L;
+    const uint32_t r = L->rd.load(std::memory_order_relaxed);
+    const uint32_t have = L->wr.load(std::memory_order_acquire) - r;
     const uint32_t n = std::min<uint32_t>(have, uint32_t(frames));
     for (uint32_t i = 0; i < n; i++) {
         const uint32_t k = (r + i) & (RING - 1);
-        out[i * 2] = in->ring[k * 2];
-        out[i * 2 + 1] = in->ring[k * 2 + 1];
+        out[i * 2] = L->ring[k * 2];
+        out[i * 2 + 1] = L->ring[k * 2 + 1];
     }
     if (in->hole && n > 0) { // the block before ended short: back in with a fade
         const uint32_t f = std::min<uint32_t>(n, FADE);
@@ -1357,11 +1375,11 @@ void v2_render(void *instance, int16_t *out, int frames) {
         }
         memset(out + n * 2, 0, size_t(uint32_t(frames) - n) * 2 * sizeof(int16_t));
         in->hole = true;
-        if (!in->error[0]) in->underruns.fetch_add(1, std::memory_order_relaxed);
-        in->missAt.store(now_us(), std::memory_order_relaxed);
+        in->underruns.fetch_add(1, std::memory_order_relaxed);
+        L->missAt.store(now_us(), std::memory_order_relaxed);
     }
-    in->rd.store(r + n, std::memory_order_release);
-    sem_post(&in->wake);
+    L->rd.store(r + n, std::memory_order_release);
+    sem_post(&L->wake);
 }
 
 plugin_api_v2_t g_api;

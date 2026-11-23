@@ -476,8 +476,8 @@ bool spawn(Instance *in, const std::string &romPath) {
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_adddup2(&fa, in->memfd, 3); // (dup2 leaves the copy open across exec)
-    char a0[] = "ostirus-engine", a1[] = "--shm-fd=3";
-    char *argv[] = {a0, a1, nullptr};
+    std::string a0 = exe, a1 = "--shm-fd=3"; // (the full path: gearmulator looks for files beside its program)
+    char *argv[] = {const_cast<char *>(a0.c_str()), const_cast<char *>(a1.c_str()), nullptr};
     pid_t pid = 0;
     const int err = posix_spawn(&pid, exe.c_str(), &fa, nullptr, argv, environ);
     posix_spawn_file_actions_destroy(&fa);
