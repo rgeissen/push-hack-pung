@@ -63,11 +63,12 @@ python3 scripts/build-catalog.py --base-url "" # the catalog -> build/catalog
   `PUNG_SCAN_LOG`, `PUNG_MC68K_LOG`. The args go through `sh -c $*`: a value with a space breaks (use a
   bank's number, not "Bank B"); in zsh quote `'?key'`.
 - Docker `go build` under amd64 emulation occasionally crashes at random: retry.
-- **core comes from a fork for now**: `src/go.mod` replaces push-hack's core with
-  `rgeissen/ableton-push-hack` branch `feat/livedevice-native-loop` (`livedevice.Looper`, which
-  `rtloop.go` needs) until that is in a core release. To change core: clone it next to Pung, point the
-  replace at `../../ableton-push-hack/core` and mount it at `/ableton-push-hack` in Docker; push, then
-  point the replace at the new commit again. `src/livedevice_ipc.h` is core's header, byte for byte
+- **core is upstream's** (`federico-pepe/ableton-push-hack`), at a commit on its `main`
+  (`livedevice.Looper`, which `rtloop.go` needs, is merged there but in no core tag yet): move to
+  `core/v0.6.1` or later once tagged (`go get .../core@core/v0.6.1`). To change core: clone it next to
+  Pung, add a `replace` to `../../ableton-push-hack/core`, mount it at `/ableton-push-hack` in Docker,
+  and send the change upstream; Pung never ships against a replace (the fork, 0.4.0-0.4.5, lacked
+  upstream's rack-manifest fix). `src/livedevice_ipc.h` is core's header, byte for byte
   (`TestIPCHeaderIsCores`).
 
 ## The device
