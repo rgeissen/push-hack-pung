@@ -80,7 +80,7 @@ function readout(k, raw) {
   case "attack": case "decay": case "release": case "f_attack": case "f_decay": case "f_release": return vu(fmtS(stageS(f)));
   case "octave_transpose": return { value: (f > 0 ? "+" : "") + Math.round(f) };
   case "lfo_rate": return vu(fmtHz(lfoHz(f)));
-  case "bend_range": return { value: "+-" + Math.round(f * 12), unit: "st" };
+  case "bend_range": return { value: "±" + Math.round(f * 12), unit: "st" };
   case "glide": return f < 0.001 ? { value: "Off" } : vu(fmtS(f * f * 2));
   case "volume": return f <= 0.001 ? { value: "-inf", unit: "dB" } : { value: (20 * Math.log(f) / Math.LN10).toFixed(1), unit: "dB" };
   case "preset": return { value: String(Math.round(f) + 1) };
@@ -446,9 +446,9 @@ push.compartment({
     }
     var semi = 2 * lp * mp, filt = 0.3 * lf * mf * 3;
     route(Y1, "PITCH", lp * mp, "WHEEL", true, t === "lfo_pitch" || t === "mod_pitch",
-      semi < 0.005 ? "NO VIBRATO" : "WHEEL UP: +-" + semi.toFixed(2) + " SEMITONES");
+      semi < 0.005 ? "NO VIBRATO" : "WHEEL UP: ±" + semi.toFixed(2) + " SEMITONES");
     route(Y2, "FILTER", lf * mf, "ALWAYS", false, t === "lfo_filter" || t === "mod_filter",
-      filt < 0.005 ? "NO SWEEP" : "+-" + filt.toFixed(2) + " DECADES OF CUTOFF");
+      filt < 0.005 ? "NO SWEEP" : "±" + filt.toFixed(2) + " DECADES OF CUTOFF");
     g.text(X + 6, 84, "VELOCITY SETS " + pct(fr(v, "vel_sens", 0.5)) + " OF THE LOUDNESS", t === "vel_sens" ? "slot" : "dim", -1);
   }
 });

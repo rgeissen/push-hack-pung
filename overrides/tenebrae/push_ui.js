@@ -532,7 +532,7 @@ push.compartment({
     }
     var spread = 0;
     for (i = 1; i < 7; i++) if (st.copies[i].gain > 0.002) spread = Math.max(spread, Math.abs(st.copies[i].cents));
-    g.text(cx, 84, st.n === 1 ? "ONE OSCILLATOR" : st.n + " OSCS  +-" + Math.round(spread) + " CT", stH ? "slot" : st.n > 1 ? BONE : DIM, 0, 112);
+    g.text(cx, 84, st.n === 1 ? "ONE OSCILLATOR" : st.n + " OSCS  ±" + Math.round(spread) + " CT", stH ? "slot" : st.n > 1 ? BONE : DIM, 0, 112);
     // the layer under the model, summed at Blend: the voice it makes
     var lh = hotIn(t, ["layer", "blend"]), wv = voiceWave(model, shape, layer, blend, 140), bx = 486, bw = 216;
     waveIn(g, bx, 17, bw, 42, wv, lh ? "slot" : BONE, known(v, "layer") && known(v, "blend"));
@@ -562,7 +562,7 @@ push.compartment({
     });
     for (i = 0; i < 3; i++) g.poly(traces[i], 2, ah ? "slot" : age > 0.004 ? [BONE, RED, RED_MID][i] : DIM);
     g.fill(ax, ay - 30 * ascale, 3, 1, DIMMER); g.fill(ax, ay + 30 * ascale, 3, 1, DIMMER);
-    g.text(ax + aw / 2, 84, age < 0.004 ? "EXACT, IN STEP" : "+-" + Math.round(43 * a2) + " CT" + (age >= 0.12 ? ", FREE" : ""), ah ? "slot" : age > 0.004 ? BONE : DIM, 0, 112);
+    g.text(ax + aw / 2, 84, age < 0.004 ? "EXACT, IN STEP" : "±" + Math.round(43 * a2) + " CT" + (age >= 0.12 ? ", FREE" : ""), ah ? "slot" : age > 0.004 ? BONE : DIM, 0, 112);
     // the voice: poly, mono, or the time the pitch slides between held notes
     var vm = idx(v, "voice", 18), gh = t === "voice", gx = 843, gw = 100, gy0 = 64, gy1 = 24;
     if (vm < 2) {

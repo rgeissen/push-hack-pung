@@ -606,8 +606,8 @@ function playScreen(g, v) {
   var el = editLayer(v), lc = LC[el], t = v.$touched || "";
   band(g, "play", lc, [[0, 474, "VELOCITY"], [476, 117, "KEY"], [595, 357, "AFTERTOUCH"]]);
   layerTag(g, v, 924, 10);
-  var R = [["osc1_vel", "WAVE 1", "+-63 WAVES"], ["osc2_vel", "WAVE 2", "+-63 WAVES"], ["fvel", "CUTOFF", "+-48 ST"], ["amp_vel", "LEVEL", "SOFT QUIETER"],
-    ["fkbd", "CUTOFF", "FOLLOWS KEYS"], ["at_wave", "WAVES", "+-63 WAVES"], ["at_cut", "CUTOFF", "+-72 ST"], ["at_vib", "VIBRATO", "LFO 1 > PITCH"]];
+  var R = [["osc1_vel", "WAVE 1", "±63 WAVES"], ["osc2_vel", "WAVE 2", "±63 WAVES"], ["fvel", "CUTOFF", "±48 ST"], ["amp_vel", "LEVEL", "SOFT QUIETER"],
+    ["fkbd", "CUTOFF", "FOLLOWS KEYS"], ["at_wave", "WAVES", "±63 WAVES"], ["at_cut", "CUTOFF", "±72 ST"], ["at_vib", "VIBRATO", "LFO 1 > PITCH"]];
   for (var i = 0; i < 8; i++) {
     var k = R[i][0], x = i * 119 + 8, f = num(v, k, 0), hot = t === k, on = Math.abs(f) > 0.004, bip = isBip(v, k);
     g.text(x, 30, "> " + R[i][1], hot ? "slot" : on ? TEXT : FAINT, -1, 106);
@@ -650,7 +650,7 @@ function lfoScreen(n) {
     g.value(724, 44, mw ? "WHEEL" : "ALWAYS", t === p + "mw" ? "slot" : TEXT, -1);
     g.text(724, 64, mw ? "THE MOD WHEEL SETS ITS DEPTH" : "FULL DEPTH", DIM, -1, 220);
     bar(g, 724, 74, 216, pt, t === p + "pitch" ? "slot" : lc, true);
-    g.text(944, 64, Math.abs(pt) > 0.004 ? "VIBRATO +-" + (Math.abs(pt) * 12).toFixed(1) + " ST" : "", lc, 1);
+    g.text(944, 64, Math.abs(pt) > 0.004 ? "VIBRATO ±" + (Math.abs(pt) * 12).toFixed(1) + " ST" : "", lc, 1);
   };
 }
 function routeOf(v, s) {

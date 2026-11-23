@@ -542,7 +542,7 @@ function vibScreen(g, v) {
     if (chorus) g.fill(x + 8, cy, 65, 2, lit ? CREAM : DIML);
     else g.fill(x + 8, cy, 65, 1, FAINT);
     g.poly(pts, lit ? 2.5 : 2, col);
-    g.text(x + 40, 78, "+-" + c.toFixed(1) + " CT", lit ? col : DIML, 0);
+    g.text(x + 40, 78, "±" + c.toFixed(1) + " CT", lit ? col : DIML, 0);
   }
 }
 

@@ -181,7 +181,7 @@ function segLit(g, v) {
 function panel(g, v) {
   var n = sawCount(v), cents = outerCents(fr(v, "detune", 0.3));
   var lit = anyHot(v, ["saw_count", "detune", "spread"]);
-  g.text(4 * COL - 10, TOP + 11, known(v, "saw_count") ? n + " SAWS  +-" + Math.round(cents) + " CENTS" : "", lit ? "slot" : INK_DIM, 1);
+  g.text(4 * COL - 10, TOP + 11, known(v, "saw_count") ? n + " SAWS  ±" + Math.round(cents) + " CENTS" : "", lit ? "slot" : INK_DIM, 1);
   drawFan(g, v, 14, TOP + 18, 210, BOT - TOP - 22, anyHot(v, ["saw_count", "spread"]));
   drawScope(g, v, 2 * COL + 6, TOP + 18, 2 * COL - 22, BOT - TOP - 24, anyHot(v, ["detune", "saw_count"]));
   // the filter: Pung's response, live, and how far the envelope opens it
@@ -200,7 +200,7 @@ function readout(k, rawS) {
   if (isNaN(raw)) return null;
   switch (k) {
   case "saw_count": var n = clamp(Math.round(raw), 3, 25) | 1; return [String(n), "SAWS"];
-  case "detune": return ["+-" + Math.round(outerCents(raw)), "CT"];
+  case "detune": return ["±" + Math.round(outerCents(raw)), "CT"];
   case "cutoff": return hzText(20 * Math.pow(1000, raw));
   case "attack": case "decay": case "release": case "f_attack": case "f_decay": case "f_release": return msText(secs(raw));
   case "sub_octave": case "octave_transpose": return [(raw > 0 ? "+" : "") + Math.round(raw), "OCT"];
@@ -290,7 +290,7 @@ push.compartment({
     if (!known(v, "saw_count")) return;
     var gs = sideGain(sp), db = 20 * Math.log(gs) / Math.LN10;
     g.value(tx, 26, n + " SAWS", lit ? "slot" : INK, -1);
-    g.text(tx, 46, "OUTER PAIR +-" + Math.round(cents) + " CENTS", INK_DIM, -1, 220);
+    g.text(tx, 46, "OUTER PAIR ±" + Math.round(cents) + " CENTS", INK_DIM, -1, 220);
     g.text(tx, 62, "SIDES " + Math.round(db) + " DB UNDER THE CENTRE", INK_DIM, -1, 220);
     var oct = Math.round(num(v, "octave_transpose", 0));
     g.text(tx, 78, "KEYS " + (oct ? (oct > 0 ? "+" : "") + oct + " OCT" : "AT PITCH"), hot(v, "octave_transpose") ? "slot" : INK_DIM, -1, 220);

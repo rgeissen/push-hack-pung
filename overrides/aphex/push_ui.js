@@ -477,7 +477,7 @@ push.compartment({
     atten(g, x, 36, w, "MG / T.EXT", bip(v, "vco_mg"), feeds(v, 1), t === "vco_mg", !tj.dummy && !tj.empty);
     atten(g, x, 64, w, "EG 1 / EXT", bip(v, "vco_eg"), feeds(v, 2), t === "vco_eg", !fj.dummy && !fj.empty);
     var ej = jack(v, 7);
-    g.text(x, 84, ej.cable ? "EXT SIGNAL: " + outLabel(ej.cable) : "+-1 OCTAVE AT FULL", ej.cable ? "mod" : "faint", -1, w);
+    g.text(x, 84, ej.cable ? "EXT SIGNAL: " + outLabel(ej.cable) : "±1 OCTAVE AT FULL", ej.cable ? "mod" : "faint", -1, w);
   }
 });
 

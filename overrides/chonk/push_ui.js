@@ -474,7 +474,7 @@ function output(g, v, t) {
 function midiStrip(g, v, t) {
   var x = 384;
   x += tag(g, x, 5, "MIDI", SEC.midi) + 8;
-  var items = [["BEND", "pw_range", "+-" + val(v, "pw_range").join(" ")], ["AT", "at_range", val(v, "at_range").join(" ")],
+  var items = [["BEND", "pw_range", "±" + val(v, "pw_range").join(" ")], ["AT", "at_range", val(v, "at_range").join(" ")],
     ["FINE", "fine", val(v, "fine").join(" ")], ["VEL", "sens", val(v, "sens").join("")]];
   for (var i = 0; i < items.length; i++) {
     var it = items[i], hot = t === it[1];

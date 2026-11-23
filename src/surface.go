@@ -340,7 +340,7 @@ func (u *surface) status(done <-chan struct{}) {
 			}
 		}
 		if l1 != last[0] || l2 != last[1] {
-			if u.pm.SurfaceStatus(asciiOnly(l1), l2) == nil {
+			if u.pm.SurfaceStatus(unPM(asciiOnly(l1)), l2) == nil {
 				last = [2]string{l1, l2}
 			}
 		}

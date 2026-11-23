@@ -95,26 +95,46 @@ func newFrame() *image.NRGBA {
 }
 
 // label draws Tamzen (uppercase, 7 px advance). align: -1 left, 0 center, 1 right.
+// A "±" (Tamzen has none) is drawn by hand in its cell: a plus over a bar.
 func label(img *image.NRGBA, x, baseline int, s string, col color.NRGBA, align int) {
 	s = asciiOnly(s)
-	w := text.Width(s)
+	plain := strings.ReplaceAll(s, plusMinus, " ")
+	w := text.Width(plain)
 	switch align {
 	case 0:
 		x -= w / 2
 	case 1:
 		x -= w
 	}
-	spyText(x, baseline, w, nil, s)
-	text.Draw(img, x, baseline, s, col)
+	spyText(x, baseline, w, nil, plain)
+	text.Draw(img, x, baseline, plain, col)
+	for i := strings.Index(s, plusMinus); i >= 0; {
+		cx := x + text.Width(plain[:i])
+		rect(img, cx+1, baseline-6, 5, 1, col) // the plus's bar
+		rect(img, cx+3, baseline-8, 1, 5, col) // its stem
+		rect(img, cx+1, baseline-1, 5, 1, col) // the minus under it
+		j := strings.Index(s[i+1:], plusMinus)
+		if j < 0 {
+			break
+		}
+		i += 1 + j
+	}
 }
+
+// plusMinus: how asciiOnly keeps a "±" for label to draw (DEL, never text);
+// the value faces and anything leaving Pung read it as "+-" (unPM)
+const plusMinus = "\x7f"
+
+func unPM(s string) string { return strings.ReplaceAll(s, plusMinus, "+-") }
 
 // styled draws a value face. align as label.
 func styled(img *image.NRGBA, x, baseline int, s string, col color.NRGBA, face font.Face, align int) int {
 	s = asciiOnly(s)
 	if face == nil {
 		label(img, x, baseline, s, col, align)
-		return text.Width(s)
+		return text.Width(strings.ReplaceAll(s, plusMinus, " "))
 	}
+	s = unPM(s)
 	w := text.WidthWith(s, face)
 	switch align {
 	case 0:
@@ -131,9 +151,9 @@ func styled(img *image.NRGBA, x, baseline int, s string, col color.NRGBA, face f
 func textWidth(s string, face font.Face) int {
 	s = asciiOnly(s)
 	if face == nil {
-		return text.Width(s)
+		return text.Width(strings.ReplaceAll(s, plusMinus, " "))
 	}
-	return text.WidthWith(s, face)
+	return text.WidthWith(unPM(s), face)
 }
 
 // fitLabel cuts s so it draws within w pixels in the label face.
@@ -235,6 +255,8 @@ func asciiOnly(s string) string {
 			b = append(b, '>')
 		case r == 0x2212: // minus
 			b = append(b, '-')
+		case r == 0xb1 || r == 0x7f: // plus-minus (or one asciiOnly kept already): label draws it
+			b = append(b, plusMinus...)
 		}
 	}
 	return string(b)
