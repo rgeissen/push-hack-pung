@@ -47,7 +47,12 @@ It is not a new plugin format. Only where the source lives and what it may assum
 5. **Ship every licence text** of what is linked in, in `licenses/`.
 6. **The parameter list is fixed once released.** Live keeps a device by its class, and the class is
    made from `chain_params`. Taking a parameter out (Nodal Red's bank knob, before its release) made the
-   device vanish from the open Set at Live's next start.
+   device vanish from the open Set at Live's next start. Inserting one (a test class, 2026-11-23, an
+   Apply in between) did not: the device stayed with the new list, and its values followed their keys
+   (Pung's state, then reported to Live). What Live keeps by position, the parameter's index in the
+   class, is what it saves against a parameter: automation, clip envelopes, Macro and MIDI mappings.
+   Every instrument class carries the MIDI effects' parameters after its own, so a new MIDI effect in
+   the catalog moves those too.
 7. **Sounds by the contract:** a bank chooser is a level with `items_param` and `select_param`, and the
    list answers `preset_names` (every name of the bank) and `preset_name_<n>`. Then SOUNDS shows banks and
    names without loading a sound. A bank as a plain knob gives a list of one bank.

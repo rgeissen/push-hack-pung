@@ -114,7 +114,9 @@ is filed under that alias). The Push has no curl: use `wget` on it.
 
 ## Ask first
 
-- **Apply** (`POST :7720/api/catalog/apply`) restarts Pung and **Live**: only on the user's word.
+- **Apply** (`POST :7720/api/catalog/apply`) restarts Pung and **Live**: only on the user's word. It keeps
+  the unsaved edits of Pung devices (`armForLiveRestart`, since 2026-11-23; before, an Apply undid them).
+  The same restart without the catalog: write `<data>/restart-live-after-start`, restart Pung's service.
 - Never create **audio** tracks through the Remote Script (it crashed Live once and lost its settings);
   MIDI tracks are fine. Say what test tracks you left in the user's Set.
 - Commit and push only when asked; **publish a release only on "Publish"**.
