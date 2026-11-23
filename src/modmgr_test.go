@@ -229,3 +229,17 @@ func TestUpdateForCountsPungsRevision(t *testing.T) {
 		t.Fatalf("revision %d, want 3", moduleRev(dir))
 	}
 }
+
+// The Modules page shows a module's limits (limits.go): one at a time, an
+// emulator. Only the modules that have one carry it.
+func TestModuleLimitsOnRows(t *testing.T) {
+	if l := limitsOf("xenia"); l == nil || l.One != "waits" || !l.Emulator {
+		t.Errorf("xenia: %+v, want one at a time (waits), an emulator", l)
+	}
+	if l := limitsOf("jp8000"); l == nil || l.One != "refuses" {
+		t.Errorf("jp8000: %+v, want one at a time (refuses)", l)
+	}
+	if l := limitsOf("plaits"); l != nil {
+		t.Errorf("plaits has limits %+v, want none", l)
+	}
+}

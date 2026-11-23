@@ -1067,6 +1067,7 @@ type moduleRow struct {
 	AssetsNeed  int          `json:"assets_missing"`
 	Job         *modJob      `json:"job,omitempty"`
 	AssetState  []assetState `json:"asset_state,omitempty"`
+	Limits      *moduleLimit `json:"limits,omitempty"` // limits.go
 }
 
 func (mm *modMgr) view() map[string]any {
@@ -1100,7 +1101,7 @@ func (mm *modMgr) view() map[string]any {
 	seen := map[string]bool{}
 	for _, e := range cat.Modules {
 		_, sup := installSubdirs[e.ComponentType]
-		r := moduleRow{catalogEntry: e, InCatalog: true, Supported: sup, Status: "available", InUse: inUse[e.ID], Job: jobs[e.ID]}
+		r := moduleRow{catalogEntry: e, InCatalog: true, Supported: sup, Status: "available", InUse: inUse[e.ID], Job: jobs[e.ID], Limits: limitsOf(e.ID)}
 		if i, ok := inst[e.ID]; ok {
 			r.Installed, r.Managed, r.Status = i.Version, i.Managed, "installed"
 			// a module built into Pung comes with Pung, in the build Pung
@@ -1131,7 +1132,7 @@ func (mm *modMgr) view() map[string]any {
 		if seen[id] {
 			continue
 		}
-		r := moduleRow{Supported: true, Installed: i.Version, Managed: i.Managed, Status: "builtin", InUse: inUse[id], AssetState: assetStates(i.Dir)}
+		r := moduleRow{Supported: true, Installed: i.Version, Managed: i.Managed, Status: "builtin", InUse: inUse[id], AssetState: assetStates(i.Dir), Limits: limitsOf(id)}
 		if i.Managed {
 			r.Status = "installed"
 		}
