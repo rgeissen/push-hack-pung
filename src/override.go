@@ -677,6 +677,21 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		}
 		e := envShapeOf(keys, vv, touched)
 		e.Labels = labels
+		// {levels: {sustain: 0.17, ...}}: where a stage's level is drawn, when
+		// the module's level is not its knob's (TinyK hears its EG squared):
+		// the stage stays its key (its time, its touch, the live dots)
+		if lv, ok := o["levels"].(map[string]any); ok {
+			for role, x := range lv {
+				if i := e.seg(role); i >= 0 {
+					switch f := x.(type) {
+					case float64:
+						e.Segs[i].Level = math.Max(0, math.Min(1, f))
+					case int64:
+						e.Segs[i].Level = math.Max(0, math.Min(1, float64(f)))
+					}
+				}
+			}
+		}
 		// {curves: {attack: c, decay: c, release: c}}: each stage's bend, a
 		// number or a key whose value is one: the level runs
 		// (e^(c*t)-1)/(e^c-1) of its way at time t (envCurve)
