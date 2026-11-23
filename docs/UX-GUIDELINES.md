@@ -428,6 +428,15 @@ screens are `overrides/<id>/push_ui.js` and `native/<id>/push_ui.js`; `PUNG_GALL
 | Tablor | the real wavetable as a waterfall, the playing frame lit | 4 |
 | Weird Dreams | a night: eight voices in the colours of their kinds, each one's strike | 8 |
 | Wurl | the reed bar over the keyboard on the piano's black lid, the vibrato and the amplifier | 4 |
+| Amino | the edited layer's two 8-bit waves sample for sample (the module's own table), dirt, drive, filter and amp, the four layers at a glance in their colours | 5 |
+| CHONK | the bass's neck: the string stopped at its fret, where it is plucked and picked up, the tone control, EQ and saturator after it | 5 |
+| DubStarMooniCon | a night sky of partials: every tap each oscillator reads off its phase, at its stepped ratio of the key | 4 |
+| Gresil | the brushed-silver granular box: the recorded buffer with its grains, their density and envelope, the random amounts, the quality LEDs | 4 |
+| Omega | the kick: its pitch dive, one beat of the waveform from the engine's equations, the engine's own picture (FM4's algorithms, FM2's partials) | 3 |
+| setBfree | the organ's console: nine drawbars in their three colours with the registration as organists write it, vibrato / chorus, percussion and the cabinet's half-moon | 5 |
+| SIMIAN | ten drums side by side, each one's strike from drum.dsp, the Move's sixteen pads as a hexagon map of which drum each plays | 8 |
+| Tenebrae | its six macro pages as six lit tiles (wave, filter, amp, LFO, motion, space), blood red for the sound, night blue for the dressing | 6 |
+| TinyK | the small charcoal synth between wooden cheeks: the red three-digit program LED, genre and program keys, the matrix's sections in order | 7 |
 | Nodal Red 2X | the red panel's sections: slots, oscillators, filter, envelopes, LFOs | 6 |
 | OsTIrus | the TI's display naming the patch's three Soft Knobs over the first encoders, beside the five every player reaches for | 4 |
 | Vavra | the microQ's matrix on charcoal with amber legends and red row LEDs, beside the green dot-matrix display | 9 |
