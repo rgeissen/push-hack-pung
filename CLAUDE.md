@@ -151,10 +151,14 @@ back as of the previous restart. Then ask the user to save the Set.
    an unpublished run of your own can trip it. Override (`PUNG_ALLOW_UNREVISED=1`) only after checking
    the published catalog (inside `pung.tar.gz` of the latest release) does not hold that version and
    revision, then rerun without the override: it must pass.
-5. `make build`, `make screens`, `make test`, `make vet`, `make test-visuals`, `python3 site/build.py`.
-   `make screens` draws the Modules page's pictures of each module's own interface into build/screens
-   (release.sh refuses without them).
-6. `GH=<gh> scripts/release.sh --publish` (sources first, then `v<version>`; rerunning replaces
+5. Commit, push `main` (and any module fork the catalog links: JE-8086's `remote-ui` was not, for
+   0.4.5), then **`make publish`** (`make release` packages without publishing). It runs
+   `scripts/release-check.py` (a clean tree; one version in VERSION, hack.json and the manual; the
+   catalog built after its inputs and naming each own module's last commit; every source commit on
+   GitHub or its archive on `sources`; HEAD on origin/main), then build, screens, test, vet,
+   test-visuals and the site in that order, checks again (the binary and the pictures newer than their
+   inputs, the tree still clean), and `scripts/release.sh --publish`.
+6. `release.sh --publish` uploads the sources first, then `v<version>` (rerunning replaces
    `pung.tar.gz` on an existing release and uploads missing sources). Verify: download `pung.tar.gz`,
    check `hack.json`, the catalog's versions and commits, and that every `source.archive` is on the
    `sources` release.

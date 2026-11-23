@@ -15,7 +15,7 @@ DOCKER  := docker run --rm --platform linux/amd64 \
 LDFLAGS := -s -w -X main.buildVersion=$(VERSION) -linkmode external \
 	-extldflags -Wl,--dynamic-linker=/lib/ld-linux-x86-64.so.2
 
-.PHONY: screens all image build modules catalog-modules test test-visuals vet deploy clean
+.PHONY: screens all image build modules catalog-modules test test-visuals vet deploy clean release publish
 
 all: build
 
@@ -47,6 +47,24 @@ vet:
 screens:
 	rm -rf build/screens
 	$(DOCKER) -w /w/src $(IMAGE) sh -c "PUNG_CARD_SHOTS=/w/build/screens CGO_ENABLED=1 go test -count=1 -run 'TestCardShots$$' ."
+
+# A release, every step in its order (CLAUDE.md, Release), with what each
+# step needs checked first (scripts/release-check.py). The catalog comes
+# before (it follows Schwung's module list: build-catalog.py); the tests run
+# after it. release packages dist/pung.tar.gz; publish publishes it.
+RELEASE_STEPS = $(MAKE) build screens test vet test-visuals && python3 site/build.py
+
+release:
+	python3 scripts/release-check.py
+	$(RELEASE_STEPS)
+	python3 scripts/release-check.py --after-build
+	scripts/release.sh
+
+publish:
+	python3 scripts/release-check.py --publish
+	$(RELEASE_STEPS)
+	python3 scripts/release-check.py --publish --after-build
+	GH=gh scripts/release.sh --publish
 
 # Schwung's chain host and its built-in modules, from the Schwung checkout
 modules:
