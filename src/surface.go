@@ -448,11 +448,14 @@ func (u *surface) refreshPositions(force bool) {
 }
 
 // liveButtons stay Live's while Pung owns the surface, with the pads:
-// transport, Shift, the pad modes, layouts, scales, Note Repeat and Accent,
+// transport and Automate (automation recorded while Pung's view is up: it
+// was not Live's until 2026-11-23, and could not be switched on), Shift,
+// the pad modes, layouts, scales, Note Repeat and Accent,
 // the octaves, the repeat rates (the scene column), up and down, the track
 // buttons (mute, solo, stop) and Live's editing buttons.
 var liveButtons = []int{
 	85, 86, // Play, Record
+	push3.CCAutomate,
 	push3.CCShift, push3.CCNote, push3.CCSession, push3.CCLayout, push3.CCScale, push3.CCRepeat, push3.CCAccent,
 	54, 55, // octave down, up
 	36, 37, 38, 39, 40, 41, 42, 43, // repeat rates / scenes
