@@ -167,16 +167,30 @@ func fitText(s string, w int, face font.Face) string {
 	if w <= 0 {
 		return ""
 	}
-	if textWidth(s, face) <= w {
+	// no glyph is narrower than 2 px: a longer text (TinyHouse answers a
+	// wavetable's whole list as one value) is cut to what could fit before
+	// it is measured; measuring it whole, then one letter shorter at a time,
+	// took 200 ms a frame
+	if len(s) > w/2+1 {
+		s = s[:w/2+1]
+	} else if textWidth(s, face) <= w {
 		return s
 	}
-	for n := len(s) - 1; n > 0; n-- {
-		c := strings.TrimRight(s[:n], " ") + "."
-		if textWidth(c, face) <= w {
-			return c
+	// the longest cut that fits: the width grows with the length
+	cut := func(n int) string { return strings.TrimRight(s[:n], " ") + "." }
+	lo, hi := 0, len(s)-1 // cut(lo) fits (lo 0: nothing does), cut(hi+1) does not
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if textWidth(cut(mid), face) <= w {
+			lo = mid
+		} else {
+			hi = mid - 1
 		}
 	}
-	return ""
+	if lo == 0 {
+		return ""
+	}
+	return cut(lo)
 }
 
 // fitValue: a value in the largest value face it fits w in, the value
@@ -185,13 +199,18 @@ func fitText(s string, w int, face font.Face) string {
 // is never cut, a cut number reads as another number: -24000 is -24K.
 func fitValue(s string, w int) (string, font.Face) {
 	s = asciiOnly(s)
+	// longer than w/2 letters fits no face (no glyph is under 2 px): not
+	// measured whole (fitText)
+	short := len(s) <= w/2+1
 	for _, f := range []font.Face{faceValue, faceSmall} {
-		if f != nil && textWidth(s, f) <= w {
+		if f != nil && short && textWidth(s, f) <= w {
 			return s, f
 		}
 	}
-	if n := fitNumber(s, w, faceSmall); n != "" {
-		return n, faceSmall
+	if len(s) <= 32 { // a number: -24000 is -24K
+		if n := fitNumber(s, w, faceSmall); n != "" {
+			return n, faceSmall
+		}
 	}
 	if _, err := strconv.ParseFloat(strings.TrimSpace(s), 64); err == nil {
 		return "", faceSmall
