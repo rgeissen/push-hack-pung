@@ -402,6 +402,10 @@ function frontPanel(g, v) {
 }
 
 // Pung's default pages on the panel's aluminium, black legends, Eurorack knobs
+// the row under the Filters and Limiter bands, where a value shares its column: the
+// sections already say LOW SHELF and TAPE LIMITER ("LOW BO.", "PRE GA." were cut)
+var SHORT = { low_boost: "BOOST", low_freq: "FREQ", low_q: "Q", limiter_pre: "IN", limiter_post: "OUT" };
+push.short(function (key) { return SHORT[key]; });
 push.theme({ ground: ALU_LT, panel: KNOB, ink: INK, dim: LEG, rule: ALU_DK, faint: ALU, accent: ARC, knob: "pointer" });
 
 var GRAINS = ["time", "size", "shape", "density", "pitch", "mode", "filter"];
@@ -428,35 +432,70 @@ var FKEYS = ["filter_hp", "filter_lp", "low_boost", "low_freq", "low_q", "drive"
 function at20k(hz) { return c01(Math.log(Math.max(20, hz) / 20) / Math.LN10 / 3); }
 push.compartment({
   id: "filters", label: "Filters",
+  // each section over the encoders that play it (120 px a column): on Filters drive, the
+  // two wet filters, the shelf's three; on Limiter its three, the rest summed up beside it
   pages: [
-    { label: "Filters", keys: ["filter_hp", "filter_lp", "low_boost", "low_freq", "low_q", "drive"] },
+    { label: "Filters", keys: ["drive", "filter_hp", "filter_lp", "low_boost", "low_freq", "low_q"] },
     { label: "Limiter", keys: ["limiter_on", "limiter_pre", "limiter_post"] }
   ],
   extra_keys: FKEYS.concat(["dry_wet", "dry"]),
   screen: function (g, v) {
-    var t = v.$touched || "";
-    g.layer("filters", function () {
+    var t = v.$touched || "", lim1 = v.$page === 1;
+    function head(x, w, s) { g.fill(x, 0, w, 12, ALU); g.fill(x, 11, w, 1, LEG_DIM); g.text(x + 6, 10, s, INK, -1, w - 10); }
+    g.layer("filters" + (lim1 ? "L" : "F"), function () {
       g.fill(0, 0, 952, 86, ALU_LT);
-      var heads = [[0, 120, "IN: DRIVE"], [124, 360, "WET ONLY: HIGH PASS + LOW PASS (6 DB)"], [488, 230, "WHOLE OUTPUT: LOW SHELF"], [722, 230, "TAPE LIMITER"]];
-      for (var i = 0; i < heads.length; i++) { var h = heads[i]; g.fill(h[0], 0, h[1], 12, ALU); g.fill(h[0], 11, h[1], 1, LEG_DIM); g.text(h[0] + 6, 10, h[2], INK, -1, h[1] - 10); }
+      if (lim1) { head(0, 356, "TAPE LIMITER: LAST, ON EVERYTHING"); head(360, 592, "BEFORE IT"); }
+      else { head(0, 116, "IN: DRIVE"); head(120, 236, "WET ONLY: 6 DB HP + LP"); head(360, 356, "WHOLE OUTPUT: LOW SHELF"); head(720, 232, "TAPE LIMITER"); }
     });
-    // drive: the input's gain, dry included
-    var dr = num(v, "drive", 0);
-    g.value(10, 46, (dr > 0.05 ? "+" : "") + dr.toFixed(1) + " DB", t === "drive" ? "slot" : INK, -1);
-    g.text(10, 66, dr < 0.05 ? "NOTHING CLIPS" : "TAPE SOFT CLIP", LEG, -1, 110);
-    g.text(10, 82, "DRY TOO", LEG_DIM, -1);
-    // the wet path's two one-pole filters, as Pung draws them, side by side
-    var hp = num(v, "filter_hp", 0), lp = num(v, "filter_lp", 20000);
-    g.filter(124, 13, 178, 73, { cutoff: "filter_hp", type: hp < 5 ? "Off" : "HP 6 dB", at: at20k(hp), color: ARC });
-    g.filter(306, 13, 178, 73, { cutoff: "filter_lp", type: lp > 19990 ? "Off" : "LP 6 dB", at: at20k(lp), color: ARC });
-    // the shelf and the limiter on everything
+    var dr = num(v, "drive", 0), hp = num(v, "filter_hp", 0), lp = num(v, "filter_lp", 20000);
     var lb = num(v, "low_boost", 0), lf = num(v, "low_freq", 100), lq = num(v, "low_q", 0.7), sh = /^low_/.test(t);
-    g.value(498, 46, lb < 0.05 ? "FLAT" : "+" + lb.toFixed(1) + " DB", sh ? "slot" : INK, -1);
-    g.text(498, 66, lb < 0.05 ? "NO LOW BOOST" : "BELOW " + Math.round(lf) + " HZ, Q " + lq.toFixed(1), LEG, -1, 220);
     var lim = opt(v, "limiter_on", OFFON, 1) === 1, pre = num(v, "limiter_pre", 0), post = num(v, "limiter_post", 0);
-    led(g, 738, 40, lim, "#3fbf6f");
-    g.value(750, 46, lim ? "ON" : "OFF", t === "limiter_on" ? "slot" : INK, -1);
-    g.text(732, 66, lim ? "IN " + (pre > 0.05 ? "+" : "") + pre.toFixed(1) + " DB  OUT " + (post > 0.05 ? "+" : "") + post.toFixed(1) + " DB" : "THE OUTPUT AS IT IS", /^limiter_p/.test(t) ? "slot" : LEG, -1, 210);
-    g.text(732, 82, "LAST, ON EVERYTHING", LEG_DIM, -1);
+    function db(x) { return (x > 0.05 ? "+" : "") + x.toFixed(1) + " DB"; }
+    var drTxt = dr < 0.05 ? "NOTHING CLIPS" : "TAPE SOFT CLIP";
+    var shTxt = lb < 0.05 ? "NO LOW BOOST" : "BELOW " + Math.round(lf) + " HZ, Q " + lq.toFixed(1);
+    if (!lim1) {
+      // drive: the input's gain, dry included
+      g.value(8, 46, db(dr), t === "drive" ? "slot" : INK, -1);
+      g.text(8, 66, drTxt, LEG, -1, 108);
+      g.text(8, 82, "DRY TOO", LEG_DIM, -1);
+      // the wet path's two one-pole filters, as Pung draws them, each over its knob
+      g.filter(120, 13, 116, 73, { cutoff: "filter_hp", type: hp < 5 ? "Off" : "HP 6 dB", at: at20k(hp), color: ARC });
+      g.filter(240, 13, 116, 73, { cutoff: "filter_lp", type: lp > 19990 ? "Off" : "LP 6 dB", at: at20k(lp), color: ARC });
+      // the shelf over its three, the limiter (next page) as it stands
+      g.value(368, 46, lb < 0.05 ? "FLAT" : "+" + lb.toFixed(1) + " DB", sh ? "slot" : INK, -1);
+      g.text(368, 66, shTxt, LEG, -1, 340);
+      led(g, 734, 40, lim, "#3fbf6f");
+      g.value(746, 46, lim ? "ON" : "OFF", INK, -1);
+      g.text(728, 66, lim ? "IN " + db(pre) + "  OUT " + db(post) : "THE OUTPUT AS IT IS", LEG, -1, 220);
+      g.text(728, 82, "ITS KNOBS: NEXT PAGE", LEG_DIM, -1);
+    } else {
+      led(g, 14, 40, lim, "#3fbf6f");
+      g.value(26, 46, lim ? "ON" : "OFF", t === "limiter_on" ? "slot" : INK, -1);
+      g.text(8, 66, lim ? "SOFT TAPE CLIP" : "NOTHING HOLDS", LEG, -1, 108);
+      // its transfer curve over IN and OUT: the input (+-2 full scale) through PRE GAIN, the
+      // engine's tape_soft_clip (a cubic soft clip into a sine shaper), then POST GAIN
+      var bx = 128, by = 16, bw = 224, bh = 64, hot = /^limiter_p/.test(t);
+      g.fill(bx, by, bw, bh, ALU);
+      g.line(bx, by + bh / 2, bx + bw, by + bh / 2, 1, LEG_DIM); g.line(bx + bw / 2, by, bx + bw / 2, by + bh, 1, LEG_DIM);
+      g.line(bx, by + bh, bx + bw, by, 1, LEG_DIM);
+      var gi = Math.pow(10, pre / 20), go = Math.pow(10, post / 20), pts = [];
+      for (var k = 0; k <= 48; k++) {
+        var x = -2 + 4 * k / 48, y = x;
+        if (lim) { var u = x * gi, a = Math.abs(u), c;
+          if (a > 1.5) c = u > 0 ? 1 : -1; else { var cn = Math.max(-1, Math.min(1, u * 0.6666667)); c = (cn - cn * cn * cn / 3) * 1.5; }
+          y = Math.sin(Math.min(Math.abs(c), Math.PI / 2)) * (c > 0 ? 1 : -1) * go; }
+        pts.push([bx + bw * k / 48, by + bh / 2 - Math.max(-1.25, Math.min(1.25, y)) * bh / 4]);
+      }
+      g.poly(pts, 2, hot || t === "limiter_on" ? "slot" : ARC);
+      g.text(bx + 4, by + 10, "OUT", LEG_DIM, -1); g.text(bx + bw - 4, by + bh - 4, "IN", LEG_DIM, 1);
+      // the chain before it, read left to right as the sound goes
+      var cells = [["DRIVE", db(dr)], ["HIGH PASS", hp < 5 ? "OFF" : Math.round(hp) + " HZ"], ["LOW PASS", lp > 19990 ? "OFF" : (lp >= 1000 ? (lp / 1000).toFixed(1) + " KHZ" : Math.round(lp) + " HZ")], ["LOW SHELF", lb < 0.05 ? "FLAT" : "+" + lb.toFixed(1) + " DB"]];
+      for (var i = 0; i < cells.length; i++) {
+        var x = 368 + i * 148;
+        g.text(x, 34, cells[i][0], LEG, -1, 140);
+        g.value(x, 58, cells[i][1], INK, -1);
+      }
+      g.text(368, 82, "DRIVE ON THE DRY TOO; THE FILTERS ON THE WET ONLY", LEG_DIM, -1, 580);
+    }
   }
 });
