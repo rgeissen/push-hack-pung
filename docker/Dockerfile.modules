@@ -3,6 +3,10 @@
 # (sfz's xsynth shim). The nightly is the one sfz pins (scripts/build.sh,
 # RUST_NIGHTLY_DATE). Crates are fetched once into build/deps/cargo-home
 # (scripts/build-push-modules.sh); the module builds themselves run offline.
+# And zig, whose clang compiles the modules written for one (their own
+# scripts build with zig cc): quark's C23 #embed, bizar's __builtin_shufflevector,
+# which Ubuntu 22.04's gcc 11 has not. Their hand recipes use it; zig cc
+# -target x86_64-linux-gnu.2.35 links against the Push's glibc.
 FROM push-hack-pung-builder
 ARG RUST_NIGHTLY=nightly-2026-05-18
 ENV RUSTUP_HOME=/opt/rustup PATH=/opt/cargo/bin:$PATH
@@ -10,3 +14,9 @@ RUN wget -q https://sh.rustup.rs -O /tmp/rustup.sh \
     && CARGO_HOME=/opt/cargo sh /tmp/rustup.sh -y --profile minimal --default-toolchain ${RUST_NIGHTLY} --no-modify-path \
     && rm /tmp/rustup.sh && chmod -R a+rX /opt/rustup /opt/cargo \
     && rustc --version
+ARG ZIG=0.15.2
+ARG ZIG_SHA256=02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239
+RUN wget -q https://ziglang.org/download/${ZIG}/zig-x86_64-linux-${ZIG}.tar.xz -O /tmp/zig.tar.xz \
+    && echo "${ZIG_SHA256}  /tmp/zig.tar.xz" | sha256sum -c - \
+    && tar -C /opt -xJf /tmp/zig.tar.xz && mv /opt/zig-x86_64-linux-${ZIG} /opt/zig && rm /tmp/zig.tar.xz \
+    && ln -s /opt/zig/zig /usr/local/bin/zig && zig version

@@ -13,6 +13,8 @@
 #   kit-builder     dropbear 2026.94
 #   sfz             its Rust crates, into build/deps/cargo-home (needs the
 #                   push-hack-pung-modules image, docker/Dockerfile.modules)
+#   model-72,       their Rust engines' crates (Cargo.lock), into the same
+#   chimera         cargo-home
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p build/deps
@@ -35,4 +37,10 @@ if [ -d build/modsrc/schwung-sfz ]; then
     docker run --rm --platform linux/amd64 -v "$PWD/build/modsrc/schwung-sfz:/r:ro" -v "$PWD/build/deps/cargo-home:/cargo" \
         push-hack-pung-modules bash -c 'cp -a /r/src/dsp/third_party /tmp/tp && cd /tmp/tp/xsynth_shim && CARGO_HOME=/cargo cargo fetch -q'
 fi
+for e in schwung-model72/engine schwung-chimera/engine; do
+    [ -f "build/modsrc/$e/Cargo.lock" ] || continue
+    mkdir -p build/deps/cargo-home
+    docker run --rm --platform linux/amd64 -v "$PWD/build/modsrc/$e:/r:ro" -v "$PWD/build/deps/cargo-home:/cargo" \
+        push-hack-pung-modules bash -c 'cp -a /r /tmp/e && cd /tmp/e && CARGO_HOME=/cargo cargo fetch -q --locked'
+done
 for d in build/deps/*/; do [ -d "$d/.git" ] && echo "$(basename "$d") $(git -C "$d" rev-parse --short HEAD)"; done

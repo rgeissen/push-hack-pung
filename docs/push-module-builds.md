@@ -56,19 +56,43 @@ third-party scripts was ruled out from the start.
      file, built from a writable copy, with the targets the script names.
    - **Host headers:** Schwung's `src` and `src/host` (`plugin_api_v1.h`, ...)
      come last, so a module's own copy wins.
+   - **Generated headers:** a header the sources include and the repo lacks
+     (`schwung_meta.h`, `factory_bank.h`) comes from the script's own Python
+     generator: the one that names it among its arguments, or one without
+     arguments that opens it for writing. The recipe runs it on a writable copy
+     of the repo (offline, in the builder) and compiles from that copy
+     (model-72, clementine-xt, bizar).
+   - **Not this build:** a WebAssembly build (`emcc`, `zig cc -target wasm32`)
+     beside the module's is not read (its `web/wasm_host.c` and `-D..._WASM`
+     went into Crest, Quark, Amino and Omega; Concat lost its plugin file),
+     and a profiling switch (`-D..._PROFILE`, the scripts' `--profile`, "not
+     for release") is dropped.
+   - **Container paths:** a pattern under the folder the script mounts the repo
+     at (`/build/src/dsp/*.c`) is found in the repo (Concat).
 2. `scripts/recipes/<id>.sh` is a hand-written recipe and wins over the
-   generated one. There are 13. Each says in its header why it exists:
+   generated one (it may run the generated one, `/recipes/<id>.sh`, and only
+   add what that lacks). Each says in its header why it exists:
    - libraries a module downloads at build time (keydetect, dragonfly-hall, dj);
    - headers its script generates (radiogarden, webstream);
    - patches it applies (capicola);
    - two copies of one library in one `.so` (chiptune);
    - bungee's defines (stretch, slicer, performance-fx);
    - NeuralAudio's CMake (nam);
-   - a Rust part (sfz);
-   - ARM helper programs rebuilt for x86_64 (kit-builder).
+   - a Rust part (sfz, chimera, model-72: `_cargo.sh`, crates from
+     `scripts/fetch-deps.sh`);
+   - C that needs clang (quark's `#embed`, bizar's `__builtin_shufflevector`):
+     the generated recipe with zig cc as `gcc` (`_zigcc.sh`; zig is in the
+     builder image, as these modules' own scripts use it);
+   - a build the generator cannot read: a CMake project in a subfolder
+     (tinyhouse), a Makefile target among many with an aarch64-only coroutine
+     (frodhes: on x86_64 its `coro.h` switches with ucontext);
+   - ARM helper programs rebuilt for x86_64 (kit-builder);
+   - Pung's own modules (`native/`).
 3. `scripts/build-all.sh` runs the recipes in the `push-hack-pung-modules`
    image (`docker/Dockerfile.modules`: the Ubuntu 22.04 builder plus a pinned
-   Rust nightly), with **no network**. Sources are read-only, and external
+   Rust nightly and zig), with **no network**. The image is built only when it
+   is missing: after a change to its Dockerfile, build it again
+   (`docker build --platform linux/amd64 -t push-hack-pung-modules -f docker/Dockerfile.modules docker`). Sources are read-only, and external
    dependencies come from `build/deps` (`scripts/fetch-deps.sh`, pinned
    versions). Each module has 30 minutes.
 4. `scripts/package-push-modules.py` refuses any module where:

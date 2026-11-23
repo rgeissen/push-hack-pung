@@ -9,6 +9,9 @@
 // Writes <module dir>/../render-check.wav (16-bit stereo, 44.1 kHz) and exits
 // 0 when the chord's peak is above -60 dB. scripts/render-check.sh runs it in
 // the modules' build image, against the x86-64 dsp.so that ships.
+//
+// The chord is 48,55,60,64. RENDER_NOTES=36,38,42 plays other notes (up to 16),
+// for a drum machine that only answers its pads' notes (Libpo32: 36..51).
 #include <dlfcn.h>
 #include <math.h>
 #include <stdarg.h>
@@ -134,8 +137,23 @@ int main(int argc, char **argv) {
         usleep(2900);
     }
     const int settle = frames;
-    const uint8_t notes[] = {48, 55, 60, 64};
-    for (int i = 0; i < 4; i++) {
+    uint8_t notes[16] = {48, 55, 60, 64};
+    int nnotes = 4;
+    const char *notes_env = getenv("RENDER_NOTES");
+    if (notes_env && *notes_env) {
+        nnotes = 0;
+        for (const char *p = notes_env; *p && nnotes < 16;) {
+            char *end;
+            const long v = strtol(p, &end, 10);
+            if (end == p) break;
+            if (v >= 0 && v < 128) notes[nnotes++] = (uint8_t)v;
+            p = *end == ',' ? end + 1 : end;
+        }
+    }
+    printf("notes:");
+    for (int i = 0; i < nnotes; i++) printf(" %d", notes[i]);
+    printf("\n");
+    for (int i = 0; i < nnotes; i++) {
         uint8_t on[3] = {0x90, notes[i], 100};
         api->on_midi(in, on, 3, 0);
     }
@@ -144,7 +162,7 @@ int main(int argc, char **argv) {
     long n = 0;
     for (int b = 0; b < total; b++) {
         if (b == total * 3 / 4)
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < nnotes; i++) {
                 uint8_t off[3] = {0x80, notes[i], 0};
                 api->on_midi(in, off, 3, 0);
             }

@@ -79,7 +79,20 @@ def is_elf(path):
 
 def resolve(token, files, repo, prefer, want_dir=False):
     """A path as a build script writes it ($REPO_ROOT/src/dsp/x.c, "$DSP"/x.c,
-    src/dsp/*.c) -> paths in the repo (relative), [] if none."""
+    src/dsp/*.c) -> paths in the repo (relative), [] if none. An absolute path
+    is the repo mounted in the script's container: for a pattern
+    (/build/src/dsp/*.c) its first folders are dropped until the rest is in the
+    repo. (Not for a single file: that is as often another target's, such as
+    the Airwindows wrapper in schwung-airwindows' second script.)"""
+    hits = _resolve(token, files, repo, prefer, want_dir)
+    t = token.strip("\"'")
+    while not hits and t.startswith("/") and t.count("/") > 1 and any(c in t for c in "*?["):
+        t = "/" + t.split("/", 2)[2]
+        hits = _resolve(t, files, repo, prefer, want_dir)
+    return hits
+
+
+def _resolve(token, files, repo, prefer, want_dir=False):
     t = token.strip("\"'")
     for _ in range(4):  # the script's own assignments (BUNGEE_DIR=src/dsp/bungee)
         t2 = re.sub(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}?", lambda m_: VARS.get(m_.group(1), m_.group(0)), t)
@@ -133,6 +146,9 @@ def script_vars(text):
     return v
 
 
+WASM = re.compile(r"\bemcc\b|\bem\+\+|wasm32|wasm64|-mexec-model")
+
+
 def script_text(repo, mdir):
     texts = []
     paths = [os.path.join(repo, "scripts", "build.sh")] + sorted(glob.glob(os.path.join(repo, "scripts", "*build*.sh"))) + \
@@ -144,7 +160,78 @@ def script_text(repo, mdir):
     s = "\n".join(texts)
     s = re.sub(r"\\\n", " ", s)                        # continued lines
     s = "\n".join(l for l in s.splitlines() if not l.lstrip().startswith("#"))
+    # a WebAssembly build (the browser synth beside the module: emcc, zig cc
+    # -target wasm32) compiles its own host glue (web/wasm_host.c) with its own
+    # defines (-DCREST_WASM) and often leaves the plugin file out: not this build
+    s = "\n".join(l for l in s.splitlines() if not WASM.search(l))
     return s
+
+
+PY_LINE = re.compile(r"""^\s*("?\$\{?(PYTHON3?|PY)\}?"?|python3?)\s+("?[^\s"]+\.py"?)(.*)$""")
+ROOT_VARS = re.compile(r"ROOT|^REPO|^SRC$|^TOP$|^BASE$")
+
+
+def generators(text, missing, files, repo, mdir):
+    """The script's Python generators that write a header the sources include
+    and the repo does not have (model-72's tools/gen_schwung.py writes
+    src/schwung_meta.h; bizar's scripts/generate_factory_bank.py
+    "$GENERATED_DIR/factory_bank.h"). One that names the header among its
+    arguments, or one without arguments whose own text names it. Returns
+    (command line, [(variable, value)], include folder or None) each; the
+    command runs in the repo's root with the script's variables, its root
+    variable ($ROOT, $REPO_ROOT) being the copy."""
+    out = []
+    if not missing:
+        return out
+    for line in text.splitlines():
+        pm = PY_LINE.match(line)
+        if not pm:
+            continue
+        args = pm.group(4).strip()
+        script = resolve(pm.group(3), files, repo, mdir)
+        if not script:
+            continue
+        names = [h for h in sorted(missing) if re.search(r"(^|[/\s\"'])%s\b" % re.escape(h), args)]
+        if not names and not args:
+            # a line of its own that opens the header for writing
+            body = open(os.path.join(repo, script[0]), errors="replace").read()
+            names = [h for h in sorted(missing)
+                     if re.search(r"""^.*["'/]%s["'].*open\(|^.*open\(.*["'/]%s["'].*["']w""" % (re.escape(h), re.escape(h)), body, re.M)]
+        if not names:
+            continue
+        # the variables it uses, the ones they use, in the script's order
+        need, todo = set(), re.findall(r"\$\{?([A-Za-z_]\w*)", line)
+        while todo:
+            v = todo.pop()
+            if v not in need:
+                need.add(v)
+                todo += re.findall(r"\$\{?([A-Za-z_]\w*)", VARS.get(v, ""))
+        env, ok = [], True
+        for v in [k for k in VARS if k in need]:
+            env.append((v, '"%s"' % VARS[v].replace('"', '\\"')))
+        for v in sorted(need - set(VARS)):
+            if ROOT_VARS.search(v):
+                env.insert(0, (v, '"$R"'))
+            elif v not in ("PYTHON", "PYTHON3", "PY") and not re.search(r"\$\{%s:[-+]" % v, line + " ".join(VARS.values())):
+                ok = False  # (one with a default, ${BANK:-}, is fine)
+        if not ok:
+            continue
+        cmd = "python3 " + pm.group(3) + (" " + args if args else "")
+        inc = None
+        for raw in re.findall(r"[^\s]+", args):
+            raw = raw.strip("\"'")
+            if os.path.basename(raw) in names:
+                # its folder, made first; as an include folder the copy's
+                # relative path: the variables' values put in, the root
+                # dropped ($GENERATED_DIR -> build/generated)
+                cmd = 'mkdir -p "$(dirname "%s")"; %s' % (raw, cmd)
+                a = raw
+                for _ in range(4):
+                    a = re.sub(r"\$\{?([A-Za-z_]\w*)\}?", lambda v_: VARS.get(v_.group(1), "$" + v_.group(1)), a)
+                inc = os.path.dirname(re.sub(r"^\$\{?[A-Za-z_]\w*\}?/?", "", a).lstrip("./"))
+                break
+        out.append((cmd, env, inc))
+    return out
 
 
 def gen(m):
@@ -281,7 +368,7 @@ def gen(m):
     for f in files:
         if f.endswith((".h", ".hpp", ".hh", ".hxx", ".inc", ".ipp", ".tcc")) or "." not in os.path.basename(f):
             by_tail.setdefault(os.path.basename(f), []).append(f)
-    seen, queue = set(), list(srcs)
+    seen, queue, missing = set(), list(srcs), set()
     while queue and len(seen) < 6000:
         f = queue.pop()
         if f in seen:
@@ -314,13 +401,22 @@ def gen(m):
                         incs.append(d)
             if hit:
                 queue.append(hit)
+            elif quote == '"':
+                missing.add(os.path.basename(inc))
+    gens = generators(text, missing, files, repo, mdir)
+    for _, _, d in gens:
+        if d is not None and d not in incs:
+            incs.append(d)
     # the headers' folders next to the sources, and the module dir
     for f in srcs:
         d = os.path.dirname(f)
         names = {os.path.basename(x) for x in files if os.path.dirname(x) == d}
         if d not in incs and not (names & SYS_HEADERS):  # a folder with its own string.h shadows libc's
             incs.append(d)
-    defs = [d for d in defs if not re.search(r"ARM|NEON|AARCH64|__aarch64", d, re.I)]
+    # ARM tuning, and a profiling build's switch (-DCREST_PROFILE, set by the
+    # script's --profile option: "not for release")
+    defs = [d for d in defs if not re.search(r"ARM|NEON|AARCH64|__aarch64", d, re.I)
+            and not re.match(r"-D\w*PROFIL(E|ING)(=|$)", d)]
 
     q = shlex.quote
     L = ["#!/usr/bin/env bash",
@@ -329,6 +425,12 @@ def gen(m):
          "R=/modsrc/%s; D=/out/%s/%s; T=/tmp/b-%s" % (q(repo_name), sub, q(mid), q(mid)),
          'rm -rf "$D" "$T"; mkdir -p "$D" "$T"',
          ]
+    if gens:
+        # headers the script generates before it compiles (schwung_meta.h,
+        # factory_bank.h): its own generator, run on a writable copy, offline
+        L.append('cp -a "$R" "$T"/gen; R="$T"/gen')
+        for line, env, _ in gens:
+            L.append('( cd "$R"; %s%s )' % ("".join("%s=%s; " % (k, v) for k, v in env), line))
     targets = re.findall(r"--target\s+([^\n]+)", text)
     cmake = dsp_name and os.path.isfile(os.path.join(repo, "CMakeLists.txt")) and re.search(r"\bcmake\b", text)
     if cmake:
