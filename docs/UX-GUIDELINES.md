@@ -429,10 +429,16 @@ screens are `overrides/<id>/push_ui.js` and `native/<id>/push_ui.js`; `PUNG_GALL
 | Weird Dreams | a night: eight voices in the colours of their kinds, each one's strike | 8 |
 | Wurl | the reed bar over the keyboard on the piano's black lid, the vibrato and the amplifier | 4 |
 | Amino | the edited layer's two 8-bit waves sample for sample (the module's own table), dirt, drive, filter and amp, the four layers at a glance in their colours | 5 |
+| Clementine-XT | the orange plate and green LCD in a red bezel: the wavetable as a filmstrip of its key slots, each oscillator's start and reach, the 8-bit waves stepped as the data steps | 7 |
+| Crest | graphite, cream and signal red: three oscillators from the real tables, the FM strip, mixer, filter, amp envelope and the effects in series | 8 |
 | CHONK | the bass's neck: the string stopped at its fret, where it is plucked and picked up, the tone control, EQ and saturator after it | 5 |
 | DubStarMooniCon | a night sky of partials: every tap each oscillator reads off its phase, at its stepped ratio of the key | 4 |
+| Frodhes | the black stage piano: how the tine is struck (hammer, tine modes, pickup field, output) or the mallet, bar and tube; how notes die away; the effects chain lit | 6 |
 | Gresil | the brushed-silver granular box: the recorded buffer with its grains, their density and envelope, the random amounts, the quality LEDs | 4 |
+| Model-72 | the classic mono between walnut cheeks, everything from the CA-72 light model's laws: the waves as the circuit makes them, the ladder, both contours at the circuit's levels | 6 |
 | Omega | the kick: its pitch dive, one beat of the waveform from the engine's equations, the engine's own picture (FM4's algorithms, FM2's partials) | 3 |
+| Quark | the case as built: the atmos registration (divide-down stops or table), the ensemble's three taps, filter and envelope; the melody's wave and ladder; the output | 8 |
+| Schimera | a phonetics plate: the folds' glottal pulses, the tract in section, the air from glottis to lips, the formants on the vowel chart, the lyric lit as it is sung | 5 |
 | setBfree | the organ's console: nine drawbars in their three colours with the registration as organists write it, vibrato / chorus, percussion and the cabinet's half-moon | 5 |
 | SIMIAN | ten drums side by side, each one's strike from drum.dsp, the Move's sixteen pads as a hexagon map of which drum each plays | 8 |
 | Tenebrae | its six macro pages as six lit tiles (wave, filter, amp, LFO, motion, space), blood red for the sound, night blue for the dressing | 6 |
