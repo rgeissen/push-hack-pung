@@ -88,6 +88,10 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   encoders 71-78); the screen `GET :7701/api/display/mirror/frame` (1920x320 PNG).
   `GET :7720/api/devices/{n}/compartments/{id}/screen.png?page=N` renders a band screen from real values
   (not front panels).
+- Known, not Pung's: after a hack hands the surface back, Delete's light stays dark though the button
+  works (2026-11-23). push-manager clears every light and has Push3 redraw with a Shift tap and a
+  pad-mode toggle, which does not redraw Delete; push-manager cannot see Push3's lights to restore them.
+  Tracks are deleted from Session or Mix (Delete + track), as in Push's own device view.
 - **Always give the surface back: `POST :7701/api/surface/leave {"app":"pung","to":"live"}`.** An empty
   body answers 409 and leaves the Push with Pung; then Live's "recover your work?" question can be
   stranded after a Live restart.
