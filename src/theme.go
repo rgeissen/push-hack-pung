@@ -17,8 +17,9 @@ type palette struct {
 	fg, dim, faint, line         color.NRGBA // values and curves; names; tracks; rules
 	accent                       color.NRGBA // a value's arc, a curve's fill (Pung's: the slot colour)
 	stageOff, specFill, specLine color.NRGBA // the stage bar, the spectrum behind a filter
+	fill                         color.NRGBA // under a curve (an envelope's, a filter's, an LFO's); else the accent over the ground
 	knob                         string      // "ring" (Pung's), "pointer", "fader"
-	themed, hasAccent            bool
+	themed, hasAccent, hasFill   bool
 }
 
 var defaultPal = &palette{ground: cBlack, panel: cFaint, fg: cFg, dim: cDim, faint: cFaint, line: cLine,
@@ -38,6 +39,14 @@ func (p *palette) mix(c color.NRGBA, t float64) color.NRGBA {
 		return mixColor(c, t)
 	}
 	return lerpColor(p.ground, c, t)
+}
+
+// fillOr: the theme's fill under a curve, else def (the accent over the ground).
+func (p *palette) fillOr(def color.NRGBA) color.NRGBA {
+	if p != nil && p.hasFill {
+		return p.fill
+	}
+	return def
 }
 
 // accentOr: the theme's accent, else sc (the slot's colour).
@@ -73,6 +82,9 @@ func themeFrom(o map[string]any, sc color.NRGBA) *palette {
 	p.faint = col("faint", lerpColor(p.ground, p.fg, 0.14))
 	p.line = col("rule", lerpColor(p.ground, p.fg, 0.28))
 	p.panel = col("panel", lerpColor(p.ground, p.fg, 0.08))
+	if s := str("fill"); s != "" {
+		p.fill, p.hasFill = ovColor(s, sc), true
+	}
 	if s := str("accent"); s != "" && s != "slot" {
 		p.accent, p.hasAccent = ovColor(s, sc), true
 	}

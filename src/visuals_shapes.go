@@ -418,7 +418,7 @@ func drawFilter(img *image.NRGBA, r image.Rectangle, f filterShape, sc color.NRG
 	for x := x0; x <= x1; x += 2 {
 		pts = append(pts, [2]float64{x, yOf(filterDB(f, (x-x0)/(x1-x0)))})
 	}
-	fill := P.mix(accent, 0.28)
+	fill := P.fillOr(P.mix(accent, 0.28))
 	for i := 1; i < len(pts); i++ {
 		a, b := pts[i-1], pts[i]
 		for px := int(a[0]); px < int(b[0]); px++ {
@@ -674,7 +674,7 @@ func drawLFO(img *image.NRGBA, r image.Rectangle, l lfoShape, sc color.NRGBA) {
 		v := lfoValue(l.Wave, n*math.Min((x-x0)/(x1-x0), 0.9999)) // the last pixel ends the cycle, not the next
 		pts = append(pts, [2]float64{x, mid - v*amp})
 	}
-	fill := P.mix(accent, 0.28)
+	fill := P.fillOr(P.mix(accent, 0.28))
 	for _, p := range pts {
 		y := p[1]
 		rect(img, int(p[0]), int(math.Min(y, mid)), 1, int(math.Abs(mid-y))+1, fill)

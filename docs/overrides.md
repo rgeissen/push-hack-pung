@@ -176,7 +176,7 @@ push.theme({ ground: "#d4740f", panel: "#2a221d", ink: "#2b1606", dim: "#5a2e08"
 
 - `ground`: the band between Push's two rows. `ink`: values and curves. `dim`: names. `rule`: lines,
   boxes, a knob's rim. `faint`: tracks, dividers. `panel`: a pointer knob's cap, a fader's cap. `accent`:
-  a value's arc and a curve's fill (left out: the slot's colour, as on Pung's own pages). Colours as in
+  a value's arc and a curve's fill (left out: the slot's colour, as on Pung's own pages). `fill`: the area under an envelope, a filter or an LFO, where the accent mixed into the ground would go muddy. Colours as in
   `g.*`. Only `ground` and `ink` are needed: the rest is mixed from them.
 - `knob`: `"ring"` (Pung's), `"pointer"` (a hardware knob: a cap with its pointer, the value as an arc
   around it), `"fader"` (a slot and its cap).

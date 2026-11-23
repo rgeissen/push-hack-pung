@@ -47,7 +47,7 @@ func drawEnvelope(img *image.NRGBA, r image.Rectangle, e envShape, sc color.NRGB
 		floor = (top + base) / 2
 	}
 	// the fill, column by column between the line and its floor
-	fill := P.mix(accent, 0.28)
+	fill := P.fillOr(P.mix(accent, 0.28))
 	for i := 1; i < len(pts); i++ {
 		a, b := pts[i-1], pts[i]
 		for px := int(a.X); px < int(b.X); px++ {

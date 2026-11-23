@@ -1003,17 +1003,18 @@ func (u *surface) paintFileLEDs() {
 // (a sampler's start and end), and its name. Turning its encoder opens the
 // browser.
 func (u *surface) drawFileCell(img *image.NRGBA, col int, p position, cm *compMeta, m *paramMeta, key string, sc color.NRGBA, keys []string) {
+	P := palOf(u.pal) // the module's theme on its default pages (theme.go)
 	cx := col*colW + colW/2
 	v, ok := u.vals[u.valKey(p, key)]
 	touched := u.touched == col
-	nameCol := cDim
+	nameCol := P.dim
 	if touched {
-		nameCol = cFg
+		nameCol = P.fg
 		rect(img, cx-16, 43, 32, 2, sc)
 	}
 	label(img, cx, 38, fitLabel(strings.ToUpper(m.Name), colW-10), nameCol, 0)
 	box := image.Rect(cx-52, 50, cx+52, 100)
-	frame := cLine
+	frame := P.line
 	if touched {
 		frame = sc
 	}
@@ -1023,12 +1024,12 @@ func (u *surface) drawFileCell(img *image.NRGBA, col int, p position, cm *compMe
 	switch {
 	case !ok:
 	case path == "":
-		label(img, cx, 79, "NO FILE", cDim, 0)
+		label(img, cx, 79, "NO FILE", P.dim, 0)
 	default:
 		af := audioFiles.peek(path, func() { u.dirty.Store(true) })
 		inner := box.Inset(2)
 		if af != nil && af.Peaks != nil {
-			drawPeaks(img, inner, af.Peaks, sc, cFg)
+			drawPeaks(img, inner, af.Peaks, sc, P.fg)
 			// the page's positions in this file: what is cut away is dimmed,
 			// a play position is a line
 			for _, k := range keys {
@@ -1057,24 +1058,24 @@ func (u *surface) drawFileCell(img *image.NRGBA, col int, p position, cm *compMe
 				case "end":
 					shade(img, image.Rect(x+1, inner.Min.Y, inner.Max.X, inner.Max.Y))
 				}
-				rect(img, x, inner.Min.Y, 1, inner.Dy(), cFg)
+				rect(img, x, inner.Min.Y, 1, inner.Dy(), P.fg)
 			}
 		} else if af != nil && !isAudioExt(filepath.Ext(path)) {
-			label(img, cx, 79, strings.ToUpper(strings.TrimPrefix(filepath.Ext(path), ".")), cDim, 0)
+			label(img, cx, 79, strings.ToUpper(strings.TrimPrefix(filepath.Ext(path), ".")), P.dim, 0)
 		} else {
-			rect(img, inner.Min.X, (inner.Min.Y+inner.Max.Y)/2, inner.Dx(), 1, cFaint)
+			rect(img, inner.Min.X, (inner.Min.Y+inner.Max.Y)/2, inner.Dx(), 1, P.faint)
 		}
 	}
 	if path == "" && ok {
 		// no file yet: what to do is the cell's whole message
-		label(img, cx, 124, "TURN TO BROWSE", map[bool]color.NRGBA{true: sc, false: cDim}[touched], 0)
+		label(img, cx, 124, "TURN TO BROWSE", map[bool]color.NRGBA{true: sc, false: P.dim}[touched], 0)
 		return
 	}
 	if touched {
 		label(img, cx, 111, "TURN TO BROWSE", sc, 0)
 	}
 	nv, nf := fitValue(val, colW-10)
-	styled(img, cx, 127, nv, cFg, nf, 0)
+	styled(img, cx, 127, nv, P.fg, nf, 0)
 }
 
 // shade dims what a rectangle holds: a part of a sample that does not play.
