@@ -138,12 +138,14 @@ back as of the previous restart. Then ask the user to save the Set.
 3. A module whose package changed needs a new version, or a new revision with its reason in
    `scripts/module-revisions.json` (Pung's own modules may bump `module.json` instead). The built copy of
    `module.json` is what counts: rebuild after bumping.
-4. **The module list is 0.4.2's** (the user's choice for 0.4.3, option "A"): Schwung's catalog as it
-   was then, kept at `build/schwung-0.4.2/module-catalog.json` (the `../schwung` checkout is older and
-   drops eight modules: Bouba-Kiki, Hank, Maze Voice, MonkSynth, Sophie...). Build modules and the
-   catalog with it: `CATALOG=<it> scripts/build-push-modules.sh <id...>` and `PUNG_SCHWUNG=<its dir>`
-   for the catalog. Compare the module count with the last release's (`pung/catalog/catalog.json`
-   inside `dist/pung.tar.gz`).
+4. **The module list is Schwung's catalog as of the release** (since 0.4.5; 0.4.3 and 0.4.4 kept 0.4.2's):
+   fetch it from upstream (`charlesvestal/schwung`, `module-catalog.json`; the local `../schwung` is the
+   owner's older fork) into `build/schwung-upstream/module-catalog.json`, build with
+   `CATALOG=<it> scripts/build-push-modules.sh [fetch] <id...>` and the catalog with `PUNG_SCHWUNG=<its dir>`.
+   The catalog withholds what has no licence (or one that forbids shipping: PolyForm Strict) and what only
+   acts on Move's own UI (`scripts/catalog-policy.json`). Every new module needs its Ableton tags
+   (`src/ableton-tags.json`) and is played once as a device in Live on the Push before a release. Compare
+   the module count with the last release's (`pung/catalog/catalog.json` inside `dist/pung.tar.gz`).
    `python3 scripts/build-catalog.py --base-url ""`. Its guard compares with the LOCAL `build/catalog`;
    an unpublished run of your own can trip it. Override (`PUNG_ALLOW_UNREVISED=1`) only after checking
    the published catalog (inside `pung.tar.gz` of the latest release) does not hold that version and
