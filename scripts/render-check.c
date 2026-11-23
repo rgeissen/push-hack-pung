@@ -82,6 +82,16 @@ int main(int argc, char **argv) {
         if (st[0] && !strstr(st, "Booting") && !strstr(st, "Starting") && !strstr(st, "Reading") && !strstr(st, "Warming") &&
             !strstr(st, "Waiting"))
             break;
+        // a module that says no status at all (most of Schwung's): ready after
+        // a second, unless it says it is still loading
+        if (!st[0] && now_s() - t0 > 1.0) {
+            char ld[16] = "";
+            api->get_param(in, "is_loading", ld, sizeof(ld));
+            if (ld[0] != '1') {
+                snprintf(st, sizeof(st), "(no status)");
+                break;
+            }
+        }
         if (now_s() - t0 > 120) {
             fprintf(stderr, "FAIL: still \"%s\" after 120 s\n", st);
             return 1;
