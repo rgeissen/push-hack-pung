@@ -547,6 +547,9 @@ func (d *device) adoptKept() {
 		return // the plugin gave it a state
 	}
 	if kept, ok := d.p.kept.take("", d.c.module, time.Now()); ok {
+		d.liveMu.Lock()
+		d.keptGiven = &keptEntry{Key: stateKey(""), Module: d.c.module, State: kept}
+		d.liveMu.Unlock()
 		if err := d.adopt(kept, false); err != nil {
 			log.Printf("%s: its state from before the restart: %v", d.c.Name, err)
 			return
@@ -642,6 +645,12 @@ type device struct {
 	held    heldMidi // the realtime thread's only
 	liveMu  sync.Mutex
 	liveKey string // stateKey of the state Live's plugin holds for this device
+	// keptGiven: the kept state this device was given (under liveMu): back to
+	// the kept ones if it closes inside their window (keptstate.go, giveBack)
+	keptGiven *keptEntry
+	// keptHold: until then (UnixNano) Live's values are not applied: they are
+	// older than the kept state the device was given
+	keptHold atomic.Int64
 	// changedAt: when Live's parameters last changed the chain (UnixNano; 0:
 	// filed since, keptstate.go)
 	changedAt atomic.Int64
@@ -876,6 +885,9 @@ func (d *device) applyParam(idx int, norm float64) {
 	if idx < len(d.norms) {
 		d.norms[idx].Store(math.Float64bits(norm))
 	}
+	if hold := d.keptHold.Load(); hold != 0 && time.Now().UnixNano() < hold {
+		return // older than the kept state just given (adopt)
+	}
 	if idx >= len(d.c.meta) {
 		return
 	}
@@ -1105,6 +1117,17 @@ func (d *device) adopt(state string, fromLive bool) error {
 		d.liveKey = stateKey(state)
 		d.liveMu.Unlock()
 		kept, ok = d.p.kept.take(state, d.c.module, time.Now())
+		if ok {
+			d.liveMu.Lock()
+			d.keptGiven = &keptEntry{Key: stateKey(state), Module: d.c.module, State: kept}
+			d.liveMu.Unlock()
+			// Live's plugin sends the values it remembers right after the
+			// state, and they are the older ones (after Live restarted, the
+			// recovered Set's): measured 2026-11-23, the kept state's 0.7 was
+			// 0 again 100 ms later. Live hears the kept values instead
+			// (loadState reports them at 0.5 s).
+			d.keptHold.Store(time.Now().Add(time.Second).UnixNano())
+		}
 	}
 	if ok {
 		prev := st
@@ -1184,6 +1207,12 @@ func (d *device) loadState(seq uint64, chain json.RawMessage) {
 }
 
 func (d *device) Close() {
+	d.liveMu.Lock()
+	given := d.keptGiven
+	d.liveMu.Unlock()
+	if given != nil {
+		d.p.kept.giveBack(*given, time.Now())
+	}
 	d.repMu.Lock()
 	d.closed = true
 	if d.resync != nil {

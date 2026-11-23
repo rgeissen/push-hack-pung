@@ -96,13 +96,44 @@ func (k *keptStates) take(held, module string, now time.Time) (string, bool) {
 		return "", false // too late to be a reconnect (still filed again: untaken)
 	}
 	key := stateKey(held)
+	var others []string
 	for i, e := range k.entries {
 		if e.Key == key && e.Module == module {
 			k.entries = append(k.entries[:i], k.entries[i+1:]...)
 			return e.State, true
 		}
+		if e.Module == module {
+			others = append(others, e.Key)
+		}
+	}
+	if len(others) > 0 {
+		log.Printf("kept states: %s's held state %s (%d bytes) is none of the kept %v", module, key, len(held), others)
 	}
 	return "", false
+}
+
+// rearm: the kept states are these now, for devices that come before until
+// (any Live: see armForLiveRestart).
+func (k *keptStates) rearm(entries []keptEntry, until time.Time) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.entries, k.until, k.live = entries, until, ""
+}
+
+// giveBack: a kept state given to a device that closed again inside the
+// window, for the device that comes in its place. Live's recovery makes a
+// device and makes it again (measured 2026-11-23 after an Apply: the first
+// took the kept state, closed two seconds later, the second got none).
+func (k *keptStates) giveBack(e keptEntry, now time.Time) {
+	if k == nil {
+		return
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if now.After(k.until) {
+		return
+	}
+	k.entries = append(k.entries, e)
 }
 
 // untaken: the kept states no device took, if live is still the Live they
@@ -186,6 +217,27 @@ func (p *provider) keptEntries(devs []*device, states map[*device]string) (entri
 		}
 	}
 	return entries, carried
+}
+
+// armForLiveRestart: before Pung restarts Live itself (an Apply), every
+// device's state as it is, for the devices of the Set Live recovers. Live's
+// recovery hands each device the state Live last asked for (a save), and the
+// edits since were lost: an Apply undid every unsaved change to a Pung device
+// (measured 2026-11-23: two values set through Live, gone after an Apply
+// with nothing changed). The kept states of the stop before do not cover it:
+// the old Live's devices reconnect to this Pung first and take them. Returns
+// how many were kept.
+func (p *provider) armForLiveRestart(within time.Duration) int {
+	devs := p.list()
+	states := map[*device]string{}
+	for _, d := range devs {
+		if st, err := d.currentState(); err == nil {
+			states[d] = st
+		}
+	}
+	entries, _ := p.keptEntries(devs, states)
+	p.kept.rearm(entries, time.Now().Add(within))
+	return len(entries)
 }
 
 // The states were filed at a stop only. A Pung that hung (the service's

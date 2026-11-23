@@ -146,6 +146,12 @@ func (mm *modMgr) afterStart(base string) {
 	}
 	set(map[string]any{"state": "restarting-live", "applied": applied, "at": time.Now()})
 	go func() {
+		// the devices' states as they are, for the Set Live recovers (keptstate.go)
+		if mm.h.prov != nil {
+			if n := mm.h.prov.armForLiveRestart(2 * time.Minute); n > 0 {
+				log.Printf("modules: apply: the state of %d device(s) kept for the Set Live recovers", n)
+			}
+		}
 		script := filepath.Join(base, "restart-live.sh")
 		out, err := exec.Command("/bin/sh", script).CombinedOutput()
 		tail := strings.TrimSpace(string(out))

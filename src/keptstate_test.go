@@ -207,3 +207,38 @@ func TestKeptStatesForgetARemovedDevice(t *testing.T) {
 		t.Error("a removed device is still filed")
 	}
 }
+
+// Before Pung restarts Live (an Apply), each device's state is kept for the
+// devices of the Set Live recovers: given by what Live's plugin holds, once.
+func TestKeptAcrossLiveRestart(t *testing.T) {
+	dir := t.TempDir()
+	defer func(f func() string) { runningLive = f }(runningLive)
+	runningLive = func() string { return "1@1" }
+	p := &provider{h: &Host{dataDir: dir}, devs: map[int]*device{}, kept: &keptStates{}}
+	d := &device{p: p, c: &sclass{Class: &livedevice.Class{Name: "ZZ"}, module: "zz"}, s: &Slot{Index: 2}}
+	d.loading.Store(true)
+	d.lastChain = json.RawMessage(`{"synth":{"pb":"0.7"}}`)
+	d.liveKey = stateKey("saved")
+	p.devs[2] = d
+	if n := p.armForLiveRestart(time.Minute); n != 1 {
+		t.Fatalf("kept %d", n)
+	}
+	runningLive = func() string { return "2@2" } // Live started again
+	st, ok := p.kept.take("saved", "zz", time.Now().Add(30*time.Second))
+	if !ok || !strings.Contains(st, `"pb":"0.7"`) {
+		t.Fatalf("the recovered device's state: %q %v", st, ok)
+	}
+	if _, ok := p.kept.take("saved", "zz", time.Now()); ok {
+		t.Error("given twice")
+	}
+	// Live's recovery made the device, closed it and made it again: the
+	// second gets what the first was given
+	p.kept.giveBack(keptEntry{Key: stateKey("saved"), Module: "zz", State: st}, time.Now())
+	if again, ok := p.kept.take("saved", "zz", time.Now()); !ok || again != st {
+		t.Errorf("the device made again: %q %v", again, ok)
+	}
+	p.kept.giveBack(keptEntry{Key: stateKey("saved"), Module: "zz", State: st}, time.Now().Add(2*time.Minute))
+	if _, ok := p.kept.take("saved", "zz", time.Now()); ok {
+		t.Error("given back after the window")
+	}
+}
