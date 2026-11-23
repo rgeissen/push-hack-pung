@@ -249,6 +249,9 @@ func (cm *compMeta) planLeftovers() {
 		if k := str(lv["list_param"]); k != "" {
 			seen[k] = true
 		}
+		if k := cm.screenIndex(lv); k != "" {
+			seen[k] = true
+		}
 	}
 	var rest []string
 	for _, k := range cm.Order {
@@ -274,6 +277,24 @@ func (cm *compMeta) planLeftovers() {
 		}
 		cm.Banks = append(cm.Banks, b)
 	}
+}
+
+// screenIndex: a level of children (SIMIAN's pads) whose keys are parameters
+// of their own (pad1_tune ... pad16_tune) names a child index that only chose
+// which child Move's screen showed: no page of it, alone or among the level's
+// knobs (its "tune", "pitch" are Move's per-child names, no keys here). ""
+// where the index does choose (Forge's focused_voice, no prefixed keys).
+func (cm *compMeta) screenIndex(lv map[string]any) string {
+	k, pre := str(lv["child_index_param"]), str(lv["child_prefix"])
+	if k == "" || pre == "" {
+		return ""
+	}
+	for _, o := range cm.Order {
+		if strings.HasPrefix(o, pre) && len(o) > len(pre) && o[len(pre)] >= '0' && o[len(pre)] <= '9' {
+			return k
+		}
+	}
+	return ""
 }
 
 // keysOf reads a level's knob list: "knobs", else the keys of "params".
@@ -375,7 +396,17 @@ func (cm *compMeta) planFromHierarchy(levels map[string]map[string]any, modes []
 					if name == "" {
 						name = lv
 					}
-					cm.addBanks(strings.ToUpper(name), cm.keysOf(l))
+					keys := cm.keysOf(l)
+					if ix := cm.screenIndex(l); ix != "" {
+						kept := keys[:0:0]
+						for _, k := range keys {
+							if _, isKey := cm.Params[k]; isKey && k != ix {
+								kept = append(kept, k)
+							}
+						}
+						keys = kept
+					}
+					cm.addBanks(strings.ToUpper(name), keys)
 				}
 			} else if k := str(t["key"]); k != "" {
 				loose = append(loose, cm.keysOf(map[string]any{"params": []any{t}})...)
@@ -518,6 +549,26 @@ func (m *paramMeta) label(f float64) (string, bool) {
 		return "", false
 	}
 	return m.Labels[i], true
+}
+
+// pageName: what an encoder is called on Pung's default pages: the screen
+// file's name for it (push.short), else the module's.
+func (m *paramMeta) pageName() string {
+	if m.module != "" {
+		if s, ok := overlayShort(m.module, m.Key, m.Name); ok {
+			return s
+		}
+	}
+	return m.Name
+}
+
+// rowName: in the row under a screen, where the value shares the column:
+// the screen file's name, else the module's short one, else its name.
+func (m *paramMeta) rowName() string {
+	if n := m.pageName(); n != m.Name || m.Short == "" {
+		return n
+	}
+	return m.Short
 }
 
 // display renders a value with its unit, the way the module means it.

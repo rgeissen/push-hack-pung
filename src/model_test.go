@@ -83,6 +83,46 @@ func TestListParamIsNoLeftover(t *testing.T) {
 	}
 }
 
+// A level of children whose keys are parameters of their own (SIMIAN's pad1_*
+// .. pad16_*): its child index is Move's screen state, no page of leftovers.
+// Without prefixed keys (Forge's focused_voice) it chooses what the knobs
+// edit and keeps its page.
+func TestChildIndexIsNoLeftover(t *testing.T) {
+	has := func(cm *compMeta, key string) bool {
+		for _, b := range cm.Banks {
+			for _, k := range b.Keys {
+				if k == key {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	pads := buildMeta("x", getter(map[string]string{
+		"chain_params": `[{"key":"gain","name":"Gain","type":"int","min":0,"max":10},
+			{"key":"ui_current_voice","name":"Voice","type":"int","min":1,"max":16},
+			{"key":"pad1_tune","name":"Kick Tune","type":"int","min":-12,"max":12}]`,
+		"ui_hierarchy": `{"levels":{"root":{"knobs":["gain"],"params":[{"level":"pads","label":"Tone"}]},"pads":{"child_prefix":"pad","child_index_param":"ui_current_voice","knobs":["ui_current_voice","tune"]}}}`}))
+	if has(pads, "ui_current_voice") {
+		t.Fatalf("the child index on a page: %+v", pads.Banks)
+	}
+	for _, b := range pads.Banks {
+		if b.Name == "TONE" {
+			t.Fatalf("a page of the level's per-child names: %+v", pads.Banks)
+		}
+	}
+	if !has(pads, "pad1_tune") {
+		t.Fatalf("a child's own key lost its page: %+v", pads.Banks)
+	}
+	focus := buildMeta("x", getter(map[string]string{
+		"chain_params": `[{"key":"gain","name":"Gain","type":"int","min":0,"max":10},
+			{"key":"focused_voice","name":"Voice","type":"int","min":1,"max":8}]`,
+		"ui_hierarchy": `{"levels":{"root":{"knobs":["gain"],"params":[{"level":"voice","label":"Voice"}]},"voice":{"child_index_param":"focused_voice","knobs":["focused_voice","tune"]}}}`}))
+	if !has(focus, "focused_voice") {
+		t.Fatalf("a choosing index lost its page: %+v", focus.Banks)
+	}
+}
+
 // Schwung's rule: no metadata means no knob, never an invented 0..1 float.
 func TestUnknownKeyIsReadOnly(t *testing.T) {
 	cm := buildMeta("x", getter(map[string]string{"ui_hierarchy": `{"levels":{"root":{"knobs":["mystery"]}}}`}))

@@ -199,6 +199,8 @@ type overrideSet struct {
 	display    goja.Callable // push.display: how the module's values read (nil: Pung's own)
 	dispMu     sync.Mutex
 	dispMemo   map[string][2]string // key|raw -> value, unit ("\x00" in [0]: Pung's own)
+	short      goja.Callable        // push.short: the encoders' names under a screen (nil: the module's)
+	shortMemo  map[string]string    // key -> name ("\x00": the module's own)
 	mu         sync.Mutex           // the VM is one goroutine's at a time: the Push's draw, a web page's
 	// themeSpec: push.theme's object; themes: it resolved, by slot colour
 	themeSpec map[string]any
@@ -443,6 +445,19 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 			panic(vm.NewTypeError("push.display needs a function"))
 		}
 		set.display = fn
+		return goja.Undefined()
+	})
+	// push.short(fn): what an encoder is called in the row under a screen
+	// and on Pung's default pages: fn(key, name) returns a name, or nothing
+	// for the module's. Where the page already says what the knobs belong
+	// to (SIMIAN's KICK / BD TONE), "PITCH" where the module says "Kick
+	// Pitch" and the row would cut it to "KICK PI.".
+	push.Set("short", func(call goja.FunctionCall) goja.Value {
+		fn, ok := goja.AssertFunction(call.Argument(0))
+		if !ok {
+			panic(vm.NewTypeError("push.short needs a function"))
+		}
+		set.short = fn
 		return goja.Undefined()
 	})
 	// push.theme({ground, panel, ink, dim, faint, rule, accent, knob}): the
@@ -1592,6 +1607,49 @@ func overlayDisplay(module, key, raw string) (string, string, bool) {
 	}
 	s.dispMu.Unlock()
 	return val, unit, ok
+}
+
+// overlayShort: an encoder's name as the module's screen file has it
+// (push.short), remembered per key; false: the module's own. Like
+// overlayDisplay, it never waits on a frame being drawn.
+func overlayShort(module, key, name string) (string, bool) {
+	displaySetsMu.Lock()
+	s := displaySets[module]
+	displaySetsMu.Unlock()
+	if s == nil || s.short == nil {
+		return "", false
+	}
+	s.dispMu.Lock()
+	if r, ok := s.shortMemo[key]; ok {
+		s.dispMu.Unlock()
+		return r, r != "\x00"
+	}
+	s.dispMu.Unlock()
+	if !s.mu.TryLock() {
+		return "", false
+	}
+	out := ""
+	if s.failed == "" && !s.off {
+		func() {
+			defer func() { recover() }() //nolint:errcheck // a script error: the module's name
+			r, err := s.short(goja.Undefined(), s.vm.ToValue(key), s.vm.ToValue(name))
+			if err == nil && r != nil && !goja.IsUndefined(r) && !goja.IsNull(r) {
+				out = r.String()
+			}
+		}()
+	}
+	s.mu.Unlock()
+	s.dispMu.Lock()
+	if s.shortMemo == nil || len(s.shortMemo) > 4096 {
+		s.shortMemo = map[string]string{}
+	}
+	if out != "" {
+		s.shortMemo[key] = out
+	} else {
+		s.shortMemo[key] = "\x00"
+	}
+	s.dispMu.Unlock()
+	return out, out != ""
 }
 
 // jsStr: a script value as text, "" where it is missing

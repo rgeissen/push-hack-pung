@@ -202,7 +202,8 @@ back as of the previous restart. Then ask the user to save the Set.
   only inside a cached layer.
 - A value Pung cannot name (a raw value outside the declared range) should be left out, not shown as
   a number that means nothing. A module that answers bare numbers (0..1, a log2 of seconds) reads in its
-  units everywhere through `push.display(fn(key, raw))` in its screen file.
+  units everywhere through `push.display(fn(key, raw))` in its screen file. A long name cut in the row
+  under a band screen ("KICK PI.") gets a short one from `push.short(fn(key, name))`.
 - **`push.theme`**: every instrument's screen file declares its look for Pung's default pages (ground,
   ink, knob style; `src/theme.go`), so a page turn never drops into Pung's grey.
 - **Segments** (`segments: [{id, label, rect, keys}]` on a front panel, `src/segments.go`): Pung draws

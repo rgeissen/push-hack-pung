@@ -504,7 +504,7 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 		nameCol = P.fg
 		rect(img, cx-16, 43, 32, 2, sc)
 	}
-	label(img, cx, 38, fitLabel(strings.ToUpper(m.Name), colW-10), nameCol, 0)
+	label(img, cx, 38, fitLabel(strings.ToUpper(m.pageName()), colW-10), nameCol, 0)
 	val, unit := m.display(v, ok)
 	switch {
 	case m.Type == "enum":
@@ -623,10 +623,7 @@ func (u *surface) drawUnderWidget(img *image.NRGBA, col int, p position, m *para
 	// 16 px between neighbours, so a row of them reads as columns
 	const room = colW - 16
 	val = fitLabel(strings.ToUpper(val), room)
-	name := m.Name
-	if m.Short != "" {
-		name = m.Short
-	}
+	name := m.rowName()
 	if left := room - textWidth(val, nil) - 7; left >= 5*7 {
 		val = fitLabel(strings.ToUpper(name), left) + " " + val
 	}

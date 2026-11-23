@@ -705,6 +705,16 @@ push.compartment({
 });
 
 // ---- FX MOTION: the chain as the sound meets it ----------------------------------------------------------------
+// the pump's gain over one division (tenebrae_fx.h): 1 - depth 0.96 x^2,
+// x falling from 1 to 0 over the first 72 %; drawn -1 (silent) .. 1 (full)
+var PHS_OFF = [0, 0, 0, 0, 0, 0, 0, 0];
+function pumpShape(d) {
+  return cached("pump" + d.toFixed(3), function () {
+    var out = [];
+    for (var i = 0; i < 48; i++) { var x = 1 - c01((i / 48) / 0.72); out.push(2 * (1 - d * 0.96 * x * x) - 1); }
+    return out;
+  });
+}
 var CHORUS_RATES = [[0.513, 0.863], [0.863, 0.863], [0.513, 0.863], [0.63, 6.1], [0.25, 0.863]];
 push.compartment({
   id: "motion", label: "FX Motion",
@@ -721,25 +731,19 @@ push.compartment({
     var cr = CHORUS_RATES[cm];
     g.text(10, 70, ["CLASSIC I", "CLASSIC II", "CLASSIC I + II", "STRING ENSEMBLE", "DIMENSION: WIDE, NO WOBBLE"][cm], cmx > 0.004 ? BONE : DIM, -1, 220);
     g.text(10, 84, "SWEEPS " + cr[0] + (cm === 2 || cm === 3 ? " + " + cr[1] : "") + " HZ", DIM, -1, 220);
-    // phaser: its notches over the band, as deep as Depth; its sweep rate
-    var pd = num(v, "phs_depth", 0), pr = phaserHz(num(v, "phs_rate", 0.3)), ph = hotIn(t, ["phs_depth", "phs_rate"]), notches = [];
-    for (i = 0; i <= 80; i++) { var u = i / 80; notches.push(248 + 216 * u, 26 + pd * 26 * (0.5 - 0.5 * Math.cos(TAU * u * 3))); }
-    g.fill(248, 26, 216, 1, FAINT);
-    g.poly(notches, 2, ph ? "slot" : pd > 0.004 ? BLUE : DIMMER);
-    bar(g, 248, 66, 216, pd, t === "phs_depth" ? "slot" : BLUE);
+    // phaser: its sweep, Pung's LFO in the engine's shape (0.5 + 0.5 sin, free
+    // running: still), as deep as Depth
+    var pd = num(v, "phs_depth", 0), pr = phaserHz(num(v, "phs_rate", 0.3)), ph = hotIn(t, ["phs_depth", "phs_rate"]);
+    // (at Depth 0 the phaser is bypassed and its sweep stands still: flat)
+    g.lfo(238, 13, 236, 50, { shape: pd > 0.004 ? "Sine" : PHS_OFF, name: pd > 0.004 ? "SWEEP" : "OFF", rate: "phs_rate", color: pd > 0.004 ? BLUE : DIMMER });
+    bar(g, 248, 68, 216, pd, t === "phs_depth" ? "slot" : BLUE);
     var per = 1 / pr;
-    g.text(248, 84, "ONE SWEEP " + (per < 1 ? Math.round(per * 1000) + " MS" : per.toFixed(1) + " S"), t === "phs_rate" ? "slot" : DIM, -1, 216);
-    // pump: the duck on every division, back by 72% of it (tenebrae_fx.h)
-    var pu = num(v, "pump", 0), pi = idx(v, "pump_rate", 4), puh = hotIn(t, ["pump", "pump_rate"]), px = 486, pw = 216, top = 22, bot = 64;
-    var beats = PUMP_BEATS[pi], span = 2, pts = [];
-    for (i = 0; i <= 160; i++) {
-      var b = span * i / 160, f = (b / beats) - Math.floor(b / beats), xx = 1 - c01(f / 0.72);
-      pts.push(px + pw * i / 160, top + (bot - top) * (pu * 0.96 * xx * xx));
-    }
-    for (var bt = 0; bt <= span; bt += 0.25) g.fill(px + pw * bt / span, bot + 3, 1, bt % 1 ? 2 : 5, FAINT);
-    g.poly(pts, 2, puh ? "slot" : pu > 0.004 ? BLUE : DIMMER);
-    g.text(px, 84, pu > 0.004 ? "DUCKS " + Math.round(-20 * Math.log(1 - pu * 0.96) / Math.LN10) + " DB EVERY " + PUMP[pi] : "NO PUMP", puh ? "slot" : pu > 0.004 ? BONE : DIM, -1, 170);
-    g.text(px + pw, 84, "2 BEATS", DIMMER, 1);
+    g.text(248, 84, pd > 0.004 ? "260 HZ TO 3.2 KHZ IN " + (per < 1 ? Math.round(per * 1000) + " MS" : per.toFixed(1) + " S") : "NO PHASER", ph ? "slot" : pd > 0.004 ? DIM : DIMMER, -1, 216);
+    // pump: the duck on every division, back by 72% of it (tenebrae_fx.h),
+    // as Pung's LFO in its own shape: it runs on Live's beat
+    var pu = num(v, "pump", 0), pi = idx(v, "pump_rate", 4), puh = hotIn(t, ["pump", "pump_rate"]);
+    g.lfo(476, 13, 236, 58, { shape: pumpShape(pu), name: "PUMP", rate: "pump_rate", color: pu > 0.004 ? BLUE : DIMMER });
+    g.text(486, 84, pu > 0.004 ? "DUCKS " + Math.round(-20 * Math.log(1 - pu * 0.96) / Math.LN10) + " DB EVERY " + PUMP[pi] : "NO PUMP", puh ? "slot" : pu > 0.004 ? BONE : DIM, -1, 216);
     // VHS and Tone: the tape's wear, the tilt
     var vh = num(v, "vhs", 0), tn = num(v, "tone", 0), vx = 724;
     g.text(vx, 30, "VHS", t === "vhs" ? "slot" : vh > 0.004 ? BONE : DIM, -1);

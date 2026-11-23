@@ -205,6 +205,19 @@ push.display(function (key, raw) {
 It is asked once per key and value (remembered), never while a frame of the module's own is being
 drawn (then Pung's own text stands), and a script error means Pung's own text.
 
+### What the encoders are called (`push.short`)
+
+In the row under a band screen a value shares its column with the name, so a long name is cut ("Kick
+Pitch" reads "KICK PI."). Where the page already says what its knobs belong to, the screen file names
+them: `push.short(function (key, name) { ... })` returns the name for that row and for Pung's default
+pages, or nothing for the module's own (its `short` name in the row, else its name). The detail of a
+touched knob keeps the module's full name. Asked once per key, like `push.display`.
+
+```js
+// SIMIAN: a drum's band says "KICK / BD TONE", so its knobs are PITCH, DECAY, ...
+push.short(function (key) { return /^pad\d+_/.test(key) ? nameOf(key) : undefined; });
+```
+
 ## An engine's envelope times (`push.envelopeTimes`)
 
 Pung runs every note through an envelope in time (UX-GUIDELINES.md, *Envelopes*). Where a knob says its

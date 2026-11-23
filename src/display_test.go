@@ -66,3 +66,30 @@ func TestEnumPositionAsFloat(t *testing.T) {
 		t.Errorf("7.0000 stands at %v, want 1", f)
 	}
 }
+
+// push.short names the encoders in the row under a screen and on the default
+// pages; a key it leaves out keeps the module's short name, then its name.
+func TestOverlayShort(t *testing.T) {
+	ov := t.TempDir()
+	os.MkdirAll(filepath.Join(ov, "shortmod"), 0o755)
+	os.WriteFile(filepath.Join(ov, "shortmod", "push_ui.js"), []byte(`
+push.short(function (key, name) { if (key === "pad1_pitch") return "PITCH"; });`), 0o644)
+	root := t.TempDir()
+	dir := filepath.Join(root, "sound_generators", "shortmod")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"shortmod","component_type":"sound_generator"}`), 0o644)
+	if set := newOverrides(ov).get(root, "shortmod"); set == nil || set.failed != "" {
+		t.Fatalf("the screen file does not load: %+v", set)
+	}
+	p := &paramMeta{Key: "pad1_pitch", Name: "Kick Pitch", Short: "K Pitch", module: "shortmod"}
+	if n := p.rowName(); n != "PITCH" {
+		t.Errorf("row: %q, want PITCH", n)
+	}
+	if n := p.pageName(); n != "PITCH" {
+		t.Errorf("page: %q, want PITCH", n)
+	}
+	q := &paramMeta{Key: "pad1_decay", Name: "Kick Decay", Short: "K Decay", module: "shortmod"}
+	if q.rowName() != "K Decay" || q.pageName() != "Kick Decay" {
+		t.Errorf("a key the script leaves out: row %q page %q", q.rowName(), q.pageName())
+	}
+}
