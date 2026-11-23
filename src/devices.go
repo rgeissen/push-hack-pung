@@ -408,8 +408,9 @@ type provider struct {
 	devs    map[int]*device // by chain slot
 	kept    *keptStates     // the devices' states from the Pung before this one
 
-	keepMu      sync.Mutex // the kept-states file: the stop's write is the last
-	keepStopped bool       // under keepMu
+	refusedAt   map[string]time.Time // under mu: when a class's refusal was last logged
+	keepMu      sync.Mutex           // the kept-states file: the stop's write is the last
+	keepStopped bool                 // under keepMu
 }
 
 func newProvider(h *Host, classes []*sclass) *provider {
@@ -452,6 +453,23 @@ func (p *provider) keepLiveInSync() {
 	}
 }
 
+// refusedLog: a refusal, said once a minute a class (Live asks again every second)
+func (p *provider) refusedLog(name, why string) {
+	p.mu.Lock()
+	if p.refusedAt == nil {
+		p.refusedAt = map[string]time.Time{}
+	}
+	at := p.refusedAt[name]
+	now := time.Now()
+	if now.Sub(at) >= time.Minute {
+		p.refusedAt[name] = now
+	}
+	p.mu.Unlock()
+	if now.Sub(at) >= time.Minute {
+		log.Printf("devices: %s waits: %s", name, why)
+	}
+}
+
 func (p *provider) freeSlot() int {
 	for i := 0; i < maxSlots; i++ {
 		if !p.used[i] && p.h.slot(i) == nil {
@@ -468,6 +486,14 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 	}
 	if until, out := p.h.hangs.leftOut(sc.module, time.Now()); out {
 		return nil, fmt.Errorf("%s stopped answering %d times lately: left out until %s", c.Name, hangsToStop, until.Format("15:04"))
+	}
+	var running []string
+	for _, d := range p.list() {
+		running = append(running, d.c.module)
+	}
+	if why := emulatorRefused(sc.module, running); why != "" {
+		p.refusedLog(c.Name, why)
+		return nil, errors.New(why)
 	}
 	p.mu.Lock()
 	slot := p.freeSlot()

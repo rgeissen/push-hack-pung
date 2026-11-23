@@ -122,6 +122,8 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   repository, a package or a public page. Do not point anyone to ROM downloads.
 - Do not load emulators into the user's Set beyond what a test needs. With two emulators running, loading
   a third (OsTIrus in place of a test Xenia, 2026-11-21) left the Push unreachable on the network.
+  Pung now refuses a third (`emulatorRefused`, `limits.go`; a kind that runs one at a time counts
+  once): the device waits, silent, and starts when one is removed (Live's plugin asks every second).
 
 ## When the Push froze: getting an unsaved Set back
 

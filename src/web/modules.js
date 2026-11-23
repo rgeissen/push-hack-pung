@@ -188,7 +188,7 @@
       ? "One instance on the Push: a second one in the Set reports an error and stays silent. Remove the first to use it."
       : "One instance on the Push: a second one in the Set stays silent and says Waiting; it starts the moment the first is removed.";
   }
-  const EMU_TEXT = "An emulated hardware DSP: it takes most of a processor core. Run no more than two emulators at once (three left the Push unreachable).";
+  const EMU_TEXT = "An emulated hardware DSP: it takes most of a processor core. Two emulators run at once: a third waits, silent, until one of them is removed (three left the Push unreachable).";
 
   function action(x) {
     const j = x.job;
