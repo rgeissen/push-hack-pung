@@ -538,9 +538,20 @@ type lfoShape struct {
 	WaveName string
 	Rate     float64
 	Known    bool
-	Touched  string   // "shape", "rate" or ""
-	Live     *lfoLive // its phase as it runs (livefx.go); nil: a still picture
-	Pal      *palette // the module's theme (theme.go); nil: Pung's
+	Touched  string    // "shape", "rate" or ""
+	Live     *lfoLive  // its phase as it runs (livefx.go); nil: a still picture
+	Pal      *palette  // the module's theme (theme.go); nil: Pung's
+	Table    []float64 // one cycle as the engine makes it, -1..1 at evenly spaced phases (a module's own shape: Tenebrae's pump)
+}
+
+// at: the wave at phase ph (cycles): its table where it has one.
+func (l lfoShape) at(ph float64) float64 {
+	if n := len(l.Table); n >= 2 {
+		t := (ph - math.Floor(ph)) * float64(n) // the table is one cycle; it wraps to its start
+		k := int(t) % n
+		return l.Table[k] + (l.Table[(k+1)%n]-l.Table[k])*(t-math.Floor(t))
+	}
+	return lfoValue(l.Wave, ph)
 }
 
 // lfoWave: a wave as the module names it, as one Pung draws. A name Pung
@@ -663,7 +674,7 @@ func drawLFO(img *image.NRGBA, r image.Rectangle, l lfoShape, sc color.NRGBA) {
 	for gx := x0; gx < x1; gx += 6 {
 		aaLine(img, gx, mid, math.Min(gx+3, x1), mid, 1, P.line)
 	}
-	if l.Wave == "" {
+	if l.Wave == "" && len(l.Table) < 2 {
 		label(img, int((x0+x1)/2), int(mid)-6, fitLabel(strings.ToUpper(asciiOnly(l.WaveName)), int(x1-x0)-8), P.dim, 0)
 		return
 	}
@@ -671,7 +682,7 @@ func drawLFO(img *image.NRGBA, r image.Rectangle, l lfoShape, sc color.NRGBA) {
 	var pts [][2]float64
 	step := 1.0
 	for x := x0; x <= x1; x += step {
-		v := lfoValue(l.Wave, n*math.Min((x-x0)/(x1-x0), 0.9999)) // the last pixel ends the cycle, not the next
+		v := l.at(n * math.Min((x-x0)/(x1-x0), 0.9999)) // the last pixel ends the cycle, not the next
 		pts = append(pts, [2]float64{x, mid - v*amp})
 	}
 	fill := P.fillOr(P.mix(accent, 0.28))
@@ -704,7 +715,7 @@ func drawLFO(img *image.NRGBA, r image.Rectangle, l lfoShape, sc color.NRGBA) {
 		if u < 0 {
 			u++
 		}
-		return x0 + (x1-x0)*u, mid - lfoValue(l.Wave, n*math.Min(u, 0.9999))*amp
+		return x0 + (x1-x0)*u, mid - l.at(n*math.Min(u, 0.9999))*amp
 	}
 	for i := 0; i+1 < len(lv.Trail); i++ {
 		x, y := pos(lv.Trail[i])

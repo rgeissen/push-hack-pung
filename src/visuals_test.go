@@ -172,3 +172,14 @@ func TestEnvTableStage(t *testing.T) {
 		t.Errorf("the end: %v, want 1", got)
 	}
 }
+
+// An LFO may carry one cycle as a table: read with wrap-around.
+func TestLFOTable(t *testing.T) {
+	l := lfoShape{Table: []float64{-1, 1}}
+	if got := l.at(0.25); math.Abs(got) > 1e-9 {
+		t.Errorf("a quarter in: %v, want 0 (halfway from -1 to 1)", got)
+	}
+	if got := l.at(0.75); math.Abs(got) > 1e-9 {
+		t.Errorf("three quarters in: %v, want 0 (halfway back from 1 to -1)", got)
+	}
+}

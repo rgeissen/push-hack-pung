@@ -834,6 +834,21 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 	g.Set("lfo", func(call goja.FunctionCall) goja.Value {
 		l := lfoShape{Known: true}
 		if o, ok := call.Argument(4).Export().(map[string]any); ok {
+			// {shape: [..]}: one cycle as the engine makes it, -1..1
+			if tbl, ok := o["shape"].([]any); ok {
+				for _, x := range tbl {
+					switch f := x.(type) {
+					case float64:
+						l.Table = append(l.Table, math.Max(-1, math.Min(1, f)))
+					case int64:
+						l.Table = append(l.Table, math.Max(-1, math.Min(1, float64(f))))
+					}
+				}
+				if t, ok := o["name"].(string); ok {
+					l.WaveName = t
+				}
+				delete(o, "shape")
+			}
 			if v, ok := part(o, "shape", &l.Touched); ok {
 				l.WaveName = v.Display
 				if l.WaveName == "" {
