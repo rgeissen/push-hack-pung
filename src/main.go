@@ -175,6 +175,8 @@ func main() {
 	// DESIGN-v2: every Pung device in Live is a chain instance here, on
 	// push-hack's Live device layer (core/livedevice)
 	sclasses := h.buildClasses()
+	// every parameter where its class last had it: a Set's automation stays on it (stablelayout.go)
+	sclasses = stableLayouts(sclasses, knownClasses(*data))
 	// a class whose layout changed keeps the one a running Live has (classlock.go)
 	sclasses = classesForLive(sclasses, livedevice.ClassesPath(*vst3, "Pung"), filepath.Join(*data, "classes.live.json"),
 		exists(h.mods.path(restartLiveFlag)))

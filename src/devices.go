@@ -151,6 +151,11 @@ func finish(name, kind, category, module, folder string, ps []vstParam, banks []
 		sc.role = append(sc.role, p.Role)
 		sc.gateIdx = append(sc.gateIdx, p.gateIdx)
 	}
+	for i, p := range ps { // which MIDI effect a parameter is of (its identity: stablelayout.go)
+		if p.gate != "" && c.Params[i].Role == "" {
+			c.Params[i].Role = fxRolePrefix + p.gate
+		}
+	}
 	livedevice.PadBanks(c)                    // Push's Bank N is the module's bank N
 	if len(c.Params) > livedevice.MaxParams { // fitLive leaves nothing to cut; never let a bank point past Live's list
 		c.Params = c.Params[:livedevice.MaxParams]

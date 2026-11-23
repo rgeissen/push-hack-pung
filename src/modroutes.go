@@ -169,6 +169,15 @@ func (mm *modMgr) afterStart(base string) {
 
 // ---- retired classes ---------------------------------------------------------------
 
+// knownClasses: every class as last written (classes-known.json).
+func knownClasses(dataDir string) []*livedevice.Class {
+	var known []*livedevice.Class
+	if raw, err := os.ReadFile(filepath.Join(dataDir, "classes-known.json")); err == nil {
+		json.Unmarshal(raw, &known) //nolint:errcheck
+	}
+	return known
+}
+
 // withRetired: the classes of modules that were removed stay in the class
 // file, so Live keeps knowing them: a Set that used one opens (the device is
 // silent), and Live's recovery, which replays the Set's history, does not
@@ -176,10 +185,7 @@ func (mm *modMgr) afterStart(base string) {
 // <data>/classes-known.json.
 func withRetired(dataDir string, current []*livedevice.Class) []*livedevice.Class {
 	p := filepath.Join(dataDir, "classes-known.json")
-	var known []*livedevice.Class
-	if raw, err := os.ReadFile(p); err == nil {
-		json.Unmarshal(raw, &known) //nolint:errcheck
-	}
+	known := knownClasses(dataDir)
 	have := map[string]bool{}
 	for _, c := range current {
 		have[c.UID] = true

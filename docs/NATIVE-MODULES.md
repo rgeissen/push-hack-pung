@@ -45,14 +45,17 @@ It is not a new plugin format. Only where the source lives and what it may assum
 3. **Keep `dsp.so` unloadable:** `-fno-gnu-unique`, `-Wl,--exclude-libs,ALL`, static libstdc++.
 4. **No firmware in the package.** ROMs are the user's; `module.json` `assets` says which files.
 5. **Ship every licence text** of what is linked in, in `licenses/`.
-6. **The parameter list is fixed once released.** Live keeps a device by its class, and the class is
-   made from `chain_params`. Taking a parameter out (Nodal Red's bank knob, before its release) made the
-   device vanish from the open Set at Live's next start. Inserting one (a test class, 2026-11-23, an
-   Apply in between) did not: the device stayed with the new list, and its values followed their keys
-   (Pung's state, then reported to Live). What Live keeps by position, the parameter's index in the
-   class, is what it saves against a parameter: automation, clip envelopes, Macro and MIDI mappings.
-   Every instrument class carries the MIDI effects' parameters after its own, so a new MIDI effect in
-   the catalog moves those too.
+6. **A parameter keeps its place** (`stablelayout.go`, 2026-11-23). Live saves what is made against a
+   parameter (automation, clip envelopes, Macro and MIDI mappings) by its position in the class, and an
+   inserted parameter used to move the rest: measured, a Set opened with its automation on the inserted
+   parameter and its neighbour. Now a class keeps the layout it was last written with
+   (`classes-known.json`): a parameter at its old position, one that is gone a placeholder, a new one
+   after all of them (on an instrument, past the ~165 MIDI-effect parameters, so beyond the 128 Live
+   shows: Pung's view plays it in its page). Measured: the same Set with two parameters inserted opened
+   with the automation where it was recorded. Ids of their own (core `Param.ID`, branch
+   `wip/param-ids`) were tried and dropped: Live 13.0b25 asserts (`flip/src/Float.cpp:114`) opening a
+   Set whose automated device has a parameter at another position, whatever its id. Taking a parameter
+   out of `chain_params` before this (Nodal Red's bank knob) made the device vanish from an open Set.
 7. **Sounds by the contract:** a bank chooser is a level with `items_param` and `select_param`, and the
    list answers `preset_names` (every name of the bank) and `preset_name_<n>`. Then SOUNDS shows banks and
    names without loading a sound. A bank as a plain knob gives a list of one bank.

@@ -121,6 +121,12 @@ is filed under that alias). The Push has no curl: use `wget` on it.
 - **Apply** (`POST :7720/api/catalog/apply`) restarts Pung and **Live**: only on the user's word. It keeps
   the unsaved edits of Pung devices (`armForLiveRestart`, since 2026-11-23; before, an Apply undid them).
   The same restart without the catalog: write `<data>/restart-live-after-start`, restart Pung's service.
+- **Opening a Set file with no one at the Push** (a test): Live's recovery loads
+  `BaseFiles/<name>.als` when the session holds a change (a track added through the Remote Script; a
+  tempo change is not enough) and the base's MD5 matches the 16 bytes stored in `CrashRecoveryInfo.cfg`
+  (offset 1214 on 13.0b25). Freeze Live, put the Set's file in under the base's name, write its MD5
+  there, run `restart-live.sh`: it answers the recovery question. Live 13 on the Push ignores a user
+  default template, and its browser cannot load a Set.
 - **A test that restarts Live runs in a throwaway Set**, never the user's working one: Live recovers the
   Set by replaying its history, and a plugin that changed under it can crash that replay. 2026-11-23: a
   test class's parameter given an id of 935340406, with automation on the device, crashed the recovery
@@ -200,8 +206,11 @@ back as of the previous restart. Then ask the user to save the Set.
   `// <pages>` markers in `push_ui.js` from gearmulator's `parameterDescriptions_*.json` and the LAYOUT at
   its top. Early pages must be full and repeat nothing: Live pads every page to 8 and keeps a limited list.
   `rawmap`: an enum whose options are not its raw values in order (XT effect types 0..7, 32..34).
-- **The parameter list is fixed once released**: changing `chain_params` makes the device vanish from an
-  open Set at Live's next start.
+- **A parameter keeps its place in its class** (`stablelayout.go`): Live saves automation and mappings
+  by position, so a class keeps the layout in `classes-known.json`; a new parameter goes after all the
+  others (on an instrument beyond the 128 Live shows), one that is gone leaves a placeholder. Never
+  reorder a class's list by hand. Parameter ids of their own crash Live 13.0b25 when a parameter moves
+  (NATIVE-MODULES.md rule 6); the attempt is on branch `wip/param-ids`.
 - **Install a module's ROM before the Apply that brings it into Live.** Without firmware the module
   publishes no parameters and Live registers Pung's own instead. A device inserted before an Apply keeps
   its old list length even with new names: count parameters on a freshly inserted device.
