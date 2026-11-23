@@ -38,3 +38,9 @@ target_compile_definitions(vavra-dsp PRIVATE WALDORF_MQ=1)
 target_include_directories(vavra-dsp PRIVATE ${SCHWUNG_SRC} ${SCHWUNG_SRC}/host)
 target_link_libraries(vavra-dsp PRIVATE mqLib synthLib Threads::Threads)
 target_link_options(vavra-dsp PRIVATE -Wl,--exclude-libs,ALL -static-libstdc++ -static-libgcc)
+
+# the emulator, in a process of its own (waldorf_emu.cpp): the plugin starts it
+add_executable(vavra-engine dsp/waldorf_emu.cpp)
+target_compile_definitions(vavra-engine PRIVATE WALDORF_MQ=1)
+target_link_libraries(vavra-engine PRIVATE mqLib synthLib Threads::Threads)
+target_link_options(vavra-engine PRIVATE -static-libstdc++ -static-libgcc)

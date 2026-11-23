@@ -180,8 +180,9 @@ back as of the previous restart. Then ask the user to save the Set.
 - **Vavra and Xenia share `waldorf_engine.cpp`** (identical copies in `native/vavra/dsp` and
   `native/xenia/dsp`, selected by `WALDORF_MQ`/`WALDORF_XT`): edit one, copy, `cmp`.
 - **Emulators run in processes of their own** (`<id>-engine`, NATIVE-MODULES.md rule 1): OsTIrus
-  (`ostirus_shm.h`), Nodal Red (`emu_shm.h`, `emu_host.h`: identical copies in each module that uses
-  them; edit one, copy, `cmp`). A module's executables ship in its package (the recipe copies them).
+  (`ostirus_shm.h`), Nodal Red, Vavra and Xenia (`emu_shm.h`, `emu_host.h`; the Waldorfs also
+  `waldorf_emu.cpp`, `waldorf_family.h`: identical copies in each module that uses them; edit one, copy,
+  `cmp`). A module's executables ship in its package (the recipe copies them).
 - Parameters are generated: `tools/gen_params.py` writes `dsp/<x>_params.h` and the page lists between
   `// <pages>` markers in `push_ui.js` from gearmulator's `parameterDescriptions_*.json` and the LAYOUT at
   its top. Early pages must be full and repeat nothing: Live pads every page to 8 and keeps a limited list.

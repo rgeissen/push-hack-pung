@@ -10,8 +10,9 @@ mkdir -p "$T/g"; cp -a "$R/libs/gearmulator/source" "$T/g/source"
 for p in "$R"/patches/*.patch; do patch -d "$T/g" -p1 < "$p"; done
 cmake -S "$R" -B "$T/build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DGEARMULATOR_SOURCE="$T/g/source" \
     -DSCHWUNG_SRC=/schwung/src -DCMAKE_C_FLAGS="$A" -DCMAKE_CXX_FLAGS="$A"
-cmake --build "$T/build" --target xenia-dsp -j"${BUILD_JOBS:-4}"
+cmake --build "$T/build" --target xenia-dsp xenia-engine -j"${BUILD_JOBS:-4}"
 cp "$T/build/dsp.so" "$D/dsp.so"
+cp "$T/build/xenia-engine" "$D/xenia-engine" # the emulator's own process (dsp/waldorf_emu.cpp)
 cp "$R/module.json" "$D/module.json"
 for f in push_ui.js help.json; do [ -f "$R/$f" ] && cp "$R/$f" "$D/$f"; done
 G=$R/libs/gearmulator

@@ -342,6 +342,17 @@ time (`/dev/shm/pung-vavra.lock`), the firmware found by gearmulator's own loade
   and Braids, all three playing, the Push 53% idle and no dropout of Vavra's own; a sound and its edits
   survive a restart of Pung.
 
+### Vavra and Xenia in processes of their own (Vavra 0.1.4, Xenia 0.1.3, 2026-11-23)
+
+`waldorf_emu.cpp` (identical in both, with `waldorf_family.h`) is the engine, `vavra-engine` or
+`xenia-engine`: it boots the synth from the roms folder, asks it for its sounds when the plugin found no
+sound set (`ASK_LIBRARY`; each dump back through the queue, then `LIBRARY_DONE`), plays the warm-up chord
+with the plugin's sound and renders. Xenia's engine publishes the DSP's wave memory every 100 ms; the
+plugin reads a computed table from two snapshots that agree, and asks the synth for a stored table's
+waves through the queues as before. On the Push, as devices without Live: Xenia (256 sounds asked of
+the synth) and Vavra (the factory set) up in about 3 s, back after `kill -9` in 2-3 s, nothing left
+after a destroy; offline both play, and Xenia's tables draw.
+
 ## Xenia (Waldorf Microwave II/XT)
 
 gearmulator's Microwave II/XT (`xtLib`): a 68000 running Waldorf's OS 2.33 beside one DSP56300, on the

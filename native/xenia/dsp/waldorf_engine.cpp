@@ -4,9 +4,13 @@
 // identical in native/vavra and native/xenia (edit one, copy it over): the two
 // synths are one family, a 68000 running Waldorf's OS beside one DSP56300.
 //
-// Threads. The emulator renders on its own thread into a ring; render_block
-// only reads the ring (OsTIrus' design, docs/NATIVE-MODULES.md). The
-// emulator's own threads are made by that thread and inherit its priority.
+// Processes. The emulator runs in a process of its own, vavra-engine or
+// xenia-engine (waldorf_emu.cpp), and renders into a ring in memory both share
+// (emu_shm.h, emu_host.h); render_block only reads the ring. A hung or
+// crashed emulator then never holds Pung: a stop kills the engine, and an
+// engine that dies is started again. This plugin keeps the sound and talks
+// to the engine through two queues (MIDI and dumps to it, what the synth
+// sends back from it), on a thread of its own (SYNTH_ID "-run").
 //
 // Firmware. gearmulator's own loaders choose the file: the module's roms/
 // folder is where they look (synthLib::RomLoader), so every form they
@@ -48,39 +52,24 @@
 #include <unistd.h>
 
 #include "dsp56kBase/logging.h"
-#include "synthLib/deviceException.h"
 #include "synthLib/midiToSysex.h"
 #include "synthLib/midiTypes.h"
-#include "synthLib/plugin.h"
-#include "synthLib/romLoader.h"
+
+#include "emu_host.h"
+#include "waldorf_family.h"
 
 #include <unordered_map>
 
 #if defined(WALDORF_MQ)
-#include "mqLib/device.h"
-typedef mqLib::Device SynthDevice;
-#define SYNTH_ID "vavra"
-#define SYNTH_NAME "Vavra"
-#define SYNTH_HW "microQ"
-#define FIRMWARE_HINT "the microQ operating system mq_2_23.mid, or a 512 KB microQ ROM"
 #include "mq_params.h" // tools/gen_params.py
 namespace tbl = mq;
 #define HAVE_PARAMS 1
-#elif defined(WALDORF_XT)
-#include "xtLib/xtDevice.h"
-#include "xtLib/xtHardware.h" // the DSP's wave memory (patches/0004: Device::getXt)
-#include "xtLib/xtState.h"
+#else
+#include "xtLib/xtState.h" // a wavetable's and a wave's dumps (wave_view)
 #include <map>
-typedef xt::Device SynthDevice;
-#define SYNTH_ID "xenia"
-#define SYNTH_NAME "Xenia"
-#define SYNTH_HW "Microwave II/XT"
-#define FIRMWARE_HINT "a 256 KB Microwave II/XT ROM (or its two 128 KB halves)"
 #include "xt_params.h" // tools/gen_params.py
 namespace tbl = xtp;
 #define HAVE_PARAMS 1
-#else
-#error "WALDORF_MQ or WALDORF_XT"
 #endif
 
 extern "C" {
@@ -88,40 +77,6 @@ extern "C" {
 }
 
 namespace {
-
-// ---- the family: what differs between the two synths -------------------------
-// (gearmulator's parameterDescriptions_*.json, "midipackets")
-namespace fam {
-const uint8_t WALDORF = 0x3e, OMNI = 0x7f;
-const uint8_t REQUEST_SINGLE = 0x00, SINGLE_DUMP = 0x10, SINGLE_PARAM = 0x20;
-#if defined(WALDORF_MQ)
-const uint8_t MODEL = 0x10;  // microQ
-const int BANKS = 3, SOUNDS = 100; // A, B, C: the internal singles
-const uint8_t BANK0 = 0x40;  // MidiBufferNum::SingleBankA (a dump file may say 0x00: the deprecated A)
-const uint8_t EDIT = 0x20;   // MidiBufferNum::SingleEditBufferSingleMode
-const int DATA = 383;        // a single's bytes, between header and checksum
-const int NAME_AT = 363, NAME_LEN = 16, CAT_AT = 379, CAT_LEN = 4;
-const char *const BANK_NAME[] = {"Bank A", "Bank B", "Bank C"};
-const int CHECKSUM_FROM = 4;      // a dump's checksum: from the command byte (mqState::sendMulti)
-const uint8_t *const BOOT = nullptr; // nothing to say after booting
-const int BOOT_LEN = 0;
-#else
-const uint8_t MODEL = 0x0e;  // Microwave II/XT
-const int BANKS = 2, SOUNDS = 128; // A and B
-const uint8_t BANK0 = 0x00;  // xt::LocationH::SingleBankA
-const uint8_t EDIT = 0x20;   // xt::LocationH::SingleEditBufferSingleMode
-const int DATA = 256;        // a single's bytes, its name the last sixteen
-const int NAME_AT = 240, NAME_LEN = 16, CAT_AT = -1, CAT_LEN = 0;
-const char *const BANK_NAME[] = {"Bank A", "Bank B"};
-const int CHECKSUM_FROM = 7;      // from the first byte of the sound (parameterDescriptions_xt "singledump")
-// The XT boots into Multi mode, and a single sent to the single-mode edit
-// buffer is only played in Single mode: a mode dump says Single
-// (xtController::setPlayMode, sendModeDump)
-const uint8_t BOOT_MSG[] = {0xf0, WALDORF, MODEL, OMNI, 0x17, 0x00, 0xf7};
-const uint8_t *const BOOT = BOOT_MSG;
-const int BOOT_LEN = sizeof(BOOT_MSG);
-#endif
-} // namespace fam
 
 const host_api_v1_t *g_host = nullptr;
 
@@ -148,44 +103,27 @@ int64_t now_us() {
 
 // ---- the instance ---------------------------------------------------------------
 
-const int RING = 4096;  // stereo frames, a power of two
-const int BLOCK = 64;   // frames the emulator renders at a time
-const int AHEAD = 320;  // frames kept ready for the host (7 ms)
-// A sound goes in as a dump, which the synth takes a moment over: the ring
-// is filled this far ahead first, and stays deep a moment after (OsTIrus).
-const int AHEAD_DUMP = 1280; // 29 ms
-// After an underrun the ring stays that deep for a while: whenever the
-// emulator catches up it builds a reserve for the next slow moment, instead
-// of running again with 7 ms in hand. (OsTIrus with a chord renders about
-// 1.2 times as fast as it must, and the Push shares two cores between four
-// threads: a busy moment beside it, and it fell behind, 25 underruns in a
-// burst while played, 2026-11-21.)
-const int64_t MISS_DEEP_US = 3000000;
+const int RING = eshm::RING; // stereo frames, a power of two (the engine renders: waldorf_emu.cpp)
+// An engine that dies is started again, this many times a minute at most
+const int RESTARTS = 3;
 // A block that ends short fades out over its last frames, and the one after
 // it fades in: the gap is a dip, not a click.
 const uint32_t FADE = 32;
 
 struct Instance {
     std::string dir;
-    std::thread emu;
+    // the engine: its process and the memory shared with it, started and
+    // watched by the run thread, which also does what the sound needs of it
+    eshm::Host host;
+    std::thread run;
+    sem_t runWake;
     std::atomic<bool> quit{false};
-    std::atomic<int> loading{1};
     // One emulator of a kind at a time: an instance that finds it taken
     // waits, silent, and says so.
     std::atomic<int> waiting{0};
     bool hasLock = false; // holds the one-at-a-time lock (emu_try_lock)
-    sem_t wake;
-    std::unique_ptr<SynthDevice> device;
-    std::unique_ptr<synthLib::Plugin> plugin;
-    std::mutex plugMu; // plugin exists and may be handed MIDI
-
-    // audio ring: the emulator writes, render_block reads
-    int16_t ring[RING * 2];
-    std::atomic<uint32_t> wr{0}, rd{0};
     std::atomic<uint32_t> underruns{0};
-    std::atomic<int64_t> missAt{0}; // the last underrun (now_us), from render_block
-    bool hole = false;              // render_block's: the block before ended short
-    std::atomic<uint32_t> blockUs{0}, blockMaxUs{0};
+    bool hole = false; // render_block's: the block before ended short
 
     // the sound and the library, under mu
     std::mutex mu;
@@ -198,9 +136,7 @@ struct Instance {
     int bank = 0, preset = 0;
     std::vector<uint8_t> single; // the sound in the edit buffer, as loaded and edited
     bool haveSingle = false;
-    bool pendingLoad = false;             // a sound waits for the emulator to be up
-    std::atomic<bool> dumpPending{false}; // a sound waits for the ring to be deep enough
-    int64_t deepUntil = 0;                // the emulator thread's
+    bool pendingLoad = false; // a sound waits for the library to be read
     char status[160] = "Starting";
     char error[200] = "";
 #if defined(WALDORF_XT)
@@ -213,63 +149,50 @@ struct Instance {
     std::map<uint16_t, std::vector<int8_t>> waves; // wave id -> 128 samples
     std::vector<uint16_t> wavesMissing;      // asked one at a time: the XT drops a burst
     int waveAsked = -1;                      // the wave asked for, until it comes
-    int64_t tableAskedAt = 0, waveAskedAt = 0; // the emulator thread's
+    int64_t tableAskedAt = 0, waveAskedAt = 0; // the run thread's
     // A table the synth computes, as it computed it: read from the DSP's wave
     // memory (read_computed_waves). Under mu.
     std::vector<int8_t> computed;  // 16 positions (0, 4 .. 60), 128 samples each
     int computedFor = -1;          // the table they are of
     bool computedFailed = false;   // the wave memory was not where it should be
-    // the emulator thread's: the wave memory when the table changed, the read before
+    // the run thread's: the wave memory when the table changed, the read
+    // before, and the engine's snapshot last read (its sequence)
     std::vector<int8_t> memAtChange, memPrev;
-    int64_t memReadAt = 0;
+    uint32_t memSeq = 0;
 #endif
 };
 
-void set_status(Instance *in, const char *s) {
-    std::lock_guard<std::mutex> l(in->mu);
-    snprintf(in->status, sizeof(in->status), "%s", s);
-}
-
-void send(Instance *in, synthLib::SMidiEvent &ev) {
-    std::lock_guard<std::mutex> l(in->plugMu);
-    if (in->plugin) in->plugin->addMidiEvent(ev);
+// An event to the engine (a sound goes as a dump: send_single).
+void send(Instance *in, synthLib::SMidiEvent &ev, uint8_t kind = eshm::EVENT) {
+    if (!ev.sysex.empty()) {
+        in->host.send(kind, ev.sysex.data(), ev.sysex.size());
+    } else {
+        const uint8_t b[3] = {ev.a, ev.b, ev.c};
+        in->host.send(kind, b, 3);
+    }
 }
 
 #if defined(WALDORF_XT)
-// The sound's table as the synth plays it. The 68000 writes all 64 slots of
-// the table (its key waves and the crossfades between them; a table the
-// synth computes, its computed waves) into the DSP's external memory, from
-// Y:0x24000 in Single mode, 256 words a slot: 128 samples, then the halved
-// copies down to one. A sample is bits 16..23 of its word, the cycle begun
-// three samples early. Measured 2026-11-22: tables 0 and 5 there are their
-// sysex waves exactly at the key slots, their crossfades in between; it is
-// written over about 170 ms after a sound arrives; with it zeroed the
-// oscillators fall silent. Slot 61 is the fixed triangle in every table: if
-// it is not there, this is not the wave memory. The emulator thread's (the
-// DSP thread writes it meanwhile: a read can catch a table half written).
-const uint32_t WAVE_MEM = 0x24000, WAVE_SLOT = 256, WAVE_LEAD = 3;
-bool read_wave_mem(Instance *in, std::vector<int8_t> &out) {
-    if (!in->device) return false;
-    auto &mem = in->device->getXt().getHardware()->getDSP(0).dsp().memory();
-    auto at = [&](int slot, int i) { return mem.get(dsp56k::MemArea_Y, WAVE_MEM + uint32_t(slot) * WAVE_SLOT + uint32_t(i + WAVE_LEAD) % 128); };
-    for (int i = 0; i < 128; i++) {
-        const int j = i & 63, tri = 2 + 3 * (j < 32 ? j : 63 - j);
-        const uint32_t v = at(61, i);
-        if ((v & 0xffff) || int8_t(v >> 16) != (i < 64 ? tri : -tri)) return false;
-    }
+// The sound's table as the synth plays it: the engine reads the DSP's wave
+// memory (Y:0x24000, waldorf_emu.cpp, publish_wave_mem) every 100 ms into the
+// shared memory. The latest snapshot: true and its 16 positions, or false (not
+// published yet, or the memory was not where it should be: *valid says which).
+bool read_wave_mem(Instance *in, std::vector<int8_t> &out, uint32_t *seq = nullptr, bool *valid = nullptr) {
+    std::vector<uint8_t> b;
+    uint32_t sq = 0;
+    if (valid) *valid = false;
+    if (!in->host.L || !eshm::get_blob(in->host.L, b, WAVE_SNAPSHOT, sq) || sq == 0) return false;
+    if (seq) *seq = sq;
+    if (!b[0]) return false;
+    if (valid) *valid = true;
     out.resize(16 * 128);
-    for (int p = 0; p < 16; p++)
-        for (int i = 0; i < 128; i++) {
-            const uint32_t v = at(p * 4, i);
-            if (v & 0xffff) return false;
-            out[size_t(p * 128 + i)] = int8_t(v >> 16);
-        }
+    for (size_t i = 0; i < out.size(); i++) out[i] = int8_t(b[1 + i]);
     return true;
 }
 
-// The emulator thread's, after ask_waves: a computed table's waves, once the
-// synth has written them (the same in two reads 100 ms apart, and not still
-// the table before; that one only after 1.5 s, the new table being as it).
+// The run thread's, after ask_waves: a computed table's waves, once the
+// synth has written them (the same in two snapshots 100 ms apart, and not
+// still the table before; that one only after 1.5 s, the new table being as it).
 void read_computed_waves(Instance *in) {
     int64_t since;
     int t;
@@ -280,12 +203,16 @@ void read_computed_waves(Instance *in) {
         since = in->tableAskedAt;
     }
     const int64_t now = now_us();
-    if (now - since < 250000 || now - in->memReadAt < 100000) return;
-    in->memReadAt = now;
+    if (now - since < 250000) return;
     std::vector<int8_t> w;
-    if (!read_wave_mem(in, w)) {
+    uint32_t seq = 0;
+    bool valid = false;
+    read_wave_mem(in, w, &seq, &valid);
+    if (seq == 0 || seq == in->memSeq) return; // no new snapshot yet
+    in->memSeq = seq;
+    if (!valid) {
         if (now - since > 3000000) {
-            plog("no wave memory at Y:%x: table %d is named, not drawn", unsigned(WAVE_MEM), t);
+            plog("no wave memory at Y:24000: table %d is named, not drawn", t);
             std::lock_guard<std::mutex> l(in->mu);
             in->computedFailed = true;
         }
@@ -302,7 +229,7 @@ void read_computed_waves(Instance *in) {
     in->computedFor = t;
 }
 
-// mu held: the emulator thread asks for what the screen needs of the wavetable
+// mu held: the run thread asks for what the screen needs of the wavetable
 void ask_waves(Instance *in) {
     if (!in->haveSingle) return;
     if (!in->wavesMissing.empty() && (in->waveAsked < 0 || now_us() - in->waveAskedAt > 200000)) {
@@ -339,8 +266,8 @@ void ask_waves(Instance *in) {
 }
 
 // an answer of the synth's: a table, or a wave of it
-void take_wave_answer(Instance *in, const synthLib::SMidiEvent &e) {
-    const auto &sx = e.sysex;
+void take_wave_answer(Instance *in, const std::vector<uint8_t> &bytes) {
+    synthLib::SysexBuffer sx(bytes.begin(), bytes.end());
     if (sx.size() < 8 || sx[1] != 0x3e || sx[2] != 0x0e) return;
     if (sx[4] == 0x13) { // a table
         xt::TableData table;
@@ -424,16 +351,6 @@ std::string wave_view(const Instance *in) {
 }
 #endif
 
-// What goes past the headroom bends instead of breaking (Nodal Red 2X: a
-// hard corner is a click on every peak).
-inline float soft_limit(float v) {
-    const float knee = 24576.f, room = 32767.f - knee;
-    const float a = v < 0 ? -v : v;
-    if (a <= knee) return v;
-    const float o = knee + room * std::tanh((a - knee) / room);
-    return v < 0 ? -o : o;
-}
-
 // ---- sounds ----------------------------------------------------------------------
 
 std::string text_at(const std::vector<uint8_t> &d, int at, int n) {
@@ -471,7 +388,7 @@ void send_single(Instance *in) {
     for (size_t i = size_t(fam::CHECKSUM_FROM); i < ev.sysex.size(); i++) sum = uint8_t(sum + ev.sysex[i]);
     ev.sysex.push_back(sum & 0x7f);
     ev.sysex.push_back(0xf7);
-    send(in, ev);
+    send(in, ev, eshm::DUMP); // the engine sends it with the ring deep (AHEAD_DUMP), and plays it in its warm-up
 }
 
 // mu held. A sound of the library becomes the device's sound.
@@ -487,19 +404,8 @@ bool load_sound(Instance *in, int bank, int preset) {
     if (d.empty()) return false;
     in->single = d;
     in->haveSingle = true;
-    if (in->loading.load()) in->pendingLoad = true;
-    else in->dumpPending = true; // the emulator thread sends it, with the ring deep (AHEAD_DUMP)
+    send_single(in);
     return true;
-}
-
-// A single dump: its bank letter (0 = A) and place, or false.
-template <typename Bytes> // a SysexBuffer (a pmr vector) or a plain one
-bool single_dump(const Bytes &s, int &bank, int &place) {
-    if (fam::DATA == 0 || s.size() != size_t(fam::DATA + 9) || s[1] != fam::WALDORF || s[2] != fam::MODEL || s[4] != fam::SINGLE_DUMP)
-        return false;
-    bank = s[5] >= fam::BANK0 ? s[5] - fam::BANK0 : s[5];
-    place = s[6];
-    return bank >= 0 && bank < 26 && place < 128;
 }
 
 // The sound sets in the module's sounds/ folder: every file's single dumps,
@@ -541,77 +447,6 @@ std::vector<Instance::Bank> read_sets(const std::string &dir) {
         }
     }
     return out;
-}
-
-// The emulator thread's, before audio: the sets, else the synth is asked for
-// every sound, one at a time, and the emulator runs until each answer is in.
-void read_library(Instance *in) {
-    set_status(in, "Reading the sounds");
-    auto sets = read_sets(in->dir + "/sounds");
-    if (!sets.empty()) {
-        std::lock_guard<std::mutex> l(in->mu);
-        in->banks = std::move(sets);
-        return;
-    }
-    if (fam::BANKS == 0) return;
-    float buf[12][BLOCK];
-    synthLib::TAudioInputs ins{};
-    synthLib::TAudioOutputs outs{};
-    for (size_t i = 0; i < outs.size() && i < 12; i++) outs[i] = buf[i];
-    float silent[BLOCK] = {0};
-    for (size_t i = 0; i < ins.size(); i++) ins[i] = silent;
-    std::vector<synthLib::SMidiEvent> midiOut;
-    std::vector<Instance::Bank> lib(size_t(fam::BANKS));
-    for (int b = 0; b < fam::BANKS; b++) {
-        lib[size_t(b)].name = fam::BANK_NAME[b];
-        lib[size_t(b)].sounds.resize(size_t(fam::SOUNDS));
-    }
-    const int64_t t0 = now_us();
-    int got = 0;
-    // PUNG_SCAN_LOG: every answer and its time in the synth's own clock, and no early end
-    const bool scanLog = getenv("PUNG_SCAN_LOG") != nullptr;
-    for (int b = 0; b < fam::BANKS && !in->quit.load() && !(got == 0 && b > 0); b++) {
-        char st[80];
-        snprintf(st, sizeof(st), "Reading the sounds: %s", fam::BANK_NAME[b]);
-        set_status(in, st);
-        int misses = 0; // a bank with fewer sounds than places (the XT's B has 100 of 128): three gaps end it
-        for (int p = 0; p < fam::SOUNDS && !in->quit.load() && !(got == 0 && p > 0); p++) { // nothing for the first: nothing there
-            synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
-            ev.sysex = {0xf0, fam::WALDORF, fam::MODEL, fam::OMNI, fam::REQUEST_SINGLE, uint8_t(fam::BANK0 + b), uint8_t(p), 0xf7};
-            send(in, ev);
-            // the first answer waits for the OS to settle, and a bank's first for the
-            // synth to turn to it (the XT's B came after the A run's timeout); the
-            // others come quickly
-            const int limit = got == 0 || p == 0 ? 44100 * 10 / BLOCK : 44100 * 2 / BLOCK;
-            bool done = false;
-            for (int k = 0; k < limit && !done && !in->quit.load(); k++) {
-                in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
-                midiOut.clear();
-                in->plugin->getMidiOut(midiOut);
-                for (const auto &e : midiOut) {
-                    const auto &s = e.sysex;
-                    int rb, rp;
-                    if (scanLog && s.size() > 6)
-                        plog("asked %c%d, after %d ms: %d bytes, %02x %02x %02x", 'A' + b, p + 1, k * BLOCK * 1000 / 44100, int(s.size()),
-                             s[4], s[5], s[6]);
-                    if (!single_dump(s, rb, rp) || rb >= fam::BANKS || rp >= fam::SOUNDS) continue;
-                    lib[size_t(rb)].sounds[size_t(rp)].assign(s.begin() + 7, s.begin() + 7 + fam::DATA);
-                    if (rb == b && rp == p) done = true;
-                }
-            }
-            if (done) {
-                got++;
-                misses = 0;
-            } else if (++misses >= 3 && !scanLog) {
-                plog("%s ends before sound %d", fam::BANK_NAME[b], p - 1);
-                break;
-            }
-        }
-    }
-    plog("the synth gave %d sounds in %d ms", got, int((now_us() - t0) / 1000));
-    if (got == 0) return; // no sound set, and none in the synth: no list
-    std::lock_guard<std::mutex> l(in->mu);
-    in->banks = std::move(lib);
 }
 
 // ---- the emulator ---------------------------------------------------------------
@@ -658,167 +493,111 @@ static void emu_unlock() {
     g_emuLockHeld = false;
 }
 
-void emu_main(Instance *in) {
-    pthread_setname_np(pthread_self(), SYNTH_ID);
-    // Below the host's audio threads, above everything ordinary (OsTIrus).
-    sched_param sp{};
-    sp.sched_priority = 45;
-    if (sched_setscheduler(0, SCHED_FIFO, &sp) != 0) plog("no realtime priority for the emulator (%s)", strerror(errno));
-
+void run_main(Instance *in) {
+    pthread_setname_np(pthread_self(), SYNTH_ID "-run");
     while (!in->hasLock && !(in->hasLock = emu_try_lock())) {
-        if (!in->waiting.exchange(1)) {
-            set_status(in, "Waiting: another " SYNTH_NAME " is running, one at a time");
-            plog("another instance has the emulator; waiting for it");
-        }
+        if (!in->waiting.exchange(1)) plog("another instance has the emulator; waiting for it");
         if (in->quit.load()) return;
         usleep(300000);
     }
     in->waiting = 0;
     if (in->quit.load()) return;
-    set_status(in, "Booting the " SYNTH_HW);
-
-    synthLib::RomLoader::addSearchPath(in->dir + "/roms");
-    const int64_t t0 = now_us();
-    try {
-        synthLib::DeviceCreateParams p;
-        p.hostSamplerate = 44100.0f;
-        p.customData = 0; // no voice expansion: one DSP
-        in->device.reset(new SynthDevice(p));
-        if (!in->device->isValid()) throw synthLib::DeviceException(synthLib::DeviceError::FirmwareMissing);
-        std::unique_ptr<synthLib::Plugin> pl(new synthLib::Plugin(in->device.get(), [](synthLib::Device *d) { return d; }));
-        pl->setHostSamplerate(44100.0f, 0.0f);
-        pl->setBlockSize(BLOCK);
-        std::lock_guard<std::mutex> l(in->plugMu);
-        in->plugin = std::move(pl);
-    } catch (const synthLib::DeviceException &e) {
-        std::lock_guard<std::mutex> l(in->mu);
-        if (e.errorCode() == synthLib::DeviceError::FirmwareMissing) {
-            snprintf(in->error, sizeof(in->error), "No firmware: put %s into the module's roms folder", FIRMWARE_HINT);
-            snprintf(in->status, sizeof(in->status), "Firmware missing");
-        } else {
-            snprintf(in->error, sizeof(in->error), "The emulator did not start: %s", e.what());
-            snprintf(in->status, sizeof(in->status), "Failed");
-        }
-        in->device.reset();
-        in->loading = 0;
-        return;
-    } catch (const std::exception &e) {
-        std::lock_guard<std::mutex> l(in->mu);
-        snprintf(in->error, sizeof(in->error), "The emulator did not start: %s", e.what());
-        snprintf(in->status, sizeof(in->status), "Failed");
-        in->device.reset();
-        in->loading = 0;
-        return;
-    }
-    plog("booted in %d ms", int((now_us() - t0) / 1000));
-    if (fam::BOOT) {
-        synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host);
-        ev.sysex.assign(fam::BOOT, fam::BOOT + fam::BOOT_LEN);
-        send(in, ev);
-    }
-    read_library(in);
+    // the sound sets: the library, without the synth (else the engine asks it)
+    auto sets = read_sets(in->dir + "/sounds");
     {
         std::lock_guard<std::mutex> l(in->mu);
-        // a sound a Set gave back, else the one asked for, else the first
-        if (!in->haveSingle) load_sound(in, in->bank, in->preset);
-        if (!in->haveSingle) load_sound(in, 0, 0);
-        in->pendingLoad = false;
-        snprintf(in->status, sizeof(in->status), "Warming up the " SYNTH_HW);
+        if (!sets.empty()) in->banks = std::move(sets);
     }
-    // Warm-up, before the first note anyone hears (OsTIrus): the DSP
-    // emulator compiles the synth's code the first time it runs it, and the
-    // first chords after a start underran the ring while it did (seven in a
-    // minute's playing, a block taking 22 ms, none once warm; measured
-    // 2026-11-20). The sound is loaded and a chord played, unheard.
-    {
-        float wb[12][BLOCK];
-        synthLib::TAudioInputs wi{};
-        synthLib::TAudioOutputs wo{};
-        float z[BLOCK] = {0};
-        for (size_t i = 0; i < wo.size() && i < 12; i++) wo[i] = wb[i];
-        for (size_t i = 0; i < wi.size(); i++) wi[i] = z;
-        std::vector<synthLib::SMidiEvent> sink;
-        auto run = [&](double seconds) {
-            for (int b = 0; b < int(44100 * seconds / BLOCK) && !in->quit.load(); b++) {
-                in->plugin->process(wi, wo, BLOCK, 120.0f, 0.0f, false);
-                sink.clear();
-                in->plugin->getMidiOut(sink);
-            }
-        };
+    eshm::Layout *L = in->host.L;
+    const std::string exe = in->dir + "/" SYNTH_ID "-engine", roms = in->dir + "/roms";
+    bool askLibrary = false, libraryIn = false;
+    std::vector<Instance::Bank> lib;
+    int got = 0;
+    auto spawn = [&]() -> bool {
+        int gain;
         {
             std::lock_guard<std::mutex> l(in->mu);
-            send_single(in);
+            gain = in->gain;
+            askLibrary = in->banks.empty() && fam::BANKS > 0;
         }
-        run(0.3);
-        const uint8_t notes[] = {36, 48, 55, 60, 64, 67, 72, 79};
-        for (uint8_t n : notes) {
-            synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, 0x90, n, 100);
-            send(in, ev);
+        libraryIn = false;
+        lib.assign(size_t(fam::BANKS), Instance::Bank());
+        for (int b = 0; b < fam::BANKS; b++) {
+            lib[size_t(b)].name = fam::BANK_NAME[b];
+            lib[size_t(b)].sounds.resize(size_t(fam::SOUNDS));
         }
-        run(1.5);
-        synthLib::SMidiEvent off(synthLib::MidiEventSource::Host, 0xb0, 123, 0); // all notes off
-        send(in, off);
-        run(1.0);
-    }
-    {
-        std::lock_guard<std::mutex> l(in->mu);
-        if (in->haveSingle) in->dumpPending = true; // again, for the sound to start clean
-        snprintf(in->status, sizeof(in->status), SYNTH_HW);
-        in->loading = 0;
-    }
-
-    float buf[12][BLOCK];
-    synthLib::TAudioInputs ins{};
-    synthLib::TAudioOutputs outs{};
-    for (size_t i = 0; i < outs.size() && i < 12; i++) outs[i] = buf[i];
-    float silent[BLOCK] = {0};
-    for (size_t i = 0; i < ins.size(); i++) ins[i] = silent;
-    std::vector<synthLib::SMidiEvent> midiOut;
-
-    while (!in->quit.load(std::memory_order_relaxed)) {
-        uint32_t fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
-        if (in->dumpPending.load() && fill >= uint32_t(AHEAD_DUMP)) {
-            std::lock_guard<std::mutex> l(in->mu);
-            in->dumpPending = false;
-            send_single(in);
-            in->deepUntil = now_us() + 2500000;
-        }
-        const int64_t tnow = now_us(), miss = in->missAt.load(std::memory_order_relaxed);
-        const bool deep = in->dumpPending.load() || tnow < in->deepUntil || (miss && tnow - miss < MISS_DEEP_US);
-        const uint32_t target = deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
-        while (fill < target && !in->quit.load(std::memory_order_relaxed)) {
-            const int64_t b0 = now_us();
-            for (auto &b : buf) memset(b, 0, sizeof(b));
-            in->plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
-            midiOut.clear();
-            in->plugin->getMidiOut(midiOut);
+        got = 0;
+        L->aux[ASK_LIBRARY] = askLibrary ? 1 : 0;
+        L->aux[LIBRARY_DONE] = 0;
 #if defined(WALDORF_XT)
-            for (const auto &e : midiOut)
-                if (!e.sysex.empty()) {
-                    if (getenv("PUNG_SCAN_LOG") && e.sysex.size() > 6)
-                        fprintf(stderr, "sysex out: %zu bytes cmd %02x %02x %02x\n", e.sysex.size(), e.sysex[4], e.sysex[5], e.sysex[6]);
-                    take_wave_answer(in, e);
+        in->memSeq = 0;
+#endif
+        const int err = in->host.spawn(exe, roms, 0, gain);
+        if (err) {
+            std::lock_guard<std::mutex> l(in->mu);
+            snprintf(in->error, sizeof(in->error), "The emulator could not be started (%s: %s)", exe.c_str(), strerror(err));
+            snprintf(in->status, sizeof(in->status), "Failed");
+            return false;
+        }
+        plog("engine started (pid %d)", int(in->host.pid.load()));
+        return true;
+    };
+    if (!spawn()) return;
+    std::vector<int64_t> deaths;
+    std::vector<uint8_t> e;
+    while (!in->quit.load()) {
+        char why[64];
+        if (in->host.died(why, sizeof(why))) {
+            if (in->quit.load()) break;
+            if (L->phase.load() == eshm::FAILED) break; // it said why: no use starting it again
+            const int64_t t = now_us();
+            deaths.erase(std::remove_if(deaths.begin(), deaths.end(), [&](int64_t d) { return t - d > 60000000; }), deaths.end());
+            deaths.push_back(t);
+            if (int(deaths.size()) > RESTARTS) {
+                plog("the engine stopped (%s), %d times in a minute: not starting it again", why, int(deaths.size()));
+                std::lock_guard<std::mutex> l(in->mu);
+                snprintf(in->error, sizeof(in->error), "The emulator stopped %d times in a minute (%s)", int(deaths.size()), why);
+                snprintf(in->status, sizeof(in->status), "Failed");
+                break;
+            }
+            plog("the engine stopped (%s): starting it again", why);
+            if (!spawn()) break;
+        }
+        // what the synth sent: the sounds it was asked for, a wavetable's answers
+        uint8_t kind;
+        while (eshm::take(L->fromEngine, kind, e)) {
+            int rb, rp;
+            if (askLibrary && !libraryIn && single_dump(e, rb, rp)) {
+                if (rb < fam::BANKS && rp < fam::SOUNDS && lib[size_t(rb)].sounds[size_t(rp)].empty()) {
+                    lib[size_t(rb)].sounds[size_t(rp)].assign(e.begin() + 7, e.begin() + 7 + fam::DATA);
+                    got++;
                 }
+                continue;
+            }
+#if defined(WALDORF_XT)
+            take_wave_answer(in, e);
+#endif
+        }
+        if (!libraryIn && L->aux[LIBRARY_DONE].load(std::memory_order_acquire)) {
+            // the library is in: a sound a Set gave back, else the one asked
+            // for, else the first, to the engine for its warm-up
+            libraryIn = true;
+            std::lock_guard<std::mutex> l(in->mu);
+            if (askLibrary && got > 0) in->banks = std::move(lib);
+            if (!in->haveSingle) load_sound(in, in->bank, in->preset);
+            if (!in->haveSingle) load_sound(in, 0, 0);
+            in->pendingLoad = false;
+            send_single(in);
+        }
+#if defined(WALDORF_XT)
+        if (in->host.playing()) {
             {
                 std::lock_guard<std::mutex> l(in->mu);
                 ask_waves(in);
             }
             read_computed_waves(in);
-#endif
-            // 6 dB of headroom, and a soft limiter above 3/4 of full scale
-            const float g = float(in->gain) * 0.01f * 0.5f * 32767.0f;
-            const uint32_t w = in->wr.load(std::memory_order_relaxed);
-            for (int i = 0; i < BLOCK; i++) {
-                const uint32_t k = (w + uint32_t(i)) & (RING - 1);
-                in->ring[k * 2] = int16_t(lrintf(soft_limit(buf[0][i] * g)));
-                in->ring[k * 2 + 1] = int16_t(lrintf(soft_limit(buf[1][i] * g)));
-            }
-            in->wr.store(w + BLOCK, std::memory_order_release);
-            const uint32_t us = uint32_t(now_us() - b0);
-            in->blockUs.store(us, std::memory_order_relaxed);
-            if (us > in->blockMaxUs.load(std::memory_order_relaxed)) in->blockMaxUs.store(us, std::memory_order_relaxed);
-            fill = in->wr.load(std::memory_order_relaxed) - in->rd.load(std::memory_order_acquire);
         }
+#endif
         timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_nsec += 2000000;
@@ -826,33 +605,28 @@ void emu_main(Instance *in) {
             ts.tv_sec++;
             ts.tv_nsec -= 1000000000;
         }
-        sem_timedwait(&in->wake, &ts);
+        sem_timedwait(&in->runWake, &ts);
     }
 }
 
-void start(Instance *in) {
-    in->quit = false;
-    in->loading = 1;
-    in->emu = std::thread(emu_main, in);
-}
-
-void stop(Instance *in) {
-    in->quit = true;
-    sem_post(&in->wake);
-    if (in->emu.joinable()) in->emu.join();
+// status and error: the waiting, the plugin's own (a failure to start the
+// engine), else the engine's
+void texts(Instance *in, char *st, size_t ns, char *err, size_t ne) {
     {
-        std::lock_guard<std::mutex> l(in->plugMu);
-        in->plugin.reset();
+        std::lock_guard<std::mutex> l(in->mu);
+        if (in->waiting.load()) {
+            snprintf(st, ns, "Waiting: another " SYNTH_NAME " is running, one at a time");
+            snprintf(err, ne, "%s", "");
+            return;
+        }
+        if (in->error[0] || !in->host.L || (!in->host.pid.load() && in->host.L->phase.load() != eshm::FAILED)) {
+            snprintf(st, ns, "%s", in->status);
+            snprintf(err, ne, "%s", in->error);
+            return;
+        }
     }
-    in->device.reset();
-    if (in->hasLock) {
-        emu_unlock(); // the emulator is gone: the next instance may start
-        in->hasLock = false;
-    }
-    in->wr = 0;
-    in->rd = 0;
+    eshm::get_text(in->host.L, st, ns, err, ne);
 }
-
 
 // ---- parameters ------------------------------------------------------------------
 // Every one is bits of a byte of the single (tbl::Param: byte, mask, shift),
@@ -952,7 +726,7 @@ void param_set(Instance *in, const tbl::Param &knob, const char *val) {
     uint8_t &b = in->single[size_t(p->byte)];
     if (p->mask) b = uint8_t((b & ~(p->mask << p->shift)) | ((raw & p->mask) << p->shift));
     else b = uint8_t(raw);
-    if (!in->loading.load()) send_byte(in, p->byte);
+    if (in->host.playing()) send_byte(in, p->byte); // (else the dump the engine plays next carries it)
 }
 
 // mu held: an effect slot's knobs as the type makes them, "|" between
@@ -992,7 +766,10 @@ int hexv(char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' 
 // mu held
 void set_state(Instance *in, const char *val) {
     std::string s;
-    if (json_field(val, "gain", s)) in->gain = std::max(1, std::min(200, atoi(s.c_str())));
+    if (json_field(val, "gain", s)) {
+        in->gain = std::max(1, std::min(200, atoi(s.c_str())));
+        if (in->host.L) in->host.L->gain = in->gain;
+    }
     if (json_field(val, "bank", s)) in->bank = std::max(0, atoi(s.c_str()));
     if (json_field(val, "preset", s)) in->preset = std::max(0, atoi(s.c_str()));
     std::string hex;
@@ -1005,8 +782,7 @@ void set_state(Instance *in, const char *val) {
         }
         in->single = std::move(d);
         in->haveSingle = true;
-        if (in->loading.load()) in->pendingLoad = true;
-        else in->dumpPending = true;
+        send_single(in);
     }
 }
 
@@ -1015,23 +791,32 @@ void set_state(Instance *in, const char *val) {
 void *v2_create(const char *module_dir, const char *) {
     Instance *in = new Instance();
     in->dir = module_dir ? module_dir : ".";
-    memset(in->ring, 0, sizeof(in->ring));
-    sem_init(&in->wake, 0, 0);
-    start(in);
+    sem_init(&in->runWake, 0, 0);
+    if (!in->host.make("pung-" SYNTH_ID)) {
+        snprintf(in->error, sizeof(in->error), "No memory for the emulator (%s)", strerror(errno));
+        snprintf(in->status, sizeof(in->status), "Failed");
+        return in;
+    }
+    in->run = std::thread(run_main, in);
     return in;
 }
 
 void v2_destroy(void *instance) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in) return;
-    stop(in);
-    sem_destroy(&in->wake);
+    in->quit = true;
+    sem_post(&in->runWake);
+    if (in->run.joinable()) in->run.join(); // (it waits 2 ms at a time)
+    if (in->host.end()) plog("engine stopped");
+    if (in->hasLock) emu_unlock(); // the emulator is gone: the next instance may start
+    in->host.free();
+    sem_destroy(&in->runWake);
     delete in;
 }
 
 void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
     Instance *in = static_cast<Instance *>(instance);
-    if (!in || len < 2 || in->loading.load()) return;
+    if (!in || len < 2 || !in->host.playing()) return;
     const uint8_t st = msg[0] & 0xf0;
     const uint8_t d1 = msg[1] & 0x7f, d2 = len > 2 ? (msg[2] & 0x7f) : 0;
     switch (st) {
@@ -1073,6 +858,7 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         load_sound(in, n, 0); // as on the synth: a bank's first sound, so the list and the sound agree
     } else if (!strcmp(key, "gain")) {
         in->gain = std::max(1, std::min(200, atoi(val)));
+        if (in->host.L) in->host.L->gain = in->gain;
 #if HAVE_PARAMS
     } else if (const tbl::Param *p = find_param(key)) {
         if (in->haveSingle) param_set(in, *p, val);
@@ -1102,13 +888,19 @@ int bank_size(const Instance *in) {
 int v2_get_param(void *instance, const char *key, char *buf, int len) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !buf || len <= 0) return -1;
-    if (!strcmp(key, "debug_info"))
-        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u", in->underruns.load(), in->blockUs.load(),
-                        in->blockMaxUs.exchange(0), in->wr.load() - in->rd.load());
+    if (!strcmp(key, "debug_info")) {
+        eshm::Layout *L = in->host.L;
+        if (!L) return snprintf(buf, size_t(len), "underruns=%u", in->underruns.load());
+        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u engine_pid=%d", in->underruns.load(),
+                        L->blockUs.load(), L->blockMaxUs.exchange(0), L->wr.load() - L->rd.load(), int(in->host.pid.load()));
+    }
+    if (!strcmp(key, "status") || !strcmp(key, "load_error")) {
+        char st[160], err[200];
+        texts(in, st, sizeof(st), err, sizeof(err));
+        return snprintf(buf, size_t(len), "%s", !strcmp(key, "status") ? st : err);
+    }
     std::lock_guard<std::mutex> l(in->mu);
     const int nb = int(in->banks.size()), ns = bank_size(in);
-    if (!strcmp(key, "status")) return snprintf(buf, size_t(len), "%s", in->status);
-    if (!strcmp(key, "load_error")) return snprintf(buf, size_t(len), "%s", in->error);
     if (!strcmp(key, "gain")) return snprintf(buf, size_t(len), "%d", in->gain);
     if (!strcmp(key, "preset")) return snprintf(buf, size_t(len), "%d", in->preset);
     if (!strcmp(key, "preset_count")) return snprintf(buf, size_t(len), "%d", ns);
@@ -1265,28 +1057,30 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
 int v2_get_error(void *instance, char *buf, int len) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !buf || len <= 0) return 0;
-    std::lock_guard<std::mutex> l(in->mu);
-    if (!in->error[0]) {
+    char st[160], err[200];
+    texts(in, st, sizeof(st), err, sizeof(err));
+    if (!err[0]) {
         buf[0] = 0;
         return 0;
     }
-    return snprintf(buf, size_t(len), "%s", in->error);
+    return snprintf(buf, size_t(len), "%s", err);
 }
 
 void v2_render(void *instance, int16_t *out, int frames) {
     Instance *in = static_cast<Instance *>(instance);
     if (!out || frames <= 0) return;
-    if (!in || in->loading.load(std::memory_order_relaxed) || !in->device) {
+    if (!in || !in->host.playing()) {
         memset(out, 0, size_t(frames) * 2 * sizeof(int16_t));
         return;
     }
-    const uint32_t r = in->rd.load(std::memory_order_relaxed);
-    const uint32_t have = in->wr.load(std::memory_order_acquire) - r;
+    eshm::Layout *L = in->host.L;
+    const uint32_t r = L->rd.load(std::memory_order_relaxed);
+    const uint32_t have = L->wr.load(std::memory_order_acquire) - r;
     const uint32_t n = std::min<uint32_t>(have, uint32_t(frames));
     for (uint32_t i = 0; i < n; i++) {
         const uint32_t k = (r + i) & (RING - 1);
-        out[i * 2] = in->ring[k * 2];
-        out[i * 2 + 1] = in->ring[k * 2 + 1];
+        out[i * 2] = L->ring[k * 2];
+        out[i * 2 + 1] = L->ring[k * 2 + 1];
     }
     if (in->hole && n > 0) { // the block before ended short: back in with a fade
         const uint32_t f = std::min<uint32_t>(n, FADE);
@@ -1306,10 +1100,10 @@ void v2_render(void *instance, int16_t *out, int frames) {
         memset(out + n * 2, 0, size_t(uint32_t(frames) - n) * 2 * sizeof(int16_t));
         in->hole = true;
         in->underruns.fetch_add(1, std::memory_order_relaxed);
-        in->missAt.store(now_us(), std::memory_order_relaxed);
+        L->missAt.store(now_us(), std::memory_order_relaxed);
     }
-    in->rd.store(r + n, std::memory_order_release);
-    sem_post(&in->wake);
+    L->rd.store(r + n, std::memory_order_release);
+    sem_post(&L->wake);
 }
 
 plugin_api_v2_t g_api;

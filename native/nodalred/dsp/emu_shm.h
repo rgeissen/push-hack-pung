@@ -21,7 +21,7 @@
 namespace eshm {
 
 const uint32_t MAGIC = 0x454d5531; // "EMU1"
-const uint32_t VERSION = 1;
+const uint32_t VERSION = 2;
 
 const int RING = 4096;      // stereo frames, a power of two
 const int QUEUE = 1 << 16;  // bytes a queue holds
@@ -67,8 +67,11 @@ struct Layout {
     char error[200];
     std::atomic<uint32_t> blockUs, blockMaxUs;
     Queue fromEngine; // what the synth sent (sysex): answers to the plugin's requests
-    std::atomic<uint32_t> blobSeq; // bumped when blob holds something new
+    std::atomic<uint32_t> blobSeq; // odd while blob is being written (put_blob, get_blob)
     uint8_t blob[BLOB];
+
+    // a module's own signals, both ways (what each means: the module's engine says)
+    std::atomic<int32_t> aux[8];
 
     // the audio: the engine writes, render_block reads
     std::atomic<uint32_t> wr, rd;
@@ -103,6 +106,24 @@ template <class Vec> inline bool take(Queue &q, uint8_t &kind, Vec &out) {
 inline void clear(Queue &q) {
     q.w.store(0, std::memory_order_relaxed);
     q.r.store(0, std::memory_order_relaxed);
+}
+
+// The blob, written by the engine, read by the plugin whole: its bytes and
+// the sequence they were written under (seq even), or false while written.
+inline void put_blob(Layout *l, const uint8_t *b, size_t n) {
+    if (n > size_t(BLOB)) n = BLOB;
+    l->blobSeq.fetch_add(1, std::memory_order_acq_rel);
+    memcpy(l->blob, b, n);
+    l->blobSeq.fetch_add(1, std::memory_order_acq_rel);
+}
+
+template <class Vec> inline bool get_blob(const Layout *l, Vec &out, size_t n, uint32_t &seq) {
+    const uint32_t a = l->blobSeq.load(std::memory_order_acquire);
+    if (a & 1) return false;
+    out.assign(l->blob, l->blob + (n > size_t(BLOB) ? size_t(BLOB) : n));
+    if (l->blobSeq.load(std::memory_order_acquire) != a) return false;
+    seq = a;
+    return true;
 }
 
 // status and error, written by the engine, read by the plugin whole

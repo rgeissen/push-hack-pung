@@ -38,3 +38,9 @@ target_compile_definitions(xenia-dsp PRIVATE WALDORF_XT=1)
 target_include_directories(xenia-dsp PRIVATE ${SCHWUNG_SRC} ${SCHWUNG_SRC}/host)
 target_link_libraries(xenia-dsp PRIVATE xtLib synthLib Threads::Threads)
 target_link_options(xenia-dsp PRIVATE -Wl,--exclude-libs,ALL -static-libstdc++ -static-libgcc)
+
+# the emulator, in a process of its own (waldorf_emu.cpp): the plugin starts it
+add_executable(xenia-engine dsp/waldorf_emu.cpp)
+target_compile_definitions(xenia-engine PRIVATE WALDORF_XT=1)
+target_link_libraries(xenia-engine PRIVATE xtLib synthLib Threads::Threads)
+target_link_options(xenia-engine PRIVATE -static-libstdc++ -static-libgcc)
