@@ -58,6 +58,11 @@ void sb_slot_busy(int slot, int on);
 float sb_render_nolock(int slot, float *out, const float *in, int frames);
 void sb_midi_nolock(int slot, const uint8_t *msg, int len, int source);
 
+/* The call into its chain a slot is in (watchdog.go): how long it has run
+ * (ns; 0: in none), which (SB_CALL_*), and its key, if a parameter's. */
+enum { SB_CALL_CREATE = 1, SB_CALL_DESTROY, SB_CALL_SET, SB_CALL_GET, SB_CALL_MIDI, SB_CALL_RENDER, SB_CALL_WARM };
+long long sb_call_since(int slot, int *op, char *key, int key_len);
+
 /* Transport, for the clock callbacks every module can call. */
 void sb_set_tempo(float bpm);
 void sb_set_clock(int status, double beat);

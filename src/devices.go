@@ -466,6 +466,9 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 	if sc == nil {
 		return nil, errors.New("not a Pung class")
 	}
+	if until, out := p.h.hangs.leftOut(sc.module, time.Now()); out {
+		return nil, fmt.Errorf("%s stopped answering %d times lately: left out until %s", c.Name, hangsToStop, until.Format("15:04"))
+	}
 	p.mu.Lock()
 	slot := p.freeSlot()
 	if slot >= 0 {

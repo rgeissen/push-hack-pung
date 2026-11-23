@@ -72,6 +72,7 @@ type Host struct {
 	mods     *modMgr         // modules from the catalog (modmgr.go)
 	sounds   *soundLib       // every module's sounds (sounds_device.go)
 	files    *fileLib        // the files modules ask for: samples, wavetables (files.go)
+	hangs    *hangLog        // modules that hung lately (watchdog.go)
 
 	selMu      sync.Mutex
 	selKey     string // Live's selection that selDev was worked out for
@@ -87,7 +88,8 @@ type Host struct {
 }
 
 func newHost(modulesDir, dataDir, busSocket string) *Host {
-	h := &Host{modulesDir: modulesDir, dataDir: dataDir, busSocket: busSocket, settings: loadSettings(dataDir)}
+	h := &Host{modulesDir: modulesDir, dataDir: dataDir, busSocket: busSocket, settings: loadSettings(dataDir),
+		hangs: loadHangLog(dataDir)}
 	empty := []*Slot{}
 	h.active.Store(&empty)
 	h.transport.h = h

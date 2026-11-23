@@ -102,6 +102,11 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   hung Pung left the new one without its port and Pung down (2026-11-22). The devices' states are filed
   while Pung runs (`kept-states.json`, 2 s after a device goes quiet), so a Pung that hangs or crashes
   gives the next start every sound but the last seconds' (killed with `kill -9` on the Push, 2026-11-23).
+- **Watchdog** (`watchdog.go`): a call into a module that runs past its limit (module load or destroy
+  90 s, a parameter 30 s, a block or MIDI 5 s) restarts Pung as the same process (the hang in the log,
+  `hangs.json`; the surface given back; states from `kept-states.json`). A module that hangs twice in
+  15 minutes is refused until then. Nothing else restarts a Pung that died: the service has no
+  supervisor. Tested 2026-11-23 with a module whose `set_param` never returns.
 - Deploy Pung: `make deploy HOST=<push-ip>` (restarts Pung, not Live). Deploy one module: scp to
   `<file>.new`, then `mv` (never overwrite a loaded `.so` in place), then restart Pung. **Pung keeps a
   module's `push_ui.js` loaded: a new one needs a Pung restart.**

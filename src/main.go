@@ -98,6 +98,10 @@ func main() {
 		cLockDir(real + "/")
 	}
 	h := newHost(*modules, *data, audiobus.SocketPath(audiobus.DefaultDir))
+	if *probeModule == "" && *scoutJobPath == "" && !*survey {
+		// from the start: a module may hang while Pung starts (watchdog.go)
+		go h.watchdog(nil, func(x hung) { h.restartAfterHang(x, exe, leaveSurface.Load()) })
+	}
 	forkingModulesDir = *modules // engine.go: a forking module's processes are loaded realtime
 	// sounds: Schwung's presets folder (Pung's own, through the link above);
 	// presets.json from Pung's overrides, the data folder's winning
@@ -255,6 +259,12 @@ func main() {
 	saved := make(chan struct{})
 	go func() { h.autosave(stop); close(saved) }()
 	go h.prov.keepWhileRunning(stop) // the devices' states, for a Pung that does not stop cleanly
+	leave := func() {                // what a restart after a hang does with the surface (watchdog.go)
+		if surf.focused.Load() {
+			surf.pm.SurfaceLeave("live") //nolint:errcheck
+		}
+	}
+	leaveSurface.Store(&leave)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)

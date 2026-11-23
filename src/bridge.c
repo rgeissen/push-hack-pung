@@ -227,13 +227,49 @@ int sb_slot_lock_until(int slot, const struct timespec *abs_realtime) {
 void sb_slot_unlock(int slot) { if (valid(slot)) slot_unlock(slot); }
 void sb_slot_busy(int slot, int on) { if (valid(slot)) atomic_store(&g_busy[slot], on); }
 
+/* The watchdog's view (watchdog.go): which call into its chain each slot is
+ * in, and since when (CLOCK_MONOTONIC ns; 0: none). Set by the calling
+ * thread around the module's call, read by Go once a second: a module that
+ * never comes back from a call (OsTIrus destroying an instance, 2026-11-21)
+ * hung Pung until someone restarted it. The key is best effort (a reader
+ * may meet it half written: it is only logged). */
+static _Atomic long long g_call_ns[SB_MAX_SLOTS];
+static _Atomic int g_call_op[SB_MAX_SLOTS];
+static char g_call_key[SB_MAX_SLOTS][48];
+static inline long long now_ns(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1000000000LL + t.tv_nsec;
+}
+static inline void call_in(int slot, int op, const char *key) {
+    if (key) snprintf(g_call_key[slot], sizeof g_call_key[slot], "%s", key);
+    else g_call_key[slot][0] = 0;
+    atomic_store_explicit(&g_call_op[slot], op, memory_order_relaxed);
+    atomic_store_explicit(&g_call_ns[slot], now_ns(), memory_order_release);
+}
+static inline void call_out(int slot) { atomic_store_explicit(&g_call_ns[slot], 0, memory_order_release); }
+
+long long sb_call_since(int slot, int *op, char *key, int key_len) {
+    if (slot < 0 || slot >= SB_MAX_SLOTS) return 0;
+    long long since = atomic_load_explicit(&g_call_ns[slot], memory_order_acquire);
+    if (!since) return 0;
+    *op = atomic_load_explicit(&g_call_op[slot], memory_order_relaxed);
+    if (key && key_len > 0) {
+        memcpy(key, g_call_key[slot], key_len < (int)sizeof g_call_key[slot] ? key_len : (int)sizeof g_call_key[slot]);
+        key[key_len - 1] = 0;
+    }
+    return now_ns() - since;
+}
+
 int sb_slot_create(int slot) {
     if (!valid(slot)) { set_err("bad slot %d", slot); return -1; }
     if (g_slots[slot].inst) return 0;
     slot_lock(slot);
     memset(&g_slots[slot], 0, sizeof g_slots[slot]);
     t_slot = slot;
+    call_in(slot, SB_CALL_CREATE, NULL);
     g_slots[slot].inst = g_api->create_instance(g_chain_dir, NULL);
+    call_out(slot);
     t_slot = -1;
     void *inst = g_slots[slot].inst;
     slot_unlock(slot);
@@ -245,7 +281,9 @@ void sb_slot_destroy(int slot) {
     if (!sb_slot_alive(slot)) return;
     slot_lock(slot);
     t_slot = slot;
+    call_in(slot, SB_CALL_DESTROY, NULL);
     g_api->destroy_instance(g_slots[slot].inst);
+    call_out(slot);
     t_slot = -1;
     g_slots[slot].inst = NULL;
     slot_unlock(slot);
@@ -255,7 +293,9 @@ void sb_set_param(int slot, const char *key, const char *val) {
     if (!sb_slot_alive(slot)) return;
     slot_lock(slot);
     t_slot = slot;
+    call_in(slot, SB_CALL_SET, key);
     g_api->set_param(g_slots[slot].inst, key, val);
+    call_out(slot);
     t_slot = -1;
     slot_unlock(slot);
 }
@@ -265,7 +305,9 @@ int sb_get_param(int slot, const char *key, char *buf, int buf_len) {
     buf[0] = 0;
     slot_lock(slot);
     t_slot = slot;
+    call_in(slot, SB_CALL_GET, key);
     int n = g_api->get_param(g_slots[slot].inst, key, buf, buf_len);
+    call_out(slot);
     t_slot = -1;
     slot_unlock(slot);
     if (n >= buf_len) n = buf_len - 1;
@@ -276,7 +318,9 @@ int sb_get_param(int slot, const char *key, char *buf, int buf_len) {
 void sb_midi_nolock(int slot, const uint8_t *msg, int len, int source) {
     if (!sb_slot_alive(slot)) return;
     t_slot = slot;
+    call_in(slot, SB_CALL_MIDI, NULL);
     g_api->on_midi(g_slots[slot].inst, msg, len, source);
+    call_out(slot);
     t_slot = -1;
 }
 
@@ -341,11 +385,12 @@ float sb_render_nolock(int slot, float *out, const float *in, int frames) {
                 g_inject(s->inst, s->inject, SB_BLOCK);
             }
             t_slot = slot;
-            struct timespec c0, c1;
-            clock_gettime(CLOCK_MONOTONIC, &c0);
+            long long c0 = now_ns();
+            atomic_store_explicit(&g_call_op[slot], SB_CALL_RENDER, memory_order_relaxed);
+            atomic_store_explicit(&g_call_ns[slot], c0, memory_order_release);
             g_api->render_block(s->inst, s->carry, SB_BLOCK);
-            clock_gettime(CLOCK_MONOTONIC, &c1);
-            long long ns = (c1.tv_sec - c0.tv_sec) * 1000000000LL + (c1.tv_nsec - c0.tv_nsec);
+            call_out(slot);
+            long long ns = now_ns() - c0;
             if (ns > atomic_load_explicit(&s->chain_ns_max, memory_order_relaxed))
                 atomic_store_explicit(&s->chain_ns_max, ns, memory_order_relaxed);
             t_slot = -1;
@@ -377,11 +422,13 @@ void sb_warm(int slot, int blocks) {
     /* the mailbox input stays silent for warm-up blocks */
     slot_lock(slot);
     memset(g_mailbox + MB_AUDIO_IN, 0, SB_BLOCK * 4);
+    call_in(slot, SB_CALL_WARM, NULL);
     for (int i = 0; i < blocks; i++) {
         t_slot = slot;
         g_api->render_block(g_slots[slot].inst, scratch, SB_BLOCK);
         t_slot = -1;
     }
+    call_out(slot);
     slot_unlock(slot);
 }
 
