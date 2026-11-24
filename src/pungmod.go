@@ -162,6 +162,7 @@ type pungMod struct {
 	wrote map[string]string // what was last written to it
 
 	wheel, press atomic.Uint64 // 0..1 (float bits), from the device's MIDI
+	keys         pmodKeys      // what Pressure follows (midi's)
 
 	// what the sources are now and where they put each control (raw), for
 	// the screen's live dots (Slot.Get of live_mod)
@@ -272,18 +273,77 @@ func (pm *pungMod) midi(msg []byte) {
 	if len(msg) < 2 {
 		return
 	}
-	switch msg[0] & 0xF0 {
-	case 0xB0:
-		if len(msg) >= 3 && msg[1] == 1 {
-			pm.wheel.Store(math.Float64bits(float64(msg[2]) / 127))
+	if msg[0]&0xF0 == 0xB0 && len(msg) >= 3 && msg[1] == 1 {
+		pm.wheel.Store(math.Float64bits(float64(msg[2]) / 127))
+		return
+	}
+	if p, ok := pm.keys.event(msg); ok {
+		pm.press.Store(math.Float64bits(p))
+	}
+}
+
+// pmodKeys: Pressure as one value for the whole sound: the newest held
+// key's poly pressure, or the channel's pressure, and 0 once no key is held
+// (a pad let go need not send a last 0, and a message can be lost: the
+// modulation never hangs on a key that is gone). The wheel stays where it is
+// left, as a wheel does.
+type pmodKeys struct {
+	mu      sync.Mutex
+	held    []pmodKey // oldest first
+	channel float64   // the newest channel pressure, 0..1
+	poly    bool      // the newest pressure was a key's own
+}
+
+type pmodKey struct {
+	note byte
+	p    float64
+}
+
+// event: a message's effect on Pressure: its new value, or false (no change)
+func (k *pmodKeys) event(msg []byte) (float64, bool) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	switch st := msg[0] & 0xF0; {
+	case st == 0x90 && len(msg) >= 3 && msg[2] > 0:
+		k.release(msg[1])
+		k.held = append(k.held, pmodKey{note: msg[1]})
+	case (st == 0x80 || st == 0x90) && len(msg) >= 3:
+		k.release(msg[1])
+	case st == 0xB0 && len(msg) >= 3 && (msg[1] == 123 || msg[1] == 120): // all notes, all sound off
+		k.held = k.held[:0]
+	case st == 0xA0 && len(msg) >= 3:
+		for i := range k.held {
+			if k.held[i].note == msg[1] {
+				k.held[i].p = float64(msg[2]) / 127
+			}
 		}
-	case 0xD0:
-		pm.press.Store(math.Float64bits(float64(msg[1]) / 127))
-	case 0xA0: // poly pressure: the newest key's, as one value
-		if len(msg) >= 3 {
-			pm.press.Store(math.Float64bits(float64(msg[2]) / 127))
+		k.poly = true
+	case st == 0xD0:
+		k.channel, k.poly = float64(msg[1])/127, false
+	default:
+		return 0, false
+	}
+	return k.value(), true
+}
+
+func (k *pmodKeys) release(note byte) {
+	for i := 0; i < len(k.held); i++ {
+		if k.held[i].note == note {
+			k.held = append(k.held[:i], k.held[i+1:]...)
+			i--
 		}
 	}
+}
+
+func (k *pmodKeys) value() float64 {
+	if len(k.held) == 0 {
+		k.channel = 0 // (a keyboard lifts it too; the next key starts from nothing)
+		return 0
+	}
+	if k.poly {
+		return k.held[len(k.held)-1].p
+	}
+	return k.channel
 }
 
 // ---- under the slot's lock ----------------------------------------------------

@@ -573,7 +573,8 @@ module without it keeps the nudge for the next segment.
 #### Pung's own modulation (`src/pungmod.go`)
 
 Every Pung device has four sources of Pung's own, after the module's on ASSIGN's lower buttons: **LFO A**,
-**LFO B**, **Wheel** (the mod wheel) and **Pressure** (channel or poly pressure, the newest). They reach any
+**LFO B**, **Wheel** (the mod wheel, staying where it is left) and **Pressure** (the newest held key's own
+pressure, or the channel's; 0 once no key is held, whether or not a last 0 came). They reach any
 numeric control of any module, so a module with no matrix of its own (most of Schwung's) gets ASSIGN
 too, and a synth's FIXED controls (the Nord's resonance, the XT's effects) can still move. They are
 drawn in a colour of their own, **magenta** (the module's own are cyan), and the header says `PUNG LFO A`:

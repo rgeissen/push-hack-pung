@@ -261,3 +261,39 @@ func TestPungModLevelsAndMore(t *testing.T) {
 		t.Fatalf("MORE for LFO A: %v", got)
 	}
 }
+
+// Pressure follows the keys: the newest held key's own pressure, or the
+// channel's, and nothing once the keys are let go, whether or not a last 0
+// came; the wheel stays where it was left.
+func TestPungModPressureFollowsKeys(t *testing.T) {
+	pm := (&Slot{}).pmod()
+	press := func() float64 { return pm.srcVal("p_press") }
+	steps := []struct {
+		msg  []byte
+		want float64
+	}{
+		{[]byte{0xA0, 60, 100}, 0},         // pressure on a key that is not held
+		{[]byte{0x90, 60, 90}, 0},          // C held
+		{[]byte{0xA0, 60, 127}, 1},         // its pressure
+		{[]byte{0x90, 64, 90}, 0},          // E held, newer: its own pressure, none yet
+		{[]byte{0xA0, 64, 64}, 64.0 / 127}, //
+		{[]byte{0xA0, 60, 10}, 64.0 / 127}, // the older key's changes nothing
+		{[]byte{0x80, 64, 0}, 10.0 / 127},  // E let go: back to C's
+		{[]byte{0x90, 60, 0}, 0},           // C let go (note-on at 0), no last pressure sent: 0
+		{[]byte{0x90, 48, 90}, 0},          // channel pressure under a key
+		{[]byte{0xD0, 80}, 80.0 / 127},
+		{[]byte{0xB0, 123, 0}, 0}, // all notes off
+		{[]byte{0x90, 48, 90}, 0}, // a new key starts from nothing
+	}
+	for i, s := range steps {
+		pm.midi(s.msg)
+		if math.Abs(press()-s.want) > 1e-9 {
+			t.Fatalf("step %d (% X): pressure %v, want %v", i, s.msg, press(), s.want)
+		}
+	}
+	pm.midi([]byte{0xB0, 1, 100})
+	pm.midi([]byte{0x80, 48, 0})
+	if math.Abs(pm.srcVal("p_wheel")-100.0/127) > 1e-9 {
+		t.Fatal("the wheel stays where it was left")
+	}
+}
