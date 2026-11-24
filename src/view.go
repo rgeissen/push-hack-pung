@@ -30,7 +30,12 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 		u.liveOut = ls.frame()
 	}
 	liveKeys := u.readLiveKeys(ls, u.liveOut, p, b)
-	defer func() { u.fxUsed = u.liveDrew || liveKeys }()
+	liveMod := u.readLiveMod(ls, u.liveOut, p)
+	defer func() { u.fxUsed = u.liveDrew || liveKeys || liveMod }()
+	if u.assignActive() && cm != nil {
+		u.drawAssign(img, p, cm, sc) // ASSIGN in a segment (assign.go)
+		return
+	}
 	if u.drawTakeover(img, p, cm, b, sc) {
 		// the screen is the module's, but the way back and the pages are
 		// Push's: over it for a moment (surface.go: rowsUntil)
@@ -551,6 +556,9 @@ func (u *surface) drawCell(img *image.NRGBA, col int, p position, m *paramMeta, 
 			arcCol = sc
 		}
 		gaugeP(img, cx, knobCY, m.frac(v), m.Bipolar, arcCol, m.ReadOnly, touched, P)
+		if now, ok := u.modNow(key); ok && !m.ReadOnly {
+			modMark(img, cx, knobCY, m.frac(v), m.frac(now), P)
+		}
 		if touched && !m.ReadOnly && m.Max > m.Min {
 			// the range, at the ends of the arc
 			lo, _ := m.display(strconv.FormatFloat(m.Min, 'f', -1, 64), true)
@@ -632,6 +640,17 @@ func (u *surface) drawUnderWidget(img *image.NRGBA, col int, p position, m *para
 	label(img, cx, 122, val, nameCol, 0)
 	if u.touched == col {
 		rect(img, cx-16, 126, 32, 2, sc)
+	}
+	// modulation moving it: its place on a short track under the value
+	// (livemod.go), the knob's a tick, the sound's a playhead
+	if now, mok := u.modNow(key); mok && ok && m.Type != "enum" && !m.ReadOnly && m.Max > m.Min {
+		x0, w := float64(cx-40), 80.0
+		f, n := math.Max(0, math.Min(1, m.frac(v))), math.Max(0, math.Min(1, m.frac(now)))
+		rect(img, int(x0), 131, int(w), 1, P.line)
+		aaLine(img, x0+w*math.Min(f, n), 131.5, x0+w*math.Max(f, n), 131.5, 2, P.mix(cMod, 0.55))
+		rect(img, int(x0+w*f)-1, 128, 2, 7, P.fg)
+		disc(img, x0+w*n, 131.5, 3.4, P.ground)
+		disc(img, x0+w*n, 131.5, 2.5, cMod)
 	}
 }
 
@@ -716,10 +735,26 @@ func (u *surface) drawPeek(img *image.NRGBA, enc int, p position, m *paramMeta, 
 
 // ovValues: what a module's drawing gets for its keys (override.go, v).
 func (u *surface) ovValues(p position, cm *compMeta, keys []string) map[string]ovValue {
-	return ovValuesOf(cm, keys, func(k string) (string, bool) {
+	vals := ovValuesOf(cm, keys, func(k string) (string, bool) {
 		raw, ok := u.vals[u.valKey(p, k)]
 		return raw, ok
 	})
+	withMod(vals, cm, u.modNow)
+	return vals
+}
+
+// withMod: each value modulation moves now gets where it is (v[key].now).
+func withMod(vals map[string]ovValue, cm *compMeta, now func(string) (string, bool)) {
+	for k, e := range vals {
+		raw, ok := now(k)
+		if !ok {
+			continue
+		}
+		if m := cm.Params[k]; m != nil && m.Type != "enum" && m.Max > m.Min {
+			e.Now, e.HasNow = m.frac(raw), true
+			vals[k] = e
+		}
+	}
 }
 
 // ovValuesOf: what a widget or screen is given for keys, from any source

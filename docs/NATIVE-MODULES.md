@@ -413,6 +413,85 @@ engine Vavra uses (`waldorf_engine.cpp`, built with `WALDORF_XT`; one instance a
   the Apply that brings it into Live.
 
 
+### Xenia's modulation, live (2026-11-24)
+
+Where the sound has its cutoff and its two waves now (`live_mod`; UX-GUIDELINES.md, Live pictures,
+*Modulation*), read from the DSP's memory. Found with `native/xenia/tools/xt_scan.cpp` (CMake target
+`xenia-scan`, never shipped): it boots the XT from the firmware, holds notes with a modulation on and off
+and reports the words that follow it (`scan <target> [chord|stagger|stagger12]`), records given words
+while notes start one at a time (`watch`), or dumps low memory after each note (`dump`). In Single mode
+on one DSP:
+
+- five voices; the k-th note takes voice k-1, later notes take voice 0 again;
+- `Y:0x60 + 28 v`: the voice's oscillator phase increment (twice the value an octave up). The engine
+  tells which voice a note took by which increment moved most in the 80 ms after it;
+- `Y:0xEC + 14 v`: the voice's cutoff with all that moves it (LFO, filter envelope, keytrack), the same in
+  `Y:0xF3 + 14 v`; idle, a voice holds the knob's. A semitone a knob step up to about 90, closer above
+  (`XT_CUT` in `waldorf_engine.cpp`, measured over the knob's travel, reads it back as the knob);
+- `X:0x61 + 28 v` and `X:0x68 + 28 v`: Wave 1 and Wave 2 as `Y:0x24000 + 256 * wave`, the slot of the
+  wave memory the oscillator plays (whole waves).
+
+The engine publishes the newest voice's three every 10 ms in `aux` (`LIVE_*`, `waldorf_family.h`); the
+plugin answers `live_mod` with them in knob units while a note is held or let go less than 3 s ago.
+Xenia's panel lights the waves played now over the table and puts a dot on the knobs they move; the
+filter pages follow through Pung's `g.filter`. Checked offline (render-check, a filter envelope from
+knob 40: the cutoff rose to 111, held, fell back through 86).
+
+### Assigning modulation on Xenia and Vavra (2026-11-24)
+
+Pung's ASSIGN screen (`mod_map`, `mod_set`) on the synths' own matrix (`waldorf_engine.cpp`, both): the
+sixteen slots in the sound's bytes (XT: source, amount, destination from byte 192; microQ: source,
+destination, amount from 285; 3 bytes a slot). The sources are the synth's own list (ids `s<n>`, its
+number), the destinations the knobs the matrix destinations move (`kModDest`): the pitches have no knob of
+their own (octave, semitone and detune together) and stay off the screen. An amount is the slot's byte
+around 64, -1..1. A new route takes the first slot whose source is Off, a route at 0 frees its slot; each
+byte goes to the synth as a knob's does, and the routes are the sound's (saved with it). No polarity: the
+matrix has none. Checked offline: a route made, listed next to the sound's own, and removed.
+
+### Assigning modulation on OsTIrus (2026-11-24)
+
+The Virus's six assign slots (`ostirus_plugin.cpp`, `kAsSlots`): each one source and up to three
+destinations with an amount, so a route on the screen is one destination of a slot. The sources are the
+Virus's own, an LFO once (`l1`..`l3`): its bipolar and unipolar sources (21..23, 29..31) are that source's
+two polarities, the turn's polarity on Pung's screen choosing between them. The destinations are the knobs
+the Virus destinations move (`kAsDest`, generated from the destination names, 65 of 128; the pitches and
+the slots' own amounts stay off). A new route joins a slot of its source and polarity with a free
+destination, else takes a slot that drives nothing (no source, or every destination off or at 64), whose
+other destinations are cleared; a slot that drives anything, even a destination with no knob, is never
+taken. A route whose polarity changes moves to a slot of that polarity; at 0 it is removed, and a slot left
+with nothing is freed. Factory sounds often use all six: Pung's screen says so when a new route is not
+taken ("NO FREE MODULATION SLOT"). Checked offline: made bipolar, turned unipolar, removed.
+
+### Nodal Red's modulation, live (2026-11-24)
+
+Where the sound has its cutoff now (`live_mod`), read from the DSPs (`native/nodalred/tools/n2x_scan.cpp`,
+target `nodalred-scan`, never shipped; `patches/0002` gives the research and the engine
+`n2x::Device::getHardware`). In poly mode the first ten notes take DSP B's voices, the next DSP A's;
+voice k of each holds at `Y:0x12 + 22 k` (and the next word) its filter cutoff with LFO 1, the filter
+envelope and keytrack in it: `5152 * 2^(knob / 12)`, a semitone a knob step over the whole travel
+(`nodalred_live.h`). The engine takes the newest voice as the one whose cutoff moved most in the 80 ms
+after a note-on (a note that moves none, as an LFO moves all alike, keeps the voice) and publishes its
+word every 10 ms in `aux`; the plugin answers `{"cutoff": knob}` while a key is held or let go less than
+3 s ago. With slots layered the newest voice may be another slot's than the one edited. The panel's knobs
+and encoder row draw it (`modMark` in `push_ui.js`). Checked offline: a filter envelope from knob 40 rose
+to 108 and fell back to 40.02.
+
+### Modulation, live: OsTIrus and Vavra not yet (2026-11-24)
+
+The same search (`native/ostirus/tools/ti_scan.cpp`, `native/vavra/tools/mq_scan.cpp`, targets
+`ostirus-scan` and `vavra-scan`, never shipped) has not found a word that can be stood behind:
+
+- **Virus TI** (run it with Docker's `--shm-size=1g`, as render-check does: the emulator maps its memory
+  through /dev/shm, and the default 64 MB is a bus error). Only the whole 1M-word space shows anything;
+  X and Y are one memory up there. `Y:46AC9` follows the cutoff knob (gliding to it) and a filter envelope,
+  but not LFO 2 on Cutoff 1, and its neighbour `Y:46ACA` behaves the same for other knobs: it looks like a
+  parameter-smoothing slot of the part, not the voice's cutoff. The LFOs seem to act in registers.
+- **microQ**: nothing per voice in the DSP's memory, nor in the 68000's RAM (`SCAN_MC=1`: no word
+  follows the LFO, a slow or a fast one); `Y:00034` is the mailbox the 68000 writes the DSP's parameters
+  through (the knob's value, others passing through, 126 values with a fast LFO). The modulated values
+  likely travel the 68000-to-DSP link (HDI08): tapping it in the emulator, each value with its parameter,
+  is the next way to try.
+
 ## Vivace (a spectral warping wavetable synth)
 
 Not an emulator: a port of an open-source (GPLv3) software synth's engine, built unchanged from its
@@ -451,3 +530,60 @@ Vivace's own, written by the engine at build time (`vivace-export factory`, `dsp
   underruns; an edited sound returned intact after a restart of Pung.
 - **Heard without Live**: `scripts/render-check.sh vivace <empty dir> 3 preset=2` (Sync Lead: peak
   -16.3 dB); all 12 factory sounds pass (peaks -3.4 to -20 dB).
+
+### Its wavetable library (Vivace 0.1.1, 2026-11-24)
+
+- **187 tables in 14 types** (Basic, Analog, Digital, Drive & Fold, FM, Vocal, Harmonic & Organ, Keys &
+  Plucks, Strings & Winds, Bass, Chip & Game, Spectral, Texture, Collection), 2788 frames, 11 MB in the
+  package (`wavetables/`). Built with the package (`vivace-export wavetables`, `dsp/vivace_wtbuild.cpp`):
+  43 computed (classic morphs, pulse width, hard sync, folds, FM ratios, Peterson-Barney vowel formants,
+  drawbars, spectral combs), 144 from the Adventure Kid single cycles (AKWF-FREE, CC0, a dep in
+  `native/catalog.json` that `sync-native.sh` trims to its `paths`). Each AKWF cycle is analysed by DFT,
+  phase-aligned, rendered band-limited to 2048 samples, deduplicated by its harmonic profile and ordered
+  dark to bright by nearest neighbour; a table holds at most 16 frames, spread over the oscillator's 257
+  positions as keyframes the engine morphs between in the frequency domain (no cancelling between two
+  frames). Format: `vivace_wavetables.h`.
+- **Two parameters an oscillator**: `osc_N_wt_class` ("Osc N Table Type": Preset, the 14 types, From
+  Presets; a selector, so Live reads the table back at once) and `osc_N_wt` ("Osc N Table", 0..191: an
+  int up to 191 steps one a detent in Pung). Preset (0, the default) is the sound's own table: a Set made
+  before them loses nothing. They are the module's, not the engine's: no generated page has them; the
+  screen file puts an "Osc N Table" page after each "Osc N".
+- **From Presets**: every distinct table the sound files carry (the Factory bank's and the user's
+  `presets/`, up to 192), named "<table> (<sound>)", read at start and when the banks change. A sound
+  made in the original synth keeps its tables (they are in its file); From Presets offers them to any
+  other sound.
+- **The state names the table**, not its frames: `"tables":[[type, name], ...]`, From Presets as
+  `"<table>|<file in the module's folder>|<oscillator>"`. A table that is gone falls back to the
+  sound's own, said in the log.
+- **Where the sound plays** (`wave_pos`, a `live_keys` of the panel and the oscillators): after each
+  block the engine's `osc_N_wave_frame` modulation readouts (mono, plus poly while a voice sounds) as
+  0..1 of the table, 2 when the oscillator is off. The screens light that frame in the stack and put a
+  teal head on the frame track; a table of one frame has none. Checked on the Push with Glass Pad: the
+  head swept 12% to 45% in 4 s with one held note.
+- **Its modulation, live** (`live_mod`, UX-GUIDELINES.md, Live pictures, *Modulation*): every control a
+  route reaches (up to 64, each once) is tapped when the routes change (`set_taps`, the engine held) and
+  read after each block from the engine's mono plus poly readouts, in the knob's units, clamped to its
+  range; `{}` while no voice sounds. Checked on the Push, 2026-11-24: Sync Wobble's LFO sweeps the
+  filter's response on the panel and the filter page, Sync Lead's envelope bends the warped frame.
+- **The tables as they play** (`wave_play`, a `live_keys`): the io thread draws each table's 17 view
+  frames through the spectral morph and the warp with the engine's own functions
+  (`SynthOscillator::runSpectralMorph`, `adjustPhase`, `getPhaseWindow`, as the synth's editor does in
+  `Wavetable3d`), at their values with what modulates them, every 40 ms while anything of it changed. The
+  screens draw the whole stack and the 2D frame from it, the raw frame (`wave_view`) faint behind.
+- **A readout is stale where nothing modulates.** The engine switches off the modulation processor of a
+  control no route reaches, and its readout keeps an old value: read the knob then (`total()`, as the
+  editor's `getOutputsTotal` checks `owner->enabled()`). The frame drawn sat still while the frame knob
+  turned until this was found (reported by the user, 2026-11-24).
+- **Each oscillator's Table page** plays the table and everything that shapes it, each knob under its
+  picture: type and table over the lists, frame, spectral and warp over the table, the morph's and the
+  warp's modes and the warp's phase over the frame as it plays.
+- **Assigning modulation** (`mod_map`, `mod_set`; Pung's ASSIGN screen): 32 sources (the LFOs, envelopes,
+  randoms, macros and the performance sources, the most used first), every knob with a modulation readout a
+  destination (290). A route's depth or polarity on a route the sound has is its slot's control
+  (`modulation_N_amount`, `_bipolar`), set at once; a new or removed route goes to the io thread, which
+  connects it with the engine held (`connectModulation`, the first free of the 64 slots). The state keeps the
+  routes where they differ from the file's (`"mods": [[slot, source, destination], ...]`; depths and
+  polarities are in `edits` already); restoring changes only the slots that differ, so the file's
+  modulation curves stay. `mod_map` is about 7 KB: it answers its full length when the buffer is short.
+- **Its class is full** (255 of 256 entries, 23 placeholders): the six new parameters took placeholder
+  slots (`stablelayout.go`: when appending would pass 256), so nothing else moved.

@@ -86,12 +86,19 @@ var WINDOW = "#1a120c", KNOB = "#2a221d", SKIRT = "#120c08";             // the 
 var PANEL = "#2a1f17", PANEL_HI = "#3a2b20", RULE = "#4d3c2e", GROUND = "#140e0a";
 var ORANGE = "#e07e18", ORANGE_LT = "#ffa64a", ORANGE_DK = "#6a3a0c", ORANGE_GL = "#a3560c";
 var CREAM = "#f0dfb8", INK = "#f3e7d9", DIM = "#a89886", MUTE = "#7e7064", FAINT = "#574b41";
+// the sound's modulation, live: Pung's modulation colour, never the panel's (UX-GUIDELINES.md, Live pictures)
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
 var BROWN = "#3b2414", BROWN_LT = "#5a3a22";
 var LCD_BG = "#8fb43a", LCD_ON = "#1c2a0b", LCD_OFF = "#86aa36";
 var LED_ON = "#ff5a26", LED_OFF = "#4a1d10";
 
 function known(v, k) { return !!(k && v[k] && v[k].known); }
 function frac(v, k, neutral) { return known(v, k) ? v[k].frac : (neutral === undefined ? 0 : neutral); }
+// Where the sound has a control now (v[k].now: the module's live_mod, read
+// from the XT's DSP while a note sounds: the newest voice's cutoff and waves),
+// null when nothing tells (no note, or not modulated)
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - frac(v, k, 0)) > 0.004; }
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : ""; }
 function num(v, k, d) { var n = parseFloat(known(v, k) ? v[k].value : ""); return isNaN(n) ? (d || 0) : n; }
 function idx(v, k) { return Math.round(num(v, k, 0)); }
@@ -292,6 +299,11 @@ function knobRow(g, v, names, values) {
     if (known(v, k)) {
       var a = Math.PI * (0.75 + 1.5 * v[k].frac);
       g.line(cx + Math.cos(a) * 2, cy + Math.sin(a) * 2, cx + Math.cos(a) * 11, cy + Math.sin(a) * 11, 2.5, on ? "slot" : CREAM);
+      if (moved(v, k)) { // where the sound has it: an arc in the modulation colour from the knob, a dot
+        var n = nowOf(v, k), lo = Math.min(v[k].frac, n), hi = Math.max(v[k].frac, n);
+        g.arc(cx, cy, 16, Math.PI * (0.75 + 1.5 * lo), Math.PI * 1.5 * (hi - lo), 2, MOD_DK);
+        g.dot(cx + Math.cos(Math.PI * (0.75 + 1.5 * n)) * 16, cy + Math.sin(Math.PI * (0.75 + 1.5 * n)) * 16, 3, MOD);
+      }
     }
     g.value(x + 82, ROW + 40 + lift(v), values ? (values[i] || "--") : withUnit(v, k), on ? "slot" : CREAM, 0, 64);
   }
@@ -363,6 +375,29 @@ function wavetable(g, x, y, w, h, v, starts, bg) {
     if (lit) g.text(bx + ww + 4, by + 4, lit.label, lit.color, -1);
   }
 }
+// The waves the oscillators play now (the newest voice's, from the DSP), lit
+// over the landscape in the modulation colour, where they are not the start
+// (outside the layer: they move with the sound). Same geometry as wavetable.
+var waveCache = { src: null, waves: null };
+function wavesNow(g, x, y, w, h, v) {
+  var raw = disp(v, "wave_view");
+  if (raw !== waveCache.src) waveCache = { src: raw, waves: parseWaves(raw) };
+  var waves = waveCache.waves;
+  w -= 52;
+  var n = 16, dx = Math.floor((w * 0.42) / (n - 1)), dy = (h * 0.5) / (n - 1), ww = w - dx * (n - 1) - 14, amp = h * 0.25;
+  ["w1_start_w", "w2_start_w"].forEach(function (k, o) {
+    if (!moved(v, k)) return;
+    var wv = nowOf(v, k) * 63;
+    if (wv > 60.5) return; // one of the fixed waves: the start's own light says it
+    var i = Math.max(0, Math.min(15, Math.round(wv / 4))), bx = x + i * dx, by = y + h - amp - 2 - i * dy;
+    if (waves) {
+      var pts = [];
+      for (var j = 0; j < 32; j++) pts.push(bx + j / 31 * ww, Math.max(y + 1, Math.min(y + h - 1, by - waves[i][j] * amp)));
+      g.poly(pts, 2, MOD);
+    } else g.line(bx, by, bx + ww, by, 2, MOD);
+    g.text(bx - 4, by + 4, String(o + 1), MOD, 1);
+  });
+}
 // where an oscillator starts in the table: its start wave, 0..60 drawn at
 // the nearest of the 16 positions, 61..63 one of the three fixed waves
 function startOf(v, k, label, color) {
@@ -424,6 +459,7 @@ function frontPanel(g, v) {
     g.fill(532, 6, 420, 84, WINDOW);
     wavetable(g, 540, 10, 406, 78, v, starts, WINDOW);
   });
+  wavesNow(g, 540, 10, 406, 78, v);
   sectionButtons(g, v);
   bodyRow(g, v, null);
   lcd2(g, l2);
@@ -532,6 +568,7 @@ function wavesScreen(g, v) {
     plate(g, 0, 0, 470, 86, "Table " + (disp(v, "wave") || "-"), false);
     wavetable(g, 6, 16, 458, 68, v, starts, PANEL);
   });
+  wavesNow(g, 6, 16, 458, 68, v);
   var x0 = 476, w = 476;
   plate(g, x0, 0, w, 86, "Start / Keys", true, disp(v, "w2_link") === "On" ? "Wave 2 follows wave 1" : "", hot(v, "w2_link") ? "slot" : DIM);
   for (var n = 1; n <= 2; n++) {
@@ -544,6 +581,11 @@ function wavesScreen(g, v) {
     var reach = Math.max(0, Math.min(1, st + kt * 0.5)), kc = hot(v, p + "keytrack") ? "slot" : c;
     if (Math.abs(reach - st) > 0.004) g.line(rx + st * rw, y, rx + reach * rw, y, 3, kc);
     g.fill(Math.round(rx + st * rw) - 1, y - 7, 3, 15, c);
+    if (moved(v, p + "start_w")) { // where the sound plays now: the modulation from the start, a playhead
+      var nw = nowOf(v, p + "start_w");
+      g.line(rx + st * rw, y + 0.5, rx + nw * rw, y + 0.5, 2, MOD_DK);
+      g.dot(rx + nw * rw, y + 0.5, 4, MOD);
+    }
     pairs(g, v, rx + rw + 16, y + 4, [["Phase", disp(v, p + "start_p"), p + "start_p"],
       disp(v, p + "limit") === "On" || hot(v, p + "limit") ? ["Limit", disp(v, p + "limit"), p + "limit"] : null], x0 + w - 8);
   }

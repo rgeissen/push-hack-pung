@@ -2,8 +2,8 @@
     "id": "vivace",
     "name": "Vivace",
     "abbrev": "VV",
-    "version": "0.1.0",
-    "description": "Spectral warping wavetable synthesizer: three wavetable oscillators with spectral morph and phase warp, a sample source, two filters, six envelopes, eight LFOs, a 64-slot modulation matrix and nine effects. A port of open-source GPLv3 code (licenses/NOTICE)",
+    "version": "0.1.1",
+    "description": "Spectral warping wavetable synthesizer: three wavetable oscillators with spectral morph and phase warp, a sample source, two filters, six envelopes, eight LFOs, a 64-slot modulation matrix, nine effects, and a library of 187 wavetables in 14 types (any table a sound file carries can be taken into another sound). A port of open-source GPLv3 code (licenses/NOTICE)",
     "author": "rgeissen (Pung module), on GPLv3 open-source synthesis code (licenses/NOTICE)",
     "license": "GPL-3.0",
     "origin": "pung",
@@ -15,7 +15,7 @@
             "label": "Presets",
             "extensions": [".vital"],
             "description": "Your own preset files (.vital, the JSON preset format of the synth this engine comes from). Each folder becomes a bank in SOUNDS, named after it; files at the top form the bank Presets. Vivace's own sounds are the Factory bank.",
-            "hint": "Wavetables travel inside the preset file: nothing else is needed. A sound asking for more than 16 voices or more than 2x oversampling is played with 16 and 2x.",
+            "hint": "Wavetables travel inside the preset file: nothing else is needed, and every table your sounds carry is offered on an oscillator's Table page (From Presets). A sound asking for more than 16 voices or more than 2x oversampling is played with 16 and 2x.",
             "optional": true,
             "allowFolders": true
         }

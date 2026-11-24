@@ -38,3 +38,8 @@ target_link_options(ostirus-dsp PRIVATE -Wl,--exclude-libs,ALL -static-libstdc++
 add_executable(ostirus-engine dsp/ostirus_engine.cpp)
 target_link_libraries(ostirus-engine PRIVATE virusLib synthLib Threads::Threads)
 target_link_options(ostirus-engine PRIVATE -static-libstdc++ -static-libgcc)
+
+# research, never shipped (the recipe builds the two targets above): the DSP
+# memory words that follow a modulation (tools/ti_scan.cpp)
+add_executable(ostirus-scan EXCLUDE_FROM_ALL tools/ti_scan.cpp)
+target_link_libraries(ostirus-scan PRIVATE virusLib synthLib Threads::Threads)

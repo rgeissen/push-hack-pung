@@ -6,6 +6,7 @@ import (
 	"github.com/dop251/goja"
 	"image"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,6 +170,28 @@ func overlaysDraw(t *testing.T, rel string) {
 				// PUNG_SHOTS=dir: the screens, for a look
 				if dir := os.Getenv("PUNG_SHOTS"); dir != "" {
 					f, _ := os.Create(filepath.Join(dir, fmt.Sprintf("%s-%s-%t.png", e.Name(), c.id, touched != "")))
+					png.Encode(f, img)
+					f.Close()
+				}
+			}
+			// every value moved by modulation (livemod.go: v[key].now), as while a note sounds
+			{
+				knobs := make([]string, 8)
+				copy(knobs, c.keys)
+				info := map[string]any{"$knobs": knobs, "$pages": []string{"ONE"}, "$page": 0, "$name": "X", "$track": "1-X",
+					"$segmode": "", "$segment": "", "$segments": segList(c)}
+				mv := vals(c.screenKeys())
+				for k, e := range mv {
+					e.Now, e.HasNow = math.Mod(e.Frac+0.37, 1), true
+					mv[k] = e
+				}
+				pl := placement{w: &ovWidget{keys: c.screenKeys(), draw: c.screen}, col: 0, span: 8, full: c.takeover, info: info}
+				img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+				if !set.render(img, pl, mv, "", slotColor(0)) {
+					t.Errorf("%s/%s with modulation: %s", e.Name(), c.id, set.failed)
+				}
+				if dir := os.Getenv("PUNG_SHOTS"); dir != "" {
+					f, _ := os.Create(filepath.Join(dir, fmt.Sprintf("%s-%s-mod.png", e.Name(), c.id)))
 					png.Encode(f, img)
 					f.Close()
 				}

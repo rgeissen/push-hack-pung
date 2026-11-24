@@ -44,3 +44,8 @@ add_executable(vavra-engine dsp/waldorf_emu.cpp)
 target_compile_definitions(vavra-engine PRIVATE WALDORF_MQ=1)
 target_link_libraries(vavra-engine PRIVATE mqLib synthLib Threads::Threads)
 target_link_options(vavra-engine PRIVATE -static-libstdc++ -static-libgcc)
+
+# research, never shipped (the recipe builds the two targets above): the DSP
+# memory words that follow a modulation (tools/mq_scan.cpp)
+add_executable(vavra-scan EXCLUDE_FROM_ALL tools/mq_scan.cpp)
+target_link_libraries(vavra-scan PRIVATE mqLib synthLib Threads::Threads)

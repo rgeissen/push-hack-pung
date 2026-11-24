@@ -208,7 +208,8 @@ back as of the previous restart. Then ask the user to save the Set.
   `rawmap`: an enum whose options are not its raw values in order (XT effect types 0..7, 32..34).
 - **A parameter keeps its place in its class** (`stablelayout.go`): Live saves automation and mappings
   by position, so a class keeps the layout in `classes-known.json`; a new parameter goes after all the
-  others (on an instrument beyond the 128 Live shows), one that is gone leaves a placeholder. Never
+  others (on an instrument beyond the 128 Live shows), one that is gone leaves a placeholder; in a full
+  class (256) a new one takes a placeholder's slot (Vivace's tables). Never
   reorder a class's list by hand. Parameter ids of their own crash Live 13.0b25 when a parameter moves
   (NATIVE-MODULES.md rule 6); the attempt is on branch `wip/param-ids`.
 - **Install a module's ROM before the Apply that brings it into Live.** Without firmware the module

@@ -354,6 +354,31 @@ func (u *surface) liveWanted() bool {
 	return ls != nil && ls.frame().Active
 }
 
+// readLiveMod: where the shown module's modulation puts its controls this
+// tick (livemod.go), for its knobs and its screens. true: something is modulated.
+func (u *surface) readLiveMod(ls *liveSession, out liveOut, p position) bool {
+	u.modPrefix = ""
+	if ls == nil || p.Module == "" {
+		return false
+	}
+	prefix := p.Prefix
+	if u.liveActive() {
+		_, prefix = u.pungDevice()
+	}
+	ls.wantMod(prefix)
+	u.modPrefix = prefix
+	return len(out.Mod) > 0
+}
+
+// modNow: where modulation puts key now (raw), from this frame's live_mod.
+func (u *surface) modNow(key string) (string, bool) {
+	if u.modPrefix == "" || u.liveOut.Mod == nil {
+		return "", false
+	}
+	v, ok := u.liveOut.Mod[u.modPrefix+":"+key]
+	return v, ok
+}
+
 // readLiveKeys: the values the shown compartment's screen says its module
 // drives (live_keys), as the session read them this tick. true: there are some.
 func (u *surface) readLiveKeys(ls *liveSession, out liveOut, p position, b *bank) bool {

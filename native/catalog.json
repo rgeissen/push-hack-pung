@@ -117,6 +117,16 @@
      "local": "../vivace-engine",
      "repo": "https://github.com/mtytel/vital.git",
      "commit": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+    },
+    "libs/akwf": {
+     "local": "../AKWF-FREE",
+     "repo": "https://github.com/KristofferKarlAxelEkstrand/AKWF-FREE.git",
+     "commit": "8de90bf94376670947369e69de0af6b9fbd19286",
+     "paths": [
+      "AKWF",
+      "LICENSE.md",
+      "README.md"
+     ]
     }
    }
   }

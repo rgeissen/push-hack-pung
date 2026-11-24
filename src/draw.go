@@ -490,3 +490,32 @@ func hmeter(img *image.NRGBA, x, y, w, h int, v float64, col color.NRGBA) {
 
 // dbFrac maps dBFS to a meter fraction (-48 dB .. 0 dB).
 func dbFrac(db float64) float64 { return math.Max(0, math.Min(1, (db+48)/48)) }
+
+// modMark: where modulation puts a knob now (livemod.go; UX-GUIDELINES.md,
+// Live pictures): outside the ring, in the modulation colour, an arc from
+// where the knob stands to where the sound has it and a playhead dot there,
+// ringed in the ground; beside a fader, the same upright.
+func modMark(img *image.NRGBA, cx, cy int, frac, now float64, P *palette) {
+	frac, now = math.Max(0, math.Min(1, frac)), math.Max(0, math.Min(1, now))
+	x, y := float64(cx), float64(cy)
+	if P.knob == "fader" {
+		top, bot := float64(cy-knobR+2), float64(cy+knobR-2)
+		at := func(f float64) float64 { return bot - f*(bot-top) }
+		a, b, xx := at(frac), at(now), x+20
+		if d := math.Abs(a - b); d >= 1 {
+			rect(img, int(xx)-1, int(math.Min(a, b)), 2, int(d), P.mix(cMod, 0.55))
+		}
+		disc(img, xx, b, 4.2, P.ground)
+		disc(img, xx, b, 3.2, cMod)
+		return
+	}
+	r := float64(knobR) + 6
+	lo, hi := math.Min(frac, now), math.Max(frac, now)
+	if hi-lo > 0.004 {
+		arc(img, x, y, r, gaugeA0+gaugeSW*lo, gaugeSW*(hi-lo), 2, P.mix(cMod, 0.55))
+	}
+	a := gaugeA0 + gaugeSW*now
+	px, py := x+math.Cos(a)*r, y+math.Sin(a)*r
+	disc(img, px, py, 4.2, P.ground)
+	disc(img, px, py, 3.2, cMod)
+}

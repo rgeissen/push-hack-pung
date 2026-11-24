@@ -782,6 +782,173 @@ void set_state(Instance *in, const char *val) {
     }
 }
 
+// ---- the assign slots, for Pung's ASSIGN screen (src/assign.go) ---------------
+// Six slots in the sound's bytes, each a source and up to three destinations
+// with an amount (64: none). A route on the screen is one destination of a
+// slot: its source the Virus's own (an LFO once: its bipolar and unipolar
+// sources are one source and the route's polarity), its destination the knob
+// the Virus destination moves (kAsDest; one with no knob stays off the screen).
+struct AsSlot {
+    int src, dst[3], amt[3];
+};
+const AsSlot kAsSlots[6] = {{192, {193, 346, 348}, {194, 347, 349}}, {195, {196, 198, 350}, {197, 199, 351}},
+                            {200, {201, 203, 205}, {202, 204, 206}}, {231, {232, 352, 354}, {233, 353, 355}},
+                            {234, {235, 356, 358}, {236, 357, 359}}, {237, {238, 360, 362}, {239, 361, 363}}};
+const char *const kAsDest[128] = { // generated from the Virus destination names (ti_params.h L42) to the knobs
+    "", "patch_volume", "", "panorama", "", "", "osc1_shape", "osc1_pulsewidth", "osc1_wave_select", "", "",
+    "osc2_shape", "osc2_pulsewidth", "osc2_wave_select", "", "osc2_detune", "osc2_fm_amount", "osc2_filt_env_amt",
+    "fm_filt_env_amt", "", "osc_balance", "suboscillator_volume", "osc_mainvolume", "noise_volume", "cutoff",
+    "cutoff2", "filter1_resonance", "filter2_resonance", "filter1_env_amt", "filter2_env_amt", "", "",
+    "filter_balance", "filter_env_attack", "filter_env_decay", "filter_env_sustain", "filter_env_sustain_time",
+    "filter_env_release", "amp_env_attack", "amp_env_decay", "amp_env_sustain", "amp_env_sustain_time",
+    "amp_env_release", "lfo1_rate", "", "osc1_lfo1_amount", "osc2_lfo1_amount", "pw_lfo1_amount", "reso_lfo1_amount",
+    "filtgain_lfo1_amount", "lfo2_rate", "", "shape_lfo2_amount", "fm_lfo2_amount", "cutoff1_lfo2_amount",
+    "cutoff2_lfo2_amount", "pan_lfo2_amount", "", "", "", "", "", "chorus_mix", "chorus_rate", "chorus_depth",
+    "chorus_delay", "chorus_feedback", "delay_send", "delay_time", "delay_feedback", "", "", "reverb_send", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "ringmodulator_volume", "noise_color", "", "", "",
+    "distortion_intensity", "", "osc3_volume", "", "osc3_detune", "", "", "phaser_mix", "phaser_rate", "phaser_depth",
+    "phaser_frequency", "phaser_feedback", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "patch_distortion_mix"};
+// the sources as the screen offers them: an id, its name, the Virus's
+// source(s) (an LFO: bipolar, unipolar)
+struct AsSource {
+    const char *id, *name;
+    int bip, uni;
+};
+const AsSource kAsSources[] = {
+    {"l1", "LFO 1", 21, 29}, {"l2", "LFO 2", 22, 30}, {"l3", "LFO 3", 23, 31}, {"s20", "Filter Env", 20, 20},
+    {"s19", "Amp Env", 19, 19}, {"s38", "Envelope 3", 38, 38}, {"s39", "Envelope 4", 39, 39}, {"s24", "Velocity", 24, 24},
+    {"s3", "Mod Wheel", 3, 3}, {"s2", "Pressure", 2, 2}, {"s26", "Key Follow", 26, 26}, {"s27", "Random", 27, 27},
+    {"s1", "Pitch Bend", 1, 1}, {"s25", "Release Vel", 25, 25}, {"s4", "Breath", 4, 4}, {"s6", "Foot Pedal", 6, 6},
+    {"s10", "Expression", 10, 10}, {"s16", "Hold Pedal", 16, 16}, {"s28", "Arp Input", 28, 28}, {"s32", "1% Constant", 32, 32},
+    {"s33", "10% Constant", 33, 33}};
+const int kNumAsSources = int(sizeof(kAsSources) / sizeof(kAsSources[0]));
+const AsSource *as_source(int virus) {
+    for (const AsSource &a : kAsSources)
+        if (a.bip == virus || a.uni == virus) return &a;
+    return nullptr;
+}
+
+// mu held: the modulation map (get_param("mod_map"))
+int mod_map(Instance *in, char *buf, int len) {
+    int off = 0;
+    auto ap = [&](const char *fmt, ...) {
+        if (off >= len) return;
+        va_list a;
+        va_start(a, fmt);
+        off += vsnprintf(buf + off, size_t(len - off), fmt, a);
+        va_end(a);
+    };
+    ap("{\"sources\":[");
+    for (int i = 0; i < kNumAsSources; i++) ap("%s{\"id\":\"%s\",\"name\":\"%s\"}", i ? "," : "", kAsSources[i].id, kAsSources[i].name);
+    ap("],\"dests\":[");
+    bool first = true;
+    for (int d = 0; d < 128; d++)
+        if (kAsDest[d][0] && find_param(kAsDest[d])) {
+            ap("%s\"%s\"", first ? "" : ",", kAsDest[d]);
+            first = false;
+        }
+    ap("],\"routes\":[");
+    first = true;
+    for (int k = 0; in->haveSingle && k < 6; k++) {
+        const int vs = in->single[size_t(kAsSlots[k].src)];
+        const AsSource *a = as_source(vs);
+        if (!a) continue;
+        for (int j = 0; j < 3; j++) {
+            const int d = in->single[size_t(kAsSlots[k].dst[j])], amt = in->single[size_t(kAsSlots[k].amt[j])];
+            if (d <= 0 || d > 127 || amt == 64 || !kAsDest[d][0]) continue;
+            ap("%s{\"src\":\"%s\",\"dst\":\"%s\",\"amount\":%.4f", first ? "" : ",", a->id, kAsDest[d], (amt - 64) / 64.0);
+            if (a->bip != a->uni) ap(",\"bipolar\":%s", vs == a->bip ? "true" : "false");
+            ap("}");
+            first = false;
+        }
+    }
+    ap("]}");
+    return off; // past len: Pung asks again with room for it all
+}
+
+// mu held: a route from the ASSIGN screen (set_param("mod_set")): the slot
+// destination that has it changed; a new one in a slot with its source and a
+// free destination, else in a free slot; at 0 removed (a slot left with none
+// is freed). A polarity that differs from its slot's: the route moves to a
+// slot of its own polarity. Each byte goes to the synth as a knob's does.
+void mod_set(Instance *in, const char *val) {
+    if (!in->haveSingle) return;
+    const std::string v(val);
+    auto str = [&](const char *k) {
+        const std::string pat = std::string("\"") + k + "\":\"";
+        const size_t p = v.find(pat);
+        if (p == std::string::npos) return std::string();
+        const size_t e = v.find('"', p + pat.size());
+        return v.substr(p + pat.size(), e == std::string::npos ? std::string::npos : e - p - pat.size());
+    };
+    const std::string sid = str("src"), dst = str("dst");
+    const size_t ap = v.find("\"amount\":");
+    const double a = ap == std::string::npos ? 0 : atof(v.c_str() + ap + 9);
+    const int bipolar = v.find("\"bipolar\":true") != std::string::npos ? 1 : v.find("\"bipolar\":false") != std::string::npos ? 0 : -1;
+    const AsSource *src = nullptr;
+    for (const AsSource &s_ : kAsSources)
+        if (sid == s_.id) src = &s_;
+    int di = -1;
+    for (int d = 1; d < 128; d++)
+        if (kAsDest[d][0] && dst == kAsDest[d]) di = d;
+    if (!src || di < 0) return;
+    auto put = [&](int at, int b) {
+        in->single[size_t(at)] = uint8_t(b);
+        send_byte(in, at);
+    };
+    // where the route is now
+    int ks = -1, kj = -1;
+    for (int k = 0; k < 6 && ks < 0; k++)
+        if (as_source(in->single[size_t(kAsSlots[k].src)]) == src)
+            for (int j = 0; j < 3; j++)
+                if (in->single[size_t(kAsSlots[k].dst[j])] == di) ks = k, kj = j;
+    const int was = ks >= 0 ? in->single[size_t(kAsSlots[ks].src)] : -1;
+    const int want = bipolar == 1 ? src->bip : bipolar == 0 ? src->uni : (was >= 0 ? was : src->bip);
+    auto remove = [&](int k, int j) {
+        put(kAsSlots[k].dst[j], 0), put(kAsSlots[k].amt[j], 64);
+        bool any = false;
+        for (int jj = 0; jj < 3; jj++) any = any || in->single[size_t(kAsSlots[k].dst[jj])] != 0;
+        if (!any) put(kAsSlots[k].src, 0); // the slot is free again
+    };
+    const int amt = int(std::max(0L, std::min(127L, std::lround(64 + a * 64))));
+    if (ks >= 0 && (a == 0 || was != want)) {
+        remove(ks, kj);
+        if (a == 0) return;
+        ks = -1;
+    }
+    if (a == 0) return;
+    if (ks >= 0) {
+        put(kAsSlots[ks].amt[kj], amt);
+        return;
+    }
+    // a slot with this very source and a free destination, else a free slot
+    for (int k = 0; k < 6 && ks < 0; k++)
+        if (in->single[size_t(kAsSlots[k].src)] == want)
+            for (int j = 0; j < 3 && ks < 0; j++)
+                if (in->single[size_t(kAsSlots[k].dst[j])] == 0) ks = k, kj = j;
+    // a free slot: no source, or a source that drives nothing (every
+    // destination off or at 64); taken whole, its other destinations cleared
+    auto idle = [&](int k) {
+        if (in->single[size_t(kAsSlots[k].src)] == 0) return true;
+        for (int j = 0; j < 3; j++)
+            if (in->single[size_t(kAsSlots[k].dst[j])] != 0 && in->single[size_t(kAsSlots[k].amt[j])] != 64) return false;
+        return true;
+    };
+    for (int k = 0; k < 6 && ks < 0; k++)
+        if (idle(k)) {
+            ks = k, kj = 0;
+            put(kAsSlots[k].src, want);
+            for (int j = 1; j < 3; j++) put(kAsSlots[k].dst[j], 0), put(kAsSlots[k].amt[j], 64);
+        }
+    if (ks < 0) {
+        plog("no free assign slot for %s", dst.c_str());
+        return;
+    }
+    put(kAsSlots[ks].dst[kj], di);
+    put(kAsSlots[ks].amt[kj], amt);
+}
+
 void v2_set_param(void *instance, const char *key, const char *val) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !val) return;
@@ -831,6 +998,8 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         }
         if (n == in->bank && in->haveSingle) return;
         load_sound(in, n, 0); // as on the synth: a bank's first sound, so the list and the sound agree
+    } else if (!strcmp(key, "mod_set")) {
+        mod_set(in, val); // a route from Pung's ASSIGN screen
     } else if (const ti::Param *p = find_param(key)) {
         if (in->haveSingle) param_set(in, *p, val);
     } else if (!strcmp(key, "gain")) {
@@ -862,6 +1031,7 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     }
     if (!strncmp(key, "wave_view_", 10)) return snprintf(buf, size_t(len), "%s", wave_view(in, atoi(key + 10)).c_str());
     std::lock_guard<std::mutex> l(in->mu);
+    if (!strcmp(key, "mod_map")) return mod_map(in, buf, len);
     const int nb = int(in->names.size());
     const std::vector<std::string> empty;
     const auto &b = in->bank >= 0 && in->bank < nb ? in->names[size_t(in->bank)] : empty;

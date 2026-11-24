@@ -144,6 +144,52 @@ void publish_wave_mem(SynthDevice &dev) {
         }
     eshm::put_blob(L, out, sizeof(out));
 }
+
+// Where the sound has its controls now, for Pung's live_mod (every synth
+// shows its modulation moving; docs/NATIVE-MODULES.md, Xenia). Found in the
+// DSP's memory with native/xenia/tools/xt_scan.cpp (2026-11-24), in Single
+// mode on one DSP: five voices, the k-th note taking voice k-1, and a voice
+// holding
+//   Y:0x60 + 28 v   its oscillator's phase increment (the pitch: x2 an octave)
+//   Y:0xEC + 14 v   its filter's cutoff with everything that moves it (LFO,
+//                   envelope, keytrack): a semitone a knob step to about 90,
+//                   the plugin's table (xt_cutoff) reads it back as the knob
+//   X:0x61 + 28 v   Wave 1: Y:0x24000 + 256 * the wave it plays (the wave memory)
+//   X:0x68 + 28 v   Wave 2, the same
+// The voice a note took is the one whose pitch moved most in the 80 ms after
+// it (a note struck again on its own voice moves nothing: the voice stays).
+const int XT_VOICES = 5;
+uint32_t notePitch[XT_VOICES];
+int64_t noteOnAt = 0;
+int liveVoice = -1;
+uint32_t xt_word(SynthDevice &dev, bool y, uint32_t a) {
+    auto &mem = dev.getXt().getHardware()->getDSP(0).dsp().memory();
+    return mem.get(y ? dsp56k::MemArea_Y : dsp56k::MemArea_X, a) & 0xffffff;
+}
+void note_started(SynthDevice &dev, int64_t now) {
+    for (int v = 0; v < XT_VOICES; v++) notePitch[v] = xt_word(dev, true, 0x60 + 28u * uint32_t(v));
+    noteOnAt = now;
+}
+void publish_live(SynthDevice &dev, int64_t now) {
+    if (noteOnAt) {
+        double best = 0.004; // more than vibrato moves in a moment (a fifth of a semitone is 0.012)
+        int bv = -1;
+        for (int v = 0; v < XT_VOICES; v++) {
+            const uint32_t p = xt_word(dev, true, 0x60 + 28u * uint32_t(v));
+            const double r = std::fabs(std::log((double(p) + 1) / (double(notePitch[v]) + 1)));
+            if (r > best) best = r, bv = v;
+        }
+        if (bv >= 0) liveVoice = bv, noteOnAt = 0;
+        else if (now - noteOnAt > 80000) noteOnAt = 0;
+    }
+    if (liveVoice < 0) return;
+    const uint32_t v = uint32_t(liveVoice);
+    L->aux[LIVE_CUT].store(int32_t(xt_word(dev, true, 0xEC + 14 * v)), std::memory_order_relaxed);
+    L->aux[LIVE_W1].store(int32_t(xt_word(dev, false, 0x61 + 28 * v)), std::memory_order_relaxed);
+    L->aux[LIVE_W2].store(int32_t(xt_word(dev, false, 0x68 + 28 * v)), std::memory_order_relaxed);
+    L->aux[LIVE_VOICE].store(liveVoice, std::memory_order_relaxed);
+    L->aux[LIVE_AT].store(int32_t(uint32_t(now / 1000)), std::memory_order_release); // (ms; read with wrap)
+}
 #endif
 
 } // namespace
@@ -280,6 +326,9 @@ int main(int argc, char **argv) {
                 dumpPending = true;
             } else if (playing) {
                 synthLib::SMidiEvent ev = to_event(entry);
+#if defined(WALDORF_XT)
+                if (entry.size() >= 3 && (entry[0] & 0xf0) == 0x90 && entry[2] > 0) note_started(*device, now_us());
+#endif
                 plugin->addMidiEvent(ev);
             }
         }
@@ -336,7 +385,7 @@ int main(int argc, char **argv) {
     L->phase.store(eshm::RUNNING, std::memory_order_release);
     plog("running");
 
-    int64_t deepUntil = 0, memAt = 0;
+    int64_t deepUntil = 0, memAt = 0, liveAt = 0;
     while (!L->quit.load(std::memory_order_relaxed)) {
         if (getppid() != parent) break; // (PDEATHSIG covers it; this is in case)
         drain(true);
@@ -379,6 +428,10 @@ int main(int argc, char **argv) {
             memAt = now_us();
             publish_wave_mem(*device);
         }
+        if (now_us() - liveAt >= 10000) {
+            liveAt = now_us();
+            publish_live(*device, liveAt);
+        }
 #endif
         timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -390,5 +443,6 @@ int main(int argc, char **argv) {
         sem_timedwait(&L->wake, &ts);
     }
     (void)memAt;
+    (void)liveAt;
     _exit(0); // no teardown: the process ends, and the emulator's threads with it
 }

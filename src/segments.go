@@ -101,6 +101,7 @@ func (u *surface) leaveSegments() {
 		u.peekUntil = time.Time{} // a card belonged to the segment's knobs
 	}
 	u.segMode, u.segID, u.segComp = "", "", ""
+	u.asg.on = false
 }
 
 // encKeys: the keys the encoders play now: the shown page's, or in segment

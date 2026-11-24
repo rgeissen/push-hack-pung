@@ -1,0 +1,12 @@
+--- a/source/claudia/n2x/n2xLib/n2xdevice.h
++++ b/source/claudia/n2x/n2xLib/n2xdevice.h
+@@ -25,6 +25,9 @@
+ 		uint32_t getDspClockPercent() const override;
+ 		uint64_t getDspClockHz() const override;
+ 
++		// Pung: research reads the DSPs' memory (native/nodalred/tools/n2x_scan.cpp)
++		Hardware& getHardware() { return m_hardware; }
++
+ 	protected:
+ 		void readMidiOut(std::vector<synthLib::SMidiEvent>& _midiOut) override;
+ 		void processAudio(const synthLib::TAudioInputs& _inputs, const synthLib::TAudioOutputs& _outputs, size_t _samples) override;

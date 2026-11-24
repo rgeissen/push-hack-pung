@@ -5,6 +5,9 @@
 //                                       tools/gen_params.py)
 //   vivace-export factory <folder>      writes Vivace's factory sounds
 //                                       (vivace_factory.cpp) as preset files
+//   vivace-export wavetables <AKWF folder> <folder>
+//                                       builds the wavetable library
+//                                       (vivace_wtbuild.cpp)
 //   vivace-export render <preset> <out.raw> [seconds] [note...]
 //                                       a preset played, as float stereo
 //                                       (checks a sound without a host)
@@ -118,8 +121,11 @@ int render(const char *preset, const char *out, double secs, std::vector<int> no
 
 } // namespace
 
+int build_wavetables(const char *akwf, const char *out); // vivace_wtbuild.cpp
+
 int main(int argc, char **argv) {
     if (argc >= 3 && !strcmp(argv[1], "params")) return dump_params(argv[2]);
+    if (argc >= 4 && !strcmp(argv[1], "wavetables")) return build_wavetables(argv[2], argv[3]);
     if (argc >= 3 && !strcmp(argv[1], "factory")) return write_factory(argv[2]);
     if (argc >= 4 && !strcmp(argv[1], "render")) {
         std::vector<int> notes;
@@ -127,6 +133,6 @@ int main(int argc, char **argv) {
         if (notes.empty()) notes = {48, 55, 60, 64};
         return render(argv[2], argv[3], argc > 4 ? atof(argv[4]) : 2.0, notes);
     }
-    fprintf(stderr, "usage: vivace-export params <file> | factory <folder> | render <preset|init> <out.raw> [secs] [notes]\n");
+    fprintf(stderr, "usage: vivace-export params <file> | factory <folder> | wavetables <AKWF folder> <folder> | render <preset|init> <out.raw> [secs] [notes]\n");
     return 2;
 }

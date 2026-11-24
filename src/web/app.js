@@ -169,7 +169,8 @@
         if (!p.section || !state.enabled || state.enabled.has(p.section)) pics[k] = { kind: p.kind, keys: p.keys };
       });
       const keys = frame ? [...new Set((state.comps || []).flatMap((c) => c.live_keys || []))] : [];
-      if (Object.keys(pics).length || keys.length) {
+      // always: a module's modulation moves its sliders (frame.mod, livemod.go)
+      {
         url = `${state.base}/live?comp=${encodeURIComponent(state.comp)}&pics=${encodeURIComponent(JSON.stringify(pics))}&keys=${encodeURIComponent(keys.join(","))}`;
       }
     }
@@ -182,8 +183,28 @@
       let f;
       try { f = JSON.parse(e.data); } catch (err) { return; }
       if (window.PungVisuals) PungVisuals.live(f);
+      showMod(f.mod || {});
       if (frame && frameSubscribed) toFrame({ type: "live", frame: f });
     };
+  }
+  // where the module's modulation has each slider now: a dot on its track
+  // in the modulation colour (UX-GUIDELINES.md, Live pictures, Modulation)
+  let modShown = new Set();
+  function showMod(mod) {
+    const now = new Set();
+    Object.entries(mod).forEach(([k, raw]) => {
+      const el = document.querySelector(`.ctl[data-kind="range"][data-key="${CSS.escape(k)}"]`);
+      const r = el && el.querySelector("input[type=range]");
+      if (!r) return;
+      const min = +r.min, max = +r.max, v = +raw;
+      if (!(max > min) || isNaN(v)) return;
+      const at = Math.max(0, Math.min(1, (v - min) / (max - min)));
+      el.style.setProperty("--mod", String(at));
+      el.classList.add("modulated");
+      now.add(el);
+    });
+    modShown.forEach((el) => { if (!now.has(el)) el.classList.remove("modulated"); });
+    modShown = now;
   }
   document.addEventListener("visibilitychange", liveConnect);
   window.addEventListener("pung:view", liveConnect);

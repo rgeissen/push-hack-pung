@@ -1,0 +1,12 @@
+--- a/source/waldi/microq/mqLib/device.h
++++ b/source/waldi/microq/mqLib/device.h
+@@ -28,6 +28,9 @@
+ 		uint32_t getChannelCountOut() override;
+ 		bool canModifyDspClock() const override { return true; }
+ 
++		// Pung: research reads the DSP's memory (native/vavra/tools/mq_scan.cpp)
++		MicroQ& getMicroQ() { return m_mq; }
++
+ 	protected:
+ 		void readMidiOut(std::vector<synthLib::SMidiEvent>& _midiOut) override;
+ 		void processAudio(const synthLib::TAudioInputs& _inputs, const synthLib::TAudioOutputs& _outputs, size_t _samples) override;

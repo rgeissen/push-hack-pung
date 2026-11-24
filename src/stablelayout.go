@@ -107,7 +107,7 @@ func stableLayout(sc *sclass, prev *livedevice.Class) *sclass {
 	}
 	place := func(i, j int) { pos[i], slot[j] = j, i }
 	occ := keyOccurrences(cur)
-	var later []int // new parameters, and placeholders with no slot left
+	var later []int // new parameters
 	for i, p := range cur {
 		pos[i] = -1
 		id := paramIdentity(p)
@@ -124,22 +124,43 @@ func stableLayout(sc *sclass, prev *livedevice.Class) *sclass {
 		}
 		later = append(later, i)
 	}
-	// placeholders take the slots left (prev's placeholders, parameters gone)
-	free := 0
+	// The slots left (prev's placeholders, parameters gone) take placeholders,
+	// and new parameters when appending them would not fit Live's list:
+	// Vivace's class is full (255 of 256), and its tables' parameters went
+	// in that way. Live gives such a slot the placeholder's value when it
+	// opens an older Set (0): a parameter whose 0 is its default loses
+	// nothing (Vivace's: "Preset", the sound's own table).
+	var pads []int
 	for i, p := range cur {
-		if paramIdentity(p) != "" {
-			continue
+		if paramIdentity(p) == "" {
+			pads = append(pads, i)
 		}
+	}
+	free := 0
+	nextFree := func() int {
 		for free < len(slot) && slot[free] >= 0 {
 			free++
 		}
 		if free < len(slot) {
-			place(i, free)
-		} else {
-			later = append(later, i)
+			return free
 		}
+		return -1
 	}
 	n := len(prev.Params)
+	if n+len(later) > livedevice.MaxParams {
+		var still []int
+		for _, i := range later {
+			if j := nextFree(); j >= 0 {
+				place(i, j)
+			} else {
+				still = append(still, i)
+			}
+		}
+		if len(still) < len(later) {
+			log.Printf("devices: %s: %d new parameter(s) in placeholder slots (the list is full)", sc.Name, len(later)-len(still))
+		}
+		later = still
+	}
 	for _, i := range later {
 		pos[i] = n
 		n++
@@ -148,6 +169,18 @@ func stableLayout(sc *sclass, prev *livedevice.Class) *sclass {
 		log.Printf("devices: %s: keeping its parameters where they were takes %d entries, Live takes %d: laid out afresh (a Set's automation on it may move)",
 			sc.Name, n, livedevice.MaxParams)
 		return sc
+	}
+	dropped := map[int]bool{} // placeholders with no slot and no room: left out of the list and its pages
+	for _, i := range pads {
+		if j := nextFree(); j >= 0 {
+			place(i, j)
+		} else if n < livedevice.MaxParams {
+			pos[i] = n
+			n++
+		} else {
+			pos[i] = -1
+			dropped[i] = true
+		}
 	}
 
 	c := *sc.Class
@@ -159,6 +192,9 @@ func stableLayout(sc *sclass, prev *livedevice.Class) *sclass {
 	}
 	for i, p := range cur {
 		j := pos[i]
+		if j < 0 {
+			continue // a placeholder left out
+		}
 		c.Params[j] = p
 		if i < len(sc.meta) {
 			out.meta[j] = sc.meta[i]
@@ -176,13 +212,13 @@ func stableLayout(sc *sclass, prev *livedevice.Class) *sclass {
 	c.Banks = make([][]int, len(sc.Class.Banks))
 	for b, bank := range sc.Class.Banks {
 		for _, i := range bank {
-			if i >= 0 && i < len(pos) {
+			if i >= 0 && i < len(pos) && pos[i] >= 0 {
 				c.Banks[b] = append(c.Banks[b], pos[i])
 			}
 		}
 	}
 	for _, i := range sc.order {
-		if i >= 0 && i < len(pos) {
+		if i >= 0 && i < len(pos) && pos[i] >= 0 {
 			out.order = append(out.order, pos[i])
 		}
 	}

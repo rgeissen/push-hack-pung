@@ -71,6 +71,9 @@ type liveOut struct {
 	LFOs   map[string]*lfoLive
 	Spec   []float64         // dB per column of the filter axis, liveSpecCols of them; nil: no filter shown
 	Keys   map[string]string // values the module drives itself (live_keys), read this tick
+	// Mod: where the module's modulation puts its controls now ("synth:cutoff"
+	// -> raw value, as the parameter reads), from its live_mod (livemod.go)
+	Mod map[string]string
 }
 
 type liveSession struct {
@@ -80,6 +83,7 @@ type liveSession struct {
 	fx       liveFX
 	pics     map[string]*livePic
 	liveKeys map[string]time.Time // "<comp>:<key>" -> last asked
+	mod      liveModReader        // the components' live_mod (livemod.go)
 	out      liveOut
 	pushAt   time.Time
 	subs     map[chan []byte]bool
@@ -209,6 +213,7 @@ func (ls *liveSession) tickLocked() {
 			}
 		}
 	}
+	out.Mod = ls.mod.read(ls.slot, now)
 	out.Synced = f.synced
 	out.Active = f.active() || (f.playing && f.synced)
 	out.Info = fxInfo(f)
@@ -319,6 +324,9 @@ func webFrame(o liveOut) []byte {
 	if o.Keys != nil {
 		doc["keys"] = o.Keys
 	}
+	if o.Mod != nil {
+		doc["mod"] = o.Mod
+	}
 	raw, _ := json.Marshal(doc)
 	return raw
 }
@@ -393,6 +401,7 @@ func (h *Host) serveLive(w http.ResponseWriter, r *http.Request, s *Slot) {
 			ls.want(key, g, vals)
 		}
 		ls.wantKeys(live)
+		ls.wantMod(comp) // the controls its modulation moves (livemod.go): frame.mod
 	}
 	refresh()
 	ch, done := ls.subscribe()

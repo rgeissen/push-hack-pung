@@ -44,3 +44,8 @@ add_executable(xenia-engine dsp/waldorf_emu.cpp)
 target_compile_definitions(xenia-engine PRIVATE WALDORF_XT=1)
 target_link_libraries(xenia-engine PRIVATE xtLib synthLib Threads::Threads)
 target_link_options(xenia-engine PRIVATE -static-libstdc++ -static-libgcc)
+
+# research, never shipped (the recipe builds the two targets above): the DSP
+# memory words that follow a modulation (tools/xt_scan.cpp)
+add_executable(xenia-scan EXCLUDE_FROM_ALL tools/xt_scan.cpp)
+target_link_libraries(xenia-scan PRIVATE xtLib synthLib Threads::Threads)

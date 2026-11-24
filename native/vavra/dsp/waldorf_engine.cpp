@@ -123,6 +123,9 @@ struct Instance {
     std::atomic<int> waiting{0};
     bool hasLock = false; // holds the one-at-a-time lock (emu_try_lock)
     std::atomic<uint32_t> underruns{0};
+    // notes held and the last let go: the sound sounds (live_mod)
+    std::atomic<int> held{0};
+    std::atomic<int64_t> lastOff{0};
     bool hole = false; // render_block's: the block before ended short
 
     // the sound and the library, under mu
@@ -529,6 +532,8 @@ void run_main(Instance *in) {
         got = 0;
         L->aux[ASK_LIBRARY] = askLibrary ? 1 : 0;
         L->aux[LIBRARY_DONE] = 0;
+        L->aux[LIVE_VOICE] = -1; // nothing played yet (waldorf_emu.cpp, publish_live)
+        L->aux[LIVE_AT] = 0;
 #if defined(WALDORF_XT)
         in->memSeq = 0;
 #endif
@@ -831,9 +836,126 @@ void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
     default:
         return;
     }
+    if (st == 0x90 && d2 > 0) in->held++;
+    else if (st == 0x80 || st == 0x90 || (st == 0xb0 && (d1 == 120 || d1 == 123))) {
+        if (st == 0xb0) in->held = 0;
+        else if (in->held.load() > 0) in->held--;
+        in->lastOff = now_us();
+    }
     synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, st, d1, d2); // channel 1
     send(in, ev);
 }
+
+#if HAVE_PARAMS
+// ---- the modulation matrix, for Pung's ASSIGN screen (src/assign.go) -----------
+// Sixteen slots in the sound's bytes, each a source, a destination and an
+// amount (64: none). A route on the screen is a slot: its source one of the
+// synth's (ids "s<n>", n the source's number), its destination the knob the
+// matrix destination moves; destinations with no knob of their own (the
+// pitches: octave, semitone and detune together) stay off the screen.
+struct ModFamily {
+    int srcAt, amtAt, dstAt, srcList; // a slot's bytes (slot 1's; 3 a slot), the sources' list
+    const char *const *dest;          // matrix destination -> knob ("": none)
+    int ndest;
+};
+#if defined(WALDORF_XT)
+const char *const kModDest[] = {"", "", "", "w1_start_w", "w2_start_w", "mix_w1", "mix_w2", "mix_ring_mod", "mix_noise", "f1_cutoff",
+                                "f1_resonance", "f2_cutoff", "amp_volume", "pan", "f1_env_attack", "f1_env_decay", "f1_env_sustain",
+                                "f1_env_release", "amp_env_attack", "amp_env_decay", "amp_env_sustain", "amp_env_release", "", "", "", "",
+                                "lfo1_rate", "", "lfo2_rate", "", "", "", "", "", "o1_fm_amount", "f1_extra"};
+const ModFamily kMod = {192, 193, 194, 25, kModDest, int(sizeof(kModDest) / sizeof(kModDest[0]))};
+#else
+const char *const kModDest[] = {"", "", "o1_fm_amount", "o1_pulse_width", "", "o2_fm_amount", "o2_pulse_width", "", "o3_fm_amount",
+                                "o3_pulse_width", "o1_level", "o1_balance", "o2_level", "o2_balance", "o3_level", "o3_balance",
+                                "ring_mod_level", "ring_mod_balance", "noise_level", "noise_balance", "f1_cutoff", "f1_resonance",
+                                "f1_fm_amount", "f1_drive", "f1_pan", "f2_cutoff", "f2_resonance", "f2_fm_amount", "f2_drive", "f2_pan",
+                                "amp_volume", "lfo1_speed", "lfo2_speed", "lfo3_speed", "filter_env_attack", "filter_env_decay",
+                                "filter_env_sustain", "filter_env_release", "amp_env_attack", "amp_env_decay", "amp_env_sustain",
+                                "amp_env_release", "env3_attack", "env3_decay", "env3_sustain", "env3_release", "env4_attack", "env4_decay",
+                                "env4_sustain", "env4_release", "slot1_famount", "slot2_famount", "slot1_samount", "slot2_samount",
+                                "o1_sub_freq_div", "o1_sub_volume", "o2_sub_freq_div", "o2_sub_volume"};
+const ModFamily kMod = {285, 287, 286, 8, kModDest, int(sizeof(kModDest) / sizeof(kModDest[0]))};
+#endif
+const int kModSlots = 16;
+
+// mu held: the modulation map (get_param("mod_map"))
+int mod_map(Instance *in, char *buf, int len) {
+    int off = 0;
+    auto ap = [&](const char *fmt, ...) {
+        if (off >= len) return;
+        va_list a;
+        va_start(a, fmt);
+        off += vsnprintf(buf + off, size_t(len - off), fmt, a);
+        va_end(a);
+    };
+    ap("{\"sources\":[");
+    for (int i = 1; i < tbl::kListLen[kMod.srcList]; i++) ap("%s{\"id\":\"s%d\",\"name\":\"%s\"}", i > 1 ? "," : "", i, tbl::kLists[kMod.srcList][i]);
+    ap("],\"dests\":[");
+    bool first = true;
+    for (int d = 0; d < kMod.ndest; d++)
+        if (kMod.dest[d][0] && find_param(kMod.dest[d])) {
+            ap("%s\"%s\"", first ? "" : ",", kMod.dest[d]);
+            first = false;
+        }
+    ap("],\"routes\":[");
+    first = true;
+    for (int k = 0; in->haveSingle && k < kModSlots; k++) {
+        const int src = in->single[size_t(kMod.srcAt + 3 * k)], dst = in->single[size_t(kMod.dstAt + 3 * k)], amt = in->single[size_t(kMod.amtAt + 3 * k)];
+        if (src <= 0 || amt == 64 || dst >= kMod.ndest || !kMod.dest[dst][0]) continue;
+        ap("%s{\"src\":\"s%d\",\"dst\":\"%s\",\"amount\":%.4f}", first ? "" : ",", src, kMod.dest[dst], (amt - 64) / 64.0);
+        first = false;
+    }
+    ap("]}");
+    return off; // past len: Pung asks again with room for it all
+}
+
+// mu held: a route from the ASSIGN screen (set_param("mod_set")): the slot
+// that has it changed, a free slot (source Off) taken for a new one, a slot
+// freed at 0. Each byte goes to the synth as a knob's does.
+void mod_set(Instance *in, const char *val) {
+    if (!in->haveSingle) return;
+    const std::string v(val);
+    auto str = [&](const char *k) {
+        const std::string pat = std::string("\"") + k + "\":\"";
+        const size_t p = v.find(pat);
+        if (p == std::string::npos) return std::string();
+        const size_t e = v.find('"', p + pat.size());
+        return v.substr(p + pat.size(), e == std::string::npos ? std::string::npos : e - p - pat.size());
+    };
+    const std::string src = str("src"), dst = str("dst");
+    const size_t ap = v.find("\"amount\":");
+    const double a = ap == std::string::npos ? 0 : atof(v.c_str() + ap + 9);
+    const int si = src.size() > 1 && src[0] == 's' ? atoi(src.c_str() + 1) : -1;
+    int di = -1;
+    for (int d = 0; d < kMod.ndest; d++)
+        if (kMod.dest[d][0] && dst == kMod.dest[d]) di = d;
+    if (si < 1 || si >= tbl::kListLen[kMod.srcList] || di < 0) return;
+    int slot = -1, freeSlot = -1;
+    for (int k = 0; k < kModSlots; k++) {
+        const int s_ = in->single[size_t(kMod.srcAt + 3 * k)], d_ = in->single[size_t(kMod.dstAt + 3 * k)];
+        if (s_ == si && d_ == di && slot < 0) slot = k;
+        if (s_ == 0 && freeSlot < 0) freeSlot = k;
+    }
+    auto put = [&](int at, int b) {
+        in->single[size_t(at)] = uint8_t(b);
+        send_byte(in, at);
+    };
+    if (a == 0) {
+        if (slot >= 0) put(kMod.srcAt + 3 * slot, 0), put(kMod.amtAt + 3 * slot, 64);
+        return;
+    }
+    if (slot < 0) {
+        if (freeSlot < 0) {
+            plog("no free modulation slot for %s", dst.c_str());
+            return;
+        }
+        slot = freeSlot;
+        put(kMod.dstAt + 3 * slot, di);
+        put(kMod.srcAt + 3 * slot, si);
+    }
+    put(kMod.amtAt + 3 * slot, int(std::max(0L, std::min(127L, std::lround(64 + a * 64)))));
+}
+#endif
 
 void v2_set_param(void *instance, const char *key, const char *val) {
     Instance *in = static_cast<Instance *>(instance);
@@ -860,6 +982,8 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         in->gain = std::max(1, std::min(200, atoi(val)));
         if (in->host.L) in->host.L->gain = in->gain;
 #if HAVE_PARAMS
+    } else if (!strcmp(key, "mod_set")) {
+        mod_set(in, val); // a route from Pung's ASSIGN screen
     } else if (const tbl::Param *p = find_param(key)) {
         if (in->haveSingle) param_set(in, *p, val);
 #endif
@@ -885,6 +1009,50 @@ int bank_size(const Instance *in) {
     return in->bank >= 0 && in->bank < int(in->banks.size()) ? int(in->banks[size_t(in->bank)].sounds.size()) : 0;
 }
 
+#if defined(WALDORF_XT)
+// The filter cutoff word of a voice (Y:0xEC + 14 v, waldorf_emu.cpp) at each
+// position of the cutoff knob, one note, nothing modulating: measured with
+// native/xenia/tools/xt_scan.cpp (2026-11-24). A semitone a step to about 90,
+// closer together above. xt_cutoff reads a word back as the knob would stand.
+const uint32_t XT_CUT[128] = {
+    14440, 15298, 16208, 17172, 18193, 19275, 20421, 21636,
+    22922, 24285, 25729, 27259, 28880, 30597, 32417, 34345,
+    36387, 38550, 40843, 43272, 45844, 48571, 51459, 54519,
+    57761, 61195, 64834, 68690, 72774, 77102, 81687, 86544,
+    91690, 97142, 102918, 109038, 115522, 122391, 129668, 137379,
+    145548, 154203, 163372, 173086, 183378, 194281, 205833, 218072,
+    231039, 244777, 259330, 274750, 291086, 308393, 326729, 346155,
+    366735, 388538, 411637, 436109, 462036, 489502, 518600, 549427,
+    582085, 616683, 653334, 692163, 733295, 776869, 823027, 871924,
+    923721, 978588, 1036706, 1098265, 1163469, 1232532, 1305678, 1383146,
+    1465188, 1552071, 1644073, 1741492, 1844638, 1953842, 2069447, 2191817,
+    2321335, 2458400, 2603432, 2756870, 2919174, 3090821, 3272310, 3464157,
+    3666896, 3881076, 4107265, 4346040, 4597984, 4863690, 5143748, 5438739,
+    5749230, 6075763, 6418840, 6778911, 7156357, 7551462, 7964395, 8395174,
+    8843632, 9309373, 9791720, 10289661, 10801770, 11326139, 11860281, 12401019,
+    12944381, 13485456, 14018253, 14535533, 15028647, 15487347, 15899609, 16231633,};
+double xt_cutoff(uint32_t w) {
+    if (w <= XT_CUT[0]) return 12.0 * std::log2(double(std::max<uint32_t>(w, 1)) / XT_CUT[0]);
+    if (w >= XT_CUT[127]) return 127.0;
+    int k = 0;
+    while (k < 126 && XT_CUT[k + 1] <= w) k++;
+    return k + std::log(double(w) / XT_CUT[k]) / std::log(double(XT_CUT[k + 1]) / XT_CUT[k]);
+}
+// Where the sound has the cutoff and the two waves now, while it sounds (a
+// note held, or let go in the last 3 s): {} at rest. Lock-free (Pung asks
+// every frame).
+int live_mod(Instance *in, char *buf, int len) {
+    eshm::Layout *L = in->host.L;
+    const int64_t now = now_us();
+    const bool sounding = in->held.load() > 0 || now - in->lastOff.load() < 3000000;
+    if (!L || !sounding || L->aux[LIVE_VOICE].load() < 0 || int32_t(uint32_t(now / 1000) - uint32_t(L->aux[LIVE_AT].load(std::memory_order_acquire))) > 500)
+        return snprintf(buf, size_t(len), "{}");
+    auto wave = [](int32_t p) { return std::max(0.0, std::min(63.0, (double(p) - 0x24000) / 256.0)); };
+    return snprintf(buf, size_t(len), "{\"f1_cutoff\":%.2f,\"w1_start_w\":%.2f,\"w2_start_w\":%.2f}",
+                    std::max(0.0, xt_cutoff(uint32_t(L->aux[LIVE_CUT].load()))), wave(L->aux[LIVE_W1].load()), wave(L->aux[LIVE_W2].load()));
+}
+#endif
+
 int v2_get_param(void *instance, const char *key, char *buf, int len) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !buf || len <= 0) return -1;
@@ -894,12 +1062,18 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
         return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u engine_pid=%d", in->underruns.load(),
                         L->blockUs.load(), L->blockMaxUs.exchange(0), L->wr.load() - L->rd.load(), int(in->host.pid.load()));
     }
+#if defined(WALDORF_XT)
+    if (!strcmp(key, "live_mod")) return live_mod(in, buf, len);
+#endif
     if (!strcmp(key, "status") || !strcmp(key, "load_error")) {
         char st[160], err[200];
         texts(in, st, sizeof(st), err, sizeof(err));
         return snprintf(buf, size_t(len), "%s", !strcmp(key, "status") ? st : err);
     }
     std::lock_guard<std::mutex> l(in->mu);
+#if HAVE_PARAMS
+    if (!strcmp(key, "mod_map")) return mod_map(in, buf, len);
+#endif
     const int nb = int(in->banks.size()), ns = bank_size(in);
     if (!strcmp(key, "gain")) return snprintf(buf, size_t(len), "%d", in->gain);
     if (!strcmp(key, "preset")) return snprintf(buf, size_t(len), "%d", in->preset);

@@ -35,10 +35,12 @@
 
 #include "dsp56kBase/logging.h"
 #include "n2xLib/n2xdevice.h"
+#include "n2xLib/n2xhardware.h" // the DSPs' memory (patches/0002: Device::getHardware)
 #include "synthLib/midiTypes.h"
 #include "synthLib/plugin.h"
 
 #include "emu_shm.h"
+#include "nodalred_live.h"
 
 // The 68k emulator writes every register access to stderr through this
 // function: not into Pung's log (as the plugin had it).
@@ -52,6 +54,44 @@ const int BLOCK = 64;        // frames the emulator renders at a time
 const int AHEAD = 320;       // frames kept ready for the host (7 ms)
 const int AHEAD_DUMP = 1280; // 29 ms, around a sound change (the emulator stalls taking a dump)
 const int64_t MISS_DEEP_US = 3000000;
+
+// Where the sound has its cutoff now, for Pung's live_mod (every synth shows
+// its modulation moving; docs/NATIVE-MODULES.md, Nodal Red). Found in the
+// DSPs' memory with tools/n2x_scan.cpp (2026-11-24): twenty voices, the
+// first ten notes on DSP B, the next on DSP A, voice k of each at
+// Y:0x12 + 22 k: its filter cutoff with everything that moves it (LFO, the
+// filter envelope, keytrack), a semitone a knob step (n2live::CUT0). The
+// voice a note took is the one whose cutoff moved most in the 80 ms after it
+// (a note that moves none, as an LFO moves them all alike: the voice stays).
+const int VOICES = 20;
+uint32_t noteCut[VOICES];
+int64_t noteOnAt = 0;
+int liveVoice = -1;
+uint32_t cut_word(n2x::Device &dev, int v) {
+    auto &hw = dev.getHardware();
+    auto &mem = (v < 10 ? hw.getDSPB() : hw.getDSPA()).dsp().memory();
+    return mem.get(dsp56k::MemArea_Y, 0x12 + 22u * uint32_t(v % 10)) & 0xffffff;
+}
+void note_started(n2x::Device &dev, int64_t now) {
+    for (int v = 0; v < VOICES; v++) noteCut[v] = cut_word(dev, v);
+    noteOnAt = now;
+}
+void publish_live(eshm::Layout *L, n2x::Device &dev, int64_t now) {
+    if (noteOnAt) {
+        double best = 0.01; // more than a moment's LFO
+        int bv = -1;
+        for (int v = 0; v < VOICES; v++) {
+            const double r = std::fabs(std::log((double(cut_word(dev, v)) + 1) / (double(noteCut[v]) + 1)));
+            if (r > best) best = r, bv = v;
+        }
+        if (bv >= 0) liveVoice = bv, noteOnAt = 0;
+        else if (now - noteOnAt > 80000) noteOnAt = 0;
+    }
+    if (liveVoice < 0) return;
+    L->aux[n2live::CUT].store(int32_t(cut_word(dev, liveVoice)), std::memory_order_relaxed);
+    L->aux[n2live::VOICE].store(liveVoice, std::memory_order_relaxed);
+    L->aux[n2live::AT].store(int32_t(uint32_t(now / 1000)), std::memory_order_release);
+}
 
 eshm::Layout *L = nullptr;
 
@@ -178,6 +218,7 @@ int main(int argc, char **argv) {
         uint8_t kind;
         while (eshm::take(L->toEngine, kind, entry)) {
             synthLib::SMidiEvent ev = to_event(entry);
+            if (entry.size() >= 3 && (entry[0] & 0xf0) == 0x90 && entry[2] > 0) note_started(*device, now_us());
             plugin->addMidiEvent(ev);
         }
     };
@@ -186,6 +227,9 @@ int main(int argc, char **argv) {
     synthLib::TAudioOutputs outs{};
     for (int i = 0; i < 4; i++) outs[size_t(i)] = buf[i];
     std::vector<synthLib::SMidiEvent> midiOut;
+    int64_t liveAt = 0;
+    L->aux[n2live::VOICE] = -1;
+    L->aux[n2live::AT] = 0;
     while (!L->quit.load(std::memory_order_relaxed)) {
         if (getppid() != parent) break; // (PDEATHSIG covers it; this is in case)
         drain();
@@ -219,6 +263,10 @@ int main(int argc, char **argv) {
             if (us > L->blockMaxUs.load(std::memory_order_relaxed)) L->blockMaxUs.store(us, std::memory_order_relaxed);
             fill = L->wr.load(std::memory_order_relaxed) - L->rd.load(std::memory_order_acquire);
             drain(); // notes arrive while the ring fills
+        }
+        if (now_us() - liveAt >= 10000) {
+            liveAt = now_us();
+            publish_live(L, *device, liveAt);
         }
         timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);

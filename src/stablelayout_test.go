@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/federico-pepe/ableton-push-hack/core/livedevice"
@@ -101,5 +102,52 @@ func TestStableLayoutTooLong(t *testing.T) {
 	sc := testClass(curPs, [][]int{{0}})
 	if stableLayout(sc, &livedevice.Class{Params: prevPs}) != sc {
 		t.Error("a layout past Live's list must not be made")
+	}
+}
+
+// A class as full as Live's list (Vivace's, 255 of 256): its new parameters
+// take placeholder slots, nothing moves, nothing is laid out afresh.
+func TestStableLayoutFullClass(t *testing.T) {
+	var prev []livedevice.Param
+	for i := 0; i < livedevice.MaxParams-1; i++ {
+		if i%10 == 9 {
+			prev = append(prev, livedevice.Param{Type: livedevice.PadType})
+		} else {
+			prev = append(prev, livedevice.Param{Key: "synth:p" + strconv.Itoa(i), Type: "float", Max: 1})
+		}
+	}
+	// built now: the same keyed parameters, three new ones, placeholders after
+	var cur []livedevice.Param
+	for _, p := range prev {
+		if p.Key != "" {
+			cur = append(cur, p)
+		}
+	}
+	for _, k := range []string{"synth:osc_1_wt_class", "synth:osc_1_wt", "synth:osc_2_wt_class"} {
+		cur = append(cur, livedevice.Param{Key: k, Type: "int", Max: 9})
+	}
+	for i := 0; i < 20; i++ {
+		cur = append(cur, livedevice.Param{Type: livedevice.PadType})
+	}
+	sc := testClass(cur, [][]int{{0, 1}})
+	got := stableLayout(sc, &livedevice.Class{Params: prev})
+	if got == sc {
+		t.Fatal("laid out afresh")
+	}
+	if len(got.Class.Params) > livedevice.MaxParams {
+		t.Fatalf("%d entries", len(got.Class.Params))
+	}
+	for i, p := range prev {
+		if p.Key != "" && got.Class.Params[i].Key != p.Key {
+			t.Fatalf("%s moved from %d", p.Key, i)
+		}
+	}
+	for _, k := range []string{"synth:osc_1_wt_class", "synth:osc_1_wt", "synth:osc_2_wt_class"} {
+		if _, ok := got.keyIdx[k]; !ok {
+			t.Errorf("%s left out", k)
+		}
+	}
+	if err := got.Class.Check(); err != nil {
+		t.Fatal(err)
 	}
 }

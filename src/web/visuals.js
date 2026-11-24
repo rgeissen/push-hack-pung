@@ -633,9 +633,12 @@
       }
       const curve = [];
       for (let x = x0; x <= x1; x += 2) curve.push([x, yOf(filterDB(f, (x - x0) / (x1 - x0)))]);
+      geo.f = f;
+      geo.yOf = yOf;
       h += `<polygon class="fill" points="${x0},${base} ${pts(curve)} ${curve[curve.length - 1][0]},${base}"/>`;
       h += `<g class="spec"></g>`; // the sound itself, behind the curve that shapes it (live)
       h += `<polyline class="seg${hot === "resonance" || hot === "type" ? " hot" : ""}" fill="none" points="${pts(curve)}"/>`;
+      h += `<g class="mod"></g>`; // where the sound's modulation has the filter now (live: frame.mod)
       const yc = yOf(filterDB(f, f.Cutoff));
       if (hot === "cutoff") h += `<line class="guide hot" x1="${xc}" y1="${yc + 6}" x2="${xc}" y2="${base}"/>`;
       h += `<circle class="handle${hot === "cutoff" ? " hot" : ""}" cx="${xc}" cy="${yc}" r="${hot === "cutoff" ? 6 : 4.5}"/>`;
@@ -692,9 +695,32 @@
     }
     // the sound, as the Push draws it (visuals_shapes.go): the spectrum
     // behind a filter, an LFO's playhead where its phase is known
+    // where the module's modulation has a key now, 0..1 of its range (frame.mod: "<comp>:<key>" -> raw), or null
+    function modFrac(f, key) {
+      if (!f || !f.mod || !key) return null;
+      const k = Object.keys(f.mod).find((m) => m.endsWith(":" + key));
+      const p = k && io.meta(key);
+      if (!p || !(p.max > p.min)) return null;
+      return Math.max(0, Math.min(1, (+f.mod[k] - p.min) / (p.max - p.min)));
+    }
+    function liveMod(f) {
+      const lay = svg.querySelector("g.mod");
+      if (!lay) return;
+      const nc = modFrac(f, g.keys.cutoff), nr = modFrac(f, g.keys.resonance);
+      if (!geo.f || svg.classList.contains("unknown") || (nc === null && nr === null)) { lay.innerHTML = ""; return; }
+      const m = Object.assign({}, geo.f);
+      if (nc !== null) m.Cutoff = nc;
+      if (nr !== null) m.Res = nr;
+      if (Math.abs(m.Cutoff - geo.f.Cutoff) < 0.004 && Math.abs(m.Res - geo.f.Res) < 0.004) { lay.innerHTML = ""; return; }
+      const curve = [];
+      for (let x = geo.x0; x <= geo.x1; x += 2) curve.push([x, geo.yOf(filterDB(m, (x - geo.x0) / (geo.x1 - geo.x0)))]);
+      const xc = geo.x0 + (geo.x1 - geo.x0) * m.Cutoff, yc = geo.yOf(filterDB(m, m.Cutoff));
+      lay.innerHTML = `<polyline class="modcurve" fill="none" points="${pts(curve)}"/><circle class="moddot" cx="${xc}" cy="${yc}" r="4"/>`;
+    }
     function live(f) {
       lastLive = f;
       if (g.kind === "filter") {
+        liveMod(f);
         const lay = svg.querySelector("g.spec");
         if (!lay) return;
         const sp = f && f.spec;

@@ -21,9 +21,12 @@ cp "$T/build/dsp.so" "$D/dsp.so"
 cp "$R/module.json" "$D/module.json"
 for f in push_ui.js help.json; do [ -f "$R/$f" ] && cp "$R/$f" "$D/$f"; done
 "$T/build/vivace-export" factory "$D/factory"
+# the wavetable library (dsp/vivace_wtbuild.cpp): AKWF's cycles (CC0) and Pung's own tables
+"$T/build/vivace-export" wavetables "$R/libs/akwf/AKWF" "$D/wavetables"
 cp "$R/libs/engine/LICENSE" "$D/LICENSE"
 mkdir -p "$D/licenses"
 cp "$R/licenses/"* "$D/licenses/"
+cp "$R/libs/akwf/LICENSE.md" "$D/licenses/AKWF-CC0.txt" # the Adventure Kid Waveforms in wavetables/
 cp "$R/libs/engine/third_party/concurrentqueue/LICENSE.md" "$D/licenses/concurrentqueue-BSD.txt"
 sed -n '/Licensed under the MIT License/,/SOFTWARE\./p' "$R/libs/engine/third_party/json/json.h" > "$D/licenses/nlohmann-json-MIT.txt"
 rm -rf "$T"

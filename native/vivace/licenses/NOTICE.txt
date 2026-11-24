@@ -17,6 +17,16 @@ Vivace's own code (dsp/, tools/, push_ui.js): Copyright 2026 Pung
 contributors, GPL-3.0-or-later. The complete corresponding source of this
 package is the source archive the Pung catalog links for it.
 
+The wavetable library (wavetables/) is built with the package by Vivace's
+own code (dsp/vivace_wtbuild.cpp): 187 tables in 14 types. 43 of them are
+computed by that code (GPL-3.0-or-later like the rest); the other 144 are
+made from single-cycle waveforms of the Adventure Kid Waveforms collection
+(AKWF-FREE), by Kristoffer Ekstrand, dedicated to the public domain under
+CC0 1.0 (AKWF-CC0.txt):
+
+    https://github.com/KristofferKarlAxelEkstrand/AKWF-FREE
+    (commit 8de90bf94376670947369e69de0af6b9fbd19286)
+
 Linked in:
   JUCE 6.0.5 (in the engine's third_party/JUCE): juce_core, juce_events and
     juce_audio_basics under the ISC licence (JUCE-ISC.txt); juce_data_structures,

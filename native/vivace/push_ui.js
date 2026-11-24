@@ -12,7 +12,10 @@
 // oscillator plays it, the range its modulations sweep marked under it; the
 // first filter's response and the amplitude envelope (Pung's, live); the
 // sound's name; the macros, named as the sound names them, each with what it
-// drives. An oscillator's pages show its table large, the frame it plays in
+// drives. Wherever a table is drawn, the lit frame is the one the sound plays
+// now (wave_pos: an LFO sweeping the table moves it). An oscillator's Table
+// page chooses its table from the library by type, the sound's own, or any
+// table the sound files carry. An oscillator's pages show its table large, the frame it plays in
 // 2D under its warp, the unison voices where the engine puts them (detune,
 // its power and the stack's intervals) and where the oscillator goes; the
 // sources page is the routing as a matrix; the filter pages the filter large
@@ -108,6 +111,20 @@ var DEPTH_OFF = [0, 1, 2, 3].map(function (i) { return mix(BODY, MUTED, 0.62 - i
 
 function known(v, k) { return !!(k && v[k] && v[k].known); }
 function frac(v, k, d) { return known(v, k) ? v[k].frac : (d === undefined ? 0 : d); }
+// Where the sound has a control now: its modulations included (Pung reads
+// the module's live_mod while a note sounds: v[k].now), else the knob. The
+// pictures are drawn from it, so they move as the sound does; a knob's own
+// mark stays where the knob is, a teal one shows where the sound is.
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function fracNow(v, k, d) { var n = nowOf(v, k); return n === null ? frac(v, k, d) : n; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - frac(v, k, 0)) > 0.004; }
+// the sound's place on a track (x, y, w: the track), when it is not the knob's
+function nowDot(g, v, k, x, y, w, on) {
+  if (!on || !moved(v, k)) return;
+  var f = frac(v, k, 0), n = nowOf(v, k);
+  g.fill(x + w * Math.min(f, n), y, Math.max(1, w * Math.abs(n - f)), 1, MOD_MID);
+  g.dot(x + w * n, y + 0.5, 3.5, MOD_LT);
+}
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value || "") : ""; }
 function raw(v, k) { return known(v, k) ? String(v[k].value || "") : ""; }
 // an envelope's three curve knobs as the engine bends its stages: the
@@ -172,13 +189,31 @@ function pill(g, cx, y, s, tc, bg, maxW) {
 
 // ---- the wavetables (wave_view) -------------------------------------------------------------------
 var HEXV = []; for (var hc = 0; hc < 128; hc++) HEXV.push(hc >= 48 && hc <= 57 ? hc - 48 : hc >= 97 && hc <= 102 ? hc - 87 : hc >= 65 && hc <= 70 ? hc - 55 : 0);
-var tableCache = { src: null, tables: null };
-// The tables as the engine hands them: per table its frame count and 17
-// frames of 64 points, a byte a point in hex. A frame is decoded the first
-// time it is drawn (t.frame(f)).
+var tableCache = { src: null, tables: null }, rawCache = { src: null, tables: null };
+// The tables as the oscillators play them (wave_play: every frame through
+// the spectral morph and the warp, by the engine's own code, at their values
+// with what modulates them; read every frame), else as the tables hold them
+// (wave_view). Per table its frame count and 17 frames of 64 points, a byte a
+// point in hex; a frame is decoded the first time it is drawn (t.frame(f)).
 function tables(v) {
+  var p = raw(v, "wave_play");
+  if (p) {
+    if (p !== tableCache.src) { tableCache = { src: p, tables: decodeTables(p) }; memo = {}; memoN = 0; }
+    if (tableCache.tables) return tableCache.tables;
+  }
+  return rawTables(v);
+}
+// the tables as they are, unshaped (the faint frame behind a shaped one)
+function rawTables(v) {
   var s = raw(v, "wave_view");
-  if (s === tableCache.src) return tableCache.tables;
+  if (s !== rawCache.src) { rawCache = { src: s, tables: decodeTables(s) }; memo = {}; memoN = 0; }
+  return rawCache.tables;
+}
+// what the tables drawn depend on, for a layer's key
+function tablesKey(v) { var p = obj(v, "wave_play"); return p.seq !== undefined ? "p" + p.seq : raw(v, "wave_view").length + raw(v, "wave_view").slice(0, 40); }
+// the shaping is in the tables drawn (wave_play): nothing more to bend on screen
+function shapedTables(v) { return !!raw(v, "wave_play") && !!tableCache.tables; }
+function decodeTables(s) {
   var out = null;
   try {
     var j = JSON.parse(s);
@@ -195,8 +230,6 @@ function tables(v) {
       } };
     });
   } catch (e) { out = null; }
-  tableCache = { src: s, tables: out };
-  memo = {}; memoN = 0;
   return out;
 }
 // computed curves, by what decides them (a few hundred at most: a knob swept
@@ -269,7 +302,7 @@ function warped(pts, type, a, ph, N) {
 function warpOf(v, n) {
   var p = "osc_" + n + "_", type = disp(v, p + "distortion_type");
   if (!warpable(type)) return null;
-  return { type: type, a: frac(v, p + "distortion_amount", 0.5), ph: frac(v, p + "distortion_phase", 0.5) };
+  return { type: type, a: fracNow(v, p + "distortion_amount", 0.5), ph: fracNow(v, p + "distortion_phase", 0.5) };
 }
 
 // The editor's 3D view: the frames recede up and to the right, the first in
@@ -308,6 +341,46 @@ function drawPlayed(g, x, y, w, h, t, pos, on, n, wp, c) {
   });
   if (on) g.area(e.line, e.base, OSC_DK);
   g.poly(e.line, 2, on ? (c || OSC_LT) : MUTED);
+}
+
+// ---- where each oscillator plays (wave_pos), and the table library (wt_lib) -----------------------------
+// The engine says, block by block, where in its table each oscillator plays:
+// the frame knob plus what modulates it (an LFO sweeping the table, an
+// envelope opening it), 0..1 of the table (2: the oscillator is off). Read
+// every frame (live_keys), so the lit frame travels through the stack as the
+// sound does.
+var posCache = { src: null, pos: null };
+function livePos(v, o) {
+  var s = raw(v, "wave_pos");
+  if (s !== posCache.src) { var j = obj(v, "wave_pos"); posCache = { src: s, pos: Array.isArray(j.pos) ? j.pos : null }; }
+  var p = posCache.pos ? parseFloat(posCache.pos[o]) : NaN;
+  return isNaN(p) || p > 1.5 ? null : clamp(p, 0, 1);
+}
+// the frame played (0 .. frames-1): where the sound has it, else where the knob stands
+function playPos(v, o, t) {
+  var p = livePos(v, o);
+  return p === null || !t ? num(v, FR_K[o]) : p * Math.max(0, t.n - 1);
+}
+// The library as the module lists it: its categories, each with its tables'
+// names (the last, From Presets, the tables the sound files carry). An
+// oscillator's category knob is 0 for the sound's own table, then these.
+var libCache = { src: null, cats: [] };
+function library(v) {
+  var s = raw(v, "wt_lib");
+  if (s !== libCache.src) {
+    var o = obj(v, "wt_lib"), c = Array.isArray(o.categories) ? o.categories : [];
+    libCache = { src: s, cats: c.map(function (x) {
+      return { name: String(x.name || ""), tables: Array.isArray(x.tables) ? x.tables.map(String) : [] };
+    }) };
+  }
+  return libCache.cats;
+}
+// an oscillator's Table page: the table, and everything that shapes it, each
+// knob under what it changes (tableScreen)
+function wtKeys(n) {
+  var p = "osc_" + n + "_";
+  return [p + "wt_class", p + "wt", p + "wave_frame", p + "spectral_morph_amount", p + "distortion_amount",
+    p + "spectral_morph_type", p + "distortion_type", p + "distortion_phase"];
 }
 
 // ---- the sound's modulations (mod_routes) ------------------------------------------------------------
@@ -349,8 +422,13 @@ function knobStatic(g, cx, cy, r) {
   g.arc(cx, cy, r, A0, SW, 3, LINE);
   g.dot(cx, cy, r - 4, "#262a2e");
 }
-function knobValue(g, cx, cy, r, f, bip, c, span) {
+function knobValue(g, cx, cy, r, f, bip, c, span, now) {
   if (f === null) return;
+  if (now !== null && now !== undefined && Math.abs(now - f) > 0.004) { // where the sound has it, live
+    var a0 = A0 + SW * Math.min(f, now);
+    g.arc(cx, cy, r + 4, a0, SW * Math.abs(now - f), 2, MOD_MID);
+    g.dot(cx + Math.cos(A0 + SW * now) * (r + 4), cy + Math.sin(A0 + SW * now) * (r + 4), 3, MOD_LT);
+  }
   if (bip) {
     var mid = A0 + SW / 2, d = (f - 0.5) * SW;
     if (Math.abs(d) > 0.02) g.arc(cx, cy, r, d >= 0 ? mid : mid + d, Math.abs(d), 3, c);
@@ -402,7 +480,7 @@ function rowLive(g, v, names, colors, captions) {
       if (d === "On" || d === "Off") power(g, x + 24, R.cy, d === "On", c);
       g.value(d === "On" || d === "Off" ? x + 36 : x + 60, R.cy + 6, d, on ? "slot" : HI, d === "On" || d === "Off" ? -1 : 0, 92);
     } else {
-      knobValue(g, x + 24, R.cy, R.r, known(v, k) ? v[k].frac : null, isBip(v, k), on ? "slot" : c, modSpan(v, k));
+      knobValue(g, x + 24, R.cy, R.r, known(v, k) ? v[k].frac : null, isBip(v, k), on ? "slot" : c, moved(v, k) ? null : modSpan(v, k), nowOf(v, k));
       g.value(x + 46, R.vy, withUnit(v, k), on ? "slot" : HI, -1, 70);
     }
     if (R.tgt && captions && captions[i]) g.text(x + 46, R.ty, captions[i], MODC, -1, 70);
@@ -448,7 +526,7 @@ function frontPanel(g, v) {
   });
   var colors = knobs.map(function (k) { return /^filter_/.test(k || "") ? FLT : /^env_|^lfo_|^random_|^modulation_/.test(k || "") ? MODC : OSC; });
   var onS = ON_K.map(function (k) { return isOn(v, k); }), f1 = isOn(v, "filter_1_on");
-  var key = ["vf", raw(v, "wave_view").length, raw(v, "wave_view").slice(0, 40), names.join("|"), onS.join(""), f1,
+  var key = ["vf", tablesKey(v), names.join("|"), onS.join(""), f1,
     soundName(v), disp(v, "bank_name"), info.preset_style || "", knobs.join(","), rowNames.join("|"), v.$page, (v.$pages || []).length,
     v.$segmode || ""].join("#");
   g.layer(key, function () {
@@ -484,9 +562,9 @@ function frontPanel(g, v) {
   });
   // the playing frames, and the span their modulations sweep under each
   for (var oo = 0; oo < 3; oo++) {
-    var t = tbl ? tbl[oo] : null, x0 = OSC_X[oo] + 8, sw = OSC_W - 16, pos = num(v, FR_K[oo]), lit = hot(v, FR_K[oo]);
-    drawPlayed(g, x0, CARD_Y + 20, sw, 44, t, pos, onS[oo], oo, warpOf(v, oo + 1), lit ? "slot" : OSC_LT);
-    if (t) scrub(g, v, x0, CARD_Y + 68, sw, FR_K[oo], onS[oo], lit);
+    var t = tbl ? tbl[oo] : null, x0 = OSC_X[oo] + 8, sw = OSC_W - 16, pos = playPos(v, oo, t), lit = hot(v, FR_K[oo]);
+    drawPlayed(g, x0, CARD_Y + 20, sw, 44, t, pos, onS[oo], oo, shapedTables(v) ? null : warpOf(v, oo + 1), lit ? "slot" : OSC_LT);
+    if (t) scrub(g, v, x0, CARD_Y + 68, sw, FR_K[oo], onS[oo], lit, headOf(v, oo, t));
   }
   for (var s = 0; s < 3; s++) {
     if (segLit(v, "osc" + (s + 1))) g.text(OSC_X[s] + 21, CARD_Y + 11, "OSC " + (s + 1), "slot", -1);
@@ -515,8 +593,9 @@ function bends(g, v, n, x, y, on) {
   }
 }
 // a frame position on its track: where it stands, and the frames its
-// modulations sweep, in teal
-function scrub(g, v, x, y, w, k, on, lit) {
+// modulations sweep, in teal; and where the sound plays now (live: 0..1,
+// null not told), a teal head that leaves the knob as the table is swept
+function scrub(g, v, x, y, w, k, on, lit, live) {
   var f = frac(v, k, 0), sp = modSpan(v, k);
   if (sp) {
     var a = clamp(f + sp.lo, 0, 1), b = clamp(f + sp.hi, 0, 1), c = on ? MODC : MOD_DK;
@@ -525,6 +604,10 @@ function scrub(g, v, x, y, w, k, on, lit) {
     g.fill(x + w * b - 1, y - 2, 1, 5, c);
   }
   g.fill(x + w * f - 1, y - 3, 3, 7, lit ? "slot" : on ? HI : MUTED);
+  if (on && live !== null && live !== undefined && Math.abs(live - f) > 0.004) {
+    g.fill(x + w * Math.min(f, live), y, Math.max(1, w * Math.abs(live - f)), 1, MOD_MID);
+    g.dot(x + w * live, y + 0.5, 3.5, MOD_LT);
+  }
 }
 
 // ---- an oscillator ----------------------------------------------------------------------------------
@@ -545,9 +628,9 @@ function powerScale(t, p) { return Math.abs(p) < 0.01 ? t : (Math.exp(p * t) - 1
 function unisonVoices(v, p) {
   var u = clamp(Math.round(num(v, p + "unison_voices", 1)), 1, 16), active = u + (u % 2), half = active / 2;
   // the detune knob is quadratic (its display: 25% at half way), the power -5..5
-  var range = num(v, p + "detune_range", 2 * 128 / 48) / 128 * 48, det = Math.pow(frac(v, p + "unison_detune", 0.42), 2), pw = (frac(v, p + "detune_power", 0.65) * 2 - 1) * 5;
+  var range = num(v, p + "detune_range", 2 * 128 / 48) / 128 * 48, det = Math.pow(fracNow(v, p + "unison_detune", 0.42), 2), pw = (frac(v, p + "detune_power", 0.65) * 2 - 1) * 5;
   var style = Math.max(0, STACK_NAMES.indexOf(disp(v, p + "stack_style"))), mult = STACK_MULT[style];
-  var b = frac(v, p + "unison_blend", 0.8), center = 1, detuned = 0;
+  var b = fracNow(v, p + "unison_blend", 0.8), center = 1, detuned = 0;
   if (u > 2) {
     center = 1 + (0.4 - 1) * b;
     var db = (1 - b) * (1 - b);
@@ -570,7 +653,7 @@ function oscScreen(n) {
   return function (g, v) {
     var tbl = tables(v), t = tbl ? tbl[n - 1] : null, on = isOn(v, p + "on"), names = arr(v, "wavetable_names");
     var tn = up(names[n - 1] || "");
-    g.layer(["os", n, raw(v, "wave_view").length, raw(v, "wave_view").slice(0, 40), on, tn].join("#"), function () {
+    g.layer(["os", n, tablesKey(v), on, tn].join("#"), function () {
       g.fill(0, 0, 952, 86, BG);
       section(g, 0, 0, 352, 86, 0);
       section(g, 356, 0, 236, 86, 0);
@@ -584,23 +667,27 @@ function oscScreen(n) {
       g.text(604, 13, "UNISON", MUTED, -1);
       g.text(844, 13, "OUTPUT", MUTED, -1);
     });
-    var fk = p + "wave_frame", pos = num(v, fk), wp = warpOf(v, n);
-    drawPlayed(g, 12, 18, 328, 56, t, pos, on, n - 1 + 10, wp, hot(v, fk) ? "slot" : OSC_LT);
+    var fk = p + "wave_frame", pos = playPos(v, n - 1, t), wp = warpOf(v, n), shaped = shapedTables(v);
+    drawPlayed(g, 12, 18, 328, 56, t, pos, on, n - 1 + 10, shaped ? null : wp, hot(v, fk) ? "slot" : OSC_LT);
     if (t) {
-      scrub(g, v, 12, 79, 328, fk, on, hot(v, fk));
+      scrub(g, v, 12, 79, 328, fk, on, hot(v, fk), headOf(v, n - 1, t));
       g.text(340, 13, t.n > 1 ? Math.round(pos) + " / " + (t.n - 1) : "ONE FRAME", hot(v, fk) ? "slot" : on ? TEXT : MUTED, 1);
     }
     // the frame in 2D, as it plays: warped; the frame as the table has it, faint behind
     var spT = disp(v, p + "spectral_morph_type") || "--", wT = disp(v, p + "distortion_type") || "--";
     var shapeHot = hotAny(v, OSC_SHAPE_KEYS.map(function (s) { return p + s; }));
-    g.text(364, 13, wp ? "FRAME, WARPED" : "FRAME", shapeHot ? "slot" : MUTED, -1);
+    var bent = wp || (spT !== "None" && spT !== "--");
+    g.text(364, 13, bent ? "FRAME, AS IT PLAYS" : "FRAME", shapeHot ? "slot" : MUTED, -1);
     if (t) {
       var dpt = Math.round(depthOf(t, pos) * 8) / 8;
-      var e = cached(["2d", n, dpt, wp ? [wp.type, Math.round(wp.a * 200), Math.round(wp.ph * 200)].join(",") : ""].join("|"), function () {
-        var base = waveAt(t, dpt), w = wp ? warped(base, wp.type, wp.a, wp.ph, 128) : null, L = [], B = [];
+      var e = cached(["2d", n, dpt, shaped, wp ? [wp.type, Math.round(wp.a * 200), Math.round(wp.ph * 200)].join(",") : ""].join("|"), function () {
+        var rt = rawTables(v), r0 = rt ? rt[n - 1] : null;
+        var base = shaped ? (r0 ? waveAt(r0, dpt) : null) : waveAt(t, dpt), L = [], B = [];
+        var w = shaped ? waveAt(t, dpt) : wp ? warped(base, wp.type, wp.a, wp.ph, 128) : null;
+        if (shaped && !bent) base = null;
         var src = w || base, cx = 364, cw = 220, cy = 44, a = 24;
         for (var i = 0; i < src.length; i++) L.push(cx + cw * i / (src.length - 1), cy - src[i] * a);
-        if (w) for (var j = 0; j < base.length; j++) B.push(cx + cw * j / (base.length - 1), cy - base[j] * a);
+        if (w && base) for (var j = 0; j < base.length; j++) B.push(cx + cw * j / (base.length - 1), cy - base[j] * a);
         return { line: L, base: B };
       });
       g.fill(364, 44, 220, 1, RULE);
@@ -621,12 +708,14 @@ function oscScreen(n) {
     var lf = frac(v, lk), lx = 844, lw = 100;
     g.fill(lx, 48, lw, 3, RULE);
     g.fill(lx, 48, Math.max(2, lw * lf), 3, hot(v, lk) ? "slot" : on ? OSC : LINE);
+    nowDot(g, v, lk, lx, 49, lw, on);
     g.text(lx, 64, "LEVEL", MUTED, -1);
     g.text(lx + lw, 64, up(disp(v, lk)), hot(v, lk) ? "slot" : TEXT, 1);
     var pf = frac(v, pk, 0.5);
     g.fill(lx, 74, lw, 1, RULE);
     g.fill(lx + lw / 2, 71, 1, 7, LINE);
     g.dot(lx + lw * pf, 74.5, 3, hot(v, pk) ? "slot" : on ? OSC_LT : LINE);
+    nowDot(g, v, pk, lx, 74, lw, on);
     g.text(lx + lw, 84, pf === 0.5 ? "C" : up(disp(v, pk)), MUTED, 1);
     g.text(lx, 84, "PAN", MUTED, -1);
   };
@@ -657,6 +746,101 @@ function unisonPicture(g, v, p, x, y, w, h, on) {
   }
 }
 
+// ---- an oscillator's table: the library, and the table as it plays ---------------------------------------
+// Over the first encoder the table types (the library's categories), then
+// the chosen type's tables, each a list around the one chosen (the sound's
+// own table is the first type, the tables the sound files carry the last);
+// beside them the table the oscillator plays, large: the stack with the frame
+// the sound is on lit, and that frame drawn flat as the oscillator bends it.
+// Both follow the sound: an LFO sweeping the table moves the lit frame.
+var LIST_ROWS = 5, LIST_TOP = 17, LIST_H = 13.6;
+// a table from a sound file is named "<table> (<sound>)": the sound fainter
+function rowText(g, x, y, s, c, w, sel) {
+  var m = /^(.*) \(([^()]*)\)$/.exec(s);
+  if (!m) { g.text(x, y, up(s), c, -1, w); return; }
+  var a = up(m[1]), aw = Math.min(w * 0.62, g.measure(a));
+  g.text(x, y, a, c, -1, w * 0.62);
+  g.text(x + aw + 8, y, up(m[2]), sel ? MUTED : FAINT, -1, w - aw - 8);
+}
+function tableList(g, x, w, items, cur, lit, on) {
+  var first = clamp(cur - 2, 0, Math.max(0, items.length - LIST_ROWS));
+  for (var i = 0; i < LIST_ROWS && first + i < items.length; i++) {
+    var k = first + i, y = LIST_TOP + i * LIST_H, sel = k === cur;
+    if (sel) box(g, x + 3, y, w - 10, LIST_H - 1, 3, lit ? HEAD : on ? OSC_DK : HEAD);
+    rowText(g, x + 8, y + 10, items[k], sel ? (lit ? "slot" : HI) : Math.abs(k - cur) === 1 ? TEXT : MUTED, w - 20, sel);
+  }
+  if (items.length > LIST_ROWS) { // where the five rows are in the list
+    var th = LIST_ROWS * LIST_H - 2, h = Math.max(6, th * LIST_ROWS / items.length);
+    g.fill(x + w - 4, LIST_TOP, 1, th, RULE);
+    g.fill(x + w - 5, LIST_TOP + (th - h) * first / (items.length - LIST_ROWS), 3, h, on ? OSC_MID : LINE);
+  }
+}
+// where the sound plays in a table, for the track's head: none in a table of one frame
+function headOf(v, o, t) { return t && t.n > 1 ? livePos(v, o) : null; }
+function tableScreen(n) {
+  var p = "osc_" + n + "_", ck = p + "wt_class", tk = p + "wt";
+  // the types over encoder 1, the tables over 2, the table over 3 to 5
+  // (frame, spectral, warp), the frame as it plays over 6 to 8 (the morph,
+  // the warp, its phase)
+  var SX = 240, SW = 352, FX = 596, FW = 356;
+  return function (g, v) {
+    var cats = library(v), tbl = tables(v), t = tbl ? tbl[n - 1] : null, on = isOn(v, p + "on");
+    var tn = up(arr(v, "wavetable_names")[n - 1] || "");
+    var c = clamp(Math.round(num(v, ck)), 0, cats.length), cat = c > 0 ? cats[c - 1] : null;
+    var ti = Math.round(num(v, tk)), items = cat ? cat.tables : [tn || "THE SOUND'S OWN"];
+    ti = cat ? clamp(ti, 0, Math.max(0, items.length - 1)) : 0;
+    g.layer(["wt", n, tablesKey(v), on, tn].join("#"), function () {
+      g.fill(0, 0, 952, 86, BG);
+      section(g, 0, 0, 116, 86, 0);
+      section(g, 120, 0, 116, 86, 0);
+      section(g, SX, 0, SW, 86, 0);
+      section(g, FX, 0, FW, 86, 0);
+      power(g, SX + 10, 9, on, OSC);
+      g.text(SX + 20, 13, "OSC " + n, on ? TEXT : MUTED, -1);
+      g.text(SX + 68, 13, tn, on ? OSC_LT : FAINT, -1, 190);
+      drawStack(g, SX + 12, 18, SW - 24, 56, t, on, 1);
+      g.fill(SX + 12, 79, SW - 24, 1, RULE);
+    });
+    // the types, the tables of the one chosen
+    var cHot = hot(v, ck), tHot = hot(v, tk);
+    g.text(8, 12, "TYPE", cHot ? "slot" : MUTED, -1);
+    tableList(g, 0, 116, ["Preset"].concat(cats.map(function (x) { return x.name; })), c, cHot, on);
+    g.text(128, 12, cat ? "TABLE" : "THE SOUND'S OWN", tHot ? "slot" : MUTED, -1);
+    if (cat) g.text(228, 12, items.length ? (ti + 1) + "/" + items.length : "", FAINT, 1);
+    if (cat && !items.length) g.text(128, 46, "NONE FOUND", FAINT, -1, 100);
+    else tableList(g, 120, 116, items, ti, tHot, on);
+    // the table as it plays: the frame the sound is on, lit, and its place
+    var fk = p + "wave_frame", pos = playPos(v, n - 1, t), wp = warpOf(v, n), live = headOf(v, n - 1, t), shaped = shapedTables(v);
+    var spT = disp(v, p + "spectral_morph_type") || "None", bent = wp || (spT !== "None" && spT !== "--");
+    drawPlayed(g, SX + 12, 18, SW - 24, 56, t, pos, on, n - 1 + 20, shaped ? null : wp, OSC_LT);
+    if (t) {
+      scrub(g, v, SX + 12, 79, SW - 24, fk, on, hot(v, fk), live);
+      g.text(SX + SW - 12, 13, t.n > 1 ? Math.round(pos) + " / " + (t.n - 1) : "ONE FRAME", on ? TEXT : MUTED, 1);
+      // the frame flat, bent as it plays; the table's own frame faint behind
+      var dpt = Math.round(depthOf(t, pos) * 8) / 8;
+      var e = cached(["wt2d", n, dpt, shaped, wp ? [wp.type, Math.round(wp.a * 200), Math.round(wp.ph * 200)].join(",") : ""].join("|"), function () {
+        var rt = rawTables(v), r0 = rt ? rt[n - 1] : null;
+        var base = shaped ? (r0 ? waveAt(r0, dpt) : null) : waveAt(t, dpt), L = [], B = [];
+        var w = shaped ? waveAt(t, dpt) : wp ? warped(base, wp.type, wp.a, wp.ph, 128) : null;
+        if (shaped && !bent) base = null;
+        var src = w || base, cx = FX + 8, cw = FW - 16, cy = 47, a = 27;
+        for (var i = 0; i < src.length; i++) L.push(cx + cw * i / (src.length - 1), cy - src[i] * a);
+        if (w && base) for (var j = 0; j < base.length; j++) B.push(cx + cw * j / (base.length - 1), cy - base[j] * a);
+        return { line: L, base: B };
+      });
+      var modeHot = hot(v, p + "spectral_morph_type") || hot(v, p + "distortion_type") || hot(v, p + "distortion_phase");
+      var shapeHot = modeHot || hot(v, p + "spectral_morph_amount") || hot(v, p + "distortion_amount");
+      var how = [spT !== "None" && spT !== "--" ? up(spT) : "", wp ? up(wp.type) : ""].filter(function (x) { return x; }).join(" + ");
+      g.text(FX + 8, 13, how ? "PLAYING, " + how : "PLAYING", shapeHot ? "slot" : MUTED, -1, 270);
+      if (t.n > 1) g.text(FX + FW - 8, 13, Math.round(clamp(pos / (t.n - 1), 0, 1) * 100) + "%", live !== null && Math.abs(live - frac(v, fk, 0)) > 0.004 ? MOD_LT : TEXT, 1);
+      g.fill(FX + 8, 47, FW - 16, 1, RULE);
+      if (e.base.length) g.poly(e.base, 1, on ? OSC_MID : FAINT);
+      g.area(e.line, 47, on ? OSC_DK : HEAD);
+      g.poly(e.line, 2, on ? OSC : MUTED);
+    }
+  };
+}
+
 // ---- the sources and where each goes: the routing as a matrix ------------------------------------------
 // Over the first four encoders the sources (on or off), over the last four
 // where each goes: one lit row in each column, so a row read across is what
@@ -679,7 +863,7 @@ function sourcesScreen(g, v) {
     section(g, x, 0, 112, 86, 0);
     power(g, x + 10, 10, on, OSC);
     g.text(x + 20, 14, s[0], lit ? "slot" : on ? TEXT : MUTED, -1);
-    var t = s[3] >= 0 && tbl ? tbl[s[3]] : null, pos = s[3] >= 0 ? num(v, "osc_" + (s[3] + 1) + "_wave_frame") : 0;
+    var t = s[3] >= 0 && tbl ? tbl[s[3]] : null, pos = s[3] >= 0 ? playPos(v, s[3], t) : 0;
     if (t) {
       var e = cached(["src", s[3], Math.round(depthOf(t, pos) * 4)], function () {
         var w = waveAt(t, Math.round(depthOf(t, pos) * 4) / 4), L = [];
@@ -751,6 +935,8 @@ function blendScale(g, v, pre, type, on, xr) {
   g.fill(x, y, w, 1, RULE);
   for (var i = 0; i < 3; i++) g.fill(x + w * i / 2, y - 2, 1, 5, LINE);
   g.dot(x + w * f, y + 0.5, 3, h ? "slot" : on ? FLT : LINE);
+  nowDot(g, v, k, x, y, w, on);
+  f = fracNow(v, k);
   g.text(x - 6, y + 4, ends[0], f < 0.25 ? (on ? TEXT : MUTED) : FAINT, 1);
   g.text(x + w + 6, y + 4, ends[2], f > 0.75 ? (on ? TEXT : MUTED) : FAINT, -1);
 }
@@ -766,6 +952,11 @@ function formantPad(g, v, pre, corners, on) {
   g.fill(hx, y + 2, 1, h - 4, on ? FLT_DK : HEAD);
   g.fill(x + 2, hy, w - 4, 1, on ? FLT_DK : HEAD);
   g.dot(hx, hy, 5, hk ? "slot" : on ? FLT : LINE);
+  if (on && (moved(v, pre + "formant_x") || moved(v, pre + "formant_y"))) { // where the sound's vowel is now
+    var nx = x + 24 + (w - 48) * fracNow(v, pre + "formant_x", 0.5), ny = y + 8 + (h - 16) * fracNow(v, pre + "formant_y", 0.5);
+    g.line(hx, hy, nx, ny, 1, MOD_MID);
+    g.dot(nx, ny, 4, MOD_LT);
+  }
   g.text(x + w + 14, y + 12, "VOWEL", MUTED, -1);
   g.text(x + w + 14, y + 30, "X  " + up(disp(v, pre + "formant_x")), hot(v, pre + "formant_x") ? "slot" : on ? TEXT : MUTED, -1);
   g.text(x + w + 14, y + 44, "Y  " + up(disp(v, pre + "formant_y")), hot(v, pre + "formant_y") ? "slot" : on ? TEXT : MUTED, -1);
@@ -905,6 +1096,7 @@ function fxScreen(g, v) {
     g.text(44, 62, "MIX " + up(disp(v, f.mix)), mh ? "slot" : on ? TEXT : FAINT, -1);
     g.fill(10, 72, 120, 3, RULE);
     g.fill(10, 72, Math.max(2, 120 * m), 3, mh ? "slot" : on ? f.c : LINE);
+    nowDot(g, v, f.mix, 10, 73, 120, on);
   }
   var c = on ? f.c : LINE, dk = mix(BODY, on ? f.c : LINE, 0.3);
   var P = FX_PICTURES[f.id];
@@ -913,6 +1105,7 @@ function fxScreen(g, v) {
 // each effect as it works, from its own values
 function axisHz(x, w, lo, hi) { var a = Math.log(lo), b = Math.log(hi); return function (hz) { return x + w * clamp((Math.log(hz) - a) / (b - a), 0, 1); }; }
 function hz(v, k, lo, hi) {
+  if (moved(v, k)) return lo * Math.pow(hi / lo, nowOf(v, k)); // modulated: where the sound has it
   var d = disp(v, k), m = /([\d.]+)\s*(k?)Hz/i.exec(d);
   if (m) return parseFloat(m[1]) * (m[2] ? 1000 : 1);
   return lo * Math.pow(hi / lo, frac(v, k, 0.5));
@@ -1088,6 +1281,7 @@ push.display(function (key, rawv) {
   if (isNaN(n)) return;
   if (/_transpose$/.test(key) && !/formant|blend/.test(key)) return { value: (n > 0 ? "+" : "") + Math.round(n), unit: "st" };
   if (key === "pitch_bend_range") return { value: String(Math.round(n)), unit: "st" };
+  if (/^osc_\d_wt$/.test(key)) return { value: String(Math.round(n) + 1) }; // a table counts from 1, as its list does
 });
 
 // ---- Pung's envelope on the synth's own times ----------------------------------------------------------
@@ -1113,7 +1307,7 @@ var SOUND = ["preset_name", "bank_name", "patch_info", "wave_view", "wavetable_n
 push.theme({ ground: "#16191c", panel: "#262a2e", ink: TEXT, dim: MUTED, rule: LINE, faint: HEAD, accent: OSC, knob: "pointer" });
 push.compartment({
   id: "panel", label: "Vivace", front_panel: true, draws_segments: true,
-  pages: pagesOf("play"), extra_keys: SOUND,
+  pages: pagesOf("play"), extra_keys: SOUND, live_keys: ["wave_pos", "wave_play"],
   // the panel's sections, each one press away (Pung draws the bar over the one in the hands)
   segments: [
     { id: "osc1", label: "Osc 1", rect: [OSC_X[0], CARD_Y, OSC_W, CARD_H], keys: pageKeys("Osc 1") },
@@ -1124,20 +1318,22 @@ push.compartment({
   ],
   screen: frontPanel
 });
-var OSC_EXTRA = ["wave_view", "wavetable_names", "mod_routes", "sample_on", "sample_destination", "sample_level"].concat(MOD_KEYS);
+var OSC_EXTRA = ["wave_view", "wavetable_names", "mod_routes", "sample_on", "sample_destination", "sample_level", "wt_lib"].concat(MOD_KEYS);
 [1, 2, 3].forEach(function (n) {
   var p = "osc_" + n + "_";
   ["on", "destination", "level", "pan", "wave_frame"].concat(OSC_SHAPE_KEYS, OSC_UNI_KEYS).forEach(function (s) { OSC_EXTRA.push(p + s); });
 });
-push.compartment({
-  id: "osc", label: "Oscillators", extra_keys: OSC_EXTRA,
-  pages: pagesOf("osc").map(function (pg) {
-    var m = /^Osc (\d)/.exec(pg.label);
-    if (m) return { label: pg.label, keys: pg.keys, screen: oscScreen(+m[1]) };
-    if (pg.label === "Sources") return { label: pg.label, keys: pg.keys, screen: sourcesScreen };
-    return { label: pg.label, keys: pg.keys };
-  })
+// each oscillator's table page right after its own page (the module's
+// osc_N_wt_class and osc_N_wt, not the engine's: no generated page has them)
+var OSC_PAGES = [];
+pagesOf("osc").forEach(function (pg) {
+  var m = /^Osc (\d)/.exec(pg.label);
+  if (m) OSC_PAGES.push({ label: pg.label, keys: pg.keys, screen: oscScreen(+m[1]) });
+  else if (pg.label === "Sources") OSC_PAGES.push({ label: pg.label, keys: pg.keys, screen: sourcesScreen });
+  else OSC_PAGES.push({ label: pg.label, keys: pg.keys });
+  if (m && pg.label === "Osc " + m[1]) OSC_PAGES.push({ label: "Osc " + m[1] + " Table", keys: wtKeys(+m[1]), screen: tableScreen(+m[1]) });
 });
+push.compartment({ id: "osc", label: "Oscillators", extra_keys: OSC_EXTRA, live_keys: ["wave_pos", "wave_play"], pages: OSC_PAGES });
 var FLT_EXTRA = ["osc_1_on", "osc_2_on", "osc_3_on", "sample_on", "osc_1_destination", "osc_2_destination", "osc_3_destination",
   "sample_destination", "filter_1_filter_input", "filter_2_filter_input"];
 [1, 2].forEach(function (n) {

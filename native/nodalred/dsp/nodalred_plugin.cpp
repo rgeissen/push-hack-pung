@@ -51,6 +51,7 @@
 #include "synthLib/midiTypes.h"
 
 #include "emu_host.h"
+#include "nodalred_live.h"
 
 extern "C" {
 #include "host/plugin_api_v1.h"
@@ -422,6 +423,7 @@ struct Instance {
     bool singleDirty[4] = {false, false, false, false};
     bool multiDirty = false;
     std::atomic<uint64_t> held[2] = {{0}, {0}}; // keys down now, a bit a note (release_held)
+    std::atomic<int64_t> lastOff{0};              // the last key let go (live_mod: the sound still sounds)
     int64_t busyUntil = 0; // a dump is on its way into the synth until then
     std::atomic<bool> soundDump{false}; // the next dump is a sound change: deep first (AHEAD_DUMP)
     std::string slotName[4]; // the sound each slot was given (the Nord keeps no names)
@@ -930,7 +932,7 @@ void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
     case 0x90: case 0x80: {
         const uint64_t bit = uint64_t(1) << (d1 & 63);
         if (st == 0x90 && d2 > 0) in->held[d1 >> 6].fetch_or(bit);
-        else in->held[d1 >> 6].fetch_and(~bit);
+        else in->held[d1 >> 6].fetch_and(~bit), in->lastOff = now_us();
         break;
     }
     case 0xa0: case 0xd0: case 0xe0:
@@ -1238,9 +1240,26 @@ int build_hierarchy(char *buf, int len) {
     return off < len ? off : -1;
 }
 
+// Where the sound has the cutoff now (the newest voice's, from the DSPs:
+// nodalred_engine.cpp publish_live), in the knob's units, while it sounds (a
+// key held, or let go less than 3 s ago); {} at rest. Lock-free: Pung asks
+// every frame.
+int live_mod(Instance *in, char *buf, int len) {
+    eshm::Layout *L = in->host.L;
+    const int64_t now = now_us();
+    const bool sounding = in->held[0].load() || in->held[1].load() || now - in->lastOff.load() < 3000000;
+    if (!L || !sounding || L->aux[n2live::VOICE].load() < 0 ||
+        int32_t(uint32_t(now / 1000) - uint32_t(L->aux[n2live::AT].load(std::memory_order_acquire))) > 500)
+        return snprintf(buf, size_t(len), "{}");
+    const double w = double(uint32_t(L->aux[n2live::CUT].load()) & 0xffffff);
+    const double k = std::max(0.0, std::min(127.0, 12.0 * std::log2(std::max(w, 1.0) / n2live::CUT0)));
+    return snprintf(buf, size_t(len), "{\"cutoff\":%.2f}", k);
+}
+
 int v2_get_param(void *instance, const char *key, char *buf, int len) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !buf || len < 2) return -1;
+    if (!strcmp(key, "live_mod")) return live_mod(in, buf, len);
     // waiting for the emulator is not loading: the module answers, it is only silent
     if (!strcmp(key, "is_loading")) return snprintf(buf, size_t(len), "%d", starting(in) ? 1 : 0);
     if (!strcmp(key, "name")) return snprintf(buf, size_t(len), "Nodal Red 2X");

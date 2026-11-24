@@ -140,6 +140,17 @@ function short(s) {
     .replace("SQUARE", "SQR").replace("OSC 1+2", "OSC1+2").replace("LFO ", "").replace("ARP ", "");
 }
 // a Nord knob: the black cap (kept in the layer) and its white pointer
+// Where the sound has a knob now (v[k].now: the module's live_mod, read from
+// the Nord's DSPs while a note sounds: the newest voice's cutoff): outside
+// the knob, an arc in the modulation colour from the pointer and a dot.
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function modMark(g, v, k, x, y, r) {
+  if (!known(v, k) || typeof v[k].now !== "number") return;
+  var f = v[k].frac, n = Math.max(0, Math.min(1, v[k].now));
+  if (Math.abs(n - f) < 0.004) return;
+  g.arc(x, y, r + 4, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(x + Math.cos(A0 + n * SWEEP) * (r + 4), y + Math.sin(A0 + n * SWEEP) * (r + 4), 2.8, MOD);
+}
 function capPointer(g, x, y, r, f, color, width) {
   var a = A0 + f * SWEEP;
   g.line(x + Math.cos(a) * r * 0.22, y + Math.sin(a) * r * 0.22, x + Math.cos(a) * (r - 1.5), y + Math.sin(a) * (r - 1.5), width, color);
@@ -199,6 +210,7 @@ function panel(g, v) {
     var k = KNOBS[i];
     if (k[0] === t) g.arc(k[1], k[2], 11, 0, Math.PI * 2, 2, "slot");
     if (known(v, k[0])) capPointer(g, k[1], k[2], 8, frac(v, k[0], 0), INK, 2);
+    modMark(g, v, k[0], k[1], k[2], 9);
   }
   var nm = disp(v, "preset_name");
   var nw = nm ? g.measure(nm.toUpperCase()) : 0;
@@ -258,6 +270,7 @@ function panelRow(g, v) {
     g.text(x0 + 60, R.name, nm, hot ? "slot" : INK, 0, 104);
     if (hot) g.arc(kx, ky, R.ring, 0, Math.PI * 2, 2, "slot");
     if (known(v, k)) capPointer(g, kx, ky, R.kr, v[k].frac, hot ? "slot" : INK, 3);
+    modMark(g, v, k, kx, ky, R.kr + 2);
     var val = known(v, k) ? String(v[k].display || v[k].value) : "--", unit = known(v, k) ? String(v[k].unit || "") : "";
     var uw = unit ? g.measure(unit) + 3 : 0, cx = x0 + 82;
     var vw = Math.min(g.measure(val, "value"), 58 - uw);

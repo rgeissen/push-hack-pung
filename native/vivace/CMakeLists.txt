@@ -49,7 +49,7 @@ target_include_directories(vivace-engine PUBLIC
     ${S}/interface/look_and_feel)
 target_link_libraries(vivace-engine PUBLIC Threads::Threads rt dl)
 
-add_library(vivace-dsp SHARED dsp/vivace_plugin.cpp)
+add_library(vivace-dsp SHARED dsp/vivace_plugin.cpp dsp/vivace_wavetables.cpp)
 set_target_properties(vivace-dsp PROPERTIES PREFIX "" OUTPUT_NAME "dsp" SUFFIX ".so")
 target_include_directories(vivace-dsp PRIVATE ${SCHWUNG_SRC} ${SCHWUNG_SRC}/host)
 target_link_libraries(vivace-dsp PRIVATE vivace-engine)
@@ -57,6 +57,6 @@ target_link_options(vivace-dsp PRIVATE -Wl,--exclude-libs,ALL -static-libstdc++ 
 
 # Writes the factory sounds (dsp/vivace_factory.cpp) as preset files, at build
 # time: the package's factory/ folder.
-add_executable(vivace-export dsp/vivace_export.cpp)
+add_executable(vivace-export dsp/vivace_export.cpp dsp/vivace_wavetables.cpp dsp/vivace_wtbuild.cpp)
 target_link_libraries(vivace-export PRIVATE vivace-engine)
 target_link_options(vivace-export PRIVATE -static-libstdc++ -static-libgcc)

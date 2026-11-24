@@ -72,4 +72,8 @@ const size_t WAVE_SNAPSHOT = 1 + 16 * 128;
 #endif
 
 // The engine's signals (eshm::Layout::aux)
-enum Aux { ASK_LIBRARY = 0, LIBRARY_DONE = 1 };
+enum Aux { ASK_LIBRARY = 0, LIBRARY_DONE = 1,
+           // the XT's sound now (waldorf_emu.cpp, publish_live): the voice the
+           // newest note took (-1: none yet), its filter cutoff and its two waves
+           // as the DSP holds them, and when (ms, CLOCK_MONOTONIC)
+           LIVE_VOICE = 2, LIVE_CUT = 3, LIVE_W1 = 4, LIVE_W2 = 5, LIVE_AT = 6 };

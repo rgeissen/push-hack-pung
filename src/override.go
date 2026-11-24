@@ -561,6 +561,10 @@ type ovValue struct {
 	Type                       string  // the parameter's (float, int, enum, ...)
 	Min, Max                   float64 // its range, as the module states it
 	Known                      bool    // a value has been read (else Frac is 0 and means nothing)
+	// Now: where modulation puts it this frame (0..1 of the range), when
+	// HasNow: the module's live_mod (livemod.go)
+	Now    float64
+	HasNow bool
 }
 
 // render draws one widget into its own image (so it cannot draw outside its
@@ -848,6 +852,15 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 				}
 				f.Kind, f.Poles = filterKind(f.TypeName)
 				f.Known = f.Known && v.Known
+			}
+		}
+		if o, ok := call.Argument(4).Export().(map[string]any); ok && o["at"] == nil {
+			var t string
+			cut, _ := part(o, "cutoff", &t)
+			res, _ := part(o, "resonance", &t)
+			f.withModulation(cut, res) // where the module's modulation has it now (livemod.go)
+			if f.Moved {
+				moving = true
 			}
 		}
 		c := p.pal.accentOr(sc)
@@ -1180,6 +1193,9 @@ func (s *overrideSet) render(dst *image.NRGBA, p placement, vals map[string]ovVa
 		o.Set("type", e.Type) // "float", "int", "enum", ...: a screen need not guess from the text
 		o.Set("min", e.Min)
 		o.Set("max", e.Max)
+		if e.HasNow {
+			o.Set("now", e.Now) // where modulation puts it now, 0..1 (livemod.go)
+		}
 		v.Set(k, o)
 	}
 	v.Set("$touched", touched)

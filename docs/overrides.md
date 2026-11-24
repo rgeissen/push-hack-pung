@@ -274,6 +274,25 @@ names keys of the module's own state (a voice's level, an LFO's phase) that Pung
 while that compartment shows, and gives in `v` like any other. Keep the module's `get_param` for them
 cheap and lock-free: it is asked 30 times a second.
 
+**Modulation, live (`live_mod`, `v[key].now`)**: every synth shows its modulation moving (UX-GUIDELINES.md,
+Live pictures, *Modulation*: a design imperative). A module answers `get_param("live_mod")` with the
+controls its modulation moves and where the sound has each now, in the parameter's raw units, `{}` at
+rest; cheap and lock-free (Pung asks every frame while the sound is watched). Pung's own knobs, its
+filter pictures and the encoder row under a screen draw it by themselves. A screen gets `v[key].now`
+(0..1 of the range, `undefined` when nothing moves the key): draw a picture from it (the shape the sound
+has) and leave the knob's own mark where the knob is, with the sound's place beside it in the modulation
+colour. Only a key the screen was given (its pages' and `extra_keys`) has it.
+
+**Assigning modulation (`mod_map`, `mod_set`)**: Pung's ASSIGN screen (UX-GUIDELINES.md, *Assigning
+modulation*) asks the module for `get_param("mod_map")`:
+`{"sources": [{"id", "name"}, ...], "dests": [keys a route may reach] (absent: every knob),
+"routes": [{"src", "dst", "amount", "bipolar"}, ...]}` (bipolar: both ways around the knob; leave it out
+where the synth has no such choice), an amount being -1..1 of the destination's range, the sources
+in the order a player reaches for them. It sets one route with `set_param("mod_set",
+"{\"src\":..,\"dst\":..,\"amount\":..}")` (and `"bipolar"` when the screen flips it), 0 removing it; the module finds a slot of its own matrix for a
+new one and keeps routes it was given in its state. Answer with the full length when the buffer is too
+small (`snprintf`'s way): Pung asks again with room for it.
+
 **A module's own web page, live**: while it is shown, Pung's page streams the sound and posts every frame
 to it as `{type: "live", frame}`: `frame.info` is `v.$live` above, `frame.keys` the module's `live_keys`
 (as `"synth:<key>"`), `frame.envs` / `frame.lfos` / `frame.spec` what Pung's own pictures show, `active`

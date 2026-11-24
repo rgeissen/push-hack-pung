@@ -41,6 +41,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -56,11 +57,14 @@
 #include "line_generator.h"
 #include "load_save.h"
 #include "modulation_connection_processor.h"
+#include "fourier_transform.h"
 #include "sound_engine.h"
+#include "synth_oscillator.h"
 #include "synth_base.h"
 #include "synth_parameters.h"
 #include "wavetable.h"
 #include "wavetable_creator.h"
+#include "vivace_wavetables.h"
 
 #include "vivace_params.h"
 
@@ -288,6 +292,10 @@ struct Heavy { // what only a load changes, as the screens read it
     std::string routes;    // get_param("mod_routes")
     std::string lfoShapes; // get_param("lfo_shapes")
     std::string tables;    // get_param("wavetable_names")
+    // the routes, as the modulation map (mod_map) and the state (mods) say them:
+    // slot (1-based), source, destination; and as one line, to compare
+    std::vector<std::tuple<int, std::string, std::string>> mods;
+    std::string modSig;
 };
 
 struct Instance {
@@ -333,7 +341,84 @@ struct Instance {
     int userPolyphony = 8;
     std::string file;            // the preset file the sound came from, in the module's folder
     std::vector<float> baseline; // the controls as that file set them (allControls' order)
+
+    // The wavetable library (vivace_wavetables.h) and each oscillator's
+    // choice from it: class 0 is the preset's own table, class c > 0 the
+    // library's category c - 1 and its table. Under infoMu; a changed choice
+    // is applied by the io thread (wtDirty), the engine held.
+    wtlib::Library lib;
+    std::string libNames; // what the screens list (wt_lib)
+    // "From Presets", the last category: every table the preset files on the
+    // Push carry (the factory bank's and the player's own), each once. A
+    // preset made elsewhere brings its tables in its file; they are
+    // choosable for any oscillator here, and never leave the Push.
+    struct Harvest {
+        std::string name, file;
+        int osc = 0;
+    };
+    std::vector<Harvest> harvested;
+    bool harvestedOnce = false; // (the io thread's)
+    int wtClass[vital::kNumOscillators] = {}, wtTable[vital::kNumOscillators] = {};
+    std::atomic<bool> wtDirty[vital::kNumOscillators] = {};
+    json presetTables[vital::kNumOscillators]; // each oscillator's table as the sound brought it (the io thread's)
+
+    // Where each oscillator is in its table as it plays (0..1): its frame
+    // knob with every modulation of it (the engine's readouts, as its own
+    // editor's 3D view reads them), written after each block. 2: off.
+    std::atomic<float> wavePos[vital::kNumOscillators];
+    vital::Output *frameMono[vital::kNumOscillators] = {}, *framePoly[vital::kNumOscillators] = {};
+    vital::Value *oscOn[vital::kNumOscillators] = {};
+    // Every control a modulation route reaches, and where the sound has it
+    // now (get_param("live_mod"), Pung's livemod.go): the taps are set with
+    // the routes (refresh_heavy, the engine held) and read after each block
+    // (the render thread, the engine held); the values are atomics, so the
+    // host's get_param never waits.
+    static constexpr int kMaxTaps = 64;
+    struct Tap {
+        int param = -1;
+        vital::Output *mono = nullptr, *poly = nullptr;
+    };
+    Tap taps[kMaxTaps];
+    int ntaps = 0; // (the engine held)
+    std::atomic<int> modN{0}, modParam[kMaxTaps];
+    std::atomic<float> modVal[kMaxTaps];
+    std::atomic<bool> modSounding{false}; // a voice sounds: the values move
+    // Each oscillator's table as it plays (get_param("wave_play")): every
+    // view frame through the spectral morph and the warp, as the engine
+    // computes them, at their values with what modulates them (as the
+    // synth's own editor draws its table). Made by the io thread while
+    // they change; the controls and readouts from resolve_controls.
+    struct OscView {
+        vital::Value *frame = nullptr, *morphType = nullptr, *morph = nullptr, *distType = nullptr, *dist = nullptr, *phase = nullptr;
+        vital::Output *frameM = nullptr, *frameP = nullptr, *morphM = nullptr, *morphP = nullptr, *distM = nullptr, *distP = nullptr,
+                      *phaseM = nullptr, *phaseP = nullptr;
+    };
+    OscView ov[vital::kNumOscillators];
+    std::mutex playMu;
+    std::string wavePlay; // (playMu)
+    std::string playSig;  // (the io thread's)
+    unsigned playSeq = 0; // (the io thread's)
+    // Assigning modulation (Pung's assign.go): each slot's depth control, the
+    // knobs a route may reach, routes waiting for the io thread (a new one
+    // or one removed: the engine held), the routes the sound's file brought
+    vital::Value *modAmt[vital::kMaxModulationConnections] = {};
+    vital::Value *modBip[vital::kMaxModulationConnections] = {}; // a route's polarity: both ways around the knob, or one
+    std::string destJson; // ["key", ...] (resolve_controls)
+    std::mutex modMu;
+    std::vector<std::tuple<std::string, std::string, float, int>> modPending; // (modMu) bipolar: -1 as it is, 0, 1
+    std::string baseRoutes;                                              // (infoMu)
 };
+
+// A control with what modulates it now, as the synth's editor reads it
+// (Wavetable3d::getOutputsTotal): the knob where nothing modulates it (the
+// engine then switches its readout off, and the readout keeps an old value),
+// the voices' share while one sounds.
+float total(const vital::Output *m, const vital::Output *p, const vital::Value *knob, int voices) {
+    if (!m || !m->owner || !m->owner->enabled()) return knob ? knob->value() : 0.0f;
+    float f = m->trigger_value[0];
+    if (voices > 0 && p) f += p->trigger_value[0];
+    return f;
+}
 
 void set_status(Instance *in, const std::string &s) {
     std::lock_guard<std::mutex> l(in->infoMu);
@@ -496,6 +581,33 @@ std::string lfo_shape(LineGenerator *g) {
     return "Custom";
 }
 
+// The controls the routes reach, each once, with the engine's readouts of
+// them (the engine held).
+void set_taps(Instance *in, vital::ModulationConnectionBank &bank) {
+    in->modN.store(0);
+    vital::output_map &mono = in->synth->eng()->getMonoModulations(), &poly = in->synth->eng()->getPolyModulations();
+    int n = 0;
+    for (int i = 0; i < vital::kMaxModulationConnections && n < Instance::kMaxTaps; i++) {
+        vital::ModulationConnection *c = bank.atIndex(i);
+        if (!c || c->source_name.empty() || c->destination_name.empty()) continue;
+        int k = -1;
+        for (int j = 0; j < vv::kNumParams && k < 0; j++)
+            if (vv::kParams[j].kind != vv::kType && c->destination_name == vv::kParams[j].engine) k = j;
+        if (k < 0 || !mono.count(c->destination_name)) continue; // not a knob of Pung's (a route's own amount)
+        bool dup = false;
+        for (int t = 0; t < n; t++) dup = dup || in->taps[t].param == k;
+        if (dup) continue;
+        in->taps[n].param = k;
+        in->taps[n].mono = mono[c->destination_name];
+        in->taps[n].poly = poly.count(c->destination_name) ? poly[c->destination_name] : nullptr;
+        in->modParam[n].store(k);
+        in->modVal[n].store(0);
+        n++;
+    }
+    in->ntaps = n;
+    in->modN.store(n);
+}
+
 // The io thread, the engine held: everything only a load changes.
 void refresh_heavy(Instance *in) {
     Engine &s = *in->synth;
@@ -559,6 +671,13 @@ void refresh_heavy(Instance *in) {
         first = false;
     }
     h->routes = r + "]";
+    for (int i = 0; i < vital::kMaxModulationConnections; i++) {
+        vital::ModulationConnection *c = bank.atIndex(i);
+        if (!c || c->source_name.empty() || c->destination_name.empty()) continue;
+        h->mods.emplace_back(i + 1, c->source_name, c->destination_name);
+        h->modSig += std::to_string(i + 1) + ":" + c->source_name + ">" + c->destination_name + ";";
+    }
+    set_taps(in, bank);
 
     std::string l = "[";
     for (int i = 0; i < vital::kNumLfos; i++) l += std::string(i ? "," : "") + "\"" + lfo_shape(s.getLfoSource(i)) + "\"";
@@ -609,6 +728,27 @@ bool load_json(Instance *in, const json &j, std::string &err, const json *edits 
     }
     fit_sound(in);
     take_baseline(in);
+    { // the routes the file brought: a state names its own only where they differ
+        vital::ModulationConnectionBank &bank = in->synth->getModulationBank();
+        std::string sig;
+        for (int i = 0; i < vital::kMaxModulationConnections; i++) {
+            vital::ModulationConnection *c = bank.atIndex(i);
+            if (c && !c->source_name.empty() && !c->destination_name.empty())
+                sig += std::to_string(i + 1) + ":" + c->source_name + ">" + c->destination_name + ";";
+        }
+        std::lock_guard<std::mutex> l(in->infoMu);
+        in->baseRoutes = sig;
+    }
+    // each oscillator's table as the sound brought it ("Preset" in the table chooser)
+    for (int o = 0; o < vital::kNumOscillators; o++) {
+        WavetableCreator *c = in->synth->getWavetableCreator(o);
+        in->presetTables[o] = c ? c->stateToJson() : json();
+        in->wtDirty[o] = false;
+    }
+    {
+        std::lock_guard<std::mutex> l(in->infoMu);
+        for (int o = 0; o < vital::kNumOscillators; o++) in->wtClass[o] = in->wtTable[o] = 0;
+    }
     if (edits && edits->is_object()) { // a state's edits, over the sound as its file has it
         vital::control_map &c = in->synth->getControls();
         for (auto it = edits->begin(); it != edits->end(); ++it) {
@@ -687,6 +827,157 @@ bool load_preset(Instance *in, int bank, int preset, const json *edits = nullptr
     return err.empty();
 }
 
+// the most tables a category offers (osc_N_wt: 0..191, one table a detent:
+// Pung's model.go steps an int of up to 191 by one)
+constexpr int kMaxTables = 192;
+
+// the class of "From Presets": after the library's categories
+int from_presets(const Instance *in) { return int(in->lib.categories.size()) + 1; }
+
+// what the screens list: the library's categories, then From Presets (infoMu held)
+void update_names(Instance *in) {
+    json j = json::parse(in->lib.names());
+    json t = json::array();
+    for (const auto &h : in->harvested) t.push_back(h.name + " (" + stem(h.file) + ")");
+    j["categories"].push_back({{"name", "From Presets"}, {"tables", t}});
+    in->libNames = j.dump();
+}
+
+// every table the preset files carry, each once (the io thread's: it reads files)
+void harvest(Instance *in) {
+    std::vector<std::string> files;
+    {
+        std::lock_guard<std::mutex> l(in->infoMu);
+        for (const Bank &b : in->banks) files.insert(files.end(), b.files.begin(), b.files.end());
+    }
+    std::vector<Instance::Harvest> out;
+    std::unordered_map<size_t, bool> seen;
+    for (const std::string &f : files) {
+        if (out.size() >= size_t(kMaxTables)) break;
+        json j;
+        std::string err;
+        if (!read_preset(f, j, err) || !j.count("settings") || !j["settings"].count("wavetables")) continue;
+        const json &w = j["settings"]["wavetables"];
+        for (int o = 0; o < vital::kNumOscillators && o < int(w.size()); o++) {
+            if (!w[size_t(o)].is_object()) continue;
+            const size_t h = std::hash<std::string>{}(w[size_t(o)].dump());
+            if (seen.count(h)) continue;
+            seen[h] = true;
+            std::string name = w[size_t(o)].value("name", std::string());
+            if (name.empty()) name = "Table";
+            out.push_back({name, f, o});
+        }
+    }
+    in->harvestedOnce = true;
+    std::lock_guard<std::mutex> l(in->infoMu);
+    in->harvested = out;
+    update_names(in);
+    plog("from presets: %d tables", int(out.size()));
+}
+
+// Oscillator o's table as chosen (wtClass, wtTable): the preset's own, the
+// library's, or one from a preset file. The io thread's; it holds the engine
+// while the table renders.
+void apply_table(Instance *in, int o) {
+    int c, t;
+    {
+        std::lock_guard<std::mutex> l(in->infoMu);
+        c = in->wtClass[o];
+        t = in->wtTable[o];
+    }
+    WavetableCreator *cr = in->synth->getWavetableCreator(o);
+    if (!cr) return;
+    json fromFile; // a table from a preset file (From Presets)
+    if (c == from_presets(in)) {
+        Instance::Harvest h;
+        {
+            std::lock_guard<std::mutex> l(in->infoMu);
+            if (t < 0 || t >= int(in->harvested.size())) return;
+            h = in->harvested[size_t(t)];
+        }
+        json j;
+        std::string err;
+        if (!read_preset(h.file, j, err) || !j.count("settings") || !j["settings"].count("wavetables") ||
+            h.osc >= int(j["settings"]["wavetables"].size())) {
+            plog("osc %d: %s has no table %d any more", o + 1, h.file.c_str(), h.osc + 1);
+            return;
+        }
+        fromFile = j["settings"]["wavetables"][size_t(h.osc)];
+    }
+    std::vector<float> frames;
+    const wtlib::Table *tb = c > 0 && fromFile.is_null() ? in->lib.table(c - 1, t) : nullptr;
+    if (c > 0 && fromFile.is_null() && (!tb || !in->lib.read(c - 1, t, frames))) {
+        plog("osc %d: no table %d of category %d in the library", o + 1, t, c);
+        return;
+    }
+    in->soundLoads++;
+    in->synth->pauseProcessing(true);
+    try {
+        if (fromFile.is_object()) {
+            cr->jsonToState(fromFile);
+            cr->render();
+        } else if (c > 0) wtlib::apply(cr, tb->name, frames, tb->frames);
+        else if (in->presetTables[o].is_object()) {
+            cr->jsonToState(in->presetTables[o]);
+            cr->render();
+        }
+    } catch (const std::exception &e) {
+        plog("osc %d: the table did not load: %s", o + 1, e.what());
+    }
+    refresh_heavy(in);
+    in->synth->pauseProcessing(false);
+    in->soundLoads--;
+}
+
+// a choice by category and table name (a state's), else left as it is
+void choose_table(Instance *in, int o, const std::string &cat, const std::string &name) {
+    int c = 0, t = 0;
+    if (cat == "From Presets") { // name: "<table>|<file in the module's folder>|<oscillator>"
+        if (!in->harvestedOnce) harvest(in); // a state restored before the first harvest
+        const size_t a = name.find('|'), b = name.rfind('|');
+        if (a == std::string::npos || b == a) return;
+        const std::string rel = name.substr(a + 1, b - a - 1);
+        const int osc = atoi(name.c_str() + b + 1);
+        std::lock_guard<std::mutex> l(in->infoMu);
+        for (size_t i = 0; i < in->harvested.size(); i++)
+            if (rel_path(in, in->harvested[i].file) == rel && in->harvested[i].osc == osc) c = from_presets(in), t = int(i);
+        if (c == 0) {
+            plog("osc %d: no table from %s any more: the preset's own", o + 1, rel.c_str());
+            return;
+        }
+        in->wtClass[o] = c;
+        in->wtTable[o] = t;
+    } else if (!cat.empty() && cat != "Preset") {
+        for (size_t i = 0; i < in->lib.categories.size(); i++)
+            if (in->lib.categories[i].name == cat) {
+                for (size_t k = 0; k < in->lib.categories[i].tables.size(); k++)
+                    if (in->lib.categories[i].tables[k].name == name) c = int(i) + 1, t = int(k);
+            }
+        if (c == 0) {
+            plog("osc %d: the library has no table %s / %s: the preset's own", o + 1, cat.c_str(), name.c_str());
+            return;
+        }
+    }
+    if (cat != "From Presets") {
+        std::lock_guard<std::mutex> l(in->infoMu);
+        in->wtClass[o] = c;
+        in->wtTable[o] = t;
+    }
+    apply_table(in, o);
+}
+
+// the state's tables, after its sound ({"tables":[[category, table], ...]})
+void state_tables(Instance *in, const json &s) {
+    if (!s.count("tables") || !s["tables"].is_array()) return;
+    for (int o = 0; o < vital::kNumOscillators && o < int(s["tables"].size()); o++) {
+        const json &e = s["tables"][size_t(o)];
+        if (e.is_array() && e.size() == 2 && e[0].is_string() && e[1].is_string() && e[0].get<std::string>() != "Preset")
+            choose_table(in, o, e[0].get<std::string>(), e[1].get<std::string>());
+    }
+}
+
+void state_mods(Instance *in, const json &s); // (below: the routes a state names)
+
 // A state Pung kept (docs/NATIVE-MODULES.md, Vivace): {"v":2, file, bank,
 // preset, name, gain, edits}. The chain host carries a state of at most 16 KB,
 // and a sound with its wavetables is ten times that: so the state names the
@@ -720,17 +1011,25 @@ void load_state(Instance *in, const std::string &text) {
         }
         if (fb >= 0) {
             load_preset(in, fb, fp, &edits);
+            state_tables(in, s);
+            state_mods(in, s);
             return;
         }
         plog("the state's preset %s is gone: its bank and number, else Init", rel.c_str());
     }
-    if (load_preset(in, bank, preset, &edits)) return;
+    if (load_preset(in, bank, preset, &edits)) {
+        state_tables(in, s);
+        state_mods(in, s);
+        return;
+    }
     std::string err;
     in->synth->pauseProcessing(true);
     in->synth->loadInitPreset();
     in->synth->pauseProcessing(false);
     load_json(in, in->synth->save(), err, &edits);
     loaded(in, 0, 0, s.value("name", std::string("Init")), "", "");
+    state_tables(in, s);
+    state_mods(in, s);
 }
 
 void rescan(Instance *in) {
@@ -795,7 +1094,27 @@ void render_main(Instance *in) {
                         in->secs = g_host->get_beat_position() * 60.0 / bpm;
                 }
                 in->synth->block(buf, midi, BLOCK, in->secs);
-                in->voices.store(in->synth->eng()->getNumActiveVoices(), std::memory_order_relaxed);
+                const int nv = in->synth->eng()->getNumActiveVoices();
+                in->voices.store(nv, std::memory_order_relaxed);
+                // where each oscillator is in its table: the frame with its
+                // modulations, as the engine's readouts hold it after the block
+                for (int o = 0; o < vital::kNumOscillators; o++) {
+                    if (!in->frameMono[o] || !in->oscOn[o] || in->oscOn[o]->value() < 0.5f) {
+                        in->wavePos[o].store(2.0f, std::memory_order_relaxed);
+                        continue;
+                    }
+                    const float f = total(in->frameMono[o], in->framePoly[o], in->ov[o].frame, nv);
+                    in->wavePos[o].store(std::max(0.0f, std::min(1.0f, f / float(vital::kNumOscillatorWaveFrames - 1))), std::memory_order_relaxed);
+                }
+                // every modulated control where the sound has it now, in the knob's units
+                if (nv > 0)
+                    for (int t = 0; t < in->ntaps; t++) {
+                        const Instance::Tap &tp = in->taps[t];
+                        const float f = total(tp.mono, tp.poly, in->ctl[tp.param][0], nv);
+                        const vv::Param &pp = vv::kParams[tp.param]; // past its range the engine holds it at the end
+                        in->modVal[t].store(std::max(pp.pmin, std::min(pp.pmax, from_engine(pp, f))), std::memory_order_relaxed);
+                    }
+                in->modSounding.store(nv > 0, std::memory_order_relaxed);
                 in->synth->unlock();
                 heard = true;
             }
@@ -839,6 +1158,252 @@ void resolve_controls(Instance *in) {
         }
     }
     for (auto &kv : c) in->allControls.emplace_back(kv.first, kv.second);
+    for (int i = 0; i < vital::kMaxModulationConnections; i++) {
+        auto it = c.find("modulation_" + std::to_string(i + 1) + "_amount");
+        in->modAmt[i] = it == c.end() ? nullptr : it->second;
+        auto bp = c.find("modulation_" + std::to_string(i + 1) + "_bipolar");
+        in->modBip[i] = bp == c.end() ? nullptr : bp->second;
+    }
+    vital::output_map &mono = in->synth->eng()->getMonoModulations(), &poly = in->synth->eng()->getPolyModulations();
+    for (int o = 0; o < vital::kNumOscillators; o++) {
+        const std::string f = "osc_" + std::to_string(o + 1) + "_wave_frame", on = "osc_" + std::to_string(o + 1) + "_on";
+        in->frameMono[o] = mono.count(f) ? mono[f] : nullptr;
+        in->framePoly[o] = poly.count(f) ? poly[f] : nullptr;
+        in->oscOn[o] = c.count(on) ? c[on] : nullptr;
+        const std::string pre = "osc_" + std::to_string(o + 1) + "_";
+        auto val = [&](const char *k) { return c.count(pre + k) ? c[pre + k] : nullptr; };
+        auto mo = [&](const char *k) { return mono.count(pre + k) ? mono[pre + k] : nullptr; };
+        auto po = [&](const char *k) { return poly.count(pre + k) ? poly[pre + k] : nullptr; };
+        Instance::OscView &v = in->ov[o];
+        v.frame = val("wave_frame"), v.morphType = val("spectral_morph_type"), v.morph = val("spectral_morph_amount");
+        v.distType = val("distortion_type"), v.dist = val("distortion_amount"), v.phase = val("distortion_phase");
+        v.frameM = in->frameMono[o], v.frameP = in->framePoly[o];
+        v.morphM = mo("spectral_morph_amount"), v.morphP = po("spectral_morph_amount");
+        v.distM = mo("distortion_amount"), v.distP = po("distortion_amount");
+        v.phaseM = mo("distortion_phase"), v.phaseP = po("distortion_phase");
+        if (!in->frameMono[o]) plog("no readout of %s", f.c_str());
+        in->wavePos[o] = 2.0f;
+    }
+    // the knobs a route may reach: every one the engine has a modulation readout of
+    std::string d = "[";
+    for (int i = 0; i < vv::kNumParams; i++) {
+        const vv::Param &p = vv::kParams[i];
+        if (p.kind == vv::kType || p.kind == vv::kEnum || !mono.count(p.engine)) continue;
+        d += std::string(d.size() > 1 ? "," : "") + "\"" + p.key + "\"";
+    }
+    in->destJson = d + "]";
+}
+
+// The sources a route can start from, in the order the assign screen offers
+// them: what a player reaches for first (Pung's assign.go)
+const char *const kModSources[] = {"lfo_1", "lfo_2", "lfo_3", "lfo_4", "env_2", "env_3", "velocity",
+                                   "mod_wheel", "aftertouch", "macro_control_1", "macro_control_2", "macro_control_3", "macro_control_4", "note",
+                                   "random_1", "random_2", "env_4", "env_5", "env_6", "env_1", "lfo_5",
+                                   "lfo_6", "lfo_7", "lfo_8", "random_3", "random_4", "pitch_wheel", "random",
+                                   "stereo", "slide", "lift", "note_in_octave"};
+bool is_mod_source(const std::string &s) {
+    for (const char *k : kModSources)
+        if (s == k) return true;
+    return false;
+}
+
+#define AP(...)                                                                    \
+    do {                                                                           \
+        if (off < len) off += snprintf(buf + off, size_t(len - off), __VA_ARGS__); \
+    } while (0)
+// The modulation map (get_param("mod_map")): the sources, the knobs a route
+// may reach, every route with its depth (-1..1 of the knob's range)
+int mod_map(Instance *in, char *buf, int len) {
+    int off = 0;
+    AP("{\"sources\":[");
+    std::string tmp;
+    for (size_t i = 0; i < sizeof(kModSources) / sizeof(kModSources[0]); i++)
+        AP("%s{\"id\":\"%s\",\"name\":\"%s\"}", i ? "," : "", kModSources[i], source_name(kModSources[i], tmp));
+    AP("],\"dests\":%s,\"routes\":[", in->destJson.empty() ? "[]" : in->destJson.c_str());
+    const std::shared_ptr<const Heavy> h = heavy_of(in);
+    bool first = true;
+    for (const auto &m : h->mods) {
+        const int i = std::get<0>(m) - 1;
+        const bool ok = i >= 0 && i < vital::kMaxModulationConnections;
+        const float a = ok && in->modAmt[i] ? in->modAmt[i]->value() : 0.0f;
+        const bool bip = ok && in->modBip[i] && in->modBip[i]->value() > 0.5f;
+        AP("%s{\"src\":\"%s\",\"dst\":\"%s\",\"amount\":%.4f,\"bipolar\":%s}", first ? "" : ",", jesc(std::get<1>(m)).c_str(),
+           jesc(std::get<2>(m)).c_str(), double(a), bip ? "true" : "false");
+        first = false;
+    }
+    AP("]}");
+    return off; // past len: Pung asks again with room for it all (engine.go cGet)
+}
+#undef AP
+
+// A route from Pung's assign screen (set_param("mod_set")): a depth on a
+// route the sound has is a control, set here; a new route or one removed
+// goes to the io thread (the engine held)
+void mod_set(Instance *in, const char *val) {
+    json j;
+    try {
+        j = json::parse(val);
+    } catch (...) {
+        return;
+    }
+    const std::string src = j.value("src", std::string()), dst = j.value("dst", std::string());
+    const float a = std::max(-1.0f, std::min(1.0f, j.value("amount", 0.0f)));
+    const int bip = j.count("bipolar") && j["bipolar"].is_boolean() ? (j["bipolar"].get<bool>() ? 1 : 0) : -1;
+    if (!is_mod_source(src) || in->destJson.find("\"" + dst + "\"") == std::string::npos) return;
+    if (a != 0.0f) {
+        for (const auto &m : heavy_of(in)->mods) {
+            const int i = std::get<0>(m) - 1;
+            if (std::get<1>(m) == src && std::get<2>(m) == dst && i >= 0 && i < vital::kMaxModulationConnections && in->modAmt[i]) {
+                in->modAmt[i]->set(a);
+                if (bip >= 0 && in->modBip[i]) in->modBip[i]->set(float(bip));
+                return;
+            }
+        }
+    }
+    {
+        std::lock_guard<std::mutex> l(in->modMu);
+        in->modPending.emplace_back(src, dst, a, bip);
+    }
+    in->reqCv.notify_one();
+}
+
+// the io thread: the routes waiting, made or removed with the engine held
+void apply_mod_sets(Instance *in) {
+    std::vector<std::tuple<std::string, std::string, float, int>> todo;
+    {
+        std::lock_guard<std::mutex> l(in->modMu);
+        todo.swap(in->modPending);
+    }
+    if (todo.empty() || !in->synth) return;
+    in->synth->pauseProcessing(true);
+    for (const auto &t : todo) {
+        const std::string &src = std::get<0>(t), &dst = std::get<1>(t);
+        const float a = std::get<2>(t);
+        int i = in->synth->getConnectionIndex(src, dst);
+        if (a == 0.0f) {
+            if (i >= 0) {
+                in->synth->disconnectModulation(src, dst);
+                if (in->modAmt[i]) in->modAmt[i]->set(0.0f);
+            }
+            continue;
+        }
+        if (i < 0) {
+            in->synth->connectModulation(src, dst);
+            i = in->synth->getConnectionIndex(src, dst);
+        }
+        if (i < 0) {
+            plog("no free modulation slot for %s > %s", src.c_str(), dst.c_str());
+            continue;
+        }
+        if (in->modAmt[i]) in->modAmt[i]->set(a);
+        if (std::get<3>(t) >= 0 && in->modBip[i]) in->modBip[i]->set(float(std::get<3>(t))); // (else the source's own: the engine's default)
+    }
+    refresh_heavy(in);
+    in->synth->pauseProcessing(false);
+}
+
+// A state's routes ("mods": [[slot, source, destination], ...]) over the sound
+// as its file has them: each slot made what the state says, the rest emptied
+// (the io thread's, after the sound: its depths came with the edits)
+void state_mods(Instance *in, const json &s) {
+    if (!s.count("mods") || !s["mods"].is_array() || !in->synth) return;
+    std::vector<std::pair<std::string, std::string>> want(vital::kMaxModulationConnections);
+    for (const json &m : s["mods"])
+        if (m.is_array() && m.size() == 3 && m[0].is_number_integer() && m[1].is_string() && m[2].is_string()) {
+            const int i = m[0].get<int>() - 1;
+            if (i >= 0 && i < vital::kMaxModulationConnections) want[size_t(i)] = {m[1].get<std::string>(), m[2].get<std::string>()};
+        }
+    in->synth->pauseProcessing(true);
+    vital::ModulationConnectionBank &bank = in->synth->getModulationBank();
+    for (int i = 0; i < vital::kMaxModulationConnections; i++) {
+        vital::ModulationConnection *c = bank.atIndex(i);
+        if (!c) continue;
+        const auto &w = want[size_t(i)];
+        if (c->source_name == w.first && c->destination_name == w.second) continue;
+        if (!c->source_name.empty()) in->synth->disconnectModulation(c);
+        if (!w.first.empty()) {
+            c->resetConnection(w.first, w.second);
+            in->synth->connectModulation(c);
+        }
+    }
+    refresh_heavy(in);
+    in->synth->pauseProcessing(false);
+}
+
+// The tables as the oscillators play them (wave_play), when what shapes them
+// changed: 17 frames a table, 64 points a frame, a byte a point in hex (as
+// wave_view). The io thread's.
+void update_play(Instance *in) {
+    if (!in->ready.load() || !in->synth) return;
+    using SO = vital::SynthOscillator;
+    static vital::FourierTransform transform(vital::WaveFrame::kWaveformBits);
+    static vital::poly_float wave[SO::kSpectralBufferSize];
+    const int nv = in->voices.load();
+    struct Shape {
+        const vital::Wavetable::WavetableData *data;
+        int frames, mt, dt;
+        float morph, dist, phase;
+    } sh[vital::kNumOscillators];
+    char hv[32];
+    snprintf(hv, sizeof(hv), "%p|", (const void *)heavy_of(in).get()); // a new sound or table: drawn again
+    std::string sig = hv;
+    for (int o = 0; o < vital::kNumOscillators; o++) {
+        const Instance::OscView &v = in->ov[o];
+        vital::Wavetable *t = in->synth->getWavetable(o);
+        Shape &x = sh[o];
+        x.data = t ? t->getAllData() : nullptr;
+        x.frames = x.data ? x.data->num_frames : 0;
+        x.mt = v.morphType ? int(std::lround(v.morphType->value())) : 0;
+        x.dt = v.distType ? int(std::lround(v.distType->value())) : 0;
+        x.morph = std::max(0.0f, std::min(1.0f, total(v.morphM, v.morphP, v.morph, nv)));
+        x.dist = std::max(0.0f, std::min(1.0f, total(v.distM, v.distP, v.dist, nv)));
+        x.phase = total(v.phaseM, v.phaseP, v.phase, nv);
+        char b[160];
+        snprintf(b, sizeof(b), "%p,%d,%d,%d,%d,%d,%d|", (const void *)x.data, x.frames, x.mt, int(x.morph * 400), x.dt, int(x.dist * 400),
+                 int(x.phase * 400));
+        sig += b;
+    }
+    if (sig == in->playSig) return;
+    in->playSig = sig;
+    std::string w = "{\"seq\":" + std::to_string(++in->playSeq) + ",\"tables\":[";
+    for (int o = 0; o < vital::kNumOscillators; o++) {
+        const Shape &x = sh[o];
+        const int nf = x.frames, k = std::min(17, std::max(1, nf));
+        char hdr[64];
+        snprintf(hdr, sizeof(hdr), "%s{\"frames\":%d,\"k\":%d,\"w\":\"", o ? "," : "", nf, k);
+        w += hdr;
+        vital::poly_float mv = x.morph, dv = x.dist;
+        SO::setSpectralMorphValues(SO::SpectralMorph(x.mt), &mv, 1, false);
+        SO::setDistortionValues(SO::DistortionType(x.dt), &dv, 1, false);
+        const vital::poly_int dphase = SO::usesDistortionPhase(SO::DistortionType(x.dt))
+                                           ? vital::utils::toInt(vital::poly_float(x.phase) * float(UINT_MAX) - float(INT_MAX))
+                                           : vital::poly_int(0);
+        for (int f = 0; f < k && x.data; f++) {
+            const int fi = k == 1 ? 0 : int(std::lround(double(f) * (nf - 1) / (k - 1)));
+            memset(wave, 0, sizeof(wave));
+            SO::runSpectralMorph(SO::SpectralMorph(x.mt), mv[0], x.data, fi, wave, &transform);
+            const float *buf = reinterpret_cast<const float *>(wave + 1);
+            const vital::poly_float spread(0.5f, 1.5f, 2.5f, 3.5f);
+            for (int i = 0; i < 64; i += vital::poly_float::kSize) { // (Wavetable3d::warpPhase, at 64 points)
+                const vital::poly_float tt = (spread + float(i)) * (1.0f / 64.0f);
+                const vital::poly_int ph = vital::utils::toInt(tt * float(UINT_MAX) - float(INT_MAX)) + vital::poly_int(INT_MAX);
+                vital::poly_int adj = SO::adjustPhase(SO::DistortionType(x.dt), ph, dv, dphase);
+                const vital::poly_float win = SO::getPhaseWindow(SO::DistortionType(x.dt), ph, adj);
+                adj += dphase;
+                const vital::poly_float val = win * SO::interpolate(buf, adj);
+                for (int j = 0; j < vital::poly_float::kSize; j++) {
+                    const int q = std::max(0, std::min(255, int(std::lround(val[j] * 127.0f + 128.0f))));
+                    char hx[3];
+                    snprintf(hx, sizeof(hx), "%02x", q);
+                    w += hx;
+                }
+            }
+        }
+        w += "\"}";
+    }
+    w += "]}";
+    std::lock_guard<std::mutex> l(in->playMu);
+    in->wavePlay = w;
 }
 
 void io_main(Instance *in) {
@@ -855,6 +1420,11 @@ void io_main(Instance *in) {
         return;
     }
     resolve_controls(in);
+    if (!in->lib.load(in->dir + "/wavetables")) plog("no wavetable library in %s/wavetables", in->dir.c_str());
+    {
+        std::lock_guard<std::mutex> l(in->infoMu);
+        update_names(in);
+    }
     rescan(in);
     std::string stamp = library_stamp(in->dir);
     Request first;
@@ -883,6 +1453,7 @@ void io_main(Instance *in) {
     in->ready = true;
     in->loading = 0;
     set_status(in, "Vivace");
+    harvest(in); // (after the sound: the player hears it first)
     plog("running: %d banks", int(in->banks.size()));
 
     int64_t lastScan = now_us();
@@ -890,19 +1461,29 @@ void io_main(Instance *in) {
         Request r;
         {
             std::unique_lock<std::mutex> l(in->reqMu);
-            in->reqCv.wait_for(l, std::chrono::milliseconds(500), [&] { return in->quit.load() || in->req.kind != Request::kNone; });
+            in->reqCv.wait_for(l, std::chrono::milliseconds(40), [&] { // (40 ms: the tables as they play, update_play)
+                bool wt = false;
+                for (int o = 0; o < vital::kNumOscillators; o++) wt = wt || in->wtDirty[o].load();
+                std::lock_guard<std::mutex> ml(in->modMu);
+                return in->quit.load() || in->req.kind != Request::kNone || wt || !in->modPending.empty();
+            });
             r = std::move(in->req);
             in->req = Request();
         }
         if (in->quit.load()) break;
         if (r.kind == Request::kPreset) load_preset(in, r.bank, r.preset);
         else if (r.kind == Request::kState) load_state(in, r.state);
+        for (int o = 0; o < vital::kNumOscillators; o++) // a table chosen meanwhile
+            if (in->wtDirty[o].exchange(false)) apply_table(in, o);
+        apply_mod_sets(in);
+        update_play(in);
         if (now_us() - lastScan > 2000000) { // the library, when a folder changed
             lastScan = now_us();
             std::string s = library_stamp(in->dir);
             if (s != stamp) {
                 stamp = s;
                 rescan(in);
+                harvest(in);
             }
         }
     }
@@ -958,6 +1539,28 @@ void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
     sem_post(&in->wake);
 }
 
+// osc_N_wt_class / osc_N_wt: the oscillator (0-based), else -1
+int wt_key(const char *key) {
+    int n = 0, used = 0;
+    if (sscanf(key, "osc_%d_wt%n", &n, &used) != 1 || n < 1 || n > vital::kNumOscillators) return -1;
+    const char *rest = key + used;
+    return (!*rest || !strcmp(rest, "_class")) ? n - 1 : -1;
+}
+
+// the library as chain_params lists it (a probe asks before an instance has
+// read it): its categories, and the most tables a category has
+const wtlib::Library &library_of(const std::string &dir) {
+    static std::mutex mu;
+    static std::string at;
+    static wtlib::Library lib;
+    std::lock_guard<std::mutex> l(mu);
+    if (at != dir) {
+        lib.load(dir + "/wavetables");
+        at = dir;
+    }
+    return lib;
+}
+
 void v2_set_param(void *instance, const char *key, const char *val) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !val) return;
@@ -1006,6 +1609,43 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         r.bank = n;
         r.preset = 0; // a bank's first sound, so the list and the sound agree
         post(in, std::move(r));
+    } else if (int o = wt_key(key); o >= 0) {
+        // osc_N_wt_class: Preset, or a category (by name or number); osc_N_wt: its table
+        const bool cls = strstr(key, "_wt_class") != nullptr;
+        int n = -1;
+        if (cls) {
+            if (!strcasecmp(val, "Preset")) n = 0;
+            if (!strcasecmp(val, "From Presets")) n = from_presets(in);
+            for (size_t i = 0; i < in->lib.categories.size() && n < 0; i++)
+                if (!strcasecmp(in->lib.categories[i].name.c_str(), val)) n = int(i) + 1;
+        }
+        if (n < 0) {
+            char *end = nullptr;
+            n = int(std::lround(strtod(val, &end)));
+            if (end == val) return;
+        }
+        {
+            std::lock_guard<std::mutex> l(in->infoMu);
+            if (cls) {
+                n = std::max(0, std::min(from_presets(in), n));
+                if (n == in->wtClass[o]) return;
+                in->wtClass[o] = n;
+                in->wtTable[o] = 0; // a category's first table, as a bank's first sound
+            } else {
+                const int c = in->wtClass[o];
+                const int count = c == from_presets(in) ? int(in->harvested.size())
+                                  : c > 0                  ? int(in->lib.categories[size_t(c - 1)].tables.size())
+                                                           : 1;
+                if (count == 0) return;
+                n = std::max(0, std::min(count - 1, n));
+                if (n == in->wtTable[o]) return;
+                in->wtTable[o] = n;
+            }
+        }
+        in->wtDirty[o] = true;
+        in->reqCv.notify_one();
+    } else if (!strcmp(key, "mod_set")) {
+        if (in->ready.load()) mod_set(in, val);
     } else if (!strcmp(key, "gain")) {
         in->gain = std::max(0.01f, std::min(2.0f, float(atof(val)) / 100.0f));
     } else if (!strcmp(key, "all_notes_off")) {
@@ -1018,7 +1658,7 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         if (off < len) off += snprintf(buf + off, size_t(len - off), __VA_ARGS__); \
     } while (0)
 
-int chain_params(char *buf, int len) {
+int chain_params(const std::string &dir, char *buf, int len) {
     int off = 0;
     AP("[{\"key\":\"preset\",\"name\":\"Sound\",\"type\":\"int\",\"min\":0,\"max\":1023}");
     AP(",{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"int\",\"min\":1,\"max\":200,\"unit\":\"%%\"}");
@@ -1044,6 +1684,16 @@ int chain_params(char *buf, int len) {
         default:
             AP(",\"type\":\"float\",\"min\":%g,\"max\":%g,\"display_format\":\"%%.0f\"}", p.pmin, p.pmax);
         }
+    }
+    // each oscillator's table from the library (after every other: a Set's
+    // automation keeps its place, Pung's stablelayout.go)
+    const wtlib::Library &lib = library_of(dir);
+    for (int o = 1; o <= vital::kNumOscillators; o++) {
+        AP(",{\"key\":\"osc_%d_wt_class\",\"name\":\"Osc %d Table Type\",\"short\":\"Type\",\"type\":\"enum\",\"selector\":true,\"options\":[\"Preset\"", o, o);
+        for (const auto &c : lib.categories) AP(",\"%s\"", jesc(c.name).c_str());
+        AP(",\"From Presets\"]}");
+        // a fixed range: a preset folder that grows must not change the parameter
+        AP(",{\"key\":\"osc_%d_wt\",\"name\":\"Osc %d Table\",\"short\":\"Table\",\"type\":\"int\",\"min\":0,\"max\":%d}", o, o, kMaxTables - 1);
     }
     AP("]");
     return off < len ? off : -1;
@@ -1085,6 +1735,7 @@ int ui_hierarchy(char *buf, int len) {
     knobs(vv::kPages[0]);
     AP(",\"params\":[{\"level\":\"banks\",\"label\":\"Bank\"}");
     for (int i = 1; i < vv::kNumPages; i++) AP(",{\"level\":\"p%d\",\"label\":\"%s\"}", i, vv::kPages[i].label);
+    for (int o = 1; o <= vital::kNumOscillators; o++) AP(",{\"level\":\"wt%d\",\"label\":\"Osc %d Table\"}", o, o);
     AP(",{\"level\":\"out\",\"label\":\"Output\"}]}");
     AP(",\"banks\":{\"label\":\"Bank\",\"items_param\":\"bank_list\",\"select_param\":\"bank_select\","
        "\"navigate_to\":\"root\",\"children\":null,\"knobs\":[],\"params\":[]}");
@@ -1100,6 +1751,10 @@ int ui_hierarchy(char *buf, int len) {
             }
         AP("]}");
     }
+    for (int o = 1; o <= vital::kNumOscillators; o++)
+        AP(",\"wt%d\":{\"label\":\"Osc %d Table\",\"children\":null,\"knobs\":[\"osc_%d_wt_class\",\"osc_%d_wt\"],"
+           "\"params\":[{\"key\":\"osc_%d_wt_class\",\"label\":\"Osc %d Table Type\"},{\"key\":\"osc_%d_wt\",\"label\":\"Osc %d Table\"}]}",
+           o, o, o, o, o, o, o, o);
     AP(",\"out\":{\"label\":\"Output\",\"children\":null,\"knobs\":[\"gain\"],"
        "\"params\":[{\"key\":\"gain\",\"label\":\"Output Gain\"}]}}}");
     return off < len ? off : -1;
@@ -1131,7 +1786,45 @@ int state_text(Instance *in, char *buf, int len) {
         AP("%s\"%s\":%.7g", first ? "" : ",", c.first.c_str(), double(v));
         first = false;
     }
-    AP("}}");
+    AP("},\"tables\":[");
+    for (int o = 0; o < vital::kNumOscillators; o++) {
+        int c, t;
+        {
+            std::lock_guard<std::mutex> l(in->infoMu);
+            c = in->wtClass[o];
+            t = in->wtTable[o];
+        }
+        Instance::Harvest h;
+        bool fp = false;
+        if (c == from_presets(in)) {
+            std::lock_guard<std::mutex> l(in->infoMu);
+            if (t >= 0 && t < int(in->harvested.size())) h = in->harvested[size_t(t)], fp = true;
+        }
+        const wtlib::Table *tb = c > 0 && !fp ? in->lib.table(c - 1, t) : nullptr;
+        if (fp)
+            AP("%s[\"From Presets\",\"%s|%s|%d\"]", o ? "," : "", jesc(h.name).c_str(), jesc(rel_path(in, h.file)).c_str(), h.osc);
+        else if (tb) AP("%s[\"%s\",\"%s\"]", o ? "," : "", jesc(in->lib.categories[size_t(c - 1)].name).c_str(), jesc(tb->name).c_str());
+        else AP("%s[\"Preset\",\"\"]", o ? "," : "");
+    }
+    AP("]");
+    { // the routes, where they are not the file's (assigned on Pung's screen)
+        const std::shared_ptr<const Heavy> h = heavy_of(in);
+        std::string base;
+        {
+            std::lock_guard<std::mutex> l(in->infoMu);
+            base = in->baseRoutes;
+        }
+        if (h->modSig != base) {
+            AP(",\"mods\":[");
+            bool first = true;
+            for (const auto &m : h->mods) {
+                AP("%s[%d,\"%s\",\"%s\"]", first ? "" : ",", std::get<0>(m), jesc(std::get<1>(m)).c_str(), jesc(std::get<2>(m)).c_str());
+                first = false;
+            }
+            AP("]");
+        }
+    }
+    AP("}");
     return off < len ? off : -1;
 }
 
@@ -1145,11 +1838,40 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
                         in->blockUs.load(), in->blockMaxUs.exchange(0), in->wr.load() - in->rd.load(), in->voices.load(),
                         in->loadMs.load());
     if (!strcmp(key, "live_voices")) return snprintf(buf, size_t(len), "%d", in->voices.load());
-    if (!strcmp(key, "chain_params")) return chain_params(buf, len);
+    if (!strcmp(key, "chain_params")) return chain_params(in->dir, buf, len);
+    if (int o = wt_key(key); o >= 0) {
+        std::lock_guard<std::mutex> l(in->infoMu);
+        return snprintf(buf, size_t(len), "%d", strstr(key, "_wt_class") ? in->wtClass[o] : in->wtTable[o]);
+    }
+    if (!strcmp(key, "wt_lib")) {
+        std::lock_guard<std::mutex> l(in->infoMu);
+        return snprintf(buf, size_t(len), "%s", in->libNames.c_str());
+    }
+    if (!strcmp(key, "wave_pos")) { // each oscillator's place in its table as it plays, 0..1 (2: off), and the voices
+        return snprintf(buf, size_t(len), "{\"pos\":[%.4f,%.4f,%.4f],\"voices\":%d}", double(in->wavePos[0].load()),
+                        double(in->wavePos[1].load()), double(in->wavePos[2].load()), in->voices.load());
+    }
+    if (!strcmp(key, "live_mod")) { // every modulated control where the sound has it now; {} at rest
+        int off = 0;
+        AP("{");
+        const int n = in->modSounding.load() ? in->modN.load() : 0;
+        for (int t = 0, k = 0; t < n; t++) {
+            const int p = in->modParam[t].load();
+            if (p < 0 || p >= vv::kNumParams) continue;
+            AP("%s\"%s\":%.4f", k++ ? "," : "", vv::kParams[p].key, double(in->modVal[t].load()));
+        }
+        AP("}");
+        return off < len ? off : -1;
+    }
+    if (!strcmp(key, "mod_map")) return mod_map(in, buf, len);
     if (!strcmp(key, "value_lists")) return value_lists(buf, len);
     if (!strcmp(key, "ui_hierarchy")) return ui_hierarchy(buf, len);
     if (!strcmp(key, "gain")) return snprintf(buf, size_t(len), "%d", int(std::lround(in->gain.load() * 100)));
     if (!strcmp(key, "state")) return in->ready.load() ? state_text(in, buf, len) : -1;
+    if (!strcmp(key, "wave_play")) {
+        std::lock_guard<std::mutex> l(in->playMu);
+        return snprintf(buf, size_t(len), "%s", in->wavePlay.c_str());
+    }
     if (!strcmp(key, "wave_view")) return snprintf(buf, size_t(len), "%s", heavy_of(in)->waveView.c_str());
     if (!strcmp(key, "mod_routes")) return snprintf(buf, size_t(len), "%s", heavy_of(in)->routes.c_str());
     if (!strcmp(key, "lfo_shapes")) return snprintf(buf, size_t(len), "%s", heavy_of(in)->lfoShapes.c_str());

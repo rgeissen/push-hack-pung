@@ -110,7 +110,8 @@ int main(int argc, char **argv) {
         char kv[512];
         snprintf(kv, sizeof(kv), "%s", argv[i]);
         if (kv[0] == '?') { // ?key: what the module answers for it now
-            char val[512] = "";
+            static char val[65536];
+            val[0] = 0;
             api->get_param(in, kv + 1, val, sizeof(val));
             printf("get %s = %s\n", kv + 1, val);
             continue;
@@ -176,6 +177,15 @@ int main(int argc, char **argv) {
             n++;
         }
         frames += 128;
+        // RENDER_WATCH=<key>: the key four times a second while the chord plays
+        // (Vivace's wave_pos moving with an LFO)
+        const char *watch = getenv("RENDER_WATCH");
+        if (watch && *watch && b % 86 == 0) {
+            static char wv[2048];
+            wv[0] = 0;
+            api->get_param(in, watch, wv, sizeof(wv));
+            printf("watch %.2f s %s = %s\n", b * 128.0 / 44100, watch, wv);
+        }
         while (now_s() < due) usleep(200);
     }
     char dbg[256] = "";
@@ -186,7 +196,7 @@ int main(int argc, char **argv) {
     // ?key again, after: what the module took a while to find out
     for (int i = 3; i < argc; i++) {
         if (argv[i][0] != '?') continue;
-        static char val[8192];
+        static char val[65536];
         val[0] = 0;
         api->get_param(in, argv[i] + 1, val, sizeof(val));
         printf("after %s = %s\n", argv[i] + 1, val);

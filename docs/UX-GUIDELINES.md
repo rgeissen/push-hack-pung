@@ -490,6 +490,64 @@ time), the loudest sample of each block, the last 4096 samples of the output, an
 | **LFO** free running, or a rate with no unit | still | its phase cannot be known |
 | a module's screen | its envelopes, filters and LFOs exactly as above, when it draws them with `g.envelope`, `g.filter` and `g.lfo` (in its own colours if it likes: `color`); whatever else it draws from `v.$live` and its `live_keys` (overrides.md). A curve a screen draws itself is still: Vavra and Xenia lost every moving picture that way, and OsTIrus and Nodal Red their filters' and LFOs' (`g.filter` and `g.lfo` were not live on a screen until 2026-11-21); `TestNativeScreensMove` now plays a note through each of their pages | the module |
 
+#### Modulation: every synth shows its modulation moving
+
+**A design imperative (2026-11-24): modulation animation is a core part of every synth's interface,
+not an extra.** Wherever a picture shows a control that something modulates (an LFO, an envelope, the
+modulation matrix, a macro, velocity), it shows where the sound has that control now, as it plays. A
+screen whose modulated controls stand still is not finished.
+
+- **From the module, never guessed.** A module that knows answers `get_param("live_mod")` with every
+  control a modulation moves and where the sound has it now, in the parameter's own raw units:
+  `{"filter_1_cutoff": 74.2, "osc_1_wave_frame": 128}`, and `{}` while nothing sounds (overrides.md,
+  `live_mod`). It must be cheap and lock-free: Pung asks every frame while someone watches. Pung asks a
+  module that answers nothing again every 5 s (`src/livemod.go`).
+- **Every knob of Pung's own pages** draws it (`modMark`, `src/draw.go`): outside the ring an arc in the
+  modulation colour from where the knob stands to where the sound has it, and a playhead dot there
+  (beside a fader, upright); the encoder row under a band or a widget, a short track with the knob's
+  tick and the sound's dot. The knob's own arc and hand stay where the hand put them: the two never mix.
+- **Pung's pictures follow the sound**: a filter's response sits at its modulated cutoff and resonance,
+  the knob's cutoff marked on the base, the way between in the modulation colour.
+- **A module's screen** gets it as `v[key].now` (0..1 of the range, absent when nothing moves it) and
+  draws its pictures from it (Vivace: its warp, its unison, its vowel pad, every bar and knob of its
+  panel), with the knob's own mark kept where the knob is.
+- Vivace answers it from its engine's modulation readouts (every route's destination, after each block);
+  its wavetable position moves on every page that draws a table (`wave_pos`). The emulators and the
+  Schwung modules follow, module by module.
+
+#### Assigning modulation (`src/assign.go`)
+
+In a front panel's segment, **a jog nudge right opens ASSIGN** for the segment's controls (Push's
+grammar: right goes deeper; a nudge left comes back, upper 7 EXIT leaves both). It is source first, the
+way the best software instruments work: the lower buttons are the module's modulation sources (the
+chosen one filled; one that already reaches a control here marked with a dot; seven to a page and the
+eighth turns it when there are more), and **each encoder sets the chosen source's depth on the control
+above it**, a percent of its range a detent: turning up from 0 adds a route, turning changes it, turning
+back to 0 (or Delete + the encoder's touch) removes it. **The turn says the polarity**: a turn alone is
+additive, the source pushing the control one way from the knob (`+20%`); a turn with Shift is bipolar,
+both ways around it (`+-20%`), and a turn either way changes an existing route's polarity to match.
+Each is drawn as the engine plays it. **With Select held, a turn moves the control itself** (the root the
+routes start from), and its sweep moves with it.
+
+Beyond the segment: **MORE** (upper 3) puts the encoders on every other control a route may reach, eight at
+a time by the module's own pages (the wheel also goes on past the last segment into them and back), and
+**ROUTES** (upper 4) on the chosen source's routes wherever they are, with Shift on every source's, each
+named under its knob: a route is changed or removed there without looking for its control. Upper 2 is the
+segment again. **The wheel still walks the segments and the source stays chosen**: hold LFO 1 and dial it into
+the oscillators, the filter and the amp in one pass.
+
+Over each encoder: its name, its knob as it stands, the range the chosen source sweeps it through as a
+modulation-coloured arc from the knob, where the sound has it now (live, while a note sounds), the depth
+(`+20%`), and the other sources that reach it. A control no route can reach (a switch, a menu, or what the
+synth's matrix does not offer) is drawn faint, FIXED. The screen is Pung's own, the same on every synth, in
+the module's theme.
+
+A module offers it by answering `mod_map` and taking `mod_set` (overrides.md, *Assigning modulation*); a
+module without it keeps the nudge for the next segment. Vivace has it (its 64 routes; a route made here is
+kept in the device's state), Xenia and Vavra (their sixteen-slot matrices, kept in the sound) and
+OsTIrus (its six assign slots of three destinations; an LFO's polarity is the Virus's own bipolar or
+unipolar source). A synth whose matrix is full takes no new route, and the screen says so.
+
 **Where it runs**: one live session per sound (`src/livehub.go`), shared by the Push view and every web
 page watching it: it is the only reader of the sound's state, so the two can never tell two stories. It
 ticks at 30 frames a second while someone watches and stops when no one does.

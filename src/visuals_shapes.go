@@ -180,6 +180,23 @@ type filterShape struct {
 	Touched     string    // "cutoff", "resonance", "type" or ""
 	Spectrum    []float64 // the sound's spectrum, dB per column of the axis (livefx.go); nil: none
 	Pal         *palette  // the module's theme (theme.go); nil: Pung's
+	// Moved: modulation has the cutoff elsewhere than its knob (livemod.go):
+	// Cutoff is where the sound has it, Set where the knob stands
+	Moved bool
+	Set   float64
+}
+
+// withModulation: the filter where its modulation puts it now (the module's
+// live_mod): the response at the modulated cutoff and resonance, the knob's
+// cutoff kept to mark.
+func (f *filterShape) withModulation(cut, res ovValue) {
+	if cut.HasNow && math.Abs(cut.Now-cut.Frac) > 0.002 {
+		f.Set, f.Moved = f.Cutoff, true
+		f.Cutoff = math.Max(0, math.Min(1, cut.Now))
+	}
+	if res.HasNow {
+		f.Res = math.Max(0, math.Min(1, res.Now))
+	}
 }
 
 // the spectrum's scale in the filter picture (dB, after the analyzer's tilt)
@@ -317,6 +334,7 @@ func filterShapeOf(g picGroup, vals map[string]ovValue, touchedKey string) filte
 			f.Kind, f.Poles = filterKind(name)
 		}
 	}
+	f.withModulation(vals[g.keys["cutoff"]], vals[g.keys["resonance"]])
 	return f
 }
 
@@ -442,8 +460,18 @@ func drawFilter(img *image.NRGBA, r image.Rectangle, f filterShape, sc color.NRG
 			aaLine(img, xc, gy, xc, math.Min(gy+3, base), 1.5, accent)
 		}
 		disc(img, xc, yc, 4.5, accent)
-	} else {
+	} else if !f.Moved {
 		disc(img, xc, yc, 3, fg)
+	}
+	if f.Moved && known {
+		// where the knob stands, and the modulation from there to where
+		// the sound has the cutoff: a playhead in the modulation colour
+		xs := x0 + (x1-x0)*math.Max(0, math.Min(1, f.Set))
+		rect(img, int(xs), int(base)-7, 2, 7, fg)
+		aaLine(img, xs, base-2, xc, base-2, 2, P.mix(cMod, 0.55))
+		aaLine(img, xc, yc, xc, base-2, 1, P.mix(cMod, 0.5))
+		disc(img, xc, yc, 4.6, P.ground)
+		disc(img, xc, yc, 3.4, cMod)
 	}
 }
 

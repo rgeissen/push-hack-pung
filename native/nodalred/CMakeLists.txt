@@ -40,3 +40,8 @@ target_link_options(nodalred-dsp PRIVATE -Wl,--exclude-libs,ALL -static-libstdc+
 add_executable(nodalred-engine dsp/nodalred_engine.cpp)
 target_link_libraries(nodalred-engine PRIVATE n2xLib synthLib Threads::Threads)
 target_link_options(nodalred-engine PRIVATE -static-libstdc++ -static-libgcc)
+
+# research, never shipped (the recipe builds the two targets above): the DSP
+# memory words that follow a modulation (tools/n2x_scan.cpp)
+add_executable(nodalred-scan EXCLUDE_FROM_ALL tools/n2x_scan.cpp)
+target_link_libraries(nodalred-scan PRIVATE n2xLib synthLib Threads::Threads)

@@ -70,6 +70,7 @@ type surface struct {
 	liveOut    liveOut // the shown sound's live frame, as this frame draws it (livehub.go); under mu
 	liveDrew   bool    // this frame drew something live
 	fxUsed     bool    // the last frame drew something live
+	modPrefix  string  // the component whose live_mod this frame reads (livemod.go)
 	frameStats frameStats
 
 	h    *Host
@@ -122,6 +123,8 @@ type surface struct {
 	// buttons choose a segment, "segment" the encoders play segID's keys;
 	// segComp: the front panel's compartment it belongs to
 	segMode, segID, segComp string
+	asg                     assignState // ASSIGN in a segment (assign.go)
+	sel                     bool        // Select held
 	// pal: the shown module's theme while its default page is drawn (theme.go)
 	pal *palette
 	// segAt: where the shown panel drew its segments this frame (g.segment)
@@ -417,6 +420,7 @@ func (u *surface) routes(mux *http.ServeMux) {
 			"position":          p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
 			"toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,
 			"segments": map[string]any{"mode": u.segMode, "segment": u.segID, "compartment": u.segComp, "knobs": u.encKeys(b)},
+			"assign":   map[string]any{"on": u.asg.on, "source": u.asg.src, "page": u.asg.page},
 			"live_path": func() []int {
 				if u.live == nil {
 					return nil
@@ -835,6 +839,9 @@ func (u *surface) cc(n, v byte) {
 	case push3.CCDelete:
 		u.del = press // Live's too (liveButtons): read here for Delete + ...
 		return
+	case push3.CCSelect:
+		u.sel = press // ASSIGN: Select + a turn moves the control itself (assign.go)
+		return
 	case push3.CCMute, push3.CCSolo:
 		u.holdModifier(n == push3.CCMute, press)
 		return
@@ -928,14 +935,26 @@ func (u *surface) cc(n, v byte) {
 		// (segments.go); otherwise one level in, as Push's jog goes deeper:
 		// the wheel walks what the page is about (a module that names
 		// nothing has no such level)
-		if u.view == "chain" && u.open && u.segNext() {
+		if u.view == "chain" && u.open && u.segMode == segSegment && !u.asg.on && u.assignEnter() {
+			u.showRows() // ASSIGN for the segment's controls (assign.go)
 			break
+		}
+		if u.view == "chain" && u.open && !u.asg.on && u.segNext() {
+			break
+		}
+		if u.asg.on {
+			break // already as deep as it goes
 		}
 		if u.view == "chain" && u.open && u.wheelComp() != nil {
 			u.inner = true
 			u.showRows()
 		}
 	case n == push3.CCJogClickLeft:
+		if u.asg.on {
+			u.assignLeave() // back to the segment
+			u.showRows()
+			break
+		}
 		if u.inner {
 			u.inner = false // back to the pages
 			u.showRows()
@@ -1104,6 +1123,9 @@ func selectedDeviceIndex(devs []liveDevSummary, sel int) int {
 // selected one's opens it; with Mute it goes off and on, with Delete it is
 // removed). Open: button 1 goes back.
 func (u *surface) top(i int) {
+	if u.open && u.assignActive() && u.assignTop(i) {
+		return // ASSIGN's views (assign.go)
+	}
 	if u.open {
 		u.segSync()
 		switch {
@@ -1181,6 +1203,10 @@ func (u *surface) openDevice() {
 // Live's tracks (with Mute or Solo held: that track's).
 func (u *surface) bottom(i int) {
 	if u.open {
+		if u.assignActive() {
+			u.assignBottom(i) // the sources (assign.go)
+			return
+		}
 		if u.segmentPick(i) {
 			return // the lower row names the segments (segments.go)
 		}
@@ -1243,6 +1269,11 @@ func (u *surface) jog(delta int) {
 	if !u.liveActive() || u.view != "chain" {
 		return
 	}
+	if u.open && u.assignActive() {
+		if _, cm, _ := u.currentBank(); u.assignWheel(sign(delta), cm) {
+			return // ASSIGN: past the segments into MORE, ROUTES' pages (assign.go)
+		}
+	}
 	if u.open && (u.shift || u.segActive()) && u.segStep(sign(delta)) {
 		return // in segment mode the wheel, else Shift + it: the segments (segments.go)
 	}
@@ -1304,13 +1335,31 @@ func (u *surface) turn(enc, delta int) {
 	if u.turnAt.IsZero() {
 		u.turnAt = time.Now()
 	}
+	assignKey := "" // ASSIGN with Select held: the control itself, not a route's depth
+	if u.assignActive() {
+		col, _, ok := u.assignColAt(enc)
+		if !u.sel {
+			u.assignTurn(enc, delta) // a source's depth (assign.go)
+			return
+		}
+		if !ok {
+			return
+		}
+		assignKey = col.key
+	}
 	p, cm, b := u.currentBank()
 	keys := u.encKeys(b) // the page's, or the segment's (segments.go)
-	if b == nil || enc >= len(keys) || keys[enc] == "" {
+	if assignKey == "" && (b == nil || enc >= len(keys) || keys[enc] == "") {
 		u.lastTurn = fmt.Sprintf("enc %d: no key on this page", enc)
 		return
 	}
-	key := keys[enc]
+	if b == nil || cm == nil {
+		return
+	}
+	key := assignKey
+	if key == "" {
+		key = keys[enc]
+	}
 	m := cm.Params[key]
 	_, has := u.vals[u.valKey(p, key)]
 	u.lastTurn = fmt.Sprintf("enc %d: %s meta=%t readonly=%t value=%t", enc, key, m != nil, m != nil && m.ReadOnly, has)
@@ -1421,6 +1470,10 @@ func (u *surface) wheel(delta int) {
 // resetParam: Delete + an encoder's touch puts its parameter back to its
 // default, as on Push: the module's own where it states one, else Live's.
 func (u *surface) resetParam(enc int) {
+	if u.assignActive() {
+		u.assignClear(enc) // the route from the chosen source (assign.go)
+		return
+	}
 	p, cm, b := u.currentBank()
 	keys := u.encKeys(b)
 	if b == nil || enc >= len(keys) || keys[enc] == "" {
@@ -1966,6 +2019,12 @@ func (u *surface) refreshLive() {
 				for _, k := range append(append([]string{}, c.extraKeys...), c.liveKeys...) {
 					free[k] = true
 				}
+			}
+		}
+		if u.asg.on && u.asg.m != nil { // ASSIGN's MORE and ROUTES: controls off the page (assign.go)
+			cols, _ := u.assignCols(cm, u.asg.m)
+			for _, c := range cols {
+				need = append(need, c.key)
 			}
 		}
 		for _, key := range need {

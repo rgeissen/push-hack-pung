@@ -8,12 +8,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 CATALOG=${CATALOG:-../schwung/module-catalog.json}
 mkdir -p build/modsrc
-python3 - <<'PY' | while IFS=$'\t' read -r id dst dep local repo commit; do
+python3 - <<'PY' | while IFS=$'\t' read -r id dst dep local repo commit paths; do
 import json
 for m in json.load(open("native/catalog.json"))["modules"]:
-    print("\t".join([m["id"], m["modsrc"], "", "", "", ""]))
+    print("\t".join([m["id"], m["modsrc"], "", "", "", "", ""]))
     for dep, d in m.get("deps", {}).items():
-        print("\t".join([m["id"], m["modsrc"], dep, d.get("local", ""), d["repo"], d["commit"]]))
+        # "paths": only these of the dep's tree (AKWF: 17 MB of a 1.1 GB checkout)
+        print("\t".join([m["id"], m["modsrc"], dep, d.get("local", ""), d["repo"], d["commit"], ",".join(d.get("paths", []))]))
 PY
     if [ -z "$dep" ]; then
         mkdir -p "build/modsrc/$dst"
@@ -37,6 +38,13 @@ PY
         git -C "$t" submodule update -q --init --recursive
         find "$t" -name .git -prune -exec rm -rf {} +
         echo "native dep: $dep <- $repo ($commit)"
+    fi
+    if [ -n "$paths" ]; then # only the paths the module uses: the rest never enters its build or source archive
+        k="$t.keep"; rm -rf "$k"; mkdir -p "$k"
+        IFS=, read -r -a want <<< "$paths"
+        for p in "${want[@]}"; do [ -e "$t/$p" ] && mv "$t/$p" "$k/"; done
+        rm -rf "$t"; mv "$k" "$t"
+        echo "native dep: $dep kept $paths"
     fi
     echo "$commit" > "$t.COMMIT"
 done
