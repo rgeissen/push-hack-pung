@@ -297,3 +297,25 @@ func TestPungModPressureFollowsKeys(t *testing.T) {
 		t.Fatal("the wheel stays where it was left")
 	}
 }
+
+// An LFO's rate now, free or at Live's tempo, and the emulator's limit
+func TestPungModHzAndEmulator(t *testing.T) {
+	if pmodHz(pmodLFO{Rate: 3}) != 3 {
+		t.Fatal("a free LFO runs at its rate")
+	}
+	var bar int
+	for i, d := range pmodDivs {
+		if d.beats == 4 {
+			bar = i
+		}
+	}
+	if bar == 0 {
+		t.Fatal("no bar division")
+	}
+	if hz := pmodHz(pmodLFO{Div: bar}); math.Abs(hz-0.5) > 1e-9 { // 120 bpm while Live has not said
+		t.Fatalf("a bar at 120 bpm: %v Hz", hz)
+	}
+	if !newPungMod(&Slot{}, true).emulated() || newPungMod(&Slot{}, false).emulated() {
+		t.Fatal("an emulator is written every 20 ms")
+	}
+}

@@ -57,6 +57,34 @@ var pmodSources = []modSource{
 	{ID: "p_press", Name: "Pressure", Pung: true},
 }
 
+// pmodEmuSmoothHz: the fastest an LFO of Pung's moves an emulated synth's
+// control as smoothly as the synth's own LFO would. Pung writes an emulator
+// 50 times a second, and the synth takes about that many changes itself (the
+// microQ's 68000 passes parameters to its DSP about 50 times a second):
+// measured on Vavra, 2026-11-24, a sweep of Filter 1's cutoff at 1 Hz was
+// smoother than the synth's own LFO, at 3 Hz as smooth (1.25 against 1.26 dB
+// of roughness in its brightness), at 6 Hz coarser (2.0), at 10 Hz clearly
+// stepped (2.95 against 1.0). An ordinary module, written 100 times a
+// second, stayed smooth at 10 Hz (OB-Xd: 0.65). The LFO's settings say so
+// from here up on an emulator (drawPmodLFO).
+const pmodEmuSmoothHz = 4.0
+
+// pmodHz: an LFO's cycles a second now (synced: at Live's tempo, 120 bpm
+// while Live has not said)
+func pmodHz(l pmodLFO) float64 {
+	if l.Div > 0 && l.Div < len(pmodDivs) {
+		_, bpm, _ := transportNow()
+		if bpm <= 0 {
+			bpm = 120
+		}
+		return bpm / 60 / pmodDivs[l.Div].beats
+	}
+	return l.Rate
+}
+
+// emulated: the device is an emulator (written every 20 ms, not 10)
+func (pm *pungMod) emulated() bool { return pm.period >= 20*time.Millisecond }
+
 // isPungSource: one of Pung's own (by its whole id: a module's source may
 // begin the same way)
 func isPungSource(id string) bool {
