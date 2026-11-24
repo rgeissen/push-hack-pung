@@ -110,6 +110,11 @@ type ovCompartment struct {
 	// drawsSegments: the panel highlights the active segment itself, in its
 	// own idiom (v.$segment); Pung then draws no highlight of its own
 	drawsSegments bool
+	// assignPages: ASSIGN's first pages beyond the segments (assign.go):
+	// the instrument's key destinations the panel has no section for (a
+	// second filter, the LFOs' rates, the effects' mix), before the
+	// module's own pages
+	assignPages []assignPage
 }
 
 // ovSegment: one section of a front panel (push.compartment's segments):
@@ -118,6 +123,11 @@ type ovSegment struct {
 	id, label string
 	rect      [4]int   // x, y, w, h on the panel (960 x 160)
 	keys      []string // the encoders' keys, up to 8 ("" for an empty one)
+	// assign: what ASSIGN puts on the encoders in this segment (assign.go),
+	// when it is not the keys: the section's modulation destinations in
+	// place of its switches (an oscillator's pulse width and pitch where
+	// its knob row has the wave and the octave). Empty: the keys.
+	assign []string
 }
 
 // segment: the compartment's segment with this id, or nil.
@@ -391,6 +401,12 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 				if kv := o.Get("keys"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
 					vm.ExportTo(kv, &sg.keys) //nolint:errcheck
 				}
+				if kv := o.Get("assign"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
+					vm.ExportTo(kv, &sg.assign) //nolint:errcheck
+					if len(sg.assign) > 8 {
+						panic(vm.NewTypeError("push.compartment: segment " + sg.id + " assigns at most 8 keys"))
+					}
+				}
 				var r []float64
 				if rv := o.Get("rect"); rv != nil && !goja.IsUndefined(rv) && !goja.IsNull(rv) {
 					vm.ExportTo(rv, &r) //nolint:errcheck
@@ -411,6 +427,24 @@ func (o *overrides) get(modulesDir, id string) *overrideSet {
 		}
 		if v := spec.Get("draws_segments"); v != nil && !goja.IsUndefined(v) && v.ToBoolean() {
 			c.drawsSegments = true
+		}
+		// assign_pages: [{label, keys: [...up to 8]}]: ASSIGN's MORE starts with them
+		if av := spec.Get("assign_pages"); av != nil && !goja.IsUndefined(av) && !goja.IsNull(av) {
+			arr := av.ToObject(vm)
+			for i := 0; i < int(arr.Get("length").ToInteger()); i++ {
+				o := arr.Get(fmt.Sprint(i)).ToObject(vm)
+				pg := assignPage{}
+				if v := o.Get("label"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+					pg.name = v.String()
+				}
+				if kv := o.Get("keys"); kv != nil && !goja.IsUndefined(kv) && !goja.IsNull(kv) {
+					vm.ExportTo(kv, &pg.keys) //nolint:errcheck
+				}
+				if pg.name == "" || len(pg.keys) == 0 || len(pg.keys) > 8 {
+					panic(vm.NewTypeError("push.compartment: each of assign_pages needs a label and keys (1..8)"))
+				}
+				c.assignPages = append(c.assignPages, pg)
+			}
 		}
 		if c.id == "" || c.id == "undefined" || len(c.keys) == 0 {
 			panic(vm.NewTypeError("push.compartment needs an id and keys"))

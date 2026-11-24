@@ -1186,9 +1186,11 @@ void v2_set_param(void *instance, const char *key, const char *val) {
 // ---- the Nord's modulation, for Pung's ASSIGN screen (src/assign.go) ------------
 // Fixed routes, each source with one destination of its own list and an
 // amount (the edited slot's): LFO 1 to the pulse width, the filter, osc 2's
-// pitch or FM; LFO 2 to the filter; the mod envelope to osc 2's pitch, FM or
+// pitch, both oscillators' pitch or FM; LFO 2 to the amplifier, both
+// oscillators' pitch or the filter; the mod envelope to osc 2's pitch, FM or
 // the pulse width. A route to another destination moves the source there
-// (the Nord drives one at a time); amount 0 removes it.
+// (the Nord drives one at a time); amount 0 removes it. Both oscillators'
+// pitch has no knob of its own: "pitch", by its name.
 struct NordSource {
     const char *id, *name, *dest, *amount; // the source's destination and amount parameters
     int ndest;
@@ -1197,8 +1199,8 @@ struct NordSource {
     bool bipolar;        // the amount goes both ways (the mod envelope's)
 };
 const NordSource kNordSources[] = {
-    {"lfo1", "LFO 1", "lfo1_dest", "lfo1_amount", 4, {"pw", "cutoff", "osc2_semi", "fm"}, {0, 1, 2, 4}, false},
-    {"lfo2", "LFO 2", "lfo2_dest", "lfo2_amount", 1, {"cutoff"}, {7}, false},
+    {"lfo1", "LFO 1", "lfo1_dest", "lfo1_amount", 5, {"pw", "cutoff", "osc2_semi", "pitch", "fm"}, {0, 1, 2, 3, 4}, false},
+    {"lfo2", "LFO 2", "lfo2_dest", "lfo2_amount", 3, {"amp_gain", "pitch", "cutoff"}, {3, 4, 7}, false},
     {"modenv", "Mod Env", "modenv_dest", "modenv_amount", 3, {"osc2_semi", "fm", "pw"}, {0, 1, 2}, true},
 };
 
@@ -1213,7 +1215,7 @@ int mod_map(Instance *in, char *buf, int len) {
         for (int d = 0; d < n.ndest; d++) AP("%s\"%s\"", d ? "," : "", n.knob[d]);
         AP("]}");
     }
-    AP("],\"dests\":[\"pw\",\"cutoff\",\"osc2_semi\",\"fm\"],\"routes\":[");
+    AP("],\"dests\":[\"pitch\",\"pw\",\"cutoff\",\"osc2_semi\",\"fm\",\"amp_gain\"],\"names\":{\"pitch\":\"Pitch\"},\"routes\":[");
     bool first = true;
     for (const NordSource &n : kNordSources) {
         const Param *pd = find_param(n.dest), *pa = find_param(n.amount);

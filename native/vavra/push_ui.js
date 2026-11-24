@@ -318,6 +318,14 @@ function legendX(c) { return MX + 132 + Math.floor(c / 2) * 110 + (c % 2) * MW; 
 // the encoders from wherever the pages stand): the segment's row is lit as
 // the microQ lights it (Pung's bar above it: 3 px free between the rows)
 var SEG_IDS = ["osc", "mixer", "filters", "amp", "env", "lfo", "mod"];
+// what ASSIGN offers in a row where its knobs are switches: the microQ's
+// matrix destinations in their places (an oscillator's pulse width under its
+// shape, the pitch of all three, which has no knob, by its detune)
+var SEG_ASSIGN = {
+  osc: ["o1_pulse_width", "o1_fm_amount", "o1_semi", "pitch", "o2_pulse_width", "o2_fm_amount", "o2_semi", "o3_semi"],
+  mixer: ["o1_level", "o2_level", "o3_level", "noise_level", "ring_mod_level", "o1_balance", "o2_balance", "o3_balance"],
+  filters: ["f1_drive", "f1_cutoff", "f1_resonance", "f1_pan", "f2_drive", "f2_cutoff", "f2_resonance", "f2_pan"]
+};
 function rowY(r) { return 4 + r * 13; }
 function matrixPanel(g, v) {
   var ps = v.$pages || [], t = v.$touched || "", knobs = v.$knobs || [];
@@ -776,8 +784,13 @@ push.compartment({
   pages: PAGES.panel,
   // the matrix rows, each where it sits on the panel, its eight knobs as the legend prints them
   segments: PAGES.panel.map(function (pg, r) {
-    return { id: SEG_IDS[r], label: pg.label, rect: [MX + 2, rowY(r) - 1, 960 - MX - 6, 12], keys: pg.keys };
+    return { id: SEG_IDS[r], label: pg.label, rect: [MX + 2, rowY(r) - 1, 960 - MX - 6, 12], keys: pg.keys, assign: SEG_ASSIGN[SEG_IDS[r]] };
   }),
+  // ASSIGN's MORE: the matrix destinations no row has, first
+  assign_pages: [
+    { label: "Osc 3, Sub, Filter FM", keys: ["o3_pulse_width", "o3_fm_amount", "o1_sub_volume", "o2_sub_volume", "f1_fm_amount", "f2_fm_amount"] },
+    { label: "Envelopes 3, 4", keys: ["env3_attack", "env3_decay", "env3_sustain", "env3_release", "env4_attack", "env4_decay", "env4_sustain", "env4_release"] }
+  ],
   extra_keys: SOUND,
   screen: function (g, v) {
     matrixPanel(g, v);

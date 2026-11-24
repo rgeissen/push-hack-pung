@@ -24,11 +24,20 @@ package main
 //
 //   {"sources": [{"id": "lfo_1", "name": "LFO 1"}, ...],
 //    "dests":   ["filter_1_cutoff", ...],      what a route may reach (absent: every knob)
-//    "routes":  [{"src": "lfo_1", "dst": "filter_1_cutoff", "amount": 0.42}, ...]}
+//    "routes":  [{"src": "lfo_1", "dst": "filter_1_cutoff", "amount": 0.42}, ...],
+//    "names":   {"pitch": "Pitch"}}           destinations with no knob of their own
 //
 // an amount being -1..1 of the destination's range, and sets one route
 // (set_param("mod_set", {"src", "dst", "amount"}); 0 removes it). A module
 // without mod_map keeps the nudge for the next segment, as before.
+//
+// What a segment offers: its keys, or the segment's own assign list (a
+// section's destinations in place of its switches), and a destination with
+// no knob of its own (the Waldorfs' and the Nord's pitch of both
+// oscillators, an LFO's depth) where the screen file names it. MORE starts
+// with the panel's assign_pages (its key destinations that no section has),
+// then the module's pages, then the knobless ones no segment named.
+// UX-GUIDELINES.md, "The destinations that matter".
 
 import (
 	"encoding/json"
@@ -61,7 +70,16 @@ type modMap struct {
 	Sources []modSource `json:"sources"`
 	Dests   []string    `json:"dests"`
 	Routes  []modRoute  `json:"routes"`
-	dests   map[string]bool
+	// Names: destinations with no knob of their own, by their names (a
+	// synth's pitch of every oscillator, an LFO's level): on the screen a
+	// depth around the middle, no knob to turn
+	Names map[string]string `json:"names,omitempty"`
+	dests map[string]bool
+}
+
+// knobless: a destination the module names that has no parameter of its own
+func (m *modMap) knobless(cm *compMeta, key string) bool {
+	return m != nil && key != "" && m.Names[key] != "" && (cm == nil || cm.Params[key] == nil)
 }
 
 // can: a route from a source may reach key
@@ -262,37 +280,60 @@ type assignPage struct {
 	keys []string
 }
 
-// morePages: every control a route may reach that no segment of the panel
-// has, by the module's pages in order, eight to a page
+// morePages: what MORE offers for the chosen source
 func (u *surface) morePages(cm *compMeta, m *modMap) []assignPage {
 	c, _ := u.segSync()
+	return morePagesOf(c, cm, m, u.asg.src)
+}
+
+// morePagesOf: every destination a route from src may reach that no segment
+// of the panel offers: the panel's assign_pages first, then the module's
+// pages in order (eight to a page), then the knobless ones
+func morePagesOf(c *ovCompartment, cm *compMeta, m *modMap, src string) []assignPage {
 	seen := map[string]bool{}
 	if c != nil {
 		for _, sg := range c.segments {
 			for _, k := range sg.keys {
 				seen[k] = true
 			}
+			for _, k := range sg.assign {
+				seen[k] = true
+			}
 		}
 	}
 	var out []assignPage
-	for _, b := range cm.Banks {
+	add := func(name string, keys []string) {
 		var ks []string
-		for _, k := range b.Keys {
-			mm := cm.Params[k]
-			if k == "" || seen[k] || mm == nil || mm.Type == "enum" || mm.ReadOnly || !m.canFrom(u.asg.src, k) {
+		for _, k := range keys {
+			if k == "" || seen[k] || !assignable(cm, m, k) || !m.canFrom(src, k) {
 				continue
 			}
 			seen[k] = true
 			ks = append(ks, k)
 		}
 		for i := 0; i < len(ks); i += 8 {
-			name := b.Name
+			n := name
 			if i > 0 {
-				name += fmt.Sprintf(" %d", i/8+1)
+				n += fmt.Sprintf(" %d", i/8+1)
 			}
-			out = append(out, assignPage{name, ks[i:min(len(ks), i+8)]})
+			out = append(out, assignPage{n, ks[i:min(len(ks), i+8)]})
 		}
 	}
+	if c != nil {
+		for _, pg := range c.assignPages {
+			add(pg.name, pg.keys)
+		}
+	}
+	for _, b := range cm.Banks {
+		add(b.Name, b.Keys)
+	}
+	var rest []string // the knobless the panel did not place, in the module's order
+	for _, k := range m.Dests {
+		if m.knobless(cm, k) {
+			rest = append(rest, k)
+		}
+	}
+	add("Global", rest)
 	return out
 }
 
@@ -345,7 +386,11 @@ func (u *surface) assignCols(cm *compMeta, m *modMap) (cols []assignCol, title s
 	if seg == nil {
 		return nil, ""
 	}
-	for _, k := range seg.keys {
+	keys := seg.keys
+	if len(seg.assign) > 0 {
+		keys = seg.assign
+	}
+	for _, k := range keys {
 		cols = append(cols, assignCol{k, a.src})
 	}
 	return cols, seg.label
@@ -451,7 +496,7 @@ func (u *surface) assignTurn(enc, delta int) {
 		return
 	}
 	_, cm, _ := u.currentBank()
-	if !m.canFrom(col.src, col.key) || !assignable(cm, col.key) {
+	if !m.canFrom(col.src, col.key) || !assignable(cm, m, col.key) {
 		u.say(strings.ToUpper(m.sourceName(col.src)) + " CANNOT REACH THIS ONE")
 		return
 	}
@@ -502,8 +547,12 @@ func (u *surface) clearPending(src, dst string) {
 }
 
 // assignable: a control a route may move: a number of the module's, not a
-// switch, a menu or a value it only reads (what drawAssign shows FIXED)
-func assignable(cm *compMeta, key string) bool {
+// switch, a menu or a value it only reads (what drawAssign shows FIXED), or
+// a destination the module names that has no knob
+func assignable(cm *compMeta, m *modMap, key string) bool {
+	if m.knobless(cm, key) {
+		return true
+	}
 	if cm == nil {
 		return false
 	}
@@ -587,6 +636,13 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 	if len(cols) == 0 {
 		label(img, scrW/2, 84, strings.ToUpper(title), P.dim, 0)
 	}
+	// a short name twice in the row (two oscillators' SEMI): whose it is too
+	short := map[string]int{}
+	for _, c := range cols {
+		if mm := cm.Params[c.key]; mm != nil {
+			short[strings.ToUpper(mm.rowName())]++
+		}
+	}
 	for i := 0; i < 8 && i < len(cols); i++ {
 		key, src := cols[i].key, cols[i].src
 		if key == "" {
@@ -594,7 +650,8 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 		}
 		cx := i*colW + colW/2
 		mm := cm.Params[key]
-		if mm == nil {
+		free := m.knobless(cm, key) // no knob: a depth around the middle
+		if mm == nil && !free {
 			continue
 		}
 		touched := u.touched == i
@@ -603,20 +660,31 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 			nameCol = P.fg
 			rect(img, cx-16, 43, 32, 2, sc)
 		}
-		name := mm.rowName() // in a segment its name says enough
-		if a.view != "" {
-			name = mm.Name // elsewhere, whose it is too
+		var name string
+		f, bipKnob := 0.5, true
+		if free {
+			name = m.Names[key]
+		} else {
+			name = mm.rowName() // in a segment its name says enough
+			if a.view != "" || short[strings.ToUpper(name)] > 1 {
+				name = mm.Name // elsewhere, or beside another of its name, whose it is too
+			}
+			f, bipKnob = math.Max(0, math.Min(1, mm.frac(u.vals[u.valKey(p, key)]))), mm.Bipolar
 		}
 		label(img, cx, 38, fitLabel(strings.ToUpper(name), colW-10), nameCol, 0)
-		v := u.vals[u.valKey(p, key)]
-		f := math.Max(0, math.Min(1, mm.frac(v)))
-		if !m.canFrom(src, key) || !assignable(cm, key) {
+		if !m.canFrom(src, key) || !assignable(cm, m, key) {
 			// nothing can reach it: the knob, faint, and why
-			gaugeP(img, cx, knobCY, f, mm.Bipolar, P.faint, true, false, P)
+			gaugeP(img, cx, knobCY, f, bipKnob, P.faint, true, false, P)
 			label(img, cx, 127, "FIXED", P.faint, 0)
 			continue
 		}
-		gaugeP(img, cx, knobCY, f, mm.Bipolar, P.mix(P.accentOr(sc), 0.55), false, false, P)
+		if free { // no knob to stand on: the depth swings from a ring of its own
+			arc(img, float64(cx), float64(knobCY), float64(knobR), gaugeA0, gaugeSW, 1.5, P.faint)
+			mid := gaugeA0 + gaugeSW/2
+			disc(img, float64(cx)+math.Cos(mid)*float64(knobR), float64(knobCY)+math.Sin(mid)*float64(knobR), 2, P.dim)
+		} else {
+			gaugeP(img, cx, knobCY, f, bipKnob, P.mix(P.accentOr(sc), 0.55), false, false, P)
+		}
 		amt := m.amount(src, key)
 		bip := false
 		if rt := m.route(src, key); rt != nil && rt.Bipolar != nil {
@@ -648,7 +716,7 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 			}
 		}
 		// where the sound has it now
-		if now, ok := u.modNow(key); ok {
+		if now, ok := u.modNow(key); ok && !free {
 			nf := math.Max(0, math.Min(1, mm.frac(now)))
 			an := gaugeA0 + gaugeSW*nf
 			disc(img, x+math.Cos(an)*(r+6), y+math.Sin(an)*(r+6), 3.6, P.ground)

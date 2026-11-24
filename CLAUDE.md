@@ -255,6 +255,10 @@ back as of the previous restart. Then ask the user to save the Set.
   the bar over the active one, the same on every panel; a panel adds at most one touch of its own
   (`draws_segments`) and never dims, frames or underlines. A section that moves with a value says where
   it is while drawing (`g.segment`). Leave the 3 pixels above a segment's rect free of text.
+- **ASSIGN offers each segment its top modulation destinations** (UX-GUIDELINES.md, "The destinations
+  that matter"): a segment whose knobs are switches gets an `assign` list, a destination with no knob (a
+  synth's pitch) a name in the module's `mod_map` (`names`), what no section has the panel's
+  `assign_pages`. Rerun the audit when a panel or a mod table changes (segment keys against `mod_map`).
 - Verify on the Push with real values: walk every page (`Page Right` and capture each frame), play a note
   through the pages that should move, and give the surface back.
 

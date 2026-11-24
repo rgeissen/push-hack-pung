@@ -286,7 +286,8 @@ var SEGMENTS = [
   { id: "slot", label: "Slot", rect: [6, 22, 140, 78], keys: ["slot", "slot_a", "slot_b", "slot_c", "slot_d", "voice_mode", "unison", "portamento"] },
   { id: "lfo", label: "LFO", rect: [152, 22, 150, 78], keys: ["lfo1_rate", "lfo1_amount", "lfo1_wave", "lfo1_dest", "lfo2_rate", "lfo2_amount", "lfo2_dest", "lfo2_sync"] },
   { id: "modenv", label: "Mod Env", rect: [308, 22, 104, 78], keys: ["modenv_attack", "modenv_decay", "modenv_amount", "modenv_dest", "modwheel_dest"] },
-  { id: "osc", label: "Oscillators", rect: [418, 22, 226, 78], keys: ["osc1_wave", "osc2_wave", "osc2_semi", "osc2_fine", "mix", "fm", "pw", "sync"] },
+  { id: "osc", label: "Oscillators", rect: [418, 22, 226, 78], keys: ["osc1_wave", "osc2_wave", "osc2_semi", "osc2_fine", "mix", "fm", "pw", "sync"],
+    assign: ["pitch", "", "osc2_semi", "", "", "fm", "pw", ""] }, // ASSIGN: the LFOs' vibrato (both oscillators: no knob of its own)
   { id: "filter", label: "Filter", rect: [650, 22, 168, 78], keys: ["cutoff", "resonance", "filter_env", "filter_type", "flt_attack", "flt_decay", "flt_sustain", "flt_release"] },
   { id: "amp", label: "Amplifier", rect: [824, 22, 130, 78], keys: ["amp_attack", "amp_decay", "amp_sustain", "amp_release", "amp_gain", "octave"] }
 ];

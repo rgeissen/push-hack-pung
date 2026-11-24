@@ -129,6 +129,15 @@ push.compartment({
   `keys`: 1 to 8, the encoders in order, `""` for an empty one. A key need not be on a page; give it
   metadata (it is in `chain_params`), or its encoder says READ ONLY. At most 8 segments (one a lower
   button); only on a `front_panel`. A mistake fails the file's load, as any other.
+- `assign` (optional, up to 8): what ASSIGN puts on the encoders in this segment when it is not `keys`
+  (UX-GUIDELINES.md, *The destinations that matter*): the section's modulation destinations where its knobs
+  are switches no route moves, in the same places where they can (`["o1_pulse_width", "o1_fm_amount",
+  "o1_semi", "pitch", ...]` for `["o1_shape", "o1_octave", "o1_semi", "o1_detune", ...]`); `""` leaves an
+  encoder empty. A key may be a destination the module names with no knob (`names` in `mod_map`).
+- `assign_pages` (on the compartment, optional): `[{label, keys: [...up to 8]}]`, ASSIGN's first pages
+  in MORE: the instrument's key destinations the panel has no section for (a second filter, the LFOs'
+  rates, the effects' mix), before the module's own pages. A key a segment offers, or one the module
+  cannot route, is left out.
 - **On the Push** (UX-GUIDELINES.md, *The controls*): in the open device upper button 7 reads `SEGMENTS`.
   Pressed, the lower buttons name the segments and Pung outlines each one's `rect` on the panel with its
   number and name (select mode); upper 7 again, upper 1 or a jog nudge left go back. A lower button then
@@ -287,9 +296,11 @@ colour. Only a key the screen was given (its pages' and `extra_keys`) has it.
 modulation*) asks the module for `get_param("mod_map")`:
 `{"sources": [{"id", "name", "dests"?}, ...], "dests": [keys a route may reach] (absent: every knob; a
 source's own "dests" narrow them for it, a synth of fixed routes),
-"routes": [{"src", "dst", "amount", "bipolar"}, ...]}` (bipolar: both ways around the knob; leave it out
-where the synth has no such choice), an amount being -1..1 of the destination's range, the sources
-in the order a player reaches for them. It sets one route with `set_param("mod_set",
+"routes": [{"src", "dst", "amount", "bipolar"}, ...], "names": {"pitch": "Pitch", ...}}` (bipolar: both
+ways around the knob; leave it out where the synth has no such choice; names: destinations with no knob of
+their own, by the name the screen gives them: put them in `dests` too), an amount being -1..1 of the
+destination's range, the sources in the order a player reaches for them. A destination that moves a knob
+from where it stands is that knob (an oscillator's pitch: its semitone knob, the root of the route). It sets one route with `set_param("mod_set",
 "{\"src\":..,\"dst\":..,\"amount\":..}")` (and `"bipolar"` when the screen flips it), 0 removing it; the module finds a slot of its own matrix for a
 new one and keeps routes it was given in its state. Answer with the full length when the buffer is too
 small (`snprintf`'s way): Pung asks again with room for it.

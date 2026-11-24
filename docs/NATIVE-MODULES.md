@@ -440,10 +440,14 @@ knob 40: the cutoff rose to 111, held, fell back through 86).
 ### Assigning modulation on Xenia and Vavra (2026-11-24)
 
 Pung's ASSIGN screen (`mod_map`, `mod_set`) on the synths' own matrix (`waldorf_engine.cpp`, both): the
-sixteen slots in the sound's bytes (XT: source, amount, destination from byte 192; microQ: source,
-destination, amount from 285; 3 bytes a slot). The sources are the synth's own list (ids `s<n>`, its
-number), the destinations the knobs the matrix destinations move (`kModDest`): the pitches have no knob of
-their own (octave, semitone and detune together) and stay off the screen. An amount is the slot's byte
+slots in the sound's bytes (XT: sixteen, source, amount, destination from byte 192; microQ: its eight
+standard slots, source, destination, amount from 285; 3 bytes a slot. **The microQ's bytes after its
+eighth slot are the arpeggiator's**: reading sixteen there, until 2026-11-24, showed arp bytes as routes
+and could have written a route into them; its eight fast slots, 261..284, have lists of their own and are
+not offered). The sources are the synth's own list (ids `s<n>`, its number), the destinations the knobs
+the matrix destinations move (`kModDest`): an oscillator's pitch is its semitone knob (the root the route
+moves it from), and the destinations with no knob are named (`kModNames`, `names` in `mod_map`): the
+pitch of every oscillator, and on the XT each LFO's level. An amount is the slot's byte
 around 64, -1..1. A new route takes the first slot whose source is Off, a route at 0 frees its slot; each
 byte goes to the synth as a knob's does, and the routes are the sound's (saved with it). No polarity: the
 matrix has none. Checked offline: a route made, listed next to the sound's own, and removed.

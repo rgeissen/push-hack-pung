@@ -794,21 +794,25 @@ struct AsSlot {
 const AsSlot kAsSlots[6] = {{192, {193, 346, 348}, {194, 347, 349}}, {195, {196, 198, 350}, {197, 199, 351}},
                             {200, {201, 203, 205}, {202, 204, 206}}, {231, {232, 352, 354}, {233, 353, 355}},
                             {234, {235, 356, 358}, {236, 357, 359}}, {237, {238, 360, 362}, {239, 361, 363}}};
-const char *const kAsDest[128] = { // generated from the Virus destination names (ti_params.h L42) to the knobs
-    "", "patch_volume", "", "panorama", "", "", "osc1_shape", "osc1_pulsewidth", "osc1_wave_select", "", "",
-    "osc2_shape", "osc2_pulsewidth", "osc2_wave_select", "", "osc2_detune", "osc2_fm_amount", "osc2_filt_env_amt",
-    "fm_filt_env_amt", "", "osc_balance", "suboscillator_volume", "osc_mainvolume", "noise_volume", "cutoff",
-    "cutoff2", "filter1_resonance", "filter2_resonance", "filter1_env_amt", "filter2_env_amt", "", "",
-    "filter_balance", "filter_env_attack", "filter_env_decay", "filter_env_sustain", "filter_env_sustain_time",
-    "filter_env_release", "amp_env_attack", "amp_env_decay", "amp_env_sustain", "amp_env_sustain_time",
-    "amp_env_release", "lfo1_rate", "", "osc1_lfo1_amount", "osc2_lfo1_amount", "pw_lfo1_amount", "reso_lfo1_amount",
-    "filtgain_lfo1_amount", "lfo2_rate", "", "shape_lfo2_amount", "fm_lfo2_amount", "cutoff1_lfo2_amount",
-    "cutoff2_lfo2_amount", "pan_lfo2_amount", "", "", "", "", "", "chorus_mix", "chorus_rate", "chorus_depth",
-    "chorus_delay", "chorus_feedback", "delay_send", "delay_time", "delay_feedback", "", "", "reverb_send", "", "", "",
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "ringmodulator_volume", "noise_color", "", "", "",
-    "distortion_intensity", "", "osc3_volume", "", "osc3_detune", "", "", "phaser_mix", "phaser_rate", "phaser_depth",
-    "phaser_frequency", "phaser_feedback", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-    "", "patch_distortion_mix"};
+const char *const kAsDest[128] = { // the Virus destination names (ti_params.h L42) to the knobs (by name, and by hand where the names differ)
+    "", "patch_volume", "", "panorama", "transpose", "portamento_time", "osc1_shape", "osc1_pulsewidth",
+    "osc1_wave_select", "osc1_semitone", "", "osc2_shape", "osc2_pulsewidth", "osc2_wave_select", "osc2_semitone",
+    "osc2_detune", "osc2_fm_amount", "osc2_filt_env_amt", "fm_filt_env_amt", "", "osc_balance",
+    "suboscillator_volume", "osc_mainvolume", "noise_volume", "cutoff", "cutoff2", "filter1_resonance",
+    "filter2_resonance", "filter1_env_amt", "filter2_env_amt", "", "", "filter_balance", "filter_env_attack",
+    "filter_env_decay", "filter_env_sustain", "filter_env_sustain_time", "filter_env_release", "amp_env_attack",
+    "amp_env_decay", "amp_env_sustain", "amp_env_sustain_time", "amp_env_release", "lfo1_rate", "",
+    "osc1_lfo1_amount", "osc2_lfo1_amount", "pw_lfo1_amount", "reso_lfo1_amount", "filtgain_lfo1_amount", "lfo2_rate",
+    "", "shape_lfo2_amount", "fm_lfo2_amount", "cutoff1_lfo2_amount", "cutoff2_lfo2_amount", "pan_lfo2_amount",
+    "lfo3_rate", "osc_lfo3_amount", "unison_detune", "unison_pan_spread", "unison_lfo_phase", "chorus_mix",
+    "chorus_rate", "chorus_depth", "chorus_delay", "chorus_feedback", "delay_send", "delay_time", "delay_feedback",
+    "", "", "reverb_send", "", "", "", "", "", "filter_bank_resonance", "", "", "filter_bank_slope", "", "", "", "",
+    "", "", "", "punch_intensity", "ringmodulator_volume", "noise_color", "delay_color", "", "",
+    "distortion_intensity", "filter_bank_frequency", "osc3_volume", "osc3_semitone", "osc3_detune",
+    "lfo1_assign_amount", "lfo2_assign_amount", "phaser_mix", "phaser_rate", "phaser_depth", "phaser_frequency",
+    "phaser_feedback", "", "reverb_time", "reverb_damping", "reverb_color", "reverb_predelay", "", "", "",
+    "arp_swing", "", "mideq_gain", "mideq_frequency", "", "", "", "", "", "", "", "", "patch_distortion_mix"
+};
 // the sources as the screen offers them: an id, its name, the Virus's
 // source(s) (an LFO: bipolar, unipolar)
 struct AsSource {

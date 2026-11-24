@@ -1345,6 +1345,10 @@ func (u *surface) turn(enc, delta int) {
 		if !ok {
 			return
 		}
+		if _, cm, _ := u.currentBank(); u.asg.m.knobless(cm, col.key) {
+			u.say(strings.ToUpper(u.asg.m.Names[col.key]) + " HAS NO KNOB OF ITS OWN")
+			return
+		}
 		assignKey = col.key
 	}
 	p, cm, b := u.currentBank()

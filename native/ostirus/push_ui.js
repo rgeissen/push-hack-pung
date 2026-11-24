@@ -341,9 +341,15 @@ function row(g, v) {
 // The panel's sections, each one press away (segment mode): the display and
 // the Soft Knobs it names, the oscillators, the filters, the effects.
 var SEGMENTS = [
-  { id: "soft", label: "Soft Knobs", rect: [6, 23, 350, 78], keys: ["soft1", "soft2", "soft3", "patch_volume", "key_mode", "unison_mode", "unison_detune", "transpose"] },
-  { id: "osc", label: "Oscillators", rect: [364, 24, 196, 76], keys: ["osc1_mode", "osc1_shape", "osc2_mode", "osc2_shape", "osc_balance", "osc2_semitone", "osc3_mode", "suboscillator_volume"] },
-  { id: "filter", label: "Filters", rect: [566, 24, 196, 76], keys: ["cutoff", "filter1_resonance", "filter1_env_amt", "filter1_mode", "cutoff2", "filter2_resonance", "filter2_mode", "filter_routing"] },
+  // assign: what ASSIGN offers where the knobs are switches (the soft knobs
+  // reach only what the sound gave them: there the LFOs' rates and the
+  // patch's place, its pitch last as Transpose stands on the panel)
+  { id: "soft", label: "Soft Knobs", rect: [6, 23, 350, 78], keys: ["soft1", "soft2", "soft3", "patch_volume", "key_mode", "unison_mode", "unison_detune", "transpose"],
+    assign: ["lfo1_rate", "lfo2_rate", "lfo3_rate", "patch_volume", "panorama", "unison_pan_spread", "unison_detune", "transpose"] },
+  { id: "osc", label: "Oscillators", rect: [364, 24, 196, 76], keys: ["osc1_mode", "osc1_shape", "osc2_mode", "osc2_shape", "osc_balance", "osc2_semitone", "osc3_mode", "suboscillator_volume"],
+    assign: ["osc1_pulsewidth", "osc1_shape", "osc2_pulsewidth", "osc2_shape", "osc_balance", "osc2_semitone", "osc2_fm_amount", "suboscillator_volume"] },
+  { id: "filter", label: "Filters", rect: [566, 24, 196, 76], keys: ["cutoff", "filter1_resonance", "filter1_env_amt", "filter1_mode", "cutoff2", "filter2_resonance", "filter2_mode", "filter_routing"],
+    assign: ["cutoff", "filter1_resonance", "filter1_env_amt", "filter_balance", "cutoff2", "filter2_resonance", "filter2_env_amt", ""] },
   { id: "fx", label: "Effects", rect: [768, 24, 186, 76], keys: ["delay_send", "delay_time", "delay_feedback", "reverb_send", "reverb_time", "chorus_mix", "phaser_mix", "distortion_intensity"] }
 ];
 // the segment the encoders play (Pung's bar over it): its heading lit in the
@@ -359,6 +365,16 @@ function segmentLit(g, v) {
 push.theme({ ground: BG, panel: ALU, ink: INK, dim: DIM, rule: ALU_RIM, faint: FAINT, accent: RED, knob: "pointer" });
 push.compartment({
   id: "virus", label: "OsTIrus", front_panel: true, segments: SEGMENTS, draws_segments: true,
+  // ASSIGN's MORE: the destinations the panel has no section for, first
+  assign_pages: [
+    { label: "Envelopes", keys: ["filter_env_attack", "filter_env_decay", "filter_env_sustain", "filter_env_release", "amp_env_attack", "amp_env_decay",
+      "amp_env_sustain", "amp_env_release"] },
+    { label: "Pitch / Levels", keys: ["osc1_semitone", "osc2_detune", "osc3_semitone", "osc3_detune", "noise_volume", "ringmodulator_volume", "osc3_volume", "osc_mainvolume"] },
+    { label: "FM / Drive", keys: ["fm_filt_env_amt", "fm_lfo2_amount", "osc2_filt_env_amt", "patch_distortion_mix", "punch_intensity", "osc1_wave_select",
+      "osc2_wave_select", "noise_color"] },
+    { label: "LFO Depths", keys: ["osc1_lfo1_amount", "osc2_lfo1_amount", "pw_lfo1_amount", "reso_lfo1_amount", "cutoff1_lfo2_amount", "cutoff2_lfo2_amount",
+      "pan_lfo2_amount", "shape_lfo2_amount"] }
+  ],
   pages: [{ label: "Panel", keys: ["soft1", "soft2", "soft3", "cutoff", "filter1_resonance", "filter1_env_amt", "delay_send", "reverb_send"] }],
   extra_keys: ["status", "soft1_name", "soft2_name", "soft3_name", "preset", "preset_name", "bank_name", "category", "model",
     "osc1_mode", "osc2_mode", "osc3_mode", "filter1_mode", "filter2_mode", "filter_routing", "reverb_mode", "chorus_type",

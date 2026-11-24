@@ -419,16 +419,18 @@ function panelLine(v) {
 }
 // the panel's sections, its segments: the table in its window, and a row of
 // lit section buttons on the orange body under the display (the XT's red
-// LEDs); the one under the encoders lit
+// LEDs); the one under the encoders lit. assign: what ASSIGN offers in the
+// section where its knobs are switches (the XT's pitch of both oscillators,
+// the LFOs' levels: destinations of its matrix with no knob of their own)
 var SEGS = [
-  { id: "osc", label: "Osc", keys: PAGES.osc[0].keys },
+  { id: "osc", label: "Osc", keys: PAGES.osc[0].keys, assign: ["pitch", "o1_semi", "", "o1_fm_amount", "", "o2_semi", "", ""] },
   { id: "wave", label: "Wave", keys: ["wave", "w1_start_w", "w2_start_w", "w1_env_amount", "w2_env_amount", "w1_keytrack", "w2_keytrack", "w2_link"] },
   { id: "mixer", label: "Mixer", keys: PAGES.wave[1].keys },
   { id: "filter", label: "Filter", keys: ["f1_cutoff", "f1_resonance", "f1_env_amount", "f1_type", "f1_env_attack", "f1_env_decay", "f1_env_sustain",
-    "f1_env_release"] },
+    "f1_env_release"], assign: ["f1_cutoff", "f1_resonance", "f1_extra", "f2_cutoff", "f1_env_attack", "f1_env_decay", "f1_env_sustain", "f1_env_release"] },
   { id: "amp", label: "Amp", keys: ["amp_volume", "amp_velocity", "amp_keytrack", "", "amp_env_attack", "amp_env_decay", "amp_env_sustain",
-    "amp_env_release"] },
-  { id: "lfo", label: "LFO", keys: PAGES.lfo[0].keys },
+    "amp_env_release"], assign: ["amp_volume", "pan", "", "", "amp_env_attack", "amp_env_decay", "amp_env_sustain", "amp_env_release"] },
+  { id: "lfo", label: "LFO", keys: PAGES.lfo[0].keys, assign: ["lfo1_rate", "lfo1_level", "", "", "lfo2_rate", "lfo2_level", "", ""] },
   { id: "fx", label: "FX", keys: PAGES.fx[0].keys }
 ];
 var WIN = [530, 4, 424, 88];

@@ -29,7 +29,9 @@ import (
 //
 // A front panel with segments also gets <id>-<compartment>-segments.png
 // (choosing one) and <id>-<compartment>-segment-<segment>.png (each one's
-// segment mode).
+// segment mode). With PUNG_GALLERY_MAPS=<dir of <id>.json> (the module's
+// mod_map, as TestAssignAudit reads it) each segment's ASSIGN too
+// (<id>-<compartment>-assign-<segment>.png) and MORE's first page.
 //
 // For a look at the screens while they are designed: no Push needed.
 func TestGallery(t *testing.T) {
@@ -121,10 +123,39 @@ func galleryModule(t *testing.T, out, ovDir, id string, rec *probeRecord, vals m
 			}
 			shotTo(fmt.Sprintf("%s-%s-segment-%s.png", id, safe(c.id), safe(sg.id)))
 			segShots++
+			if m := galleryModMap(id); m != nil { // ASSIGN, the map as the module answers it
+				u.asg = assignState{on: true, m: m, readAt: time.Now().Add(time.Hour), src: m.Sources[0].ID}
+				for _, r := range m.Routes { // a source with a route here, if one has one
+					for _, k := range append(append([]string{}, sg.keys...), sg.assign...) {
+						if r.Dst == k {
+							u.asg.src = r.Src
+						}
+					}
+				}
+				shotTo(fmt.Sprintf("%s-%s-assign-%s.png", id, safe(c.id), safe(sg.id)))
+				if i == len(c.segments)-1 {
+					u.asg.view = asMore
+					shotTo(fmt.Sprintf("%s-%s-assign-more.png", id, safe(c.id)))
+				}
+				u.asg = assignState{}
+			}
 		}
 		u.top(segmentsButton) // EXIT
 	}
 	t.Logf("%s: %d pages, %d segment screens", id, len(cm.Banks), segShots)
+}
+
+// galleryModMap: PUNG_GALLERY_MAPS's map for the module, or nil
+func galleryModMap(id string) *modMap {
+	dir := os.Getenv("PUNG_GALLERY_MAPS")
+	if dir == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, id+".json"))
+	if err != nil {
+		return nil
+	}
+	return parseModMap(strings.TrimSpace(string(raw)))
 }
 
 // gallery: one module open in Pung's view, off the Push: its pages, its

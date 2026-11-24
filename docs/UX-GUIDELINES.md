@@ -542,9 +542,34 @@ modulation-coloured arc from the knob, where the sound has it now (live, while a
 synth's matrix does not offer) is drawn faint, FIXED. The screen is Pung's own, the same on every synth, in
 the module's theme.
 
+**The destinations that matter are in their segment, never only in MORE.** What sound designers modulate,
+most first (the mod matrices of the big wavetable and virtual-analogue instruments, and what presets
+actually route):
+
+1. filter cutoff;
+2. pitch: of the whole voice (vibrato, a pitch envelope) and of one oscillator (drift, sync sweeps);
+3. the timbre an oscillator plays: wavetable position, wave, shape, warp, spectral morph;
+4. pulse width;
+5. level: the voice's (tremolo, velocity) and each oscillator's, the noise's and the ring modulator's;
+6. resonance, filter envelope amount, drive;
+7. FM amount, sync;
+8. pan and stereo spread;
+9. the modulators themselves: an LFO's rate and depth, an envelope's times (velocity to attack);
+10. the effects: their mix or send, a delay's time, a chorus's depth.
+
+Every segment's ASSIGN offers its section's share of that list in the encoders' places. Where the
+segment's knobs are switches no route moves (an oscillator's model, an octave, a filter type), the
+screen file's `assign` list for the segment puts the section's destinations there instead (an
+oscillator's pulse width under its shape); where the synth modulates something that has no knob (the
+Waldorfs' and the Nord's pitch of every oscillator, an LFO's level), the module names it (`names` in
+`mod_map`) and the segment places it: drawn as a depth around the middle, no knob to stand on. What the
+panel has no section for (a second filter, the LFOs' rates, the effects) comes first in MORE, by the
+screen file's `assign_pages`, before the module's own pages. A control the synth's own matrix cannot
+reach stays FIXED: ASSIGN never pretends.
+
 A module offers it by answering `mod_map` and taking `mod_set` (overrides.md, *Assigning modulation*); a
 module without it keeps the nudge for the next segment. Vivace has it (its 64 routes; a route made here is
-kept in the device's state), Xenia and Vavra (their sixteen-slot matrices, kept in the sound) and
+kept in the device's state), Xenia and Vavra (their matrices, sixteen slots and eight, kept in the sound) and
 OsTIrus (its six assign slots of three destinations; an LFO's polarity is the Virus's own bipolar or
 unipolar source) and Nodal Red 2X (its fixed routes: a source reaches only its own destinations, the others
 FIXED, and a route to another moves the source). A synth whose matrix is full takes no new route, and the screen says so.

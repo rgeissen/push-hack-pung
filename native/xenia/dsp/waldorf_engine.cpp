@@ -851,21 +851,25 @@ void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
 // Sixteen slots in the sound's bytes, each a source, a destination and an
 // amount (64: none). A route on the screen is a slot: its source one of the
 // synth's (ids "s<n>", n the source's number), its destination the knob the
-// matrix destination moves; destinations with no knob of their own (the
-// pitches: octave, semitone and detune together) stay off the screen.
+// matrix destination moves (an oscillator's pitch: its semitone knob, the
+// root the route moves it from); destinations with no knob of their own
+// (the pitch of every oscillator, an LFO's level) by names of their own
+// (kModNames), the screen showing them as a depth with no knob.
 struct ModFamily {
     int srcAt, amtAt, dstAt, srcList; // a slot's bytes (slot 1's; 3 a slot), the sources' list
+    int slots;                        // how many (the XT 16; the microQ 8 standard slots, its arp after them)
     const char *const *dest;          // matrix destination -> knob ("": none)
     int ndest;
 };
 #if defined(WALDORF_XT)
-const char *const kModDest[] = {"", "", "", "w1_start_w", "w2_start_w", "mix_w1", "mix_w2", "mix_ring_mod", "mix_noise", "f1_cutoff",
+const char *const kModDest[] = {"pitch", "o1_semi", "o2_semi", "w1_start_w", "w2_start_w", "mix_w1", "mix_w2", "mix_ring_mod", "mix_noise", "f1_cutoff",
                                 "f1_resonance", "f2_cutoff", "amp_volume", "pan", "f1_env_attack", "f1_env_decay", "f1_env_sustain",
                                 "f1_env_release", "amp_env_attack", "amp_env_decay", "amp_env_sustain", "amp_env_release", "", "", "", "",
-                                "lfo1_rate", "", "lfo2_rate", "", "", "", "", "", "o1_fm_amount", "f1_extra"};
-const ModFamily kMod = {192, 193, 194, 25, kModDest, int(sizeof(kModDest) / sizeof(kModDest[0]))};
+                                "lfo1_rate", "lfo1_level", "lfo2_rate", "lfo2_level", "", "", "", "", "o1_fm_amount", "f1_extra"};
+const char *const kModNames[][2] = {{"pitch", "Pitch"}, {"lfo1_level", "LFO 1 Level"}, {"lfo2_level", "LFO 2 Level"}};
+const ModFamily kMod = {192, 193, 194, 25, 16, kModDest, int(sizeof(kModDest) / sizeof(kModDest[0]))};
 #else
-const char *const kModDest[] = {"", "", "o1_fm_amount", "o1_pulse_width", "", "o2_fm_amount", "o2_pulse_width", "", "o3_fm_amount",
+const char *const kModDest[] = {"pitch", "o1_semi", "o1_fm_amount", "o1_pulse_width", "o2_semi", "o2_fm_amount", "o2_pulse_width", "o3_semi", "o3_fm_amount",
                                 "o3_pulse_width", "o1_level", "o1_balance", "o2_level", "o2_balance", "o3_level", "o3_balance",
                                 "ring_mod_level", "ring_mod_balance", "noise_level", "noise_balance", "f1_cutoff", "f1_resonance",
                                 "f1_fm_amount", "f1_drive", "f1_pan", "f2_cutoff", "f2_resonance", "f2_fm_amount", "f2_drive", "f2_pan",
@@ -874,9 +878,17 @@ const char *const kModDest[] = {"", "", "o1_fm_amount", "o1_pulse_width", "", "o
                                 "amp_env_release", "env3_attack", "env3_decay", "env3_sustain", "env3_release", "env4_attack", "env4_decay",
                                 "env4_sustain", "env4_release", "slot1_famount", "slot2_famount", "slot1_samount", "slot2_samount",
                                 "o1_sub_freq_div", "o1_sub_volume", "o2_sub_freq_div", "o2_sub_volume"};
-const ModFamily kMod = {285, 287, 286, 8, kModDest, int(sizeof(kModDest) / sizeof(kModDest[0]))};
+const char *const kModNames[][2] = {{"pitch", "Pitch"}};
+const ModFamily kMod = {285, 287, 286, 8, 8, kModDest, int(sizeof(kModDest) / sizeof(kModDest[0]))};
 #endif
-const int kModSlots = 16;
+const int kModSlots = kMod.slots;
+
+// a destination the screen shows by its name (no knob of its own), or null
+const char *knobless(const char *key) {
+    for (const auto &n : kModNames)
+        if (!strcmp(n[0], key)) return n[1];
+    return nullptr;
+}
 
 // mu held: the modulation map (get_param("mod_map"))
 int mod_map(Instance *in, char *buf, int len) {
@@ -893,7 +905,7 @@ int mod_map(Instance *in, char *buf, int len) {
     ap("],\"dests\":[");
     bool first = true;
     for (int d = 0; d < kMod.ndest; d++)
-        if (kMod.dest[d][0] && find_param(kMod.dest[d])) {
+        if (kMod.dest[d][0] && (find_param(kMod.dest[d]) || knobless(kMod.dest[d]))) {
             ap("%s\"%s\"", first ? "" : ",", kMod.dest[d]);
             first = false;
         }
@@ -905,7 +917,13 @@ int mod_map(Instance *in, char *buf, int len) {
         ap("%s{\"src\":\"s%d\",\"dst\":\"%s\",\"amount\":%.4f}", first ? "" : ",", src, kMod.dest[dst], (amt - 64) / 64.0);
         first = false;
     }
-    ap("]}");
+    ap("],\"names\":{");
+    first = true;
+    for (const auto &n : kModNames) {
+        ap("%s\"%s\":\"%s\"", first ? "" : ",", n[0], n[1]);
+        first = false;
+    }
+    ap("}}");
     return off; // past len: Pung asks again with room for it all
 }
 

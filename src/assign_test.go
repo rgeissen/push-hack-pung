@@ -125,3 +125,32 @@ func TestModMapSourceDests(t *testing.T) {
 		t.Fatal("per-source destinations")
 	}
 }
+
+// A segment's assign list puts its destinations on the encoders in place of
+// its keys; MORE starts with the panel's assign_pages and ends with the
+// knobless destinations no segment placed.
+func TestAssignSegmentListsAndKnobless(t *testing.T) {
+	cm := &compMeta{Params: map[string]*paramMeta{}}
+	for _, k := range []string{"o1_semi", "o1_pw", "f2_cut", "lfo_rate", "cut"} {
+		cm.Params[k] = &paramMeta{Key: k, Name: k, Type: "float", Max: 1}
+	}
+	cm.Params["o1_shape"] = &paramMeta{Key: "o1_shape", Type: "enum", Options: []string{"a", "b"}}
+	cm.Banks = []bank{{Name: "Osc", Keys: []string{"o1_shape", "o1_semi", "o1_pw"}}, {Name: "Filter", Keys: []string{"cut", "f2_cut"}}, {Name: "LFO", Keys: []string{"lfo_rate"}}}
+	m := parseModMap(`{"sources":[{"id":"s1","name":"LFO 1"}],"dests":["o1_semi","o1_pw","cut","f2_cut","lfo_rate","pitch","lfo1_level"],
+	  "names":{"pitch":"Pitch","lfo1_level":"LFO 1 Level"}}`)
+	if !m.knobless(cm, "pitch") || m.knobless(cm, "o1_semi") || !assignable(cm, m, "pitch") || assignable(cm, m, "o1_shape") {
+		t.Fatal("knobless destinations")
+	}
+	c := &ovCompartment{
+		segments:    []*ovSegment{{id: "osc", keys: []string{"o1_shape", "o1_semi"}, assign: []string{"pitch", "o1_semi", "o1_pw"}}, {id: "flt", keys: []string{"cut"}}},
+		assignPages: []assignPage{{"Filter 2", []string{"f2_cut", "cut"}}},
+	}
+	pages := morePagesOf(c, cm, m, "s1")
+	var got []string
+	for _, p := range pages {
+		got = append(got, p.name+":"+strings.Join(p.keys, ","))
+	}
+	if strings.Join(got, " ") != "Filter 2:f2_cut LFO:lfo_rate Global:lfo1_level" {
+		t.Fatalf("MORE: %v", got)
+	}
+}

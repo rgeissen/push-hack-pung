@@ -1305,16 +1305,32 @@ var SOUND = ["preset_name", "bank_name", "patch_info", "wave_view", "wavetable_n
 [1, 2, 3].forEach(function (n) { ["distortion_type", "distortion_amount", "distortion_phase"].forEach(function (s) { SOUND.push("osc_" + n + "_" + s); }); });
 // Pung's own pages in the editor's colours: its knobs (a cap, the hand, the arc), its violet
 push.theme({ ground: "#16191c", panel: "#262a2e", ink: TEXT, dim: MUTED, rule: LINE, faint: HEAD, accent: OSC, knob: "pointer" });
+function oscAssign(n) {
+  return pageKeys("Osc " + n).map(function (k) { return k === "osc_" + n + "_unison_voices" ? "osc_" + n + "_pan" : k; });
+}
 push.compartment({
   id: "panel", label: "Vivace", front_panel: true, draws_segments: true,
   pages: pagesOf("play"), extra_keys: SOUND, live_keys: ["wave_pos", "wave_play"],
   // the panel's sections, each one press away (Pung draws the bar over the one in the hands)
+  // (ASSIGN: an oscillator's pan in place of its voice count, which no
+  // modulation moves; what has no card first in MORE: assign_pages)
   segments: [
-    { id: "osc1", label: "Osc 1", rect: [OSC_X[0], CARD_Y, OSC_W, CARD_H], keys: pageKeys("Osc 1") },
-    { id: "osc2", label: "Osc 2", rect: [OSC_X[1], CARD_Y, OSC_W, CARD_H], keys: pageKeys("Osc 2") },
-    { id: "osc3", label: "Osc 3", rect: [OSC_X[2], CARD_Y, OSC_W, CARD_H], keys: pageKeys("Osc 3") },
+    { id: "osc1", label: "Osc 1", rect: [OSC_X[0], CARD_Y, OSC_W, CARD_H], keys: pageKeys("Osc 1"), assign: oscAssign(1) },
+    { id: "osc2", label: "Osc 2", rect: [OSC_X[1], CARD_Y, OSC_W, CARD_H], keys: pageKeys("Osc 2"), assign: oscAssign(2) },
+    { id: "osc3", label: "Osc 3", rect: [OSC_X[2], CARD_Y, OSC_W, CARD_H], keys: pageKeys("Osc 3"), assign: oscAssign(3) },
     { id: "filter", label: "Filter 1", rect: [FLT_X, CARD_Y, FLT_W, CARD_H], keys: pageKeys("Filter 1") },
     { id: "env", label: "Env 1", rect: [ENV_X, CARD_Y, ENV_W, CARD_H], keys: pageKeys("Env 1") }
+  ],
+  assign_pages: [
+    { label: "Filter 2", keys: ["filter_2_cutoff", "filter_2_resonance", "filter_2_drive", "filter_2_blend", "filter_2_keytrack", "filter_2_mix"] },
+    { label: "LFO Rates", keys: [1, 2, 3, 4, 5, 6, 7, 8].map(function (n) { return "lfo_" + n + "_frequency"; }) },
+    { label: "Random, FX Filter", keys: ["random_1_frequency", "random_2_frequency", "random_3_frequency", "random_4_frequency", "filter_fx_cutoff",
+      "filter_fx_resonance", "filter_fx_drive", "filter_fx_mix"] },
+    { label: "Effects", keys: ["chorus_dry_wet", "delay_dry_wet", "reverb_dry_wet", "phaser_dry_wet", "flanger_dry_wet", "distortion_mix",
+      "compressor_mix", "delay_frequency"] },
+    { label: "Voice", keys: ["volume", "voice_tune", "voice_transpose", "portamento_time", "sample_level", "sample_pan", "sample_transpose", "sample_tune"] },
+    { label: "Envelopes", keys: ["env_2_attack", "env_2_decay", "env_2_sustain", "env_2_release", "env_3_attack", "env_3_decay", "env_3_sustain",
+      "env_3_release"] }
   ],
   screen: frontPanel
 });

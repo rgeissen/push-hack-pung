@@ -119,8 +119,18 @@ int main(int argc, char **argv) {
         char *eq = strchr(kv, '=');
         if (!eq) continue;
         *eq = 0;
-        api->set_param(in, kv, eq + 1);
-        printf("set %s = %s\n", kv, eq + 1);
+        const char *value = eq + 1;
+        static char file[262144];
+        if (value[0] == '@') { // key=@file: the value is that file's contents (a state: spaces, quotes)
+            FILE *vf = fopen(value + 1, "rb");
+            size_t n = vf ? fread(file, 1, sizeof(file) - 1, vf) : 0;
+            if (vf) fclose(vf);
+            while (n && (file[n - 1] == '\n' || file[n - 1] == '\r')) n--;
+            file[n] = 0;
+            value = file;
+        }
+        api->set_param(in, kv, value);
+        printf("set %s = %.200s\n", kv, value);
     }
     char name[128] = "";
     api->get_param(in, "preset_name", name, sizeof(name));
