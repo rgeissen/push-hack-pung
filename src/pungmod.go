@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"math"
 	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,7 +57,50 @@ var pmodSources = []modSource{
 	{ID: "p_press", Name: "Pressure", Pung: true},
 }
 
-func isPungSource(id string) bool { return strings.HasPrefix(id, "p_") }
+// isPungSource: one of Pung's own (by its whole id: a module's source may
+// begin the same way)
+func isPungSource(id string) bool {
+	for _, s := range pmodSources {
+		if s.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// pmodMaxChoice: a control with this many settings or fewer is a choice,
+// not a level: an on/off (OB-Xd's 4-Pole, a float stepped 0/1), a mode, an
+// octave switch, a voice count (a change of it cuts the notes); an LFO
+// through it flicks a switch. Pung's sources move levels only; a module's
+// own matrix decides for itself what its sources reach.
+const pmodMaxChoice = 8
+
+// pmodNotLevel: whole words of a key or a name that say a control picks or
+// fires something, whatever its range: a sound (Dexed's and Surge's preset
+// number, the Nord's "Sound"), an action drawn as a knob (Denis' Rnd Patch,
+// Reset Matrix), MIDI routing (a channel, a trigger note), the module's own
+// screen focus. Words, not parts of them: Mini-JV's Patch Level, OsTIrus'
+// patch_volume and filter_bank_mix are levels.
+var pmodNotLevel = regexp.MustCompile(`(?i)(^|[ _])(preset|program|patchnumber|rnd|mutate|reset|trigger|midi|channel|mask|focus|ui)([ _]|$)`)
+
+// pmodLevel: a control Pung's sources may move: a number of the module's
+// that it takes from outside (not one it only reports, not a selector that
+// changes what the other controls are), with more than a few settings to
+// move through, and not named like a choice
+func pmodLevel(mm *paramMeta) bool {
+	if mm == nil || mm.ReadOnly || mm.Selector || mm.Max <= mm.Min || mm.Key == "patch" ||
+		pmodNotLevel.MatchString(mm.Key) || pmodNotLevel.MatchString(mm.Name) {
+		return false
+	}
+	switch mm.Type {
+	case "float":
+		return mm.Step <= 0 || math.Floor((mm.Max-mm.Min)/mm.Step+1e-9)+1 > pmodMaxChoice
+	case "int":
+		step := math.Max(1, mm.Step)
+		return math.Floor((mm.Max-mm.Min)/step+1e-9)+1 > pmodMaxChoice
+	}
+	return false
+}
 
 // LFO shapes and tempo divisions (in beats; 0: free, Hz)
 var (
@@ -190,7 +234,7 @@ func (pm *pungMod) setRoute(key, src string, amount float64, bipolar bool, m *pa
 				return
 			}
 		}
-		if amount != 0 && m != nil {
+		if amount != 0 && pmodLevel(m) { // (a choice never gets one, whoever asks: ASSIGN draws it FIXED)
 			c.Routes = append(c.Routes, pmodRoute{Src: src, Key: key, Amount: amount, Bipolar: bipolar, Min: m.Min, Max: m.Max, Int: m.Type == "int"})
 		}
 	})

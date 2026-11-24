@@ -172,7 +172,7 @@ func galleryModMap(id string, cm *compMeta, sg *ovSegment) *modMap {
 		keys = sg.assign
 	}
 	for _, k := range keys {
-		if assignable(cm, m, k) && m.canFrom("p_lfo_a", k) {
+		if m.reaches(cm, "p_lfo_a", k) {
 			b := true
 			m.Routes = append(m.Routes, modRoute{Src: "p_lfo_a", Dst: k, Amount: 0.3, Bipolar: &b})
 			break
@@ -260,6 +260,7 @@ func openGallery(t *testing.T, ovDir, id string, rec *probeRecord, vals map[stri
 // The gallery draws a front panel's segments too: choosing one, and each
 // one's segment mode (segments_test.go's test panel).
 func TestGallerySegmentShots(t *testing.T) {
+	t.Setenv("PUNG_GALLERY_MAPS", "") // (its ASSIGN shots are the gallery's, not counted here)
 	initFaces()
 	ovDir, out := t.TempDir(), t.TempDir()
 	os.MkdirAll(filepath.Join(ovDir, "seg"), 0o755)

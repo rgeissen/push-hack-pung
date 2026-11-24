@@ -367,13 +367,13 @@ push.compartment({
   id: "virus", label: "OsTIrus", front_panel: true, segments: SEGMENTS, draws_segments: true,
   // ASSIGN's MORE: the destinations the panel has no section for, first
   assign_pages: [
-    { label: "Envelopes", keys: ["filter_env_attack", "filter_env_decay", "filter_env_sustain", "filter_env_release", "amp_env_attack", "amp_env_decay",
-      "amp_env_sustain", "amp_env_release"] },
     { label: "Pitch / Levels", keys: ["osc1_semitone", "osc2_detune", "osc3_semitone", "osc3_detune", "noise_volume", "ringmodulator_volume", "osc3_volume", "osc_mainvolume"] },
     { label: "FM / Drive", keys: ["fm_filt_env_amt", "fm_lfo2_amount", "osc2_filt_env_amt", "patch_distortion_mix", "punch_intensity", "osc1_wave_select",
       "osc2_wave_select", "noise_color"] },
     { label: "LFO Depths", keys: ["osc1_lfo1_amount", "osc2_lfo1_amount", "pw_lfo1_amount", "reso_lfo1_amount", "cutoff1_lfo2_amount", "cutoff2_lfo2_amount",
-      "pan_lfo2_amount", "shape_lfo2_amount"] }
+      "pan_lfo2_amount", "shape_lfo2_amount"] },
+    { label: "Envelopes", keys: ["filter_env_attack", "filter_env_decay", "filter_env_sustain", "filter_env_release", "amp_env_attack", "amp_env_decay",
+      "amp_env_sustain", "amp_env_release"] }
   ],
   pages: [{ label: "Panel", keys: ["soft1", "soft2", "soft3", "cutoff", "filter1_resonance", "filter1_env_amt", "delay_send", "reverb_send"] }],
   extra_keys: ["status", "soft1_name", "soft2_name", "soft3_name", "preset", "preset_name", "bank_name", "category", "model",

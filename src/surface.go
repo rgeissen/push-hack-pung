@@ -117,7 +117,10 @@ type surface struct {
 	peekEnc   int
 	toast     string
 	toastAt   time.Time
-	lastEnum  [8]time.Time
+	// toastOn: what a notice is about, where it is about what the encoders
+	// are on (ASSIGN's columns, assignScope): gone once they change
+	toastOn  string
+	lastEnum [8]time.Time
 
 	// segment mode (segments.go): "" the overview, "select" the lower
 	// buttons choose a segment, "segment" the encoders play segID's keys;
@@ -780,8 +783,18 @@ func (u *surface) refreshValues() {
 }
 
 func (u *surface) say(msg string) {
-	u.toast, u.toastAt = msg, time.Now()
+	u.toast, u.toastAt, u.toastOn = msg, time.Now(), ""
 	u.dirty.Store(true)
+}
+
+// toastShown: a notice is up (said less than d ago, and still about what
+// the screen shows: one whose columns have gone is dropped for good).
+// Caller holds u.mu.
+func (u *surface) toastShown(d time.Duration) bool {
+	if u.toastOn != "" && u.toastOn != u.assignScope() {
+		u.toast, u.toastOn = "", ""
+	}
+	return u.toast != "" && time.Since(u.toastAt) < d
 }
 
 // ---- input -----------------------------------------------------------------------
@@ -1346,7 +1359,7 @@ func (u *surface) turn(enc, delta int) {
 			return
 		}
 		if _, cm, _ := u.currentBank(); u.asg.m.knobless(cm, col.key) {
-			u.say(strings.ToUpper(u.asg.m.Names[col.key]) + " HAS NO KNOB OF ITS OWN")
+			u.sayOnCols(strings.ToUpper(u.asg.m.Names[col.key]) + " HAS NO KNOB OF ITS OWN")
 			return
 		}
 		assignKey = col.key
@@ -1752,7 +1765,7 @@ func (u *surface) frames(done <-chan struct{}) {
 		peak := u.level()
 		animating := math.Abs(peak-lastPeak) > 0.5 || time.Now().Before(u.peekUntil.Add(50*time.Millisecond)) ||
 			(u.open && time.Now().Before(u.rowsUntil.Add(50*time.Millisecond))) ||
-			(u.toast != "" && time.Since(u.toastAt) < 2600*time.Millisecond) || u.liveWanted() ||
+			u.toastShown(2600*time.Millisecond) || u.liveWanted() ||
 			time.Now().UnixNano()-ovMovedAt.Load() < int64(100*time.Millisecond)
 		if !u.dirty.Swap(false) && !animating {
 			u.mu.Unlock()
@@ -1893,7 +1906,7 @@ func (u *surface) render(peak float64) *image.NRGBA {
 	default:
 		u.drawChain(img, peak)
 	}
-	if u.toast != "" && time.Since(u.toastAt) < 2500*time.Millisecond {
+	if u.toastShown(2500 * time.Millisecond) {
 		// "|" splits a notice into two lines; a long one wraps at a space
 		lines := strings.SplitN(asciiOnly(u.toast), "|", 2)
 		if len(lines) == 1 && len(lines[0]) > 64 {

@@ -45,6 +45,8 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -116,6 +118,55 @@ func (m *modMap) canFrom(src, key string) bool {
 		}
 	}
 	return true
+}
+
+// destRank: how much a destination matters (UX-GUIDELINES.md, "The
+// destinations that matter"), 1 most, by the words its key is made of; 0:
+// not one of them. The voice's, and of an effect its mix alone (an EQ
+// band's cutoff, a delay's filter or an LFO's keytracking are not what a
+// player reaches for). MORE orders the module's pages by it; the ASSIGN
+// audit (assign_audit_test.go) wants each offered in a segment or
+// assign_pages.
+var (
+	destRanks = []*regexp.Regexp{
+		regexp.MustCompile(`(^|_)cutoff\d?(_|$)`),
+		regexp.MustCompile(`(^|_)(pitch|semi|semitone|tune|transpose)(_|$)`),
+		regexp.MustCompile(`(^|_)(wave_frame|start_w|shape|spectral_morph_amount)(_|$)`),
+		regexp.MustCompile(`(^|_)(pw|pulse_?width)(_|$)`),
+		regexp.MustCompile(`(^|_)(level|volume)(_|$)`),
+		regexp.MustCompile(`(^|_)(res|resonance|env_?amt|env_?amount|filter_env|drive|distortion_amount)(_|$)`),
+		regexp.MustCompile(`(^|_)(fm(_amount)?|xmod|cross_?mod)(_|$)`),
+		regexp.MustCompile(`(^|_)(pan|panorama)(_|$)`),
+		regexp.MustCompile(`(^|_)(rate|frequency|speed)(_|$)`),
+		regexp.MustCompile(`(^|_)(dry_wet|send|mix)(_|$)`),
+	}
+	fxDest = regexp.MustCompile(`^(chorus|delay|reverb|eq|loweq|mideq|higheq|flanger|phaser|compressor|distortion|filter_fx|filter_bank)_`)
+	fxMix  = regexp.MustCompile(`(dry_wet|send|mix)$`)
+	notTop = regexp.MustCompile(`keytrack|formant|blend_transpose|bend_range|attack|decay|sustain|release|_time$`)
+)
+
+func destRank(k string) int {
+	if notTop.MatchString(k) || (fxDest.MatchString(k) && !fxMix.MatchString(k)) {
+		return 0
+	}
+	for i, rx := range destRanks {
+		if rx.MatchString(k) {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+func destMatters(k string) bool { return destRank(k) > 0 }
+
+// reaches: a route from src may move key: the map lets it (canFrom), the
+// control takes one (assignable), and from one of Pung's own sources it is
+// a level, not a choice (pmodLevel). What does not is drawn FIXED.
+func (m *modMap) reaches(cm *compMeta, src, key string) bool {
+	if !m.canFrom(src, key) || !assignable(cm, m, key) {
+		return false
+	}
+	return !isPungSource(src) || (cm != nil && pmodLevel(cm.Params[key]))
 }
 
 // amount: the route from src to dst (0: none)
@@ -276,6 +327,22 @@ func (u *surface) assignEnter() bool {
 
 func (u *surface) assignLeave() { u.asg.on = false }
 
+// assignScope: what ASSIGN's encoders are on ("" when it is not up): a
+// notice about one of them (sayOnCols) is gone once this changes, as on a
+// page turn, another source, MORE or ROUTES, another segment
+func (u *surface) assignScope() string {
+	if !u.asg.on {
+		return ""
+	}
+	return fmt.Sprintf("assign|%s|%d|%s|%s|%s", u.asg.view, u.asg.vpage, u.asg.src, u.segComp, u.segID)
+}
+
+// sayOnCols: a notice about a column of ASSIGN's
+func (u *surface) sayOnCols(msg string) {
+	u.say(msg)
+	u.toastOn = u.assignScope()
+}
+
 // assignActive: the screen is up (from a segment of the shown panel)
 func (u *surface) assignActive() bool {
 	if !u.asg.on {
@@ -329,7 +396,7 @@ func morePagesOf(c *ovCompartment, cm *compMeta, m *modMap, src string) []assign
 	add := func(name string, keys []string) {
 		var ks []string
 		for _, k := range keys {
-			if k == "" || seen[k] || !assignable(cm, m, k) || !m.canFrom(src, k) {
+			if k == "" || seen[k] || !m.reaches(cm, src, k) {
 				continue
 			}
 			seen[k] = true
@@ -348,8 +415,27 @@ func morePagesOf(c *ovCompartment, cm *compMeta, m *modMap, src string) []assign
 			add(pg.name, pg.keys)
 		}
 	}
-	for _, b := range cm.Banks {
-		add(b.Name, b.Keys)
+	// then the module's pages, by the destination that matters most on each
+	// (Nodal Red's slots' output gain and bend range no longer first; OB-Xd's
+	// pitch envelope before its voices' pans), the rest after them, each
+	// rank in the module's order
+	best := func(b bank) int {
+		r := len(destRanks) + 1
+		for _, k := range b.Keys {
+			if d := destRank(k); d > 0 && d < r && !seen[k] && m.reaches(cm, src, k) {
+				r = d
+			}
+		}
+		return r
+	}
+	order := make([]int, len(cm.Banks))
+	ranks := make([]int, len(cm.Banks))
+	for i, b := range cm.Banks {
+		order[i], ranks[i] = i, best(b)
+	}
+	sort.SliceStable(order, func(i, j int) bool { return ranks[order[i]] < ranks[order[j]] })
+	for _, i := range order {
+		add(cm.Banks[i].Name, cm.Banks[i].Keys)
 	}
 	var rest []string // the knobless the panel did not place, in the module's order
 	for _, k := range m.Dests {
@@ -374,21 +460,28 @@ func (u *surface) routesOf(m *modMap) []modRoute {
 
 // assignCols: what the eight encoders are on now, and what the header says it is
 func (u *surface) assignCols(cm *compMeta, m *modMap) (cols []assignCol, title string) {
+	cols, title, _ = u.assignColsPaged(cm, m)
+	return cols, title
+}
+
+// assignColsPaged: assignCols, and the page count of MORE or ROUTES ("2/7"),
+// apart: a header cut to fit keeps it
+func (u *surface) assignColsPaged(cm *compMeta, m *modMap) (cols []assignCol, title, count string) {
 	a := &u.asg
 	_, seg := u.segSync()
 	switch a.view {
 	case asMore:
 		pages := u.morePages(cm, m)
 		if len(pages) == 0 {
-			return nil, "NOTHING ELSE TO MODULATE"
+			return nil, "NOTHING ELSE TO MODULATE", ""
 		}
 		a.vpage = max(0, min(len(pages)-1, a.vpage))
 		for _, k := range pages[a.vpage].keys {
 			cols = append(cols, assignCol{k, a.src})
 		}
-		return cols, fmt.Sprintf("%s  %d/%d", pages[a.vpage].name, a.vpage+1, len(pages))
+		return cols, pages[a.vpage].name, fmt.Sprintf("%d/%d", a.vpage+1, len(pages))
 	case asLFO:
-		return nil, m.sourceName(a.src)
+		return nil, m.sourceName(a.src), ""
 	case asRoutes:
 		rs := u.routesOf(m)
 		who := m.sourceName(a.src)
@@ -396,21 +489,20 @@ func (u *surface) assignCols(cm *compMeta, m *modMap) (cols []assignCol, title s
 			who = "EVERY SOURCE"
 		}
 		if len(rs) == 0 {
-			return nil, "NO ROUTES FROM " + who
+			return nil, "NO ROUTES FROM " + who, ""
 		}
 		n := (len(rs) + 7) / 8
 		a.vpage = max(0, min(n-1, a.vpage))
 		for _, r := range rs[a.vpage*8 : min(len(rs), a.vpage*8+8)] {
 			cols = append(cols, assignCol{r.Dst, r.Src})
 		}
-		t := "ROUTES OF " + who
 		if n > 1 {
-			t += fmt.Sprintf("  %d/%d", a.vpage+1, n)
+			count = fmt.Sprintf("%d/%d", a.vpage+1, n)
 		}
-		return cols, t
+		return cols, "ROUTES OF " + who, count
 	}
 	if seg == nil {
-		return nil, ""
+		return nil, "", ""
 	}
 	keys := seg.keys
 	if len(seg.assign) > 0 {
@@ -419,7 +511,7 @@ func (u *surface) assignCols(cm *compMeta, m *modMap) (cols []assignCol, title s
 	for _, k := range keys {
 		cols = append(cols, assignCol{k, a.src})
 	}
-	return cols, seg.label
+	return cols, seg.label, ""
 }
 
 // assignTop: an upper button while ASSIGN is up: 2 the segment, 3 MORE, 4
@@ -541,8 +633,14 @@ func (u *surface) assignTurn(enc, delta int) {
 		return
 	}
 	_, cm, _ := u.currentBank()
-	if !m.canFrom(col.src, col.key) || !assignable(cm, m, col.key) {
-		u.say(strings.ToUpper(m.sourceName(col.src)) + " CANNOT REACH THIS ONE")
+	if !m.reaches(cm, col.src, col.key) {
+		if isPungSource(col.src) && cm != nil && cm.Params[col.key] != nil && assignable(cm, m, col.key) {
+			mm := cm.Params[col.key]
+			// a switch or a mode: say why, it has a knob like the others
+			u.sayOnCols(strings.ToUpper(mm.Name) + " IS A CHOICE, NOT A LEVEL: PUNG'S SOURCES MOVE LEVELS")
+			return
+		}
+		u.sayOnCols(strings.ToUpper(m.sourceName(col.src)) + " CANNOT REACH THIS ONE")
 		return
 	}
 	const step = 1.0 / 100 // a detent a percent of the control's range
@@ -673,7 +771,7 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 		return
 	}
 	a := &u.asg
-	cols, title := u.assignCols(cm, m)
+	cols, title, count := u.assignColsPaged(cm, m)
 	set := u.ov.get(u.h.modulesDir, p.Module)
 	P := palOf(set.theme(sc))
 	rect(img, 0, 0, scrW, scrH, P.ground)
@@ -703,7 +801,13 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 	case a.view == asRoutes || a.view == asMore && len(cols) == 0:
 		what = strings.ToUpper(title)
 	}
-	label(img, 4*colW+10, 16, fitLabel(what, 2*colW-16), srcColor(a.src), -1)
+	// the page count stays whole; the words before it are cut to fit
+	room := 2*colW - 16
+	if count != "" {
+		count = "  " + count
+		room -= textWidth(count, nil)
+	}
+	label(img, 4*colW+10, 16, fitLabel(what, room)+count, srcColor(a.src), -1)
 	label(img, segmentsButton*colW+colW/2, 17, "EXIT", sc, 0)
 	if a.view == asLFO {
 		u.drawPmodLFO(img, P)
@@ -746,7 +850,7 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 			f, bipKnob = math.Max(0, math.Min(1, mm.frac(u.vals[u.valKey(p, key)]))), mm.Bipolar
 		}
 		label(img, cx, 38, fitLabel(strings.ToUpper(name), colW-10), nameCol, 0)
-		if !m.canFrom(src, key) || !assignable(cm, m, key) {
+		if !m.reaches(cm, src, key) {
 			// nothing can reach it: the knob, faint, and why
 			gaugeP(img, cx, knobCY, f, bipKnob, P.faint, true, false, P)
 			label(img, cx, 127, "FIXED", P.faint, 0)

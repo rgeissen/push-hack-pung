@@ -579,6 +579,29 @@ too, and a synth's FIXED controls (the Nord's resonance, the XT's effects) can s
 drawn in a colour of their own, **magenta** (the module's own are cyan), and the header says `PUNG LFO A`:
 the player can tell at a glance which modulation is the synth's and which is Pung's.
 
+**Levels, not choices.** Pung's sources move a control that has a range to move through: a number the
+module takes from outside, with more than eight settings, not a selector. Everything else is FIXED for
+them, and a turn on it says why (`4-POLE IS A CHOICE, NOT A LEVEL`):
+- an on/off, a mode, an octave switch, a voice count (it cuts the notes), a float stepped 0/1;
+- whatever is named as a pick or an action, by whole words of its key or name:
+  - a sound: a preset number, the Nord's "Sound";
+  - a randomizer or a reset drawn as a knob;
+  - MIDI routing: a channel, a trigger note;
+  - the module's own screen focus.
+
+Words, not parts of words: Mini-JV's Patch Level, a closed hi-hat's `ch_level` and the Virus's
+`filter_bank_mix` are levels. The engine refuses a route to a choice whoever asks. A module's own
+matrix decides for itself what its sources reach. `TestPungModAudit` (with `PUNG_GALLERY_CACHE`) walks
+every shipped panel as LFO A sees it: no control it reaches may be named like a choice (a wider net than
+the rule, with the levels it was reviewed to catch listed), and MORE must start with a page that holds a
+destination that matters.
+
+**MORE starts with what matters**, for every source: the panel's `assign_pages`, then the module's pages
+by the destination that matters most on each (its rank in the list above, by the words of the keys:
+`destRank` in `assign.go`), the pages with none last, each rank in the module's order. LFO A's MORE opens
+on Nodal Red's Morph Filter, not its slots' output gain and bend range, and on OB-Xd's pitch envelope, not
+its voices' pans.
+
 **What it is, honestly: one value for the whole sound.** Pung moves the control itself, writing the
 knob's own setting plus the modulation 100 times a second (50 on an emulator: every write is a message
 to the emulated synth, and its parameters have 128 steps, so a fast sweep steps as it would from a

@@ -199,3 +199,65 @@ func TestPungModInAssignMap(t *testing.T) {
 	}
 	pm.setRoute("synth:cutoff", "p_lfo_b", 0, false, nil)
 }
+
+// Pung's sources move levels, not choices: an on/off, a mode, an octave
+// switch or a voice count is FIXED for them (the module's own matrix still
+// decides for its sources), and the engine takes no route to one either.
+// MORE starts, after the panel's own pages, with the module's pages that
+// hold a destination that matters.
+func TestPungModLevelsAndMore(t *testing.T) {
+	cm := &compMeta{Params: map[string]*paramMeta{
+		"out_gain":   {Key: "out_gain", Name: "Output Gain", Type: "float", Max: 1},
+		"bend_range": {Key: "bend_range", Name: "Bend Range", Type: "int", Max: 24},
+		"cutoff":     {Key: "cutoff", Name: "Cutoff", Type: "int", Max: 100, Step: 1},
+		"fourpole":   {Key: "fourpole", Name: "4-Pole", Type: "int", Max: 1, Step: 1},
+		"voices":     {Key: "voices", Name: "Voices", Type: "int", Min: 1, Max: 8},
+		"octave":     {Key: "octave", Name: "Octave", Type: "int", Min: -2, Max: 2},
+		"coarse":     {Key: "coarse", Name: "Coarse", Type: "int", Max: 100, Step: 20},
+		"slot":       {Key: "slot", Name: "Slot", Type: "int", Max: 3, Selector: true},
+		"meter":      {Key: "meter", Name: "Meter", Type: "float", Max: 1, ReadOnly: true},
+		"drive":      {Key: "drive", Name: "Drive", Type: "float", Max: 1},
+		"rnd_pan":    {Key: "rnd_pan", Name: "Rnd Pan", Type: "float", Max: 1, Step: 1},
+		"rnd_patch":  {Key: "rnd_patch", Name: "Rnd Patch", Type: "float", Max: 1, Step: 0.01},
+		"preset":     {Key: "preset", Name: "Sound", Type: "int", Max: 9999},
+		"v1_preset":  {Key: "v1_preset", Name: "V1 Preset", Type: "int", Max: 40},
+		"lfo1_2":     {Key: "lfo1_2", Name: "Trigger", Type: "int", Max: 127},
+		"midi_ch":    {Key: "midi_ch", Name: "MIDI Ch", Type: "int", Min: 1, Max: 16},
+		"ui_focus":   {Key: "ui_focus", Name: "Focus", Type: "int", Max: 64},
+		"patchlevel": {Key: "nvram_patchCommon_patchlevel", Name: "Patch Level", Type: "int", Max: 127},
+		"fb_mix":     {Key: "filter_bank_mix", Name: "FB Mix", Type: "int", Max: 127},
+		"fine":       {Key: "fine", Name: "Fine", Type: "float", Max: 1, Step: 0.01},
+		"ch_level":   {Key: "ch_level", Name: "CH Level", Type: "int", Max: 127},
+	}}
+	m := parseModMap(`{"sources":[{"id":"lfo1","name":"LFO 1"}],"dests":["fourpole","cutoff"]}`)
+	m.Sources = append(m.Sources, pmodSources...)
+	for k, want := range map[string]bool{"out_gain": true, "bend_range": true, "cutoff": true, "drive": true,
+		"patchlevel": true, "fb_mix": true, "ch_level": true, "fine": true, "rnd_pan": false, "rnd_patch": false, "preset": false,
+		"v1_preset": false, "lfo1_2": false, "midi_ch": false, "ui_focus": false, "fourpole": false, "voices": false, "octave": false, "coarse": false, "slot": false, "meter": false} {
+		if got := m.reaches(cm, "p_lfo_a", k); got != want {
+			t.Errorf("Pung's LFO A reaches %s: %v, want %v", k, got, want)
+		}
+	}
+	if !m.reaches(cm, "lfo1", "fourpole") {
+		t.Error("the module's own source reaches what its map names, a switch included")
+	}
+	if isPungSource("p_env") || !isPungSource("p_press") {
+		t.Error("Pung's sources by their whole ids")
+	}
+	// the engine takes no route to a choice
+	useFakeChain(t, map[string]string{"synth:fourpole": "1"})
+	pm := (&Slot{}).pmod()
+	pm.setRoute("synth:fourpole", "p_lfo_a", 0.5, true, cm.Params["fourpole"])
+	if n := len(pm.conf.Load().Routes); n != 0 {
+		t.Fatalf("a route to a switch was kept (%d)", n)
+	}
+	// MORE: the page with a destination that matters before the slots' page
+	cm.Banks = []bank{{Name: "Slots", Keys: []string{"out_gain", "bend_range", "slot"}}, {Name: "Filter", Keys: []string{"cutoff", "fourpole", "drive"}}}
+	var got []string
+	for _, p := range morePagesOf(nil, cm, m, "p_lfo_a") {
+		got = append(got, p.name+":"+strings.Join(p.keys, ","))
+	}
+	if strings.Join(got, " ") != "Filter:cutoff,drive Slots:out_gain,bend_range" {
+		t.Fatalf("MORE for LFO A: %v", got)
+	}
+}

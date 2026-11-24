@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The module's modulation map: what a route may reach, a route's depth, a
@@ -152,5 +153,29 @@ func TestAssignSegmentListsAndKnobless(t *testing.T) {
 	}
 	if strings.Join(got, " ") != "Filter 2:f2_cut LFO:lfo_rate Global:lfo1_level" {
 		t.Fatalf("MORE: %v", got)
+	}
+}
+
+// A notice about one of ASSIGN's columns goes with them: another view, page,
+// source or segment drops it for good; any other notice keeps its time.
+func TestAssignNoticeGoesWithItsColumns(t *testing.T) {
+	u := &surface{}
+	u.asg.on, u.asg.src, u.segComp, u.segID = true, "p_lfo_a", "panel", "filter"
+	u.sayOnCols("4-POLE IS A CHOICE, NOT A LEVEL")
+	if !u.toastShown(time.Second) {
+		t.Fatal("the notice is up over its columns")
+	}
+	u.asg.view = asMore
+	if u.toastShown(time.Second) {
+		t.Fatal("MORE: the notice about the segment's column is gone")
+	}
+	u.asg.view = ""
+	if u.toastShown(time.Second) {
+		t.Fatal("back on the segment: the old notice stays gone")
+	}
+	u.say("SAVED")
+	u.asg.src = "p_lfo_b"
+	if !u.toastShown(time.Second) {
+		t.Fatal("a notice about nothing on the screen keeps its time")
 	}
 }

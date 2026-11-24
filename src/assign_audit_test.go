@@ -3,29 +3,10 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
 )
-
-// topDest: the destinations that matter (UX-GUIDELINES.md, "The
-// destinations that matter"), by the words their keys are made of: the
-// voice's, and of an effect its mix alone (an EQ band's cutoff, a delay's
-// filter or an LFO's keytracking are not what a player reaches for)
-var (
-	topDest = regexp.MustCompile(`(^|_)(cutoff\d?|pitch|semi|semitone|tune|transpose|pw|pulse_?width|wave_frame|start_w|shape|spectral_morph_amount|distortion_amount|level|volume|resonance|fm(_amount)?|pan|panorama|rate|frequency|speed|dry_wet|send|mix)(_|$)`)
-	fxDest  = regexp.MustCompile(`^(chorus|delay|reverb|eq|loweq|mideq|higheq|flanger|phaser|compressor|distortion|filter_fx|filter_bank)_`)
-	fxMix   = regexp.MustCompile(`(dry_wet|send|mix)$`)
-	notTop  = regexp.MustCompile(`keytrack|formant|blend_transpose|bend_range`)
-)
-
-func mattersForAssign(k string) bool {
-	if !topDest.MatchString(k) || notTop.MatchString(k) {
-		return false
-	}
-	return !fxDest.MatchString(k) || fxMix.MatchString(k)
-}
 
 // TestAssignAudit: with PUNG_ASSIGN_MAPS=<dir of <id>.json> (each module's
 // get_param("mod_map"), e.g. from scripts/render-check.sh <id> <assets> 1
@@ -109,7 +90,7 @@ func TestAssignAudit(t *testing.T) {
 		}
 		var missed []string
 		for k := range reach {
-			if !offered[k] && mattersForAssign(k) {
+			if !offered[k] && destMatters(k) {
 				missed = append(missed, k)
 			}
 		}
