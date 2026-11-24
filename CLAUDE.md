@@ -88,6 +88,12 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   encoders 71-78); the screen `GET :7701/api/display/mirror/frame` (1920x320 PNG).
   `GET :7720/api/devices/{n}/compartments/{id}/screen.png?page=N` renders a band screen from real values
   (not front panels).
+- **While Pung's view owns the surface, push-manager's hook (push-display `push_hook.c`) passes Live only
+  the pads, their pressure and pitch bend (Pads), and a controller only when the session names it**
+  (`liveButtons`). The touch strip in its mod wheel mode (Select + tap) sends CC 1: without it in
+  `liveButtons` the strip's mod wheel never reached a device, Pung's Wheel source included (found
+  2026-11-24 with a logging build of core's plugin: Live sends the mapped mod wheel as soon as the hook
+  lets CC 1 through). The strip's touch note (12) is still held back; Live does not need it.
 - Known, not Pung's: after a hack hands the surface back, Delete's light stays dark though the button
   works (2026-11-23). push-manager clears every light and has Push3 redraw with a Shift tap and a
   pad-mode toggle, which does not redraw Delete; push-manager cannot see Push3's lights to restore them.

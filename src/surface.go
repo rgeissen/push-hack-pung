@@ -473,6 +473,11 @@ var liveButtons = []int{
 	// the two small encoders left of the display: volume and tempo are
 	// Live's in every view, and Pung puts nothing of its own on them
 	push3.CCVolume, push3.CCVolumePress, push3.CCTempo, push3.CCTempoPress,
+	// the touch strip in its mod wheel mode (Select + tap): CC 1. The hook
+	// passes pitch bend and pressure with the pads, but a controller only
+	// when the session names it, and without it the strip's mod wheel never
+	// reached the device while Pung's view was up (2026-11-24)
+	1,
 }
 
 // isLiveButton: a button in liveButtons. Pung sees its press too (it
