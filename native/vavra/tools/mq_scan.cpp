@@ -14,16 +14,27 @@
 //          its value every RECORD_EVERY blocks -> <out>/lfo.csv
 //   knob   no modulation, the target at LOW and at HIGH: those words' values
 //          at each -> <out>/knob.csv
-// what: cutoff (default), wave (Wave 1 Startwave), reso, pitch, volume, pan.
-// scripts/xt_scan.py reads the two files.
+// what: cutoff (default), fenv; and
+//   dump   X and Y 0..0x400 around five notes
+//   watch  given words while twelve notes start (watch X:2f2,Y:34 ... byte=v)
+//   pdump  the DSP's program as assembly (<out>/p.asm)
+//   hook   the live cutoff as Vavra's engine reads it (waldorf_emu.cpp): the
+//          program patched, then a filter envelope, an LFO and the knob, the
+//          newest voice's cutoff against the old Y:$34 (<out>/hook.csv)
+// SCAN_BASE=80000 reads the external SRAM (X and Y are one memory there)
+// instead of internal memory. Found with it (2026-11-24, docs/NATIVE-MODULES.md,
+// Vavra): no voice's modulated values are kept anywhere; Y:$34 is Filter 1's
+// cutoff of the voice being played, the hook keeps one a voice.
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
 #include <map>
 #include <memory>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -34,6 +45,7 @@
 #include "synthLib/romLoader.h"
 #include "mqLib/device.h"
 #include "mqLib/mqhardware.h"
+#include "dsp56kEmu/assembler.h"
 
 namespace {
 
@@ -98,7 +110,10 @@ void notesOff() {
     for (uint8_t n : notes) midi(0x80, n, 0);
 }
 const uint32_t SPAN = 0x40000; // the words read of each area: internal memory and the external SRAM in use
-uint32_t sizeX() { return std::min(SPAN, mem().size(dsp56k::MemArea_X)); }
+// SCAN_BASE=80000: from there instead of 0 (the external SRAM, mqdsp.h
+// g_bridgedAddr: X and Y are one memory there, so Y is read only below it)
+const uint32_t BASE = getenv("SCAN_BASE") ? uint32_t(strtoul(getenv("SCAN_BASE"), nullptr, 16)) : 0;
+uint32_t sizeX() { return std::min(SPAN, mem().size(dsp56k::MemArea_X) - BASE); }
 // SCAN_MC=1: the 68000's RAM instead of the DSP's memory, a 16-bit word a
 // place (big-endian, as the 68000 reads it), labelled M:<byte address>
 const bool MC = getenv("SCAN_MC") != nullptr;
@@ -110,9 +125,9 @@ std::vector<uint32_t> snap() {
         return s;
     }
     dsp56k::Memory &m = mem();
-    const uint32_t nx = sizeX(), ny = std::min(SPAN, m.size(dsp56k::MemArea_Y));
+    const uint32_t nx = sizeX(), ny = BASE ? 0 : std::min(SPAN, m.size(dsp56k::MemArea_Y));
     std::vector<uint32_t> s(nx + ny);
-    for (uint32_t i = 0; i < nx; i++) s[i] = m.get(dsp56k::MemArea_X, i) & 0xffffff;
+    for (uint32_t i = 0; i < nx; i++) s[i] = m.get(dsp56k::MemArea_X, BASE + i) & 0xffffff;
     for (uint32_t i = 0; i < ny; i++) s[nx + i] = m.get(dsp56k::MemArea_Y, i) & 0xffffff;
     return s;
 }
@@ -152,7 +167,7 @@ int main(int argc, char **argv) {
     const Target *T = nullptr;
     for (const Target &t : TARGETS)
         if (what == t.name) T = &t;
-    if (!T && !watch && what != "dump") return 2;
+    if (!T && !watch && what != "dump" && what != "pdump" && what != "hook") return 2;
     if (!T) T = &TARGETS[0];
     Logging::setLogFunc([](const std::string &) {});
     synthLib::RomLoader::addSearchPath(argv[1]);
@@ -172,7 +187,11 @@ int main(int argc, char **argv) {
     run(6.0); // the microQ's OS takes a while
 
     // a plain sound: nothing modulates but what a run sets
-    for (int s = 0; s < 16; s++) param(287 + 3 * s, 64); // every slot's amount 0
+    // (the microQ has eight standard slots: bytes past them are the
+    // arpeggiator's; sixteen here, until 2026-11-24, set Arp Mode to 64 and
+    // every run played an arpeggio, not a held note)
+    for (int s = 0; s < 8; s++) param(287 + 3 * s, 64);  // every slot's amount 0
+    param(311, 0);                                       // Arp Mode off
     for (int s = 0; s < 8; s++) param(263 + 3 * s, 64);  // the fast slots' too
     param(87, 64), param(90, 64), param(89, 1);          // F1 env 0, F1 mod: LFO 1, amount 0
     param(77, 0), param(78, 64), param(80, 0);           // filter 1, cutoff, resonance
@@ -257,7 +276,7 @@ int main(int argc, char **argv) {
     notesOff();
     run(1.0);
     for (size_t c = 0; c < cand.size(); c++) {
-        fprintf(f, "%c:%05x", MC ? 'M' : cand[c] < nx ? 'X' : 'Y', unsigned(MC ? cand[c] * 2 : cand[c] < nx ? cand[c] : cand[c] - nx));
+        fprintf(f, "%c:%05x", MC ? 'M' : cand[c] < nx ? 'X' : 'Y', unsigned(MC ? cand[c] * 2 : cand[c] < nx ? BASE + cand[c] : cand[c] - nx));
         for (uint32_t v : series[c]) fprintf(f, ",%u", v);
         fprintf(f, "\n");
     }
@@ -277,7 +296,7 @@ int main(int argc, char **argv) {
         run(1.0);
     }
     for (size_t c = 0; c < cand.size(); c++)
-        fprintf(f, "%c:%05x,%u,%u\n", MC ? 'M' : cand[c] < nx ? 'X' : 'Y', unsigned(MC ? cand[c] * 2 : cand[c] < nx ? cand[c] : cand[c] - nx), at[0][c], at[1][c]);
+        fprintf(f, "%c:%05x,%u,%u\n", MC ? 'M' : cand[c] < nx ? 'X' : 'Y', unsigned(MC ? cand[c] * 2 : cand[c] < nx ? BASE + cand[c] : cand[c] - nx), at[0][c], at[1][c]);
     fclose(f);
 
     // sweep: the knob through its travel, one note: each word that followed it, at every value
@@ -286,7 +305,7 @@ int main(int argc, char **argv) {
         if (at[0][c] != at[1][c]) follow.push_back(c);
     f = fopen((out + "/sweep.csv").c_str(), "w");
     fprintf(f, "knob");
-    for (size_t c : follow) fprintf(f, ",%c:%05x", MC ? 'M' : cand[c] < nx ? 'X' : 'Y', unsigned(MC ? cand[c] * 2 : cand[c] < nx ? cand[c] : cand[c] - nx));
+    for (size_t c : follow) fprintf(f, ",%c:%05x", MC ? 'M' : cand[c] < nx ? 'X' : 'Y', unsigned(MC ? cand[c] * 2 : cand[c] < nx ? BASE + cand[c] : cand[c] - nx));
     fprintf(f, "\n");
     const std::vector<uint8_t> chord = notes;
     notes = {60};

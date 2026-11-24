@@ -11,7 +11,8 @@
 // LIBRARY_DONE), plays the warm-up chord with the plugin's sound, and then
 // renders into the ring, playing what the plugin queues and handing back
 // what the synth sends. Xenia's engine also publishes the DSP's wave memory
-// (a table the synth computes) every 100 ms. It dies with the process that
+// (a table the synth computes) every 100 ms; both publish where the newest
+// voice has its cutoff now every 10 ms (Pung's live_mod). It dies with the process that
 // started it, and a stop is the plugin setting quit, or a kill.
 //
 // The render loop is the emulator thread the plugin had before (2026-11-20 to
@@ -25,9 +26,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <pthread.h>
@@ -47,6 +50,8 @@
 #include "waldorf_family.h"
 #if defined(WALDORF_MQ)
 #include "mqLib/device.h"
+#include "mqLib/microq.h"     // the DSP, for the live cutoff (patches/0003: Device::getMicroQ)
+#include "mqLib/mqhardware.h"
 typedef mqLib::Device SynthDevice;
 #else
 #include "xtLib/xtDevice.h"
@@ -188,6 +193,92 @@ void publish_live(SynthDevice &dev, int64_t now) {
     L->aux[LIVE_W1].store(int32_t(xt_word(dev, false, 0x61 + 28 * v)), std::memory_order_relaxed);
     L->aux[LIVE_W2].store(int32_t(xt_word(dev, false, 0x68 + 28 * v)), std::memory_order_relaxed);
     L->aux[LIVE_VOICE].store(liveVoice, std::memory_order_relaxed);
+    L->aux[LIVE_AT].store(int32_t(uint32_t(now / 1000)), std::memory_order_release); // (ms; read with wrap)
+}
+#elif defined(WALDORF_MQ)
+// Where the sound has its cutoff now, for Pung's live_mod (docs/NATIVE-MODULES.md,
+// Vavra). The microQ keeps no voice's modulated values in memory: its DSP
+// rebuilds a voice's parameters at Y:$20..$3F, adds the modulation matrix into
+// them and plays the voice from there (Filter 1's cutoff at Y:$34), one voice
+// after the other, newest first (the voice list at X:$2F2, the place being
+// played at X:$13). A stub of Pung's in the program memory the firmware leaves
+// free ($1400 on) runs right after the matrix, in place of the two
+// instructions it moves there, and keeps each voice's cutoff at Y:$7F000 + its
+// place in the list: internal memory the real DSP does not have, so nothing of
+// the firmware's is there. Y:$7F000 is the newest voice's: (knob - 64) * 2^17,
+// LFOs, envelopes and the matrix in it. Found and checked with
+// native/vavra/tools/mq_scan.cpp (hook). The patch goes in only where the two
+// instructions are the ones measured (another firmware: no live cutoff), and
+// again whenever the 68000 has loaded the DSP's program anew.
+const uint32_t MQ_AT = 0x3e1, MQ_LIST = 0x2f2, MQ_SLOTS = 0x7f000;
+const uint32_t MQ_ORIG[2] = {0x5ea600, 0x4ea000}; // move y:$26,a / move y:$20,y0
+const uint32_t MQ_JSR[2] = {0x0bf080, 0x001400};  // jsr >$1400
+const uint32_t MQ_STUB[] = {
+    0x679300,           // move x:$13,r7         the voice's place in the list (one past it)
+    0x5fb400,           // move y:$34,b          its Filter 1 cutoff, modulated
+    0x0b778f, 0x07ed0d, // move b,y:(r7+$7ed0d)  to Y:$7F000 + the place
+    0x5ea600, 0x4ea000, // the two instructions the jsr took the place of
+    0x00000c};          // rts
+// (b and r7 are free there: the program sets both again right after)
+std::atomic<int> mqHook{0}; // 0 not yet, 1 in, -1 another program (nothing to read)
+std::atomic<bool> mqPatching{false};
+std::thread mqPatcher;
+int64_t mqCheckAt = 0;
+mqLib::MqDsp &mq_dsp(SynthDevice &dev) { return dev.getMicroQ().getHardware()->getDSP(0); }
+uint32_t mq_word(SynthDevice &dev, dsp56k::EMemArea a, uint32_t at) { return mq_dsp(dev).dsp().memory().get(a, at) & 0xffffff; }
+// The DSP's thread holds its lock through each batch of instructions (and while
+// it waits for the audio to be taken): the patch goes in from a thread of its
+// own, between two batches, while the engine goes on rendering. At ordinary
+// priority, never above the DSP's; given up after 2 s (and tried again later).
+void mq_patch(SynthDevice *dev) {
+    sched_param sp{};
+    pthread_setschedparam(pthread_self(), SCHED_OTHER, &sp);
+    auto &md = mq_dsp(*dev);
+    auto &d = md.dsp();
+    auto &mu = md.thread().mutex();
+    const int64_t until = now_us() + 2000000;
+    while (now_us() < until && !L->quit.load(std::memory_order_relaxed)) {
+        if (!mu.try_lock()) {
+            std::this_thread::sleep_for(std::chrono::microseconds(50)); // (no core spun while the DSP renders)
+            continue;
+        }
+        const bool orig = mq_word(*dev, dsp56k::MemArea_P, MQ_AT) == MQ_ORIG[0] && mq_word(*dev, dsp56k::MemArea_P, MQ_AT + 1) == MQ_ORIG[1];
+        if (orig && d.getPC().toWord() != MQ_AT + 1) { // (never between the two words)
+            for (uint32_t i = 0; i < sizeof(MQ_STUB) / sizeof(MQ_STUB[0]); i++) d.memWriteP(MQ_JSR[1] + i, MQ_STUB[i]);
+            d.memWriteP(MQ_AT + 1, MQ_JSR[1]);
+            d.memWriteP(MQ_AT, MQ_JSR[0]);
+            mu.unlock();
+            mqHook = 1;
+            plog("live cutoff: the DSP's program hooked");
+            break;
+        }
+        mu.unlock();
+        if (!orig) break;
+        std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+    mqPatching = false;
+}
+void publish_live(SynthDevice &dev, int64_t now) {
+    if (now - mqCheckAt >= 1000000 && !mqPatching) { // once a second: the hook still in (a new program?)
+        mqCheckAt = now;
+        if (mqPatcher.joinable()) mqPatcher.join();
+        const uint32_t a = mq_word(dev, dsp56k::MemArea_P, MQ_AT), b = mq_word(dev, dsp56k::MemArea_P, MQ_AT + 1);
+        bool stub = true;
+        for (uint32_t i = 0; i < sizeof(MQ_STUB) / sizeof(MQ_STUB[0]); i++)
+            if (mq_word(dev, dsp56k::MemArea_P, MQ_JSR[1] + i) != MQ_STUB[i]) stub = false;
+        if (a == MQ_JSR[0] && b == MQ_JSR[1] && stub) {
+            mqHook = 1;
+        } else if (a == MQ_ORIG[0] && b == MQ_ORIG[1]) {
+            mqHook = 0;
+            mqPatching = true;
+            mqPatcher = std::thread(mq_patch, &dev);
+        } else if (mqHook.exchange(-1) != -1) {
+            plog("live cutoff: not the program it was measured on (P:%x %06x %06x): none", MQ_AT, a, b);
+        }
+    }
+    if (mqHook.load() != 1 || !mq_word(dev, dsp56k::MemArea_X, MQ_LIST)) return; // not hooked, or no voice sounds
+    L->aux[LIVE_CUT].store(int32_t(mq_word(dev, dsp56k::MemArea_Y, MQ_SLOTS)), std::memory_order_relaxed);
+    L->aux[LIVE_VOICE].store(0, std::memory_order_relaxed);
     L->aux[LIVE_AT].store(int32_t(uint32_t(now / 1000)), std::memory_order_release); // (ms; read with wrap)
 }
 #endif
@@ -428,11 +519,11 @@ int main(int argc, char **argv) {
             memAt = now_us();
             publish_wave_mem(*device);
         }
+#endif
         if (now_us() - liveAt >= 10000) {
             liveAt = now_us();
             publish_live(*device, liveAt);
         }
-#endif
         timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_nsec += 2000000;

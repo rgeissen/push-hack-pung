@@ -488,21 +488,66 @@ the mod envelope to osc 2's pitch, FM or the pulse width; one destination a sour
 FIXED for it), its `mod_set` sets the source's destination and amount (a route to another destination moves
 the source there; 0 removes it). The mod envelope's amount goes both ways, the LFOs' one. Checked offline.
 
-### Modulation, live: OsTIrus and Vavra not yet (2026-11-24)
+### Vavra's modulation, live (2026-11-24)
 
-The same search (`native/ostirus/tools/ti_scan.cpp`, `native/vavra/tools/mq_scan.cpp`, targets
-`ostirus-scan` and `vavra-scan`, never shipped) has not found a word that can be stood behind:
+Where the newest voice has Filter 1's cutoff now (`live_mod`, `{"f1_cutoff": knob}`), from a hook in the
+microQ DSP's program. Found with `native/vavra/tools/mq_scan.cpp` (target `vavra-scan`, never shipped):
+
+- **The first search was wrong, not the synth.** It "cleared" sixteen modulation slots from byte 287: the
+  microQ has eight, and slots 9 to 16 wrote 64 into the arpeggiator's bytes, Arp Mode among them (byte
+  311). Every run played an arpeggio, not a held note, so no word could follow the LFO. The tool now
+  clears eight slots and sets Arp Mode off.
+- **The 68000 sends no modulation.** Its words to the DSP (HDI08, tapped in the emulator) are batches of
+  parameters, about 50 a second, each opened by host command `$80` and closed by `$82` (a four-word batch
+  `c00000 1c0000 080fe0 081001` before each); the cutoff knob is word 38 of the 57-word batch, `0` at knob
+  64, and it does not move with an LFO. LFOs, envelopes and the matrix are the DSP's.
+- **The DSP keeps no voice's modulated values.** For each voice (`func_000382`, the voices in the list at
+  `X:$2F2`, newest first, the place being played at `X:$13`; a voice's record in external memory from
+  `$80F44`, `$92` words apart) it rebuilds the voice's parameters at `Y:$20..$3F`, adds the modulation
+  matrix into them (`$3D6..$3E0`: each route `y:(r1) += source * amount`) and plays the voice from there:
+  Filter 1's cutoff is `Y:$34`, `(knob - 64) * 2^17`, linear over the knob's travel, LFO, envelopes and
+  matrix in it. Read at any moment it is the voice played last (the oldest) or, mid-loop, another one:
+  nothing else in internal or external memory follows the modulation.
+- **The hook** (`waldorf_emu.cpp`, `WALDORF_MQ`): the two instructions after the matrix (`$3E1`, `$3E2`:
+  `move y:$26,a`, `move y:$20,y0`) become `jsr >$1400`, and a stub in the program memory the firmware
+  leaves free (`$1400` on; the emulator fills it with `debug`) copies `Y:$34` to `Y:$7F000` + the
+  voice's place in the list, then runs the two moved instructions and returns (it uses `b` and `r7`,
+  which the program sets again right after). `Y:$7F000` is internal memory the real DSP does not have:
+  nothing of the firmware's is there. The engine writes the patch from a thread of its own (ordinary
+  priority) between two of the DSP thread's batches: that thread holds its lock through each batch and
+  while it waits for its audio to be taken, so only a `try_lock` from another thread, while the engine
+  goes on rendering, finds it free. It patches only where the two words are the measured ones (another
+  firmware: no live cutoff, said once in the log), checks once a second that the hook is still in, and
+  puts it back after the 68000 has loaded the program anew. Every 10 ms it publishes `Y:$7F000` while a
+  voice sounds; the plugin answers `live_mod` with it, in knob units, while a key is held or let go less
+  than 3 s ago.
+- **Checked offline** (`vavra-scan hook`): five notes a quarter-second apart with a filter envelope from
+  knob 40 each start at 111 and fall back to 40 as the newest, while `Y:$34` jumps between voices; LFO 1
+  on the cutoff draws its triangle, 24 to 104 around 64; the knob alone reads back 20, 64 and 110.
+  Vavra's encoder row draws the arc and dot (`nowOf` in `push_ui.js`), the filter pages through `g.filter`.
+
+### Modulation, live: OsTIrus not yet (2026-11-24)
+
+The same search (`native/ostirus/tools/ti_scan.cpp`, target `ostirus-scan`, never shipped) has not found
+a word that can be stood behind:
 
 - **Virus TI** (run it with Docker's `--shm-size=1g`, as render-check does: the emulator maps its memory
   through /dev/shm, and the default 64 MB is a bus error). Only the whole 1M-word space shows anything;
-  X and Y are one memory up there. `Y:46AC9` follows the cutoff knob (gliding to it) and a filter envelope,
-  but not LFO 2 on Cutoff 1, and its neighbour `Y:46ACA` behaves the same for other knobs: it looks like a
-  parameter-smoothing slot of the part, not the voice's cutoff. The LFOs seem to act in registers.
-- **microQ**: nothing per voice in the DSP's memory, nor in the 68000's RAM (`SCAN_MC=1`: no word
-  follows the LFO, a slow or a fast one); `Y:00034` is the mailbox the 68000 writes the DSP's parameters
-  through (the knob's value, others passing through, 126 values with a fast LFO). The modulated values
-  likely travel the 68000-to-DSP link (HDI08): tapping it in the emulator, each value with its parameter,
-  is the next way to try.
+  X and Y are one memory up there. The TI has two DSPs (`DspMultiTI`; `SCAN_DSP=B` reads the second):
+  nothing on DSP B follows the cutoff. On DSP A, `Y:46AC9` (its neighbour `Y:46ACA` the same for other
+  knobs) is the cutoff the program works out: the knob (gliding to it), keytrack, a filter envelope, and
+  LFO 2 on Cutoff 1 **at a slow rate** (rate 30: its triangle, clipped at 3161 and 7935). Rechecked
+  2026-11-24 with the audio recorded beside it (`range` mode, and `watch` with `SCAN_NOTES`), it cannot
+  be shipped:
+  - from LFO rate 80 up it holds the knob's value while the LFO moves the sound (rate 90, knob 40: the
+    word stays 3761; the audio's brightness spread doubles with the amount, 0.040 to 0.080). A faster
+    LFO acts past this word, in the sample loop;
+  - it is a scratch word the program reuses: read while the DSP is busy (another thread runs it), it
+    holds other values (0, 7935, 6553600) one read in four. Clean only when the DSP was idle at the read.
+
+  Next ways to try: the LFOs' own outputs per voice (they run even at amount 0, so the range scan, which
+  wants words that move only with the amount, drops them), or catching the word as the program writes it
+  for a voice (a write hook in the emulator, at the writing instruction).
 
 ## Vivace (a spectral warping wavetable synth)
 

@@ -14,13 +14,19 @@
 //          its value every RECORD_EVERY blocks -> <out>/lfo.csv
 //   knob   no modulation, the target at LOW and at HIGH: those words' values
 //          at each -> <out>/knob.csv
-// what: cutoff (default), wave (Wave 1 Startwave), reso, pitch, volume, pan.
-// The files are read as xt_scan.cpp's are.
+// what: cutoff (default), fenv, shape. The files are read as xt_scan.cpp's are.
+//   range [byte=value ...]  every word's span with the modulation off and on
+//                           (SCAN_MODON=byte=value), those that grow recorded
+//                           with the audio -> lfo.csv, audio.f32
+//   watch <words> [byte=value ...]  given words while notes start
+//                           (SCAN_NOTES=60,64 SCAN_EVERY=40) -> watch.csv, audio.f32
+// SCAN_DSP=B reads the TI's second DSP; SCAN_SPAN (hex) the words read of each area.
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <climits>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -36,6 +42,7 @@
 #include "virusLib/device.h"
 #include "virusLib/deviceModel.h"
 #include "virusLib/dspSingle.h"
+#include "virusLib/dspMultiTI.h"
 
 namespace {
 
@@ -89,7 +96,13 @@ void param(int idx, int v) {
     run(0.01);
 }
 
-const dsp56k::Memory &mem() { return dev->getDspA()->getMemory(); }
+// the DSP read (env SCAN_DSP=B: the TI's second DSP, DspMultiTI's)
+const dsp56k::Memory &mem() {
+    const virusLib::DspSingle *a = dev->getDspA();
+    if (getenv("SCAN_DSP") && getenv("SCAN_DSP")[0] == 'B')
+        return const_cast<virusLib::DspMultiTI *>(static_cast<const virusLib::DspMultiTI *>(a))->getDSP2().getMemory();
+    return a->getMemory();
+}
 struct Word {
     int area; // 0 X, 1 Y
     uint32_t a;
@@ -153,7 +166,7 @@ int main(int argc, char **argv) {
     const Target *T = nullptr;
     for (const Target &t : TARGETS)
         if (what == t.name) T = &t;
-    if (!T && !watch && what != "dump") return 2;
+    if (!T && !watch && what != "dump" && what != "range") return 2;
     if (!T) T = &TARGETS[0];
     Logging::setLogFunc([](const std::string &) {});
     std::vector<uint8_t> rom;
@@ -228,6 +241,13 @@ int main(int argc, char **argv) {
         }
         run(0.5);
         notes = {36, 40, 43, 48, 52, 55, 60, 64, 67, 72, 76, 79};
+        if (const char *e = getenv("SCAN_NOTES")) { // the notes (comma list), one every SCAN_EVERY records (40)
+            notes.clear();
+            for (const char *q = e; *q; q++)
+                if (q == e || q[-1] == ',') notes.push_back(uint8_t(atoi(q)));
+        }
+        const int every = getenv("SCAN_EVERY") ? atoi(getenv("SCAN_EVERY")) : 40;
+        FILE *fa = fopen((out + "/audio.f32").c_str(), "wb");
         FILE *f = fopen((out + "/watch.csv").c_str(), "w");
         fprintf(f, "t,note");
         for (auto &w : words) fprintf(f, ",%c:%05x", w.first ? 'Y' : 'X', unsigned(w.second));
@@ -235,12 +255,83 @@ int main(int argc, char **argv) {
         const dsp56k::Memory &m = mem();
         for (int i = 0; i < 400; i++) {
             int n = -1;
-            if (i % 40 == 0 && size_t(i / 40) < notes.size()) midi(0x90, notes[size_t(i / 40)], 100), n = notes[size_t(i / 40)];
-            run(double(BLOCK * RECORD_EVERY) / 44100);
+            if (i % every == 0 && size_t(i / every) < notes.size()) midi(0x90, notes[size_t(i / every)], 100), n = notes[size_t(i / every)];
+            for (int k = 0; k < RECORD_EVERY; k++) {
+                block();
+                fwrite(buf[0], sizeof(float), BLOCK, fa);
+            }
             fprintf(f, "%.3f,%d", i * double(BLOCK * RECORD_EVERY) / 44100, n);
             for (auto &w : words) fprintf(f, ",%u", m.get(w.first ? dsp56k::MemArea_Y : dsp56k::MemArea_X, w.second) & 0xffffff);
             fprintf(f, "\n");
         }
+        fclose(f);
+        fclose(fa);
+        _exit(0);
+    }
+
+    // range: every word's span while the chord is held with the modulation
+    // off and on; the words whose span grows with it (not only those still
+    // without it: a word may jitter anyway), recorded over 4 s with the
+    // audio (-> <out>/lfo.csv, <out>/audio.f32: the left output, 44.1 kHz)
+    if (what == "range" || getenv("SCAN_RANGE")) {
+        for (int i = 4; i < argc; i++) { // byte=value: the sound's bytes for both passes (the modulation's last)
+            int b = 0, v = 0;
+            if (sscanf(argv[i], "%d=%d", &b, &v) == 2) param(b, v);
+        }
+        run(0.5);
+        auto span = [&](std::vector<int32_t> &lo, std::vector<int32_t> &hi) {
+            notesOn();
+            run(0.4);
+            std::vector<uint32_t> s = snap();
+            lo.assign(s.size(), INT32_MAX), hi.assign(s.size(), INT32_MIN);
+            for (int b = 0; b < int(44100 * 3.0 / BLOCK); b += RECORD_EVERY) {
+                run(double(BLOCK * RECORD_EVERY) / 44100);
+                s = snap();
+                for (size_t i = 0; i < s.size(); i++) {
+                    int32_t v = int32_t(s[i] << 8) >> 8;
+                    lo[i] = std::min(lo[i], v), hi[i] = std::max(hi[i], v);
+                }
+            }
+            notesOff();
+            run(1.0);
+        };
+        std::vector<int32_t> lo0, hi0, lo1, hi1;
+        span(lo0, hi0);
+        const char *on = getenv("SCAN_MODON"); // the modulation's byte=value (default: the target's)
+        int mb = T->modByte, mv = T->modOn;
+        if (on) sscanf(on, "%d=%d", &mb, &mv);
+        param(mb, mv);
+        span(lo1, hi1);
+        std::vector<size_t> cand;
+        for (size_t i = 0; i < lo0.size(); i++) {
+            int64_t r0 = int64_t(hi0[i]) - lo0[i], r1 = int64_t(hi1[i]) - lo1[i];
+            if (r1 > 64 && r1 > 4 * r0) cand.push_back(i);
+        }
+        const uint32_t nx = sizeX();
+        fprintf(stderr, "%zu words span more with the modulation\n", cand.size());
+        if (cand.size() > 20000) cand.resize(20000);
+        FILE *fa = fopen((out + "/audio.f32").c_str(), "wb");
+        notesOn();
+        run(0.4);
+        std::vector<std::vector<uint32_t>> series(cand.size());
+        for (int b = 0; b < int(44100 * 4.0 / BLOCK); b += RECORD_EVERY) {
+            for (int k = 0; k < RECORD_EVERY; k++) {
+                block();
+                fwrite(buf[0], sizeof(float), BLOCK, fa);
+            }
+            const std::vector<uint32_t> sn = snap();
+            for (size_t c = 0; c < cand.size(); c++) series[c].push_back(sn[cand[c]]);
+        }
+        fclose(fa);
+        notesOff();
+        FILE *f = fopen((out + "/lfo.csv").c_str(), "w");
+        for (size_t c = 0; c < cand.size(); c++) {
+            fprintf(f, "%c:%05x", cand[c] < nx ? 'X' : 'Y', unsigned(cand[c] < nx ? cand[c] : cand[c] - nx));
+            for (uint32_t v : series[c]) fprintf(f, ",%u", v);
+            fprintf(f, "\n");
+        }
+        fclose(f);
+        f = fopen((out + "/knob.csv").c_str(), "w"); // (an.py reads it: none here)
         fclose(f);
         _exit(0);
     }

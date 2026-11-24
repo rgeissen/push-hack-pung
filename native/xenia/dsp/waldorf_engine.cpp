@@ -1072,6 +1072,21 @@ int live_mod(Instance *in, char *buf, int len) {
     return snprintf(buf, size_t(len), "{\"f1_cutoff\":%.2f,\"w1_start_w\":%.2f,\"w2_start_w\":%.2f}",
                     std::max(0.0, xt_cutoff(uint32_t(L->aux[LIVE_CUT].load()))), wave(L->aux[LIVE_W1].load()), wave(L->aux[LIVE_W2].load()));
 }
+#elif defined(WALDORF_MQ)
+// Where the newest voice has Filter 1's cutoff now (waldorf_emu.cpp: the
+// DSP's word, (knob - 64) * 2^17, measured linear over the knob's travel with
+// native/vavra/tools/mq_scan.cpp), while the sound sounds: {} at rest, and
+// where the engine could not hook the DSP's program. Lock-free.
+int live_mod(Instance *in, char *buf, int len) {
+    eshm::Layout *L = in->host.L;
+    const int64_t now = now_us();
+    const bool sounding = in->held.load() > 0 || now - in->lastOff.load() < 3000000;
+    if (!L || !sounding || L->aux[LIVE_VOICE].load() < 0 || int32_t(uint32_t(now / 1000) - uint32_t(L->aux[LIVE_AT].load(std::memory_order_acquire))) > 500)
+        return snprintf(buf, size_t(len), "{}");
+    int32_t w = L->aux[LIVE_CUT].load() & 0xffffff;
+    if (w & 0x800000) w -= 0x1000000; // (a 24-bit signed word)
+    return snprintf(buf, size_t(len), "{\"f1_cutoff\":%.2f}", std::max(0.0, std::min(127.0, 64.0 + w / 131072.0)));
+}
 #endif
 
 int v2_get_param(void *instance, const char *key, char *buf, int len) {
@@ -1083,9 +1098,7 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
         return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u engine_pid=%d", in->underruns.load(),
                         L->blockUs.load(), L->blockMaxUs.exchange(0), L->wr.load() - L->rd.load(), int(in->host.pid.load()));
     }
-#if defined(WALDORF_XT)
     if (!strcmp(key, "live_mod")) return live_mod(in, buf, len);
-#endif
     if (!strcmp(key, "status") || !strcmp(key, "load_error")) {
         char st[160], err[200];
         texts(in, st, sizeof(st), err, sizeof(err));

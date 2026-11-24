@@ -106,6 +106,12 @@ var LED_ON = "#ff4a2e", LED_OFF = "#4c1b14";
 
 function known(v, k) { return !!(k && v[k] && v[k].known); }
 function frac(v, k, neutral) { return known(v, k) ? v[k].frac : (neutral === undefined ? 0 : neutral); }
+// Where the sound has a control now (v[k].now: the module's live_mod, Filter
+// 1's cutoff of the newest voice, read from the microQ's DSP while a note
+// sounds), null when nothing tells (no note, not modulated)
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - frac(v, k, 0)) > 0.004; }
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c"; // the modulation's colour (the synth's own: Pung's is magenta)
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : ""; }
 function num(v, k, d) { var n = parseFloat(known(v, k) ? v[k].value : ""); return isNaN(n) ? (d || 0) : n; }
 function idx(v, k) { return Math.round(num(v, k, 0)); }
@@ -278,6 +284,11 @@ function encoderRow(g, v, names, values) {
     if (on) { g.fill(x + 3, ROW + 3, 114, 42, PANEL_HI); g.fill(x + 3, ROW + 3, 114, 2, "slot"); }
     g.text(x + 60, ROW + 17, up(name), on ? "slot" : AMBER, 0, 110);
     encoder(g, x + 25, ROW + 32, known(v, k) ? v[k].frac : null, on ? "slot" : AMBER_LT);
+    if (known(v, k) && moved(v, k)) { // where the sound has it: an arc from the knob, a dot
+      var n = nowOf(v, k), lo = Math.min(v[k].frac, n), hi = Math.max(v[k].frac, n), cx = x + 25, cy = ROW + 32;
+      g.arc(cx, cy, 17, Math.PI * (0.75 + 1.5 * lo), Math.PI * 1.5 * (hi - lo), 2, MOD_DK);
+      g.dot(cx + Math.cos(Math.PI * (0.75 + 1.5 * n)) * 17, cy + Math.sin(Math.PI * (0.75 + 1.5 * n)) * 17, 3, MOD);
+    }
     g.value(x + 45, ROW + 38, val, on ? "slot" : INK, -1, 70);
   }
 }
