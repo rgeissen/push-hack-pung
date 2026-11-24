@@ -428,7 +428,8 @@ func (u *surface) assignTurn(enc, delta int) {
 	if !ok {
 		return
 	}
-	if !m.can(col.key) {
+	_, cm, _ := u.currentBank()
+	if !m.can(col.key) || !assignable(cm, col.key) {
 		u.say(strings.ToUpper(m.sourceName(col.src)) + " CANNOT REACH THIS ONE")
 		return
 	}
@@ -449,6 +450,7 @@ func (u *surface) assignTurn(enc, delta int) {
 	}
 	m.set(col.src, col.key, nv)
 	if nv == 0 {
+		u.clearPending(col.src, col.key) // taken back before the module answered: no full matrix to report
 		u.assignSend(col.src, col.key, 0, nil)
 		return
 	}
@@ -466,7 +468,25 @@ func (u *surface) assignClear(enc int) {
 		return
 	}
 	m.set(col.src, col.key, 0)
+	u.clearPending(col.src, col.key)
 	u.assignSend(col.src, col.key, 0, nil)
+}
+
+// clearPending: a new route the player took back: no longer watched
+func (u *surface) clearPending(src, dst string) {
+	if p := u.asg.pending; p != nil && p.Src == src && p.Dst == dst {
+		u.asg.pending = nil
+	}
+}
+
+// assignable: a control a route may move: a number of the module's, not a
+// switch, a menu or a value it only reads (what drawAssign shows FIXED)
+func assignable(cm *compMeta, key string) bool {
+	if cm == nil {
+		return false
+	}
+	mm := cm.Params[key]
+	return mm != nil && mm.Type != "enum" && !mm.ReadOnly
 }
 
 // assignSlots: the lower buttons: the sources of the page, and the page turn
@@ -568,7 +588,7 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 		label(img, cx, 38, fitLabel(strings.ToUpper(name), colW-10), nameCol, 0)
 		v := u.vals[u.valKey(p, key)]
 		f := math.Max(0, math.Min(1, mm.frac(v)))
-		if !m.can(key) || mm.Type == "enum" {
+		if !m.can(key) || !assignable(cm, key) {
 			// nothing can reach it: the knob, faint, and why
 			gaugeP(img, cx, knobCY, f, mm.Bipolar, P.faint, true, false, P)
 			label(img, cx, 127, "FIXED", P.faint, 0)

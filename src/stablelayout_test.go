@@ -151,3 +151,28 @@ func TestStableLayoutFullClass(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// In a full class a new parameter takes a placeholder's slot before a removed
+// parameter's: a Set's automation on the removed one must not drive it.
+func TestStableLayoutFullClassPrefersPlaceholders(t *testing.T) {
+	var prev []livedevice.Param
+	for i := 0; i < livedevice.MaxParams; i++ { // full: a new one cannot go after them
+		if i == 200 {
+			prev = append(prev, livedevice.Param{Type: livedevice.PadType})
+		} else {
+			prev = append(prev, livedevice.Param{Key: "synth:p" + strconv.Itoa(i), Type: "float", Max: 1})
+		}
+	}
+	var cur []livedevice.Param
+	for _, p := range prev {
+		if p.Key != "" && p.Key != "synth:p0" { // p0 is gone: its slot 0 is free too
+			cur = append(cur, p)
+		}
+	}
+	cur = append(cur, livedevice.Param{Key: "synth:new", Type: "int", Max: 9})
+	sc := testClass(cur, [][]int{{0, 1}})
+	got := stableLayout(sc, &livedevice.Class{Params: prev})
+	if j, ok := got.keyIdx["synth:new"]; !ok || j != 200 {
+		t.Fatalf("the new parameter at %d (ok %v), not the placeholder's slot 200", j, ok)
+	}
+}

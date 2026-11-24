@@ -930,17 +930,20 @@ void mod_set(Instance *in, const char *val) {
     for (int d = 0; d < kMod.ndest; d++)
         if (kMod.dest[d][0] && dst == kMod.dest[d]) di = d;
     if (si < 1 || si >= tbl::kListLen[kMod.srcList] || di < 0) return;
+    // the byte the depth makes: one that rounds to 64 is no route at all
+    const int amt = int(std::max(0L, std::min(127L, std::lround(64 + a * 64))));
     int slot = -1, freeSlot = -1;
     for (int k = 0; k < kModSlots; k++) {
         const int s_ = in->single[size_t(kMod.srcAt + 3 * k)], d_ = in->single[size_t(kMod.dstAt + 3 * k)];
+        const int a_ = in->single[size_t(kMod.amtAt + 3 * k)];
         if (s_ == si && d_ == di && slot < 0) slot = k;
-        if (s_ == 0 && freeSlot < 0) freeSlot = k;
+        if ((s_ == 0 || a_ == 64) && freeSlot < 0 && !(s_ == si && d_ == di)) freeSlot = k; // free: no source, or driving nothing
     }
     auto put = [&](int at, int b) {
         in->single[size_t(at)] = uint8_t(b);
         send_byte(in, at);
     };
-    if (a == 0) {
+    if (amt == 64) {
         if (slot >= 0) put(kMod.srcAt + 3 * slot, 0), put(kMod.amtAt + 3 * slot, 64);
         return;
     }
@@ -953,7 +956,7 @@ void mod_set(Instance *in, const char *val) {
         put(kMod.dstAt + 3 * slot, di);
         put(kMod.srcAt + 3 * slot, si);
     }
-    put(kMod.amtAt + 3 * slot, int(std::max(0L, std::min(127L, std::lround(64 + a * 64)))));
+    put(kMod.amtAt + 3 * slot, amt);
 }
 #endif
 

@@ -911,13 +911,13 @@ void mod_set(Instance *in, const char *val) {
         for (int jj = 0; jj < 3; jj++) any = any || in->single[size_t(kAsSlots[k].dst[jj])] != 0;
         if (!any) put(kAsSlots[k].src, 0); // the slot is free again
     };
-    const int amt = int(std::max(0L, std::min(127L, std::lround(64 + a * 64))));
-    if (ks >= 0 && (a == 0 || was != want)) {
+    const int amt = int(std::max(0L, std::min(127L, std::lround(64 + a * 64)))); // 64: no route at all
+    if (ks >= 0 && (amt == 64 || was != want)) {
         remove(ks, kj);
-        if (a == 0) return;
+        if (amt == 64) return;
         ks = -1;
     }
-    if (a == 0) return;
+    if (amt == 64) return;
     if (ks >= 0) {
         put(kAsSlots[ks].amt[kj], amt);
         return;

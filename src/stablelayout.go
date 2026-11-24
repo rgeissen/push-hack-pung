@@ -146,11 +146,24 @@ func stableLayout(sc *sclass, prev *livedevice.Class) *sclass {
 		}
 		return -1
 	}
+	// a free slot for a new parameter: a placeholder's first (nothing of a
+	// Set is on it), a removed parameter's only when none is left (a Set's
+	// automation on that parameter would drive the new one)
+	freeFor := func() int {
+		for pass := 0; pass < 2; pass++ {
+			for j := range slot {
+				if slot[j] < 0 && (pass == 1 || paramIdentity(prev.Params[j]) == "") {
+					return j
+				}
+			}
+		}
+		return -1
+	}
 	n := len(prev.Params)
 	if n+len(later) > livedevice.MaxParams {
 		var still []int
 		for _, i := range later {
-			if j := nextFree(); j >= 0 {
+			if j := freeFor(); j >= 0 {
 				place(i, j)
 			} else {
 				still = append(still, i)

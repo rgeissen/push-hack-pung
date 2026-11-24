@@ -33,8 +33,11 @@ func (u *surface) drawChain(img *image.NRGBA, peak float64) {
 	liveMod := u.readLiveMod(ls, u.liveOut, p)
 	defer func() { u.fxUsed = u.liveDrew || liveKeys || liveMod }()
 	if u.assignActive() && cm != nil {
-		u.drawAssign(img, p, cm, sc) // ASSIGN in a segment (assign.go)
-		return
+		if u.readModMap(false) != nil {
+			u.drawAssign(img, p, cm, sc) // ASSIGN in a segment (assign.go)
+			return
+		}
+		u.assignLeave() // the module no longer answers its map: back to the segment, never a blank screen
 	}
 	if u.drawTakeover(img, p, cm, b, sc) {
 		// the screen is the module's, but the way back and the pages are

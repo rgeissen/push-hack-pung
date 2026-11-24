@@ -870,6 +870,23 @@ void harvest(Instance *in) {
     }
     in->harvestedOnce = true;
     std::lock_guard<std::mutex> l(in->infoMu);
+    // an oscillator on a table from a sound file keeps that table (its file and
+    // oscillator), wherever the new list has it; one whose file is gone goes
+    // back to the sound's own table
+    for (int o = 0; o < vital::kNumOscillators; o++) {
+        if (in->wtClass[o] != from_presets(in) || in->wtTable[o] < 0 || in->wtTable[o] >= int(in->harvested.size())) continue;
+        const Instance::Harvest &was = in->harvested[size_t(in->wtTable[o])];
+        int now = -1;
+        for (size_t i = 0; i < out.size() && now < 0; i++)
+            if (out[i].file == was.file && out[i].osc == was.osc) now = int(i);
+        if (now >= 0) {
+            in->wtTable[o] = now;
+        } else {
+            in->wtClass[o] = in->wtTable[o] = 0;
+            in->wtDirty[o] = true;
+            plog("osc %d: its table's sound file is gone: the sound's own table", o + 1);
+        }
+    }
     in->harvested = out;
     update_names(in);
     plog("from presets: %d tables", int(out.size()));
@@ -1250,7 +1267,12 @@ void mod_set(Instance *in, const char *val) {
     const float a = std::max(-1.0f, std::min(1.0f, j.value("amount", 0.0f)));
     const int bip = j.count("bipolar") && j["bipolar"].is_boolean() ? (j["bipolar"].get<bool>() ? 1 : 0) : -1;
     if (!is_mod_source(src) || in->destJson.find("\"" + dst + "\"") == std::string::npos) return;
-    if (a != 0.0f) {
+    bool queued = false; // a removal or a new route of it waiting for the io thread: this goes behind it, in order
+    {
+        std::lock_guard<std::mutex> l(in->modMu);
+        for (const auto &t : in->modPending) queued = queued || (std::get<0>(t) == src && std::get<1>(t) == dst);
+    }
+    if (a != 0.0f && !queued) {
         for (const auto &m : heavy_of(in)->mods) {
             const int i = std::get<0>(m) - 1;
             if (std::get<1>(m) == src && std::get<2>(m) == dst && i >= 0 && i < vital::kMaxModulationConnections && in->modAmt[i]) {
@@ -1336,8 +1358,9 @@ void state_mods(Instance *in, const json &s) {
 void update_play(Instance *in) {
     if (!in->ready.load() || !in->synth) return;
     using SO = vital::SynthOscillator;
-    static vital::FourierTransform transform(vital::WaveFrame::kWaveformBits);
-    static vital::poly_float wave[SO::kSpectralBufferSize];
+    // scratch of this io thread's own (two Vivaces draw at once: no shared buffer)
+    static thread_local vital::FourierTransform transform(vital::WaveFrame::kWaveformBits);
+    alignas(16) static thread_local vital::poly_float wave[SO::kSpectralBufferSize];
     const int nv = in->voices.load();
     struct Shape {
         const vital::Wavetable::WavetableData *data;
@@ -1863,7 +1886,7 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
         AP("}");
         return off < len ? off : -1;
     }
-    if (!strcmp(key, "mod_map")) return mod_map(in, buf, len);
+    if (!strcmp(key, "mod_map")) return in->ready.load() ? mod_map(in, buf, len) : -1; // (its tables come with the engine)
     if (!strcmp(key, "value_lists")) return value_lists(buf, len);
     if (!strcmp(key, "ui_hierarchy")) return ui_hierarchy(buf, len);
     if (!strcmp(key, "gain")) return snprintf(buf, size_t(len), "%d", int(std::lround(in->gain.load() * 100)));

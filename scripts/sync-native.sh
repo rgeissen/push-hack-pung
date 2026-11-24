@@ -24,7 +24,11 @@ PY
         continue
     fi
     t="build/modsrc/$dst/$dep"
-    if [ -f "$t.COMMIT" ] && [ "$(cat "$t.COMMIT")" = "$commit" ] && [ -d "$t" ]; then
+    # what the copy was made from: the commit, and the paths kept (a change of
+    # either makes it again)
+    stamp="$commit"
+    [ -n "$paths" ] && stamp="$commit $paths"
+    if [ -f "$t.COMMIT" ] && [ "$(cat "$t.COMMIT")" = "$stamp" ] && [ -d "$t" ]; then
         continue
     fi
     if [ -n "$local" ] && [ -d "$local" ] && [ "$(git -C "$local" rev-parse HEAD 2>/dev/null)" = "$commit" ]; then
@@ -42,11 +46,17 @@ PY
     if [ -n "$paths" ]; then # only the paths the module uses: the rest never enters its build or source archive
         k="$t.keep"; rm -rf "$k"; mkdir -p "$k"
         IFS=, read -r -a want <<< "$paths"
-        for p in "${want[@]}"; do [ -e "$t/$p" ] && mv "$t/$p" "$k/"; done
+        for p in "${want[@]}"; do
+            if [ ! -e "$t/$p" ]; then
+                echo "native dep: $dep has no $p at $commit (native/catalog.json paths)" >&2
+                exit 1
+            fi
+            mv "$t/$p" "$k/"
+        done
         rm -rf "$t"; mv "$k" "$t"
         echo "native dep: $dep kept $paths"
     fi
-    echo "$commit" > "$t.COMMIT"
+    echo "$stamp" > "$t.COMMIT"
 done
 python3 - "$CATALOG" <<'PY'
 import json, sys
