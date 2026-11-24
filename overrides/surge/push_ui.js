@@ -527,6 +527,13 @@ function sliderRow(g, v, items) {
       g.fill(Math.min(from, hx), ty, Math.abs(hx - from), 3, hot ? "slot" : C.orMid);
       g.fill(hx - 3, ty + 1 - hh / 2, 7, hh, hot ? "slot" : C.ink);
       g.fill(hx - 1, ty + 3 - hh / 2, 3, hh - 4, hot ? C.ink : C.or);
+      // where the sound has it now (v[k].now: the module's live_mod, the
+      // newest voice's): a line from the handle in the modulation colour, a dot
+      if (typeof v[k].now === "number" && Math.abs(v[k].now - f) > 0.004) {
+        var nx = x0 + clamp(v[k].now, 0, 1) * tw;
+        g.fill(Math.min(hx, nx), ty + 1, Math.abs(nx - hx), 1, "#1f5f6c");
+        g.dot(nx, ty + 1.5, 3.2, "#3cc8e6");
+      }
     }
     var val = it.val || show(v, k), unit = val[1] ? val[1] : "";
     var uw = unit ? g.measure(unit.toUpperCase()) + 4 : 0, vw = Math.min(g.measure(val[0], "value"), 108 - uw);
@@ -677,9 +684,17 @@ push.compartment({
       "env1_attack_shape", "env1_decay_shape", "env1_release_shape", "env1_mode"] },
     { id: "feg", label: "Filter EG", rect: [832, 30, 122, 70], keys: ["env2_attack", "env2_decay", "env2_sustain", "env2_release",
       "env2_attack_shape", "env2_decay_shape", "env2_release_shape", "env2_mode"] },
-    { id: "scene", label: "Scene", rect: [4, 3, 626, 21], keys: ["volume", "pan", "pan2", "polymode", "octave", "pitch", "portamento", "send_fx_1"] }
+    { id: "scene", label: "Scene", rect: [4, 3, 626, 21], keys: ["volume", "pan", "pan2", "polymode", "octave", "pitch", "portamento", "send_fx_1"],
+      assign: ["volume", "pan", "pan2", "send_fx_2", "send_fx_3", "pitch", "portamento", "send_fx_1"] } // (ASSIGN: sends in place of the switches)
   ],
   draws_segments: true,
+  // ASSIGN's MORE (where the module offers it): what the panel has no section for, first
+  assign_pages: [
+    { label: "LFO Rates", keys: [0, 1, 2, 3, 4, 5].map(function (n) { return "lfo" + n + "_rate"; }) },
+    { label: "Scene LFO Rates", keys: [6, 7, 8, 9, 10, 11].map(function (n) { return "lfo" + n + "_rate"; }) },
+    { label: "LFO Depths", keys: [0, 1, 2, 3, 4, 5].map(function (n) { return "lfo" + n + "_magnitude"; }) },
+    { label: "Mixer", keys: ["level_noise", "level_ring12", "level_ring23", "vca_level", "send_fx_4", "filter1_keytrack", "filter2_keytrack", "drift"] }
+  ],
   extra_keys: ["preset", "preset_name", "bank_name", "preset_count", "polymode",
     "osc1_type", "osc2_type", "osc3_type", "osc1_octave", "osc2_octave", "osc3_octave",
     "osc1_param0", "osc1_param1", "osc1_param2", "osc1_param3", "osc1_param4", "osc1_param5", "osc1_param6",

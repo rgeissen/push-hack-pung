@@ -13,5 +13,10 @@
   "path": "../schwung-stacks",
   "why": "rgeissen's module, not in Schwung's catalog yet: built from its working copy",
   "github_repo": "rgeissen/schwung-stacks"
+ },
+ "schwung-surge": {
+  "path": "../schwung-surge",
+  "why": "rgeissen's fork, branch pung-modulation: the modulation map, routes and live modulation (mod_map, mod_set, live_mod) for Pung's ASSIGN; proposed upstream",
+  "github_repo": "rgeissen/schwung-surge"
  }
 }
