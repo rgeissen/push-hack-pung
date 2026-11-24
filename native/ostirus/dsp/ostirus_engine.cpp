@@ -515,16 +515,30 @@ int main(int argc, char **argv) {
     bool dumpPending = false;
     Live live;
     lv_init(live, *device);
+    // While a dump waits for the ring to be deep, what the plugin sends after
+    // it waits too, and follows it in order: a knob turned just after a sound
+    // loads reached the synth first, and the older dump then undid it
+    // (2026-11-24: preset=17 cutoff=40 sounded as cutoff=90). A newer dump
+    // supersedes the knobs held for the one before (it already has them: the
+    // plugin's sound is changed before a knob's byte is sent); notes stay.
+    std::vector<std::vector<uint8_t>> held;
+    auto play = [&](const std::vector<uint8_t> &e) {
+        if (e.size() > 2 && (e[0] & 0xf0) == 0x90 && e[2] > 0) lv_note(live, now_us());
+        synthLib::SMidiEvent ev = to_event(e);
+        plugin->addMidiEvent(ev);
+    };
     auto drain = [&](bool playing) {
         uint8_t kind;
         while (oshm::take(L, kind, entry)) {
             if (kind == oshm::DUMP) {
                 sound = entry;
                 dumpPending = true;
+                held.erase(std::remove_if(held.begin(), held.end(),
+                                          [](const std::vector<uint8_t> &e) { return !e.empty() && e[0] == 0xf0; }),
+                           held.end());
             } else if (playing) {
-                if (entry.size() > 2 && (entry[0] & 0xf0) == 0x90 && entry[2] > 0) lv_note(live, now_us());
-                synthLib::SMidiEvent ev = to_event(entry);
-                plugin->addMidiEvent(ev);
+                if (dumpPending) held.push_back(entry);
+                else play(entry);
             }
         }
     };
@@ -533,6 +547,8 @@ int main(int argc, char **argv) {
         synthLib::SMidiEvent ev = to_event(sound);
         plugin->addMidiEvent(ev);
         dumpPending = false;
+        for (const auto &e : held) play(e);
+        held.clear();
     };
 
     snprintf(st, sizeof(st), "Warming up the Virus %s", o_model[model]);
