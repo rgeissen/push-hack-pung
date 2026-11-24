@@ -19,7 +19,7 @@
 namespace oshm {
 
 const uint32_t MAGIC = 0x4f535449; // "OSTI"
-const uint32_t VERSION = 1;
+const uint32_t VERSION = 2; // 2: the live cutoff (liveCut, liveAt, liveHook)
 
 const int RING = 4096;  // stereo frames, a power of two
 const int QUEUE = 1 << 16; // bytes of MIDI and dumps waiting for the engine
@@ -61,6 +61,13 @@ struct Layout {
     char error[200];
     std::atomic<uint32_t> blockUs, blockMaxUs;
     std::atomic<int32_t> tables; // 0 not read yet, 1 read (tab), 2 none found in this firmware
+    // Where the newest voice has Filter 1's cutoff now (Pung's live_mod): the
+    // value the DSP's program works out for it, LFOs, envelope and keytrack in
+    // it (256 + 7680 c, c 0..1; the knob k alone is 1361 + 60 k), from a hook
+    // in the program (ostirus_engine.cpp, live cutoff). liveAt: when it was
+    // published (CLOCK_MONOTONIC ms, read with wrap); liveHook: 0 not yet, 1 in,
+    // -1 a program it was not measured on (no live cutoff).
+    std::atomic<int32_t> liveCut, liveAt, liveHook;
     // per table 1..99: u16 harmonics, u16 waves, then harmonics*waves bytes
     // (table 0 is the sine, computed by the DSP: not here)
     uint8_t tab[TABDATA];

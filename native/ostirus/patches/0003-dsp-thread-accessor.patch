@@ -1,0 +1,11 @@
+--- a/source/axel/virusLib/dspSingle.h
++++ b/source/axel/virusLib/dspSingle.h
+@@ -30,6 +30,8 @@
+ 		dsp56k::Peripherals56367& getPeriphY() { return m_periphY367; }
+ 		dsp56k::PeripheralsNop& getPeriphNop() { return m_periphNop; }
+ 		dsp56k::DSP& getDSP() const { return *m_dsp; }
++		// Pung: the DSP's thread, whose lock is held through each batch of instructions (the live cutoff hook)
++		dsp56k::DSPThread* getDSPThread() const { return m_dspThread.get(); }
+ 		dsp56k::Jit& getJIT() const { return *m_jit; }
+ 		dsp56k::Memory& getMemory() const {return *m_memory; }
+ 

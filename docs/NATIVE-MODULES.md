@@ -526,28 +526,52 @@ microQ DSP's program. Found with `native/vavra/tools/mq_scan.cpp` (target `vavra
   on the cutoff draws its triangle, 24 to 104 around 64; the knob alone reads back 20, 64 and 110.
   Vavra's encoder row draws the arc and dot (`nowOf` in `push_ui.js`), the filter pages through `g.filter`.
 
-### Modulation, live: OsTIrus not yet (2026-11-24)
+### OsTIrus's modulation, live (2026-11-25)
 
-The same search (`native/ostirus/tools/ti_scan.cpp`, target `ostirus-scan`, never shipped) has not found
-a word that can be stood behind:
+Where the newest voice has Filter 1's cutoff now (`live_mod`, `{"cutoff": knob}`), from a hook in the
+Virus DSP's program, as Vavra's. Found with `native/ostirus/tools/ti_scan.cpp` (target `ostirus-scan`,
+never shipped; run it with Docker's `--shm-size=1g`, as render-check does: the emulator maps its memory
+through /dev/shm, and the default 64 MB is a bus error; modes `pdis`, `hook`, `SCAN_BOOTSOUND`):
 
-- **Virus TI** (run it with Docker's `--shm-size=1g`, as render-check does: the emulator maps its memory
-  through /dev/shm, and the default 64 MB is a bus error). Only the whole 1M-word space shows anything;
-  X and Y are one memory up there. The TI has two DSPs (`DspMultiTI`; `SCAN_DSP=B` reads the second):
-  nothing on DSP B follows the cutoff. On DSP A, `Y:46AC9` (its neighbour `Y:46ACA` the same for other
-  knobs) is the cutoff the program works out: the knob (gliding to it), keytrack, a filter envelope, and
-  LFO 2 on Cutoff 1 **at a slow rate** (rate 30: its triangle, clipped at 3161 and 7935). Rechecked
-  2026-11-24 with the audio recorded beside it (`range` mode, and `watch` with `SCAN_NOTES`), it cannot
-  be shipped:
-  - from LFO rate 80 up it holds the knob's value while the LFO moves the sound (rate 90, knob 40: the
-    word stays 3761; the audio's brightness spread doubles with the amount, 0.040 to 0.080). A faster
-    LFO acts past this word, in the sample loop;
-  - it is a scratch word the program reuses: read while the DSP is busy (another thread runs it), it
-    holds other values (0, 7935, 6553600) one read in four. Clean only when the DSP was idle at the read.
-
-  Next ways to try: the LFOs' own outputs per voice (they run even at amount 0, so the range scan, which
-  wants words that move only with the amount, drops them), or catching the word as the program writes it
-  for a voice (a write hook in the emulator, at the writing instruction).
+- **The earlier "fast LFOs act elsewhere" was the scan's sound, not the synth.** Its plain sound left LFO
+  2 in envelope mode (byte 81): one cycle and then still, the faster the rate the sooner. With the LFO
+  looping, the cutoff the program works out follows it at every rate (1 Hz at rate 60, 3.6 at 90, 11 at
+  110, about 86 at 127), the audio's brightness in step (correlation 0.67 at 10 ms).
+- **Where.** Filter 1's cutoff is worked out a voice at a time in `func_000938` (P:$938; the analog
+  filter models, modes 4 to 7, in `func_04ffd2` in external program memory), the part's record in r1 and
+  the voice's in r0 (X:$50 + $32 k; the TI's second DSP runs the same program for its share of the
+  voices), and stored with `mac y0,x0,b  a,y:>$46ac9` (P:$95D, P:$4FFF2): 256 + 7680 c, c held to 0..1
+  (the knob k alone is 1361 + 60 k: fully open from k = 110), knob, keytrack, filter envelope, LFO 2's
+  cutoff amount, an LFO's assign and the matrix in it. `Y:$46AC9` is the next voice's a moment later, and
+  read from outside it was any voice's, or something else's. A record of another kind (X:$B59) is worked
+  out too, always open, hundreds of times a second: not a voice.
+- **The hook** (`ostirus_engine.cpp`, live cutoff; `patches/0003` exposes the DSP's thread): both stores
+  become `jsr >$1F000`, a stub in the program memory the firmware leaves free (it ends at $1BFC) that
+  writes each (value, r0) into a ring at Y:$1E000 (a modulo buffer, $2000 words, in internal memory the
+  real DSP does not have) and then does the store. While it borrows r7 and m7 it masks interrupts (an
+  interrupt routine keeps r7 as its own pointer: without the mask that routine's pointer and the ring
+  were both corrupted), gives the SR back before the store (whose flags the program goes on with), and
+  waits two instructions after loading an address register (the address unit's pipeline: the old r7 was
+  used). It goes in from a thread of its own at ordinary priority that spins on the DSP thread's lock
+  with a yield (it is free only between batches, briefly: a 50 µs sleep between tries missed it for
+  seconds), only where both stores are the measured words and the PC is not in the way, on each DSP,
+  checked once a second and put back if the program is loaded anew (with the ring reset).
+- **The newest voice.** Every 10 ms the engine reads the rings: a voice written more than 100 times a
+  second over the last 100 ms sounds (a DSP's voices share about 3000 writes a second, a silent one gets
+  about 40); the newest is the one whose cutoff moved most in the 80 ms after a note began (a new voice,
+  or one taken over), as Nodal Red's; a note that moves none keeps it. The plugin answers `live_mod` in
+  knob units while a key is held or let go less than 3 s ago; at the top (7935) a knob above 110 is the
+  sound, not a modulation. The encoder row draws the arc and dot (`modMark`); the filter pictures follow
+  through `g.filter`.
+- **Checked offline**, through the shipping plugin and engine (render-check, `RENDER_WATCH=live_mod`):
+  LFO 2 at rate 90 sweeps 0..102 and back; a filter envelope from knob 40 opens fully and falls back
+  through 100, 89, 77 ... 46; the knob alone reads itself (scan: knob 0, 20, 40, 64, 90 exactly); an
+  analog filter (Badmouth, mode 5) reads 72..86 around its knob 81; `{}` once the voices end. Hooked and
+  unhooked audio match (level, peak, largest step, brightness spread); underruns are the container's
+  (the same 7 to 9 with and without the hook: no realtime priority there).
+- **Found on the way, not live_mod's:** a knob turned right after a sound loads can be lost. The engine
+  applies the sound's dump when its ring is deep, after the knob's change that came later (render-check
+  `preset=17 cutoff=40` and `cutoff=90` sound alike, and the reading shows the sound's own cutoff).
 
 ## Vivace (a spectral warping wavetable synth)
 

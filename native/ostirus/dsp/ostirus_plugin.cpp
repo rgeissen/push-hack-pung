@@ -185,6 +185,8 @@ struct Instance {
     std::mutex qMu;       // the queue's writer side (on_midi and set_param come from different threads)
     std::atomic<uint32_t> underruns{0};
     bool hole = false;    // render_block's: the block before ended short
+    std::atomic<uint64_t> held[2] = {{0}, {0}}; // keys down now, a bit a note (live_mod)
+    std::atomic<int64_t> lastOff{0};              // the last key let go (live_mod: the sound still sounds)
 
     // the sound and the library, under mu
     std::mutex mu;
@@ -723,9 +725,19 @@ void v2_destroy(void *instance) {
 
 void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
     Instance *in = static_cast<Instance *>(instance);
-    if (!in || len < 2 || !playing(in)) return;
+    if (!in || len < 2) return;
     const uint8_t st = msg[0] & 0xf0;
     const uint8_t d1 = msg[1] & 0x7f, d2 = len > 2 ? (msg[2] & 0x7f) : 0;
+    // the keys held, for live_mod (the sound sounds while a key is down, or
+    // was let go less than 3 s ago)
+    if ((st == 0x90 || st == 0x80) && len > 2) {
+        const uint64_t bit = uint64_t(1) << (d1 & 63);
+        if (st == 0x90 && d2 > 0) in->held[d1 >> 6].fetch_or(bit);
+        else in->held[d1 >> 6].fetch_and(~bit), in->lastOff = now_us();
+    } else if (st == 0xb0 && (d1 == 120 || d1 == 123)) {
+        in->held[0] = 0, in->held[1] = 0, in->lastOff = now_us();
+    }
+    if (!playing(in)) return;
     switch (st) {
     case 0x80: case 0x90: case 0xd0: case 0xe0:
         break;
@@ -1020,6 +1032,26 @@ void v2_set_param(void *instance, const char *key, const char *val) {
         if (off < len) off += snprintf(buf + off, size_t(len - off), __VA_ARGS__); \
     } while (0)
 
+// mu held. Where the sound has Filter 1's cutoff now (the newest voice's, from
+// the DSP's program: ostirus_engine.cpp, live cutoff), in the knob's units,
+// while it sounds (a key held, or let go less than 3 s ago); {} at rest or
+// without the hook (another firmware). The program's value is 1361 + 60 per
+// knob step, held between 256 and 7935 (fully open from the knob's 110 up):
+// there a knob above 110 is where the sound is, not a modulation.
+int live_mod(Instance *in, char *buf, int len) {
+    oshm::Layout *L = in->L;
+    const int64_t now = now_us();
+    const bool sounding = in->held[0].load() || in->held[1].load() || now - in->lastOff.load() < 3000000;
+    if (!L || !playing(in) || !sounding || L->liveHook.load(std::memory_order_acquire) != 1 ||
+        int32_t(uint32_t(now / 1000) - uint32_t(L->liveAt.load(std::memory_order_acquire))) > 500)
+        return snprintf(buf, size_t(len), "{}");
+    const int v = L->liveCut.load(std::memory_order_relaxed), knob = in->single[40] & 0x7f; // (cutoff: byte 40)
+    double k = (v - 1361) / 60.0;
+    if (v >= 7930) k = std::max(k, double(knob));
+    k = std::max(0.0, std::min(127.0, k));
+    return snprintf(buf, size_t(len), "{\"cutoff\":%.2f}", k);
+}
+
 int v2_get_param(void *instance, const char *key, char *buf, int len) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !buf || len <= 0) return -1;
@@ -1035,6 +1067,7 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     }
     if (!strncmp(key, "wave_view_", 10)) return snprintf(buf, size_t(len), "%s", wave_view(in, atoi(key + 10)).c_str());
     std::lock_guard<std::mutex> l(in->mu);
+    if (!strcmp(key, "live_mod")) return live_mod(in, buf, len);
     if (!strcmp(key, "mod_map")) return mod_map(in, buf, len);
     const int nb = int(in->names.size());
     const std::vector<std::string> empty;

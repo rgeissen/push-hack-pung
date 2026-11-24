@@ -20,7 +20,15 @@
 //                           with the audio -> lfo.csv, audio.f32
 //   watch <words> [byte=value ...]  given words while notes start
 //                           (SCAN_NOTES=60,64 SCAN_EVERY=40) -> watch.csv, audio.f32
-// SCAN_DSP=B reads the TI's second DSP; SCAN_SPAN (hex) the words read of each area.
+//   pdis [byte=value ...]   the program memory disassembled while a note is held
+//                           (SCAN_PSPAN, hex: the words read; -> p.asm, p.bin)
+//   hook [byte=value ...]   each value Filter 1's routines store (P:$95D, P:$4FFF2),
+//                           with the part's, the voice's and r4's records, logged by
+//                           a stub as ostirus_engine.cpp's (-> hook.csv: t, voice (r1),
+//                           value, r0, r4; audio.f32). SCAN_NOTES, SCAN_EVERY as
+//                           watch's, SCAN_OFF_AT (block) the notes let go, SCAN_BLOCKS
+// SCAN_DSP=B reads the TI's second DSP; SCAN_SPAN (hex) the words read of each area;
+// SCAN_BOOTSOUND keeps the sound the Virus boots with instead of the plain one.
 
 #include <algorithm>
 #include <cmath>
@@ -39,6 +47,14 @@
 #include "synthLib/plugin.h"
 #include "synthLib/romLoader.h"
 #include "dsp56kEmu/memory.h"
+#include "dsp56kEmu/disasm.h"
+#include "dsp56kEmu/opcodes.h"
+#include "dsp56kEmu/assembler.h"
+#include "dsp56kEmu/dsp.h"
+#include "dsp56kEmu/dspthread.h"
+#include <thread>
+#include <atomic>
+#include <chrono>
 #include "virusLib/device.h"
 #include "virusLib/deviceModel.h"
 #include "virusLib/dspSingle.h"
@@ -166,7 +182,7 @@ int main(int argc, char **argv) {
     const Target *T = nullptr;
     for (const Target &t : TARGETS)
         if (what == t.name) T = &t;
-    if (!T && !watch && what != "dump" && what != "range") return 2;
+    if (!T && !watch && what != "dump" && what != "range" && what != "pdis" && what != "hook") return 2;
     if (!T) T = &TARGETS[0];
     Logging::setLogFunc([](const std::string &) {});
     std::vector<uint8_t> rom;
@@ -197,7 +213,8 @@ int main(int argc, char **argv) {
     run(4.0);
     fprintf(stderr, "ran 4 s\n");
 
-    // a plain sound: nothing modulates but what a run sets
+    // a plain sound: nothing modulates but what a run sets (SCAN_BOOTSOUND: the sound the Virus boots with)
+    if (!getenv("SCAN_BOOTSOUND")) {
     for (int k : {74, 75, 76, 77, 78, 86, 87, 88, 89, 90, 208}) param(k, 64); // the LFOs' amounts: 0
     param(44, 0), param(45, 0);                        // the filter envelope: no amount
     param(40, 64), param(42, 0), param(51, 0);         // cutoff, resonance, filter 1 a low pass
@@ -209,7 +226,139 @@ int main(int argc, char **argv) {
     if (T->modByte == 44) // an envelope that moves while the note is held: up, then down to nothing
         param(54, 60), param(55, 75), param(56, 0), param(58, 30);
     param(T->modByte, T->modOff);
+    }
     run(1.0);
+
+    // hook: each value the program writes to Filter 1's cutoff word (P:$95D,
+    // move a,y:>$46ac9, the voice's record in r1), logged by a stub in free
+    // program memory into a ring at Y:$1F800 (-> <out>/hook.csv: t, voice
+    // record, value; audio.f32), notes as watch's (SCAN_NOTES, SCAN_EVERY)
+    if (what == "hook") {
+        for (int i = 4; i < argc; i++) {
+            int b = 0, v = 0;
+            if (sscanf(argv[i], "%d=%d", &b, &v) == 2) param(b, v);
+        }
+        run(0.5);
+        const virusLib::DspSingle *ds = dev->getDspA();
+        dsp56k::DSP &d = ds->getDSP();
+        auto &mu = ds->getDSPThread()->mutex();
+        static dsp56k::Assembler as;
+        // interrupts masked while r7 and m7 are borrowed (an interrupt routine
+        // keeps r7 as its own pointer); the SR as it was put back just before
+        // the moved instruction, which sets the flags the program goes on with
+        const char *stub[] = {"move sr,y:>$1dff5", "ori #$03,mr", "nop", "nop", "nop",
+                              "move r7,y:>$1dff0", "move m7,y:>$1dff1", "move y:>$1dff2,r7", "move #>$1fff,m7", "nop", "nop",
+                              "move a,y:(r7)+", "move r1,y:(r7)+", "move r0,y:(r7)+", "move r4,y:(r7)+", "move r7,y:>$1dff2", "move y:>$1dff1,m7", "move y:>$1dff0,r7",
+                              "nop", "nop", "move y:>$1dff5,sr", "nop", "nop"};
+        std::vector<uint32_t> code;
+        for (const char *line : stub) {
+            const dsp56k::AssembleResult r = as.assemble(line);
+            if (!r.success()) { fprintf(stderr, "assemble failed: %s (%d)\n", line, int(r.error)); _exit(3); }
+            for (uint32_t k = 0; k < r.wordCount; k++) code.push_back(r.word[k] & 0xffffff);
+        }
+        code.push_back(0x5e70da), code.push_back(0x046ac9); // the instruction the jsr takes the place of
+        code.push_back(0x00000c);                            // rts
+        struct { uint32_t word[2]; } j = {{0x0bf080, 0x01f000}}; // jsr >$1f000 (as the program's own long jsrs)
+        {
+            static dsp56k::Opcodes ops2;
+            dsp56k::Disassembler dis(ops2);
+            std::string t;
+            dis.disassembleMemoryBlock(t, code, 0x1f000, false, true, true);
+            fprintf(stderr, "stub:\n%s", t.c_str());
+            fprintf(stderr, "words:");
+            for (uint32_t w : code) fprintf(stderr, " 0x%06x,", w);
+            fprintf(stderr, "\n");
+        }
+        // the patch goes in from a thread of its own while this one renders:
+        // the DSP's thread holds its lock until its audio is taken
+        std::atomic<int> done{0};
+        std::thread patcher([&] {
+            const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+            while (!done && std::chrono::steady_clock::now() < until) {
+                if (!mu.try_lock()) { std::this_thread::yield(); continue; } // (the DSP's thread lets go only between batches, briefly)
+                const dsp56k::Memory &m = ds->getMemory();
+                const uint32_t sites[2] = {0x95d, 0x4fff2}; // Filter 1's two routines (the analog models' in external memory)
+                bool orig = true;
+                for (uint32_t at : sites) orig = orig && (m.get(dsp56k::MemArea_P, at) & 0xffffff) == 0x5e70da && (m.get(dsp56k::MemArea_P, at + 1) & 0xffffff) == 0x046ac9;
+                if (orig && d.getPC().toWord() != 0x95e && d.getPC().toWord() != 0x4fff3) {
+                    d.memWrite(dsp56k::MemArea_Y, 0x1dff2, 0x1e000);
+                    for (uint32_t a = 0x1e000; a < 0x20000; a++) d.memWrite(dsp56k::MemArea_Y, a, 0);
+                    for (size_t k = 0; k < code.size(); k++) d.memWriteP(0x1f000 + uint32_t(k), code[k]);
+                    for (uint32_t at : sites) d.memWriteP(at + 1, j.word[1]), d.memWriteP(at, j.word[0]);
+                    done = 1;
+                }
+                mu.unlock();
+                if (!orig) { done = -1; break; }
+            }
+        });
+        for (int i = 0; i < 40000 && !done; i++) block();
+        patcher.join();
+        fprintf(stderr, "hooked: %d\n", int(done));
+        if (done != 1) _exit(4);
+        notes = {60};
+        if (const char *e = getenv("SCAN_NOTES")) {
+            notes.clear();
+            for (const char *q = e; *q; q++)
+                if (q == e || q[-1] == ',') notes.push_back(uint8_t(atoi(q)));
+        }
+        const int every = getenv("SCAN_EVERY") ? atoi(getenv("SCAN_EVERY")) : 1000;
+        FILE *fa = fopen((out + "/audio.f32").c_str(), "wb");
+        FILE *f = fopen((out + "/hook.csv").c_str(), "w");
+        fprintf(f, "t,voice,value,r0,r4\n");
+        const dsp56k::Memory &m = ds->getMemory();
+        uint32_t rd = 0x1e000;
+        for (int i = 0; i < (getenv("SCAN_BLOCKS") ? atoi(getenv("SCAN_BLOCKS")) : 700); i++) {
+            if (i % every == 0 && size_t(i / every) < notes.size()) midi(0x90, notes[size_t(i / every)], 100);
+            if (getenv("SCAN_OFF_AT") && i == atoi(getenv("SCAN_OFF_AT")))
+                for (uint8_t nn : notes) midi(0x80, nn, 0);
+            block();
+            fwrite(buf[0], sizeof(float), BLOCK, fa);
+            const uint32_t wr = m.get(dsp56k::MemArea_Y, 0x1dff2) & 0xffffff;
+            if (wr < 0x1e000 || wr > 0x1ffff || (wr & 3)) continue; // (not a pointer into the ring: skip)
+            int guard = 0;
+            while (rd != wr && guard++ < 4096) {
+                const uint32_t v = m.get(dsp56k::MemArea_Y, rd) & 0xffffff, r1 = m.get(dsp56k::MemArea_Y, 0x1e000 | ((rd + 1) & 0x1fff)) & 0xffffff;
+                const uint32_t r0 = m.get(dsp56k::MemArea_Y, 0x1e000 | ((rd + 2) & 0x1fff)) & 0xffffff, r4 = m.get(dsp56k::MemArea_Y, 0x1e000 | ((rd + 3) & 0x1fff)) & 0xffffff;
+                fprintf(f, "%.4f,%x,%u,%x,%x\n", i * double(BLOCK) / 44100, r1, v, r0, r4);
+                rd = 0x1e000 | ((rd + 4) & 0x1fff);
+            }
+        }
+        fclose(f);
+        fclose(fa);
+        _exit(0);
+    }
+
+    // pdis: the DSP's program memory, disassembled while a note is held
+    // (-> <out>/p.asm, <out>/p.bin: the words, 24 bits in 32), for finding
+    // the code that works out the cutoff (SCAN_DSP=B: the second DSP)
+    if (what == "pdis") {
+        for (int i = 4; i < argc; i++) {
+            int b = 0, v = 0;
+            if (sscanf(argv[i], "%d=%d", &b, &v) == 2) param(b, v);
+        }
+        notesOn();
+        run(0.5);
+        const dsp56k::Memory &m = mem();
+        const uint32_t n = std::min<uint32_t>(m.size(dsp56k::MemArea_P), getenv("SCAN_PSPAN") ? uint32_t(strtoul(getenv("SCAN_PSPAN"), nullptr, 16)) : 0x40000);
+        std::vector<uint32_t> w(n);
+        for (uint32_t i = 0; i < n; i++) w[i] = m.get(dsp56k::MemArea_P, i) & 0xffffff;
+        FILE *fb = fopen((out + "/p.bin").c_str(), "wb");
+        fwrite(w.data(), 4, w.size(), fb);
+        fclose(fb);
+        uint32_t last = 0;
+        for (uint32_t i = 0; i < n; i++)
+            if (w[i]) last = i;
+        w.resize(last + 2);
+        static dsp56k::Opcodes ops;
+        dsp56k::Disassembler d(ops);
+        std::string text;
+        d.disassembleMemoryBlock(text, w, 0, true, true, true);
+        FILE *f = fopen((out + "/p.asm").c_str(), "w");
+        fputs(text.c_str(), f);
+        fclose(f);
+        fprintf(stderr, "P: %x words, last used %x\n", unsigned(m.size(dsp56k::MemArea_P)), unsigned(last));
+        _exit(0);
+    }
 
     // dump: X and Y 0..0x400 before and after each of five notes, started one
     // at a time and held (-> <out>/dump.csv: snapshot, note, area, address, value)

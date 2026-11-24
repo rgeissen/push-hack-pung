@@ -308,6 +308,18 @@ function panel(g, v) {
 // for where the knob stands (from the top for a signed one), the name above
 // (a Soft Knob's in the display's colours: the patch names it) and the value
 // beside the cap. The touched one in the slot's colour.
+// Where the sound has a knob now (v[k].now: the module's live_mod, read from
+// the Virus's DSP while a note sounds: the newest voice's Filter 1 cutoff):
+// outside the knob, an arc in the modulation colour from the pointer and a dot.
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function modMark(g, v, k, x, y, r) {
+  if (!known(v, k) || typeof v[k].now !== "number") return;
+  var f = v[k].frac, n = Math.max(0, Math.min(1, v[k].now));
+  if (Math.abs(n - f) < 0.004) return;
+  g.arc(x, y, r + 4, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(x + Math.cos(A0 + n * SWEEP) * (r + 4), y + Math.sin(A0 + n * SWEEP) * (r + 4), 2.8, MOD);
+}
+
 function row(g, v) {
   var knobs = v.$knobs || [], t = v.$touched || "", R = v.$segmode ? ROW_SEG : ROW;
   for (var i = 0; i < 8; i++) {
@@ -330,6 +342,7 @@ function row(g, v) {
       } else if (f > 0) g.arc(kx, ky, R.arc, A0, SWEEP * f, 3, c);
       var a = A0 + f * SWEEP;
       g.line(kx + Math.cos(a) * 3, ky + Math.sin(a) * 3, kx + Math.cos(a) * R.mark, ky + Math.sin(a) * R.mark, 2.5, ALU_MARK);
+      modMark(g, v, k, kx, ky, R.arc);
     }
     var uw = unit ? g.measure(unit) + 3 : 0, cx = x0 + 84;
     var vw = Math.min(g.measure(val, "value"), 64 - uw);
