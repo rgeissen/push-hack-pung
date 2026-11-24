@@ -224,8 +224,9 @@ back as of the previous restart. Then ask the user to save the Set.
 - **Vavra's live cutoff patches the microQ DSP's program in memory** (`waldorf_emu.cpp`, `MQ_*`): a `jsr` to a
   stub at `P:$1400` after the matrix keeps each voice's Filter 1 cutoff at `Y:$7F000`. It goes in only where
   the two words are the measured ones, from a thread that `try_lock`s the DSP's mutex (a blocking lock
-  deadlocks); a firmware other than the measured one gets no live cutoff and one log line. OsTIrus has no
-  live reading yet (NATIVE-MODULES.md): do not ship one that stands still while an LFO moves the sound.
+  deadlocks); a firmware other than the measured one gets no live cutoff and one log line. OsTIrus does the
+  same on both DSPs (stores at P:$95D and P:$4FFF2 into a ring at Y:$1E000; its stub masks interrupts while
+  it borrows r7/m7). A Virus sound's LFO in envelope mode (one-shot) looks like a reading that stops.
 - gearmulator fixes live in `native/<id>/patches/`: XT bank B read bank A (`_loc + 128`), the 68000 core
   printed every LCD update to stderr (quiet unless `PUNG_MC68K_LOG`).
 - Waldorf sysex: microQ `F0 3E 10 ..` (single 392 bytes), XT `F0 3E 0E ..` (single 265 bytes, boots in
