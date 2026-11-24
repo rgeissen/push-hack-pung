@@ -211,6 +211,44 @@ func cGet(i int, key string) (string, bool) {
 	return "", false
 }
 
+// cGetAround: cGet with each of keys set to before[i] for the read, and to
+// after[i] once read, in one hold of the chain's lock (pungmod.go: a state
+// read with the knobs as they stand, no block rendered between)
+func cGetAround(i int, key string, keys, before, after []string) (string, bool) {
+	n := len(keys)
+	cs := make([]*C.char, 3*n+1) // keys, before, after (+1: never an empty slice)
+	for j := 0; j < n; j++ {
+		cs[j], cs[n+j], cs[2*n+j] = C.CString(keys[j]), C.CString(before[j]), C.CString(after[j])
+	}
+	defer func() {
+		for _, c := range cs[:3*n] {
+			C.free(unsafe.Pointer(c))
+		}
+	}()
+	// the array of pointers lives in C memory (cgo: no Go pointers to Go pointers)
+	arr := (**C.char)(C.malloc(C.size_t(len(cs)) * C.size_t(unsafe.Sizeof(uintptr(0)))))
+	defer C.free(unsafe.Pointer(arr))
+	ptrs := unsafe.Slice(arr, len(cs))
+	copy(ptrs, cs)
+	k := C.CString(key)
+	defer C.free(unsafe.Pointer(k))
+	for size := getBufMeta; size <= getBufMax; size *= 16 {
+		buf := C.malloc(C.size_t(size))
+		got := int(C.sb_get_param_around(C.int(i), C.int(n), &ptrs[0], &ptrs[n], &ptrs[2*n], k, (*C.char)(buf), C.int(size)))
+		if got < 0 {
+			C.free(buf)
+			return "", false
+		}
+		if got < size-1 {
+			s := C.GoStringN((*C.char)(buf), C.int(got))
+			C.free(buf)
+			return s, true
+		}
+		C.free(buf)
+	}
+	return "", false
+}
+
 func cMidi(i int, msg []byte, source int) {
 	if len(msg) == 0 {
 		return

@@ -568,7 +568,38 @@ screen file's `assign_pages`, before the module's own pages. A control the synth
 reach stays FIXED: ASSIGN never pretends.
 
 A module offers it by answering `mod_map` and taking `mod_set` (overrides.md, *Assigning modulation*); a
-module without it keeps the nudge for the next segment. Vivace has it (its 64 routes; a route made here is
+module without it keeps the nudge for the next segment.
+
+#### Pung's own modulation (`src/pungmod.go`)
+
+Every Pung device has four sources of Pung's own, after the module's on ASSIGN's lower buttons: **LFO A**,
+**LFO B**, **Wheel** (the mod wheel) and **Pressure** (channel or poly pressure, the newest). They reach any
+numeric control of any module, so a module with no matrix of its own (most of Schwung's) gets ASSIGN
+too, and a synth's FIXED controls (the Nord's resonance, the XT's effects) can still move. They are
+drawn in a colour of their own, **magenta** (the module's own are cyan), and the header says `PUNG LFO A`:
+the player can tell at a glance which modulation is the synth's and which is Pung's.
+
+**What it is, honestly: one value for the whole sound.** Pung moves the control itself, writing the
+knob's own setting plus the modulation 100 times a second (50 on an emulator: every write is a message
+to the emulated synth, and its parameters have 128 steps, so a fast sweep steps as it would from a
+hardware controller). Every voice moves together, like a "global" LFO; a module's own sources are per
+voice and stay first. No envelopes: one envelope for a chord retriggers on every note.
+
+**An LFO's settings**: its button pressed again (the chosen one) puts them on the encoders: SYNC (Free,
+1/32 to 4 bars, on Live's beat while it plays, at its tempo while it does not), RATE (0.02 to 30 Hz, an
+octave in 24 detents; turning it frees the LFO), SHAPE (sine, triangle, saw, square, random), and its
+shape drawn with where it is now. Pressed again: back to the segment.
+
+**The knob keeps its own setting.** Everything but the module's ears reads the knob as it stands: the
+view, the web page, what Live shows and automates, a saved state (read with the knobs in place, the
+modulation put back in the same hold of the chain's lock: no block is rendered between). Whatever sets
+the control sets that root: its knob in Pung or in Live, automation, a preset or a state loading (a value
+Pung did not write); the modulation goes on around it. The live dot shows where the modulation has it,
+merged with the module's own `live_mod` (the module's wins: it already includes Pung's knob).
+
+**Kept with the device, not the sound**: the routes and the LFOs' settings are in the device's state in
+Live's Set (`pung_mod`), so a route stays through a preset change. A route removed, the control is given
+its own setting back. Vivace has it (its 64 routes; a route made here is
 kept in the device's state), Xenia and Vavra (their matrices, sixteen slots and eight, kept in the sound) and
 OsTIrus (its six assign slots of three destinations; an LFO's polarity is the Virus's own bipolar or
 unipolar source) and Nodal Red 2X (its fixed routes: a source reaches only its own destinations, the others

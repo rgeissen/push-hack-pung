@@ -123,16 +123,23 @@ func galleryModule(t *testing.T, out, ovDir, id string, rec *probeRecord, vals m
 			}
 			shotTo(fmt.Sprintf("%s-%s-segment-%s.png", id, safe(c.id), safe(sg.id)))
 			segShots++
-			if m := galleryModMap(id); m != nil { // ASSIGN, the map as the module answers it
-				u.asg = assignState{on: true, m: m, readAt: time.Now().Add(time.Hour), src: m.Sources[0].ID}
+			if m := galleryModMap(id, cm, sg); m != nil { // ASSIGN, the map as the module answers it, and Pung's sources
+				u.asg = assignState{on: true, m: m, readAt: time.Now().Add(time.Hour), src: m.Sources[0].ID, pm: newPungMod(&Slot{}, false)}
 				for _, r := range m.Routes { // a source with a route here, if one has one
 					for _, k := range append(append([]string{}, sg.keys...), sg.assign...) {
-						if r.Dst == k {
+						if r.Dst == k && !isPungSource(r.Src) {
 							u.asg.src = r.Src
 						}
 					}
 				}
 				shotTo(fmt.Sprintf("%s-%s-assign-%s.png", id, safe(c.id), safe(sg.id)))
+				if i == 0 { // Pung's LFO A: its routes, and its settings
+					u.asg.src = "p_lfo_a"
+					shotTo(fmt.Sprintf("%s-%s-assign-%s-pung.png", id, safe(c.id), safe(sg.id)))
+					u.asg.view = asLFO
+					shotTo(fmt.Sprintf("%s-%s-assign-lfo.png", id, safe(c.id)))
+					u.asg.view = ""
+				}
 				if i == len(c.segments)-1 {
 					u.asg.view = asMore
 					shotTo(fmt.Sprintf("%s-%s-assign-more.png", id, safe(c.id)))
@@ -145,17 +152,33 @@ func galleryModule(t *testing.T, out, ovDir, id string, rec *probeRecord, vals m
 	t.Logf("%s: %d pages, %d segment screens", id, len(cm.Banks), segShots)
 }
 
-// galleryModMap: PUNG_GALLERY_MAPS's map for the module, or nil
-func galleryModMap(id string) *modMap {
+// galleryModMap: PUNG_GALLERY_MAPS's map for the module (none: its
+// matrix has nothing of its own), Pung's sources after it, and a route of
+// Pung's LFO A on the segment's first control it reaches, for the colours
+func galleryModMap(id string, cm *compMeta, sg *ovSegment) *modMap {
 	dir := os.Getenv("PUNG_GALLERY_MAPS")
 	if dir == "" {
 		return nil
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, id+".json"))
-	if err != nil {
-		return nil
+	m := &modMap{Dests: []string{}, dests: map[string]bool{}}
+	if raw, err := os.ReadFile(filepath.Join(dir, id+".json")); err == nil {
+		if mm := parseModMap(strings.TrimSpace(string(raw))); mm != nil {
+			m = mm
+		}
 	}
-	return parseModMap(strings.TrimSpace(string(raw)))
+	m.Sources = append(m.Sources, pmodSources...)
+	keys := sg.keys
+	if len(sg.assign) > 0 {
+		keys = sg.assign
+	}
+	for _, k := range keys {
+		if assignable(cm, m, k) && m.canFrom("p_lfo_a", k) {
+			b := true
+			m.Routes = append(m.Routes, modRoute{Src: "p_lfo_a", Dst: k, Amount: 0.3, Bipolar: &b})
+			break
+		}
+	}
+	return m
 }
 
 // gallery: one module open in Pung's view, off the Push: its pages, its

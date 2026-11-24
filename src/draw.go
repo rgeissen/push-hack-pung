@@ -41,6 +41,7 @@ var (
 	cFaint  = color.NRGBA{38, 38, 36, 255}
 	cLine   = color.NRGBA{64, 63, 60, 255}
 	cMod    = color.NRGBA{60, 200, 230, 255}
+	cPMod   = color.NRGBA{255, 122, 226, 255} // Pung's own modulation (pungmod.go): the whole sound
 	cWarn   = color.NRGBA{255, 90, 78, 255}
 	colMidi = color.NRGBA{164, 140, 255, 255}
 	colInst = color.NRGBA{255, 138, 31, 255}

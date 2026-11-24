@@ -300,6 +300,34 @@ void sb_set_param(int slot, const char *key, const char *val) {
     slot_unlock(slot);
 }
 
+/* sb_get_param_around: get_param with some parameters set to other values
+ * for the read alone, in one hold of the lock: Pung's own modulation reads
+ * a state with each modulated knob as it stands, and puts the modulation
+ * back before the realtime thread can render a block (pungmod.go). */
+int sb_get_param_around(int slot, int n, const char **keys, const char **before, const char **after,
+                        const char *key, char *buf, int buf_len) {
+    if (!sb_slot_alive(slot) || buf_len <= 0) return -1;
+    buf[0] = 0;
+    slot_lock(slot);
+    t_slot = slot;
+    for (int i = 0; i < n; i++) {
+        call_in(slot, SB_CALL_SET, keys[i]);
+        g_api->set_param(g_slots[slot].inst, keys[i], before[i]);
+    }
+    call_in(slot, SB_CALL_GET, key);
+    int r = g_api->get_param(g_slots[slot].inst, key, buf, buf_len);
+    for (int i = 0; i < n; i++) {
+        call_in(slot, SB_CALL_SET, keys[i]);
+        g_api->set_param(g_slots[slot].inst, keys[i], after[i]);
+    }
+    call_out(slot);
+    t_slot = -1;
+    slot_unlock(slot);
+    if (r >= buf_len) r = buf_len - 1;
+    if (r >= 0) buf[r] = 0;
+    return r;
+}
+
 int sb_get_param(int slot, const char *key, char *buf, int buf_len) {
     if (!sb_slot_alive(slot) || buf_len <= 0) return -1;
     buf[0] = 0;

@@ -33,6 +33,8 @@ int sb_slot_alive(int slot);
 void sb_set_param(int slot, const char *key, const char *val);
 /* Bytes written (excluding NUL), or <0 when the key produced nothing. */
 int sb_get_param(int slot, const char *key, char *buf, int buf_len);
+int sb_get_param_around(int slot, int n, const char **keys, const char **before, const char **after,
+                        const char *key, char *buf, int buf_len);
 void sb_midi(int slot, const uint8_t *msg, int len, int source);
 
 /* Renders `frames` stereo frames as interleaved float L,R. `in` is the

@@ -514,6 +514,9 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 		return nil, err
 	}
 	s := &Slot{Index: slot, Name: c.Name, midi: make(chan midiMsg, 1024), seq: p.h.seq}
+	if l := limitsOf(sc.module); l != nil && l.Emulator {
+		s.emulator = true // Pung's modulation writes it less often (pungmod.go)
+	}
 	switch c.Kind {
 	case livedevice.Instrument:
 		s.Set("synth:module", sc.module)
@@ -783,6 +786,9 @@ func (d *device) Process(b *livedevice.Block) {
 	d.s.drainMidi() // notes played by a test or the web page (POST /api/devices/{n}/note)
 	deliver := func(msg []byte) {
 		d.s.live.trackMidi(msg)
+		if pm := d.s.pm.Load(); pm != nil {
+			pm.midi(msg) // the wheel and pressure, Pung's sources (pungmod.go)
+		}
 		n := d.recentN.Add(1) - 1
 		var e [4]byte
 		e[3] = byte(copy(e[:3], msg))
@@ -913,8 +919,13 @@ func (d *device) applyParam(idx int, norm float64) {
 	if m := d.c.meta[idx]; m != nil {
 		// the slot's lock is held here (rtloop.go): cGet, not s.Get, which
 		// takes it again and stood Pung still (2026-11-22)
-		cur, _ := cGet(d.s.Index, d.c.Params[idx].Key)
-		cSet(d.s.Index, d.c.Params[idx].Key, m.fromNormAs(norm, cur))
+		key := d.c.Params[idx].Key
+		cur, _ := cGet(d.s.Index, key)
+		v := m.fromNormAs(norm, cur)
+		if pm := d.s.pm.Load(); pm != nil && pm.conf.Load().routed(key) {
+			v = pm.setRoot(key, v) // Pung modulates it: Live set the knob, the modulation goes on around it
+		}
+		cSet(d.s.Index, key, v)
 		if m.Selector {
 			d.wantResync.Store(true) // the other parameters read something else now (keepLiveInSync)
 		}
@@ -1091,6 +1102,11 @@ func (d *device) currentState() (string, error) {
 // (docs/PRESETS.md, "The current sound").
 func (d *device) stateDoc(chain any) map[string]any {
 	doc := map[string]any{"pung_device": 1, "midi_fx": d.midiFX, "out_ch": d.outCh, "chain": chain}
+	if pm := d.s.pm.Load(); pm != nil {
+		if st := pm.state(); st != nil {
+			doc["pung_mod"] = st // Pung's own modulation (pungmod.go): the device's, not the sound's
+		}
+	}
 	d.snd.mu.Lock()
 	if d.snd.current != nil {
 		doc["sound"], doc["sound_hash"] = *d.snd.current, d.snd.hash
@@ -1110,6 +1126,7 @@ func (d *device) adopt(state string, fromLive bool) error {
 		Chain     json.RawMessage `json:"chain"`
 		Sound     *soundRef       `json:"sound"`
 		SoundHash string          `json:"sound_hash"`
+		PungMod   json.RawMessage `json:"pung_mod"`
 	}
 	if json.Unmarshal([]byte(state), &st) != nil || len(st.Chain) == 0 {
 		return errors.New("not a Pung device state")
@@ -1136,7 +1153,7 @@ func (d *device) adopt(state string, fromLive bool) error {
 	}
 	if ok {
 		prev := st
-		st.Chain, st.Sound, st.SoundHash = nil, nil, ""
+		st.Chain, st.Sound, st.SoundHash, st.PungMod = nil, nil, "", nil
 		if json.Unmarshal([]byte(kept), &st) != nil || len(st.Chain) == 0 || patchModule(st.Chain, d.c.Kind) != d.c.module {
 			st = prev
 		} else {
@@ -1157,6 +1174,9 @@ func (d *device) adopt(state string, fromLive bool) error {
 	// again, every 6 s, for as long as Live ran (2026-11-15).
 	d.lastChain = st.Chain
 	d.midiFX, d.outCh = st.MidiFX, st.OutCh
+	if len(st.PungMod) > 0 || d.s.pm.Load() != nil {
+		d.s.pmod().adopt(st.PungMod) // its own modulation, with the state (pungmod.go)
+	}
 	d.snd.mu.Lock()
 	d.snd.current, d.snd.hash = st.Sound, st.SoundHash
 	d.snd.mu.Unlock()
@@ -1230,6 +1250,10 @@ func (d *device) Close() {
 	defer d.loadMu.Unlock()
 	restore := lockBoost() // the engine spins while this holds the lock (lockboost_linux.go)
 	d.s.own.Lock()
+	if pm := d.s.pm.Load(); pm != nil {
+		pm.closed = true // under the lock: its runner writes nothing more (pungmod.go)
+		pm.wake()
+	}
 	cSlotDestroy(d.s.Index)
 	d.s.own.Unlock()
 	restore()

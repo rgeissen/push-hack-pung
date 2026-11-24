@@ -255,6 +255,10 @@ back as of the previous restart. Then ask the user to save the Set.
   the bar over the active one, the same on every panel; a panel adds at most one touch of its own
   (`draws_segments`) and never dims, frames or underlines. A section that moves with a value says where
   it is while drawing (`g.segment`). Leave the 3 pixels above a segment's rect free of text.
+- **Pung's own modulation** (`pungmod.go`): LFO A/B, Wheel, Pressure on any numeric control, for the whole
+  sound, magenta. Slot.Get answers a modulated control's own setting (the root) and reads a `:state` with
+  the roots in place (`sb_get_param_around`, one hold of the chain's lock); never read a modulated value
+  through Slot.Get to save it. Kept in the device's state (`pung_mod`), not the sound.
 - **ASSIGN offers each segment its top modulation destinations** (UX-GUIDELINES.md, "The destinations
   that matter"): a segment whose knobs are switches gets an `assign` list, a destination with no knob (a
   synth's pitch) a name in the module's `mod_map` (`names`), what no section has the panel's

@@ -55,6 +55,9 @@ type modSource struct {
 	// Dests: the controls this source can reach, where it has a list of its
 	// own (a synth of fixed routes: the Nord's LFO 2 reaches the filter alone)
 	Dests []string `json:"dests,omitempty"`
+	// Pung: one of Pung's own sources (pungmod.go), after the module's: it
+	// reaches any numeric control, for the whole sound, in a colour of its own
+	Pung bool `json:"-"`
 }
 
 type modRoute struct {
@@ -96,6 +99,9 @@ func (m *modMap) can(key string) bool {
 // canFrom: a route from src may reach key (the map's destinations, and the
 // source's own list where it has one)
 func (m *modMap) canFrom(src, key string) bool {
+	if isPungSource(src) { // Pung's own: any control with a value of its own
+		return key != "" && m.Names[key] == ""
+	}
 	if !m.can(key) {
 		return false
 	}
@@ -188,6 +194,19 @@ type assignState struct {
 	// whose matrix is full keeps none, and the screen says so
 	pending   *modRoute
 	pendingAt time.Time
+	// pm: Pung's modulation where no device has one (the gallery's)
+	pm *pungMod
+}
+
+// pmodOf: the shown device's own modulation (pungmod.go), or nil
+func (u *surface) pmodOf() *pungMod {
+	if u.asg.pm != nil {
+		return u.asg.pm
+	}
+	if d, _ := u.pungDevice(); d != nil {
+		return d.s.pmod()
+	}
+	return nil
 }
 
 type assignWrite struct {
@@ -210,18 +229,22 @@ func (u *surface) readModMap(force bool) *modMap {
 	}
 	raw, ok := d.s.Get(prefix + ":mod_map")
 	a.readAt = time.Now()
-	if !ok {
-		a.m = nil
-		return nil
+	var m *modMap
+	if ok {
+		m = parseModMap(raw)
 	}
-	if m := parseModMap(raw); m != nil {
-		a.m = m
-		if p := a.pending; p != nil && time.Since(a.pendingAt) > 500*time.Millisecond {
-			if m.route(p.Src, p.Dst) == nil {
-				u.say("NO FREE MODULATION SLOT: " + strings.ToUpper(m.sourceName(p.Src)) + " WAS NOT ADDED")
-			}
-			a.pending = nil
+	if m == nil { // no matrix of the module's: Pung's sources alone
+		m = &modMap{Dests: []string{}, dests: map[string]bool{}}
+	}
+	ps, pr := d.s.pmod().mapFor(prefix)
+	m.Sources = append(m.Sources, ps...)
+	m.Routes = append(m.Routes, pr...)
+	a.m = m
+	if p := a.pending; p != nil && time.Since(a.pendingAt) > 500*time.Millisecond {
+		if m.route(p.Src, p.Dst) == nil {
+			u.say("NO FREE SLOT IN THE SYNTH: " + strings.ToUpper(m.sourceName(p.Src)) + " WAS NOT ADDED. PUNG'S LFO A STILL CAN")
 		}
+		a.pending = nil
 	}
 	return a.m
 }
@@ -269,6 +292,7 @@ func (u *surface) assignActive() bool {
 const (
 	asMore   = "more"
 	asRoutes = "routes"
+	asLFO    = "lfo" // one of Pung's LFOs, its settings (its button pressed again)
 )
 
 // assignCol: what an encoder is on: a control, and the source whose route it sets
@@ -363,6 +387,8 @@ func (u *surface) assignCols(cm *compMeta, m *modMap) (cols []assignCol, title s
 			cols = append(cols, assignCol{k, a.src})
 		}
 		return cols, fmt.Sprintf("%s  %d/%d", pages[a.vpage].name, a.vpage+1, len(pages))
+	case asLFO:
+		return nil, m.sourceName(a.src)
 	case asRoutes:
 		rs := u.routesOf(m)
 		who := m.sourceName(a.src)
@@ -457,6 +483,21 @@ func (u *surface) assignSend(src, dst string, amount float64, bipolar *bool) {
 		return
 	}
 	a := &u.asg
+	if isPungSource(src) { // Pung's own modulation: no message to the module (pungmod.go)
+		_, cm, _ := u.currentBank()
+		var mm *paramMeta
+		if cm != nil {
+			mm = cm.Params[dst]
+		}
+		b := bipolar != nil && *bipolar
+		if r := a.m.route(src, dst); bipolar == nil && r != nil && r.Bipolar != nil {
+			b = *r.Bipolar
+		}
+		d.s.pmod().setRoute(prefix+":"+dst, src, math.Round(amount*1000)/1000, b, mm)
+		d.touch() // the device's state is filed again (keptstate.go)
+		a.writeAt = time.Time{}
+		return
+	}
 	if a.writes == nil {
 		a.writes = make(chan assignWrite, 256)
 		go func(ch chan assignWrite) {
@@ -491,6 +532,10 @@ func (u *surface) assignColAt(enc int) (assignCol, *modMap, bool) {
 // route from 0, change it, turn it back to 0 and it is gone), additive, or
 // with Shift bipolar
 func (u *surface) assignTurn(enc, delta int) {
+	if u.asg.view == asLFO {
+		u.pmodTurn(enc, delta)
+		return
+	}
 	col, m, ok := u.assignColAt(enc)
 	if !ok {
 		return
@@ -589,9 +634,29 @@ func (u *surface) assignBottom(i int) {
 		u.asg.page++
 		u.assignSlots() // (wraps)
 	case i < len(ids):
+		if ids[i] == u.asg.src && (ids[i] == "p_lfo_a" || ids[i] == "p_lfo_b") {
+			// the chosen LFO of Pung's again: its settings, and again back
+			if u.asg.view == asLFO {
+				u.asg.view = ""
+			} else {
+				u.asg.view = asLFO
+			}
+			return
+		}
 		u.asg.src = ids[i]
 		u.asg.vpage = 0 // (ROUTES: the new source's from the start)
+		if u.asg.view == asLFO {
+			u.asg.view = ""
+		}
 	}
+}
+
+// srcColor: a source's colour: the module's in the modulation colour, Pung's in its own
+func srcColor(id string) color.NRGBA {
+	if isPungSource(id) {
+		return cPMod
+	}
+	return cMod
 }
 
 // ---- drawing ------------------------------------------------------------------
@@ -627,13 +692,22 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 			label(img, x+w/2, 16, t, cMod, 0)
 		}
 	}
-	what := strings.ToUpper(m.sourceName(a.src)) + " INTO " + strings.ToUpper(title)
-	if a.view == asRoutes || a.view == asMore && len(cols) == 0 {
+	who := strings.ToUpper(m.sourceName(a.src))
+	if isPungSource(a.src) {
+		who = "PUNG " + who // the whole sound's, not a voice's
+	}
+	what := who + " INTO " + strings.ToUpper(title)
+	switch {
+	case a.view == asLFO:
+		what = who + ": THE WHOLE SOUND"
+	case a.view == asRoutes || a.view == asMore && len(cols) == 0:
 		what = strings.ToUpper(title)
 	}
-	label(img, 4*colW+10, 16, fitLabel(what, 2*colW-16), cMod, -1)
+	label(img, 4*colW+10, 16, fitLabel(what, 2*colW-16), srcColor(a.src), -1)
 	label(img, segmentsButton*colW+colW/2, 17, "EXIT", sc, 0)
-	if len(cols) == 0 {
+	if a.view == asLFO {
+		u.drawPmodLFO(img, P)
+	} else if len(cols) == 0 {
 		label(img, scrW/2, 84, strings.ToUpper(title), P.dim, 0)
 	}
 	// a short name twice in the row (two oscillators' SEMI): whose it is too
@@ -701,7 +775,7 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 			if bip {
 				lo, hi = math.Max(0, f-math.Abs(amt)), math.Min(1, f+math.Abs(amt))
 			}
-			c := cMod
+			c := srcColor(src)
 			if touched {
 				c = sc
 			}
@@ -727,7 +801,7 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 		valCol := P.dim
 		txt := "--"
 		if amt != 0 {
-			txt, valCol = fmt.Sprintf("%+.0f%%", amt*100), cMod
+			txt, valCol = fmt.Sprintf("%+.0f%%", amt*100), srcColor(src)
 			if math.Abs(amt) < 0.1 {
 				txt = fmt.Sprintf("%+.1f%%", amt*100)
 			}
@@ -743,7 +817,7 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 		}
 		styled(img, cx, 133, txt, valCol, faceValue, 0)
 		if a.view == asRoutes && a.all {
-			label(img, cx, 116, fitLabel(strings.ToUpper(m.sourceName(src)), colW-12), cMod, 0)
+			label(img, cx, 116, fitLabel(strings.ToUpper(m.sourceName(src)), colW-12), srcColor(src), 0)
 			continue
 		}
 		var others []string
@@ -776,14 +850,15 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 	for j, id := range ids {
 		x, w := j*colW+7, colW-14
 		name := fitLabel(strings.ToUpper(m.sourceName(id)), w-16)
+		col := srcColor(id)
 		if id == a.src {
-			rect(img, x, y, w, h, cMod)
+			rect(img, x, y, w, h, col)
 			label(img, x+8, y+h-3, name, cBlack, -1)
 		} else {
-			label(img, x+8, y+h-3, name, cMod, -1)
+			label(img, x+8, y+h-3, name, col, -1)
 		}
 		if here[id] {
-			c := cMod
+			c := col
 			if id == a.src {
 				c = cBlack
 			}
@@ -793,4 +868,89 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 	if more {
 		arrowCell(img, 7, y+h/2, 1, cMod)
 	}
+}
+
+// ---- Pung's LFOs, their settings (pungmod.go) -----------------------------------
+
+// pmodLFOIndex: the chosen source's LFO (0, 1), or -1
+func (u *surface) pmodLFOIndex() int {
+	switch u.asg.src {
+	case "p_lfo_a":
+		return 0
+	case "p_lfo_b":
+		return 1
+	}
+	return -1
+}
+
+// pmodTurn: the LFO's settings on the first three encoders: its tempo
+// division (Free: its own rate), its rate in Hz, its shape
+func (u *surface) pmodTurn(enc, delta int) {
+	i := u.pmodLFOIndex()
+	d, _ := u.pungDevice()
+	if i < 0 || d == nil || delta == 0 {
+		return
+	}
+	d.s.pmod().update(func(c *pmodConf) {
+		l := &c.LFO[i]
+		switch enc {
+		case 0:
+			l.Div = max(0, min(len(pmodDivs)-1, l.Div+sign(delta)))
+		case 1:
+			if l.Div != 0 {
+				l.Div = 0 // a rate of its own: free running from where it is
+			}
+			l.Rate = math.Max(0.02, math.Min(30, l.Rate*math.Pow(2, float64(delta)/24))) // an octave in 24 detents
+		case 2:
+			l.Shape = (l.Shape + sign(delta) + len(pmodShapes)) % len(pmodShapes)
+		}
+	})
+	d.touch()
+}
+
+// drawPmodLFO: the LFO's three settings and its shape, playing
+func (u *surface) drawPmodLFO(img *image.NRGBA, P *palette) {
+	i := u.pmodLFOIndex()
+	pm := u.pmodOf()
+	if i < 0 || pm == nil {
+		return
+	}
+	l := pm.conf.Load().LFO[i]
+	rate := fmt.Sprintf("%.2f HZ", l.Rate)
+	if l.Rate >= 10 {
+		rate = fmt.Sprintf("%.1f HZ", l.Rate)
+	}
+	rateCol := P.fg
+	if l.Div != 0 {
+		rateCol = P.faint // the tempo sets it
+	}
+	items := []struct {
+		name, val string
+		col       color.NRGBA
+	}{{"SYNC", strings.ToUpper(pmodDivs[max(0, min(len(pmodDivs)-1, l.Div))].name), P.fg}, {"RATE", rate, rateCol},
+		{"SHAPE", strings.ToUpper(pmodShapes[max(0, min(len(pmodShapes)-1, l.Shape))]), P.fg}}
+	for j, it := range items {
+		cx := j*colW + colW/2
+		nameCol := P.dim
+		if u.touched == j {
+			nameCol = P.fg
+			rect(img, cx-16, 43, 32, 2, cPMod)
+		}
+		label(img, cx, 38, it.name, nameCol, 0)
+		styled(img, cx, 92, fitLabel(it.val, colW-12), it.col, faceValue, 0)
+	}
+	// the shape over a cycle, where it is now
+	x0, w, cy, hh := 3*colW+20, 5*colW-40, 82, 40.0
+	rect(img, x0, cy, w, 1, P.faint)
+	for k := 0; k <= w; k++ {
+		ph := float64(k) / float64(w)
+		v := pmodShape(l.Shape, ph, math.Sin(ph*37)) // Random: a picture of steps
+		if l.Shape == 4 {
+			v = math.Sin(math.Floor(ph*6) * 2.1)
+		}
+		disc(img, float64(x0+k), float64(cy)-v*hh, 1.2, P.mix(cPMod, 0.55))
+	}
+	ph := math.Float64frombits(pm.phase[i].Load())
+	v := math.Float64frombits(pm.src[i].Load())
+	disc(img, float64(x0)+ph*float64(w), float64(cy)-v*hh, 4, cPMod)
 }

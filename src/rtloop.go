@@ -161,6 +161,9 @@ func (d *device) pump(l *rtState) {
 				}
 				msg := b[i*4+1 : i*4+1+ln]
 				d.s.live.trackMidi(msg)
+				if pm := d.s.pm.Load(); pm != nil {
+					pm.midi(msg) // the wheel and pressure, Pung's sources (pungmod.go)
+				}
 				k := d.recentN.Add(1) - 1
 				var e [4]byte
 				e[3] = byte(copy(e[:3], msg))

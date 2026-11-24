@@ -51,6 +51,11 @@ type Slot struct {
 	midiOut atomic.Int64
 
 	live soundTrack // what the sound is doing, for the live pictures (livestate.go)
+
+	// pm: Pung's own modulation of the slot's controls (pungmod.go), made on
+	// first use; emulator: its module is one (fewer writes a second)
+	pm       atomic.Pointer[pungMod]
+	emulator bool
 }
 
 // Host owns the slots and the transport.
@@ -185,7 +190,10 @@ func (s *Slot) Set(key, val string) {
 	}
 	defer lockBoost()() // the engine spins while this holds the lock (lockboost_linux.go)
 	s.own.Lock()
-	cSet(s.Index, key, val)
+	if pm := s.pm.Load(); pm != nil && !heavy && pm.conf.Load().routed(key) {
+		val = pm.setRoot(key, val) // modulated by Pung: the knob's own value, and the module hears it moved
+	}
+	chainSet(s.Index, key, val)
 	if heavy {
 		cWarm(s.Index, 2) // a module's first render may be slow: take it here, not on the engine
 	}
@@ -256,7 +264,24 @@ func (s *Slot) Get(key string) (string, bool) {
 	defer lockBoost()() // the engine spins while this holds the lock (lockboost_linux.go)
 	s.own.Lock()
 	defer s.own.Unlock()
-	return cGet(s.Index, key)
+	pm := s.pm.Load()
+	if pm == nil {
+		return chainGet(s.Index, key)
+	}
+	// Pung's modulation (pungmod.go): a modulated control reads as the knob
+	// stands, a state with every knob as it stands, and live_mod with where
+	// Pung puts them now
+	if v, ok := pm.rootOf(key); ok {
+		return v, true
+	}
+	if strings.HasSuffix(key, ":state") {
+		return pm.rootedGet(key)
+	}
+	if comp, found := strings.CutSuffix(key, ":live_mod"); found {
+		v, ok := chainGet(s.Index, key)
+		return pm.liveMod(comp, v, ok)
+	}
+	return chainGet(s.Index, key)
 }
 
 // Note plays a note into the slot as if it came from Live (tests, the web page).
