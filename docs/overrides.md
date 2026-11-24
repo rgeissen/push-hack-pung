@@ -285,7 +285,8 @@ colour. Only a key the screen was given (its pages' and `extra_keys`) has it.
 
 **Assigning modulation (`mod_map`, `mod_set`)**: Pung's ASSIGN screen (UX-GUIDELINES.md, *Assigning
 modulation*) asks the module for `get_param("mod_map")`:
-`{"sources": [{"id", "name"}, ...], "dests": [keys a route may reach] (absent: every knob),
+`{"sources": [{"id", "name", "dests"?}, ...], "dests": [keys a route may reach] (absent: every knob; a
+source's own "dests" narrow them for it, a synth of fixed routes),
 "routes": [{"src", "dst", "amount", "bipolar"}, ...]}` (bipolar: both ways around the knob; leave it out
 where the synth has no such choice), an amount being -1..1 of the destination's range, the sources
 in the order a player reaches for them. It sets one route with `set_param("mod_set",

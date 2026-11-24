@@ -1099,6 +1099,8 @@ void set_state(Instance *in, const char *val) {
     in->multiDirty = true;
 }
 
+void mod_set(Instance *in, const char *val); // (below: ASSIGN's routes)
+
 void v2_set_param(void *instance, const char *key, const char *val) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !val) return;
@@ -1170,6 +1172,8 @@ void v2_set_param(void *instance, const char *key, const char *val) {
     } else if (!strcmp(key, "all_notes_off")) {
         synthLib::SMidiEvent ev(synthLib::MidiEventSource::Host, 0xb0, 123, 0);
         send(in, ev);
+    } else if (!strcmp(key, "mod_set")) {
+        mod_set(in, val); // a route from Pung's ASSIGN screen
     } else if (const Param *p = find_param(key)) {
         int v;
         if (parse_value(p, val, v)) apply_param(in, p, v);
@@ -1178,6 +1182,85 @@ void v2_set_param(void *instance, const char *key, const char *val) {
 }
 
 #define AP(...) do { if (off < len) off += snprintf(buf + off, size_t(len - off), __VA_ARGS__); } while (0)
+
+// ---- the Nord's modulation, for Pung's ASSIGN screen (src/assign.go) ------------
+// Fixed routes, each source with one destination of its own list and an
+// amount (the edited slot's): LFO 1 to the pulse width, the filter, osc 2's
+// pitch or FM; LFO 2 to the filter; the mod envelope to osc 2's pitch, FM or
+// the pulse width. A route to another destination moves the source there
+// (the Nord drives one at a time); amount 0 removes it.
+struct NordSource {
+    const char *id, *name, *dest, *amount; // the source's destination and amount parameters
+    int ndest;
+    const char *knob[5]; // destination option -> knob ("": no knob of its own)
+    int optOf[5];        // ... and the option's value
+    bool bipolar;        // the amount goes both ways (the mod envelope's)
+};
+const NordSource kNordSources[] = {
+    {"lfo1", "LFO 1", "lfo1_dest", "lfo1_amount", 4, {"pw", "cutoff", "osc2_semi", "fm"}, {0, 1, 2, 4}, false},
+    {"lfo2", "LFO 2", "lfo2_dest", "lfo2_amount", 1, {"cutoff"}, {7}, false},
+    {"modenv", "Mod Env", "modenv_dest", "modenv_amount", 3, {"osc2_semi", "fm", "pw"}, {0, 1, 2}, true},
+};
+
+// mu held: the modulation map (get_param("mod_map")): each source with the
+// knobs it can reach
+int mod_map(Instance *in, char *buf, int len) {
+    int off = 0;
+    AP("{\"sources\":[");
+    for (size_t i = 0; i < 3; i++) {
+        const NordSource &n = kNordSources[i];
+        AP("%s{\"id\":\"%s\",\"name\":\"%s\",\"dests\":[", i ? "," : "", n.id, n.name);
+        for (int d = 0; d < n.ndest; d++) AP("%s\"%s\"", d ? "," : "", n.knob[d]);
+        AP("]}");
+    }
+    AP("],\"dests\":[\"pw\",\"cutoff\",\"osc2_semi\",\"fm\"],\"routes\":[");
+    bool first = true;
+    for (const NordSource &n : kNordSources) {
+        const Param *pd = find_param(n.dest), *pa = find_param(n.amount);
+        if (!pd || !pa) continue;
+        const int d = shown(in, pd), a = shown(in, pa);
+        for (int k = 0; k < n.ndest; k++)
+            if (n.optOf[k] == d && a != 0) {
+                const double amt = n.bipolar ? a / 64.0 : a / 127.0;
+                AP("%s{\"src\":\"%s\",\"dst\":\"%s\",\"amount\":%.4f}", first ? "" : ",", n.id, n.knob[k], amt);
+                first = false;
+            }
+    }
+    AP("]}");
+    return off;
+}
+
+// mu held: a route from the ASSIGN screen (set_param("mod_set"))
+void mod_set(Instance *in, const char *val) {
+    const std::string v(val);
+    auto str = [&](const char *k) {
+        const std::string pat = std::string("\"") + k + "\":\"";
+        const size_t p = v.find(pat);
+        if (p == std::string::npos) return std::string();
+        const size_t e = v.find('"', p + pat.size());
+        return v.substr(p + pat.size(), e == std::string::npos ? std::string::npos : e - p - pat.size());
+    };
+    const std::string sid = str("src"), dst = str("dst");
+    const size_t ap = v.find("\"amount\":");
+    const double a = ap == std::string::npos ? 0 : atof(v.c_str() + ap + 9);
+    for (const NordSource &n : kNordSources) {
+        if (sid != n.id) continue;
+        const Param *pd = find_param(n.dest), *pa = find_param(n.amount);
+        if (!pd || !pa) return;
+        for (int k = 0; k < n.ndest; k++) {
+            if (dst != n.knob[k]) continue;
+            const int amt = n.bipolar ? int(std::lround(std::max(-1.0, std::min(1.0, a)) * 64))
+                                      : int(std::lround(std::max(0.0, std::min(1.0, a)) * 127));
+            if (amt == 0) { // removed: only if it is this route (another destination keeps its amount)
+                if (shown(in, pd) == n.optOf[k]) apply_param(in, pa, 0);
+                return;
+            }
+            if (shown(in, pd) != n.optOf[k]) apply_param(in, pd, n.optOf[k]); // the source moves here
+            apply_param(in, pa, std::max(pa->min, std::min(pa->max, amt)));
+            return;
+        }
+    }
+}
 
 int build_chain_params(Instance *in, char *buf, int len) {
     int off = 0;
@@ -1349,6 +1432,7 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
         AP("\"}");
         return off < len ? off : -1;
     }
+    if (!strcmp(key, "mod_map")) return mod_map(in, buf, len);
     if (const Param *p = find_param(key)) return snprintf(buf, size_t(len), "%d", shown(in, p));
     return -1;
 }

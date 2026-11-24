@@ -476,6 +476,14 @@ word every 10 ms in `aux`; the plugin answers `{"cutoff": knob}` while a key is 
 and encoder row draw it (`modMark` in `push_ui.js`). Checked offline: a filter envelope from knob 40 rose
 to 108 and fell back to 40.02.
 
+### Assigning modulation on Nodal Red (2026-11-24)
+
+The Nord's routes are fixed: LFO 1 to the pulse width, the filter, osc 2's pitch or FM; LFO 2 to the filter;
+the mod envelope to osc 2's pitch, FM or the pulse width; one destination a source, the edited slot's. Its
+`mod_map` lists each source with the knobs it can reach (`"dests"` on the source; Pung shows the others
+FIXED for it), its `mod_set` sets the source's destination and amount (a route to another destination moves
+the source there; 0 removes it). The mod envelope's amount goes both ways, the LFOs' one. Checked offline.
+
 ### Modulation, live: OsTIrus and Vavra not yet (2026-11-24)
 
 The same search (`native/ostirus/tools/ti_scan.cpp`, `native/vavra/tools/mq_scan.cpp`, targets

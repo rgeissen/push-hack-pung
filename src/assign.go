@@ -43,6 +43,9 @@ import (
 type modSource struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Dests: the controls this source can reach, where it has a list of its
+	// own (a synth of fixed routes: the Nord's LFO 2 reaches the filter alone)
+	Dests []string `json:"dests,omitempty"`
 }
 
 type modRoute struct {
@@ -70,6 +73,25 @@ func (m *modMap) can(key string) bool {
 		return true
 	}
 	return m.dests[key]
+}
+
+// canFrom: a route from src may reach key (the map's destinations, and the
+// source's own list where it has one)
+func (m *modMap) canFrom(src, key string) bool {
+	if !m.can(key) {
+		return false
+	}
+	for _, s := range m.Sources {
+		if s.ID == src && s.Dests != nil {
+			for _, d := range s.Dests {
+				if d == key {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	return true
 }
 
 // amount: the route from src to dst (0: none)
@@ -257,7 +279,7 @@ func (u *surface) morePages(cm *compMeta, m *modMap) []assignPage {
 		var ks []string
 		for _, k := range b.Keys {
 			mm := cm.Params[k]
-			if k == "" || seen[k] || mm == nil || mm.Type == "enum" || mm.ReadOnly || !m.can(k) {
+			if k == "" || seen[k] || mm == nil || mm.Type == "enum" || mm.ReadOnly || !m.canFrom(u.asg.src, k) {
 				continue
 			}
 			seen[k] = true
@@ -429,7 +451,7 @@ func (u *surface) assignTurn(enc, delta int) {
 		return
 	}
 	_, cm, _ := u.currentBank()
-	if !m.can(col.key) || !assignable(cm, col.key) {
+	if !m.canFrom(col.src, col.key) || !assignable(cm, col.key) {
 		u.say(strings.ToUpper(m.sourceName(col.src)) + " CANNOT REACH THIS ONE")
 		return
 	}
@@ -588,7 +610,7 @@ func (u *surface) drawAssign(img *image.NRGBA, p position, cm *compMeta, sc colo
 		label(img, cx, 38, fitLabel(strings.ToUpper(name), colW-10), nameCol, 0)
 		v := u.vals[u.valKey(p, key)]
 		f := math.Max(0, math.Min(1, mm.frac(v)))
-		if !m.can(key) || !assignable(cm, key) {
+		if !m.canFrom(src, key) || !assignable(cm, key) {
 			// nothing can reach it: the knob, faint, and why
 			gaugeP(img, cx, knobCY, f, mm.Bipolar, P.faint, true, false, P)
 			label(img, cx, 127, "FIXED", P.faint, 0)

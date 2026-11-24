@@ -116,3 +116,12 @@ func TestAssignMoreAndRoutes(t *testing.T) {
 		t.Fatalf("every route: %+v", rs)
 	}
 }
+
+// A source with a list of its own reaches only those controls (the Nord's
+// fixed routes); one without reaches the map's.
+func TestModMapSourceDests(t *testing.T) {
+	m := parseModMap(`{"sources":[{"id":"lfo2","name":"LFO 2","dests":["cutoff"]},{"id":"lfo1","name":"LFO 1"}],"dests":["cutoff","pw"]}`)
+	if !m.canFrom("lfo2", "cutoff") || m.canFrom("lfo2", "pw") || !m.canFrom("lfo1", "pw") || m.canFrom("lfo1", "res") {
+		t.Fatal("per-source destinations")
+	}
+}

@@ -546,7 +546,8 @@ A module offers it by answering `mod_map` and taking `mod_set` (overrides.md, *A
 module without it keeps the nudge for the next segment. Vivace has it (its 64 routes; a route made here is
 kept in the device's state), Xenia and Vavra (their sixteen-slot matrices, kept in the sound) and
 OsTIrus (its six assign slots of three destinations; an LFO's polarity is the Virus's own bipolar or
-unipolar source). A synth whose matrix is full takes no new route, and the screen says so.
+unipolar source) and Nodal Red 2X (its fixed routes: a source reaches only its own destinations, the others
+FIXED, and a route to another moves the source). A synth whose matrix is full takes no new route, and the screen says so.
 
 **Where it runs**: one live session per sound (`src/livehub.go`), shared by the Push view and every web
 page watching it: it is the only reader of the sound's state, so the two can never tell two stories. It
