@@ -612,7 +612,11 @@ voice and stay first. No envelopes: one envelope for a chord retriggers on every
 **An LFO's settings**: its button pressed again (the chosen one) puts them on the encoders: SYNC (Free,
 1/32 to 4 bars, on Live's beat while it plays, at its tempo while it does not), RATE (0.02 to 30 Hz, an
 octave in 24 detents; turning it frees the LFO), SHAPE (sine, triangle, saw, square, random), and its
-shape drawn with where it is now. Pressed again: back to the segment.
+shape drawn with where it is now. Pressed again: back to the segment. On an emulator, from 4 Hz up (a synced LFO at Live's
+tempo), a line under the encoders says `STEPS: AN EMULATOR TAKES 50 CHANGES A SECOND`: the synth takes about
+that many parameter changes a second, so a faster sweep is a staircase however often Pung writes
+(measured on Vavra: as smooth as the synth's own LFO to about 3 Hz, clearly stepped at 10 Hz; an ordinary
+module, written 100 times a second, stays smooth at 10 Hz; `pmodEmuSmoothHz`).
 
 **The knob keeps its own setting.** Everything but the module's ears reads the knob as it stands: the
 view, the web page, what Live shows and automates, a saved state (read with the knobs in place, the

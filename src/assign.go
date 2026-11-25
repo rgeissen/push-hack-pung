@@ -1045,7 +1045,7 @@ func (u *surface) drawPmodLFO(img *image.NRGBA, P *palette) {
 	}
 	if pm.emulated() && pmodHz(l) > pmodEmuSmoothHz {
 		// an emulated synth takes about 50 changes a second: a faster sweep steps
-		label(img, 3*colW/2, 127, fitLabel("STEPS ON AN EMULATOR: IT TAKES 50 CHANGES A SECOND", 3*colW-16), P.dim, 0)
+		label(img, 3*colW/2, 127, fitLabel("STEPS: AN EMULATOR TAKES 50 CHANGES A SECOND", 3*colW-16), P.dim, 0)
 	}
 	// the shape over a cycle, where it is now
 	x0, w, cy, hh := 3*colW+20, 5*colW-40, 82, 40.0
