@@ -248,6 +248,11 @@ func (h *Host) webRoutes(mux *http.ServeMux) {
 				// for the page's device header: whose module it is, its
 				// version, and how loud it is now
 				e["peak_db"] = peakDB(d.s.peak())
+				// an emulator that nobody hears stops working until the next
+				// note (govrest.go): the page says so beside its meter
+				if d.resting() {
+					e["resting"] = true
+				}
 				if m, ok := findModule(h.modulesDir, d.c.module); ok {
 					e["origin"], e["version"], e["author"] = m.Origin, m.Version, m.Author
 					if m.SurfaceApp != "" {

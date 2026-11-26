@@ -25,6 +25,26 @@ import (
 // changes reach the module this much later than its notes.
 const pumpEvery = 2 * time.Millisecond
 
+// pumpIdleEvery: how often it looks while nothing happens (pumpIdle): no
+// parameter from Live, no note, no sound, the transport stopped, for
+// pumpIdleAfter. A device in a Set that is not playing woke its pump 500
+// times a second for nothing, about a hundredth of a core each (measured
+// 2026-11-25). The first thing after such a pause is taken up to this much
+// later, once; then the pump is at pumpEvery again.
+const (
+	pumpIdleEvery = 10 * time.Millisecond
+	pumpIdleAfter = time.Second
+)
+
+// pumpWait: how long the pump waits now: quietFor is how long nothing has
+// happened.
+func pumpWait(quietFor time.Duration) time.Duration {
+	if quietFor >= pumpIdleAfter {
+		return pumpIdleEvery
+	}
+	return pumpEvery
+}
+
 // previewAhead: frames of a file preview queued for the realtime thread.
 // A stop is heard within a block; the rest of the queue is dropped.
 const previewAhead = 2048
@@ -91,6 +111,65 @@ func (d *device) loopStats() (C.rt_stats_t, bool) {
 	return st, true
 }
 
+// loopUsage: what the realtime thread has cost since it started.
+func (d *device) loopUsage() (cpu, render time.Duration, blocks uint64, peak float32, ok bool) {
+	var u C.rt_usage_t
+	d.loopMu.RLock()
+	defer d.loopMu.RUnlock()
+	if d.loop == nil {
+		return 0, 0, 0, 0, false
+	}
+	C.rt_usage(d.loop.rt, &u)
+	return time.Duration(u.cpu_ns), time.Duration(u.render_ns), uint64(u.blocks), float32(u.out_peak), true
+}
+
+// setHostRest: the silence after which the device's module is not asked for
+// sound (0: always), for a module Pung rests from outside (govrest.go).
+func (d *device) setHostRest(ms int64) {
+	d.loopMu.RLock()
+	defer d.loopMu.RUnlock()
+	if d.loop != nil {
+		C.rt_set_rest(d.loop.rt, C.int(ms*44100/1000))
+	}
+}
+
+// hostResting: the device's module is not being rendered now, and how often
+// it has rested.
+func (d *device) hostResting() (bool, uint32) {
+	d.loopMu.RLock()
+	defer d.loopMu.RUnlock()
+	if d.loop == nil {
+		return false, 0
+	}
+	var n C.uint32_t
+	on := C.rt_resting(d.loop.rt, &n) != 0
+	return on, uint32(n)
+}
+
+// hostRestSim runs the host-rest rule over blocks of 128 frames (a test):
+// each block's peak and whether something was sent with it; it answers
+// which blocks were rendered and how many rests began.
+func hostRestSim(restAfter int, peaks []float32, busy []bool) (rendered []bool, rests int) {
+	var r C.rt_rest_t
+	for i, pk := range peaks {
+		b := C.int(0)
+		if busy[i] {
+			b = 1
+		}
+		if C.rt_rest_before(&r, b, 128) != 0 {
+			rendered = append(rendered, true)
+			rests += int(C.rt_rest_after(&r, b, C.float(pk), 128, C.int(restAfter)))
+		} else {
+			rendered = append(rendered, false)
+		}
+	}
+	return rendered, rests
+}
+
+// touchSlot: Go changed a slot's module (a parameter, a sound): a module
+// Pung rests wakes for it.
+func touchSlot(i int) { C.rt_touch_slot(C.int(i)) }
+
 // syncLoop gives the realtime thread what Go decides for it.
 func (d *device) syncLoop(rt *C.rtloop) {
 	C.rt_set_out_ch(rt, C.int(d.outCh))
@@ -103,8 +182,9 @@ func (d *device) syncLoop(rt *C.rtloop) {
 
 func (d *device) pump(l *rtState) {
 	defer close(l.done)
-	t := time.NewTicker(pumpEvery)
+	t := time.NewTimer(pumpEvery)
 	defer t.Stop()
+	lastBusy := time.Now() // the last time anything happened (pumpWait)
 	var (
 		idx      [C.LD_IPC_MAXPAR * 4]C.uint32_t
 		norm     [C.LD_IPC_MAXPAR * 4]C.float
@@ -114,12 +194,22 @@ func (d *device) pump(l *rtState) {
 		transSeq C.uint32_t
 	)
 	for {
+		busy := false
+		rt := l.rt
 		select {
 		case <-l.stop:
 			return
 		case <-t.C:
+		case m := <-d.s.midi: // a note from the web page or a test: at once, not at the next look
+			busy = true
+			C.rt_put_midi(rt, (*C.uint8_t)(unsafe.Pointer(&m.b[0])), C.int(m.n))
+			if !t.Stop() {
+				select {
+				case <-t.C:
+				default:
+				}
+			}
 		}
-		rt := l.rt
 
 		// Live's parameter changes, as Process applied them
 		if n := int(C.rt_take_params(rt, &idx[0], &norm[0], C.int(len(idx)))); n > 0 {
@@ -134,7 +224,9 @@ func (d *device) pump(l *rtState) {
 			}
 			d.s.own.Unlock()
 			restore()
+			touchSlot(d.s.Index)
 			d.touch() // its state is filed again once quiet (keptstate.go)
+			busy = true
 		}
 		d.syncLoop(rt)
 
@@ -143,6 +235,7 @@ func (d *device) pump(l *rtState) {
 		for {
 			select {
 			case m := <-d.s.midi:
+				busy = true
 				if C.rt_put_midi(rt, (*C.uint8_t)(unsafe.Pointer(&m.b[0])), C.int(m.n)) == 0 {
 					break notes
 				}
@@ -153,6 +246,7 @@ func (d *device) pump(l *rtState) {
 
 		// what Live played, for the screens and Stats
 		if n := int(C.rt_take_ui_midi(rt, &ui[0], C.int(len(ui)/4))); n > 0 {
+			busy = true
 			b := unsafe.Slice((*byte)(unsafe.Pointer(&ui[0])), n*4)
 			for i := 0; i < n; i++ {
 				ln := int(b[i*4])
@@ -189,17 +283,22 @@ func (d *device) pump(l *rtState) {
 				d.capPos.Add(uint64(n))
 			}
 		}
-		d.s.setPeak(float32(C.rt_take_meter(rt)))
+		peak := float32(C.rt_take_meter(rt))
+		d.s.setPeak(peak)
 		var bpm, beat C.double
 		var playing C.int
 		if seq := C.rt_transport(rt, &bpm, &beat, &playing); seq != transSeq {
 			transSeq = seq
 			noteTransport(float64(bpm), float64(beat), playing != 0)
 		}
+		if playing != 0 || peakDB(peak) >= liveSilentDB || d.preview.Load() != nil || d.capBuf.Load() != nil {
+			busy = true
+		}
 
 		// changes made here, told to Live
 		if d.repMu.TryLock() {
 			for k, v := range d.reports {
+				busy = true
 				if C.rt_put_report(rt, C.uint32_t(k), C.float(v)) == 0 {
 					break
 				}
@@ -209,6 +308,12 @@ func (d *device) pump(l *rtState) {
 		}
 
 		d.pumpPreview(rt, prev)
+
+		now := time.Now()
+		if busy {
+			lastBusy = now
+		}
+		t.Reset(pumpWait(now.Sub(lastBusy)))
 	}
 }
 

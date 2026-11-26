@@ -500,6 +500,10 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 		p.refusedLog(c.Name, why)
 		return nil, errors.New(why)
 	}
+	if why := p.h.gov.roomRefused(sc.module, running); why != "" {
+		p.refusedLog(c.Name, why)
+		return nil, errors.New(why)
+	}
 	p.mu.Lock()
 	slot := p.freeSlot()
 	if slot >= 0 {
@@ -539,6 +543,7 @@ func (p *provider) New(c *livedevice.Class) (livedevice.Device, error) {
 	go p.reviveSiblings(sc.module) // a module that refused to start beside another
 	newDeviceMade(c.Name)          // picked in Push's browser: Pung's view, not the browser (browserclose.go)
 	go d.adoptKept()
+	p.h.gov.adopt(d)
 	if lib := p.h.sounds; lib != nil {
 		go lib.warm(d)
 	}
@@ -1324,6 +1329,7 @@ func (d *device) reload() {
 	comp := d.c.component()
 	d.s.Set(comp+":module", "")
 	d.s.Set(comp+":module", d.c.module)
+	d.p.h.gov.adopt(d)
 	if d.lastChain != nil {
 		if err := d.p.h.loadPatch(d.s, d.lastChain); err != nil {
 			log.Printf("%s: reloading its state: %v", d.c.Name, err)

@@ -105,7 +105,9 @@ type liveState struct {
 	devsKey   string
 	scale     liveScale
 	onChange  func()
-	active    atomic.Bool // the Pung view is on the screen
+	// the topics as they last came: one that repeats redraws nothing
+	lastTracks, lastDevice string
+	active                 atomic.Bool // the Pung view is on the screen
 
 	wmu     sync.Mutex
 	pending map[string]paramWrite
@@ -174,9 +176,13 @@ func (s *liveState) setTracks(raw json.RawMessage) {
 		return
 	}
 	s.mu.Lock()
+	news := string(raw) != s.lastTracks // Live repeats the topic: the same again is no news
+	s.lastTracks = string(raw)
 	s.tracks, s.selTrack = d.Tracks, d.Selected
 	s.mu.Unlock()
-	s.changed()
+	if news {
+		s.changed()
+	}
 }
 
 // deviceRow: the selected track's devices and the index of the one holding
@@ -250,6 +256,8 @@ func (s *liveState) setDevice(raw json.RawMessage) {
 		return
 	}
 	s.mu.Lock()
+	news := string(raw) != s.lastDevice // Live repeats the topic: the same again is no news
+	s.lastDevice = string(raw)
 	same := string(d.Track) == string(s.dev.Track) && d.Name == s.dev.Name && d.Device == s.dev.Device
 	if !same {
 		// another selection: nothing of the last one carries over, not its
@@ -287,7 +295,9 @@ func (s *liveState) setDevice(raw json.RawMessage) {
 	if resolve {
 		go s.resolve(d.Track, d.Name, d.Device)
 	}
-	s.changed()
+	if news || resolve {
+		s.changed()
+	}
 }
 
 func listKey(track json.RawMessage, cont []int, chain int) string {
@@ -417,6 +427,7 @@ func (s *liveState) readParams() {
 	if json.Unmarshal(data, &r) != nil {
 		return
 	}
+	same := false
 	s.mu.Lock()
 	if string(s.dev.Track) == string(track) && fmt.Sprint(s.path) == fmt.Sprint(path) {
 		old := map[int]float64{}
@@ -430,12 +441,31 @@ func (s *liveState) readParams() {
 				}
 			}
 		}
+		// the same list with the same values is no news: the poller reads a
+		// nested device seven times a second, and each read redrew the view
+		same = s.paramsKey == s.selID() && sameParams(s.dev.Params, r.Params)
 		s.dev.Params = r.Params
 		s.paramsKey = s.selID()
 		s.remember()
 	}
 	s.mu.Unlock()
-	s.changed()
+	if !same {
+		s.changed()
+	}
+}
+
+// sameParams: two readings of a device's parameters show the same thing.
+func sameParams(a, b []liveParam) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		x, y := &a[i], &b[i]
+		if x.I != y.I || x.V != y.V || x.Name != y.Name || x.Min != y.Min || x.Max != y.Max || x.Display != y.Display {
+			return false
+		}
+	}
+	return true
 }
 
 // poller keeps a nested device's values current while the view is up.

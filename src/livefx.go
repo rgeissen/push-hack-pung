@@ -354,6 +354,20 @@ func (u *surface) liveWanted() bool {
 	return ls != nil && ls.frame().Active
 }
 
+// liveTick: whether the live pictures move, and the tick of their session
+// (it advances 30 times a second while someone watches)
+func (u *surface) liveTick() (bool, uint64) {
+	if !u.fxUsed {
+		return false, 0
+	}
+	ls := u.liveSess()
+	if ls == nil {
+		return false, 0
+	}
+	f := ls.frame()
+	return f.Active, f.Seq
+}
+
 // readLiveMod: where the shown module's modulation puts its controls this
 // tick (livemod.go), for its knobs and its screens. true: something is modulated.
 func (u *surface) readLiveMod(ls *liveSession, out liveOut, p position) bool {
@@ -419,6 +433,34 @@ func (u *surface) liveInfo() map[string]any {
 type frameStats struct {
 	drawUS, pushUS atomic.Int64
 	n              atomic.Int64
+	// why frames were drawn, counted (a frame may have several reasons):
+	// what makes the view cost what it does (docs/GOVERNOR.md)
+	why [len(frameWhys)]atomic.Int64
+	// who marked the view changed: Live's state, the Push's controls, a redraw asked for
+	byLive, byInput, byRedraw atomic.Int64
+}
+
+// frameWhys: a frame's reasons, as /api/surface/state names them.
+var frameWhys = [...]string{"changed", "values_due", "meter", "peek", "rows", "notice", "live", "screen_moved"}
+
+const (
+	whyChanged = iota
+	whyDue
+	whyMeter
+	whyPeek
+	whyRows
+	whyNotice
+	whyLive
+	whyMoved
+)
+
+func (f *frameStats) whys() map[string]int64 {
+	out := map[string]int64{}
+	for i, name := range frameWhys {
+		out[name] = f.why[i].Load()
+	}
+	out["marked_by_live"], out["marked_by_input"], out["marked_by_redraw"] = f.byLive.Load(), f.byInput.Load(), f.byRedraw.Load()
+	return out
 }
 
 func ewma(a *atomic.Int64, d time.Duration) {

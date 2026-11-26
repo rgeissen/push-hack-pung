@@ -41,6 +41,7 @@ type Slot struct {
 	seq     *alsaseq.Client // the host's one port, for MIDI a module sends
 
 	loading   atomic.Bool // a long call (module load) holds the lock: skip, do not wait
+	rests     atomic.Bool // its module rests while nobody hears it (govrest.go)
 	peakBits  atomic.Uint32
 	busySkips atomic.Int64
 
@@ -60,6 +61,7 @@ type Slot struct {
 
 // Host owns the slots and the transport.
 type Host struct {
+	surf       atomic.Pointer[surface] // the Push view, once it exists (governor.go)
 	modulesDir string
 	dataDir    string
 	busSocket  string
@@ -78,6 +80,7 @@ type Host struct {
 	sounds   *soundLib       // every module's sounds (sounds_device.go)
 	files    *fileLib        // the files modules ask for: samples, wavetables (files.go)
 	hangs    *hangLog        // modules that hung lately (watchdog.go)
+	gov      *governor       // what rests, what has room (govrest.go)
 
 	selMu      sync.Mutex
 	selKey     string // Live's selection that selDev was worked out for
@@ -98,6 +101,7 @@ func newHost(modulesDir, dataDir, busSocket string) *Host {
 	empty := []*Slot{}
 	h.active.Store(&empty)
 	h.transport.h = h
+	h.gov = newGovernor(h)
 	return h
 }
 
@@ -194,6 +198,7 @@ func (s *Slot) Set(key, val string) {
 		val = pm.setRoot(key, val) // modulated by Pung: the knob's own value, and the module hears it moved
 	}
 	chainSet(s.Index, key, val)
+	touchSlot(s.Index)
 	if heavy {
 		cWarm(s.Index, 2) // a module's first render may be slow: take it here, not on the engine
 	}

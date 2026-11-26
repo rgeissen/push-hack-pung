@@ -2,7 +2,7 @@
 {{TOPBAR}}
 
 <section class="band hero"><div class="wrap">
-  <p class="eyebrow">Pung 0.4.8 · Manual</p>
+  <p class="eyebrow">Pung 0.4.9 · Manual</p>
   <h1>Play Schwung modules on Push 3.</h1>
   <p class="lead">How to install Pung, find its devices in Push's browser, play and edit them on the Push screen, and add more modules. Everything here works from the Push, with an optional web page beside it.</p>
   <dl class="facts">
@@ -419,7 +419,7 @@
     <li><div><p><strong>Apply.</strong> New devices need one Live restart, because Live looks for plugins only when it starts. Apply saves nothing for you: save your Set first. Live restarts in about 30 seconds and recovers the Set. Install several modules, then Apply once.</p></div></li>
     <li><div><p><strong>Add firmware where a module needs it.</strong> JE-8086, Mini-JV, Osirus, Nodal Red 2X, OsTIrus, Vavra and Xenia emulate hardware and need its firmware, which Pung never ships. Add the file on the module's card; Pung recognises it by its checksum (OsTIrus's by its size).</p></div></li>
   </ol>
-  <div class="prose"><p>A new Pung release brings new modules and new versions; the Modules page shows them (see <a href="#update">Updating</a>). Removing a module needs Apply too.</p><p>During the test phase, modules come inside Pung's releases. After it, Pung's module pipeline, which is already built, will serve them directly, so updates arrive as Schwung publishes them.</p></div>
+  <div class="prose"><p><strong>Emulators rest in silence.</strong> An emulated synth works as hard silent as playing: Nodal Red 2X takes almost two of the Push's four processor cores, OsTIrus one, Xenia and Vavra most of one. So Pung lets each one rest: ten seconds after its sound has died away, with no key held, it stops working and takes nothing, and the page on Pung's web page says <em>Resting</em> beside it. The next note, knob or sound wakes it, and that first note is as on time as any other. JE-8086 and Osirus rest the same way. A Set with emulators in it leaves the Push's processor, and its battery, alone while you are not playing them. A module's card says what it takes while it plays.</p><p><strong>Room for an emulator.</strong> Two emulators run at once, and an emulator starts only while the Push can carry it beside what already plays. One that would not fit waits, silent, and starts by itself when there is room.</p><p>A new Pung release brings new modules and new versions; the Modules page shows them (see <a href="#update">Updating</a>). Removing a module needs Apply too.</p><p>During the test phase, modules come inside Pung's releases. After it, Pung's module pipeline, which is already built, will serve them directly, so updates arrive as Schwung publishes them.</p></div>
 </section>
 
 <section id="trouble">

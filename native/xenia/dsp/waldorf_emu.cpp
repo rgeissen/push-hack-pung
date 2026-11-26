@@ -409,6 +409,7 @@ int main(int argc, char **argv) {
     // once the engine plays
     std::vector<uint8_t> sound, entry;
     bool dumpPending = false;
+    eshm::Cold cold;
     auto drain = [&](bool playing) {
         uint8_t kind;
         while (eshm::take(L->toEngine, kind, entry)) {
@@ -417,6 +418,7 @@ int main(int argc, char **argv) {
                 dumpPending = true;
             } else if (playing) {
                 synthLib::SMidiEvent ev = to_event(entry);
+                if (entry.size() >= 3 && (entry[0] & 0xf0) == 0x90 && entry[2] > 0) cold.note_on(now_us());
 #if defined(WALDORF_XT)
                 if (entry.size() >= 3 && (entry[0] & 0xf0) == 0x90 && entry[2] > 0) note_started(*device, now_us());
 #endif
@@ -429,6 +431,7 @@ int main(int argc, char **argv) {
         synthLib::SMidiEvent ev = to_event(sound);
         plugin->addMidiEvent(ev);
         dumpPending = false;
+        cold.sound();
     };
 
     // Warm-up, before the first note anyone hears (OsTIrus): the DSP emulator
@@ -487,7 +490,7 @@ int main(int argc, char **argv) {
         }
         const int64_t tnow = now_us(), miss = L->missAt.load(std::memory_order_relaxed);
         const bool deep = dumpPending || tnow < deepUntil || (miss && tnow - miss < MISS_DEEP_US);
-        const uint32_t target = deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
+        const uint32_t target = cold.deep(tnow) ? uint32_t(eshm::AHEAD_COLD) : deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
         while (fill < target && !L->quit.load(std::memory_order_relaxed)) {
             const int64_t b0 = now_us();
             for (auto &b : buf) memset(b, 0, sizeof(b));
@@ -509,11 +512,15 @@ int main(int argc, char **argv) {
             }
             L->wr.store(w + BLOCK, std::memory_order_release);
             const uint32_t us = uint32_t(now_us() - b0);
+            cold.block(us, b0);
             L->blockUs.store(us, std::memory_order_relaxed);
             if (us > L->blockMaxUs.load(std::memory_order_relaxed)) L->blockMaxUs.store(us, std::memory_order_relaxed);
             fill = L->wr.load(std::memory_order_relaxed) - L->rd.load(std::memory_order_acquire);
             drain(true); // notes arrive while the ring fills
         }
+        // at rest (emu_host.h): the ring is full again and nobody reads it;
+        // wait for an entry, and read nothing from the emulator meanwhile
+        if (eshm::rest_wait(L)) continue;
 #if defined(WALDORF_XT)
         if (now_us() - memAt >= 100000) {
             memAt = now_us();

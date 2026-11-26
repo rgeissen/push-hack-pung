@@ -63,6 +63,49 @@ It is not a new plugin format. Only where the source lives and what it may assum
    instrument's colours (`color`) inside its own panel: they then move with the sound (a note's dot on
    each envelope, the spectrum behind each filter, an LFO's playhead or restart). A curve drawn by hand
    stands still; Vavra's and Xenia's did, until `TestNativeScreensMove` caught it.
+9. **An emulator rests while nobody hears it** (2026-11-25, `docs/GOVERNOR.md`). An emulated DSP runs
+   whether a voice sounds or not: Vavra's took 41% of a core in silence, Xenia's 67%, OsTIrus's 84%,
+   Nodal Red 2X's 179%. Each now takes none. The contract, the same in all four:
+   - `set_param("rest_after_ms", N)`: Pung's governor says after how long a silence it may rest (0:
+     never). Not the sound's: it is in no state. `get_param("rest_after_ms")` answers it (a module
+     that answers nothing is not told again), `get_param("resting")` answers `1` at rest.
+   - **Going to rest is `render_block`'s decision** (`Host::heard`, `emu_host.h`; OsTIrus has its own
+     copy): the block it just read was silence (within 2 of 32768), whole, with no key held, for the
+     time given, nothing was sent to the engine in that time, nothing waits in its queue. It then
+     answers silence and stops reading the ring.
+   - **The engine stops by itself**: it renders only to keep the ring ahead, and the ring is full. It
+     then waits for an entry (`rest_wait`, `emu_shm.h`) instead of waking every 2 ms, and reads nothing
+     from the emulator. gearmulator's DSP thread sleeps when nobody asks it for audio.
+   - **Whatever is sent ends the rest first** (`Host::send` calls `wake`): a note, a knob, a sound. The
+     engine takes it with the ring as far ahead as awake, so a first note is as on time as any other.
+     Never make the ring deeper on waking: the notes after the first would be later than it.
+   - The two sides can decide at the same moment: `heard` looks at `lastSend` again after it sets the
+     flag, `wake` stores `lastSend` before it clears it. One of the two always ends a rest begun then.
+   - Reading (`get_param`: a state, a value) never wakes it. The synth's time stands still at rest: a
+     free-running LFO goes on from where it was.
+
+   - **Measure the first note awake and rested turn about**, 20 pairs or more: two series one after
+     the other differ by several ms on their own. OsTIrus was 3.5 ms late after a rest though its ring
+     was as far ahead (`note_lead` in `debug_info`): the emulated Virus gathers more rendered silence
+     at rest than it keeps while played. Its engine drops three blocks of that silence as it wakes
+     (`WAKE_DROP`), never one that sounds. An emulator added later is measured the same way.
+
+   Measured on a Push for each (docs/GOVERNOR.md has the table): at rest the engine takes 0.0% of a
+   core; a note after a rest is never later than awake (Vavra 15.4 ms against 15.7, Nodal Red 14.9
+   against 14.8, Xenia 27.1 against 33.1, OsTIrus 13.7 against 15.2); its level is the same within
+   about 1 dB; a knob wakes it and holds; another sound loaded at rest plays; a state read leaves it
+   at rest; no underrun and no late block, a rest of minutes included
+   (`scripts/governor.sh <ip> rest <module>`). Run it again when a module's engine or `render_block`
+   changes.
+
+10. **A cold engine keeps its ring deep** (2026-11-25, `Cold` in `emu_shm.h` and `ostirus_shm.h`;
+    `docs/GOVERNOR.md`, part 7). The emulator compiles code the first time it runs it, so the first
+    notes of a sound an engine has not played underran a ring 7 ms deep (a fresh Vavra: ten on one
+    chord), sometimes one 29 ms deep, and never one 44 ms deep (`AHEAD_COLD`, ten cold starts). An engine calls `cold.sound()` when it gives the synth a new
+    sound (and starts cold), `cold.note_on()` for every note-on it passes on, `cold.block()` with each
+    block's time, and renders `AHEAD_COLD` ahead while `cold.deep()` says so. An engine whose first
+    three sounds' first notes bring no slow block switches it off by itself (Xenia, Nodal Red 2X);
+    one that had one keeps it (Vavra, OsTIrus). A new engine does the same and finds out which it is.
 
 ## Dropouts: where they came from (2026-11-21)
 

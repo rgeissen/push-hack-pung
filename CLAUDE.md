@@ -16,6 +16,7 @@ release, and native instruments built from gearmulator (`native/`).
 | A module's `push_ui.js` (widgets, compartments, front panels, `g.*`) | `docs/overrides.md` |
 | Native modules (emulators): rules, measurements, each instrument's quirks | `docs/NATIVE-MODULES.md` |
 | Module builds for the Push | `docs/push-module-builds.md` |
+| What devices cost (processor, energy), `GET /api/governor` | `docs/GOVERNOR.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
 | The public pages (manual, vision, design) | `site/README.md` |
 
@@ -312,6 +313,22 @@ back as of the previous restart. Then ask the user to save the Set.
   parallel, starved one another ("RT throttling activated" in dmesg) and all four were left out of
   Live; Pung's own modules are now probed one at a time (`probeAlone`), and a probe that only ran out
   of time is tried again at the next start.
+- **The governor** (`governor.go` measures, `govrest.go` decides; `docs/GOVERNOR.md`): Pung's emulators
+  rest 10 s after their sound has died (NATIVE-MODULES.md rule 9), Schwung's two (JE-8086, Osirus) are
+  not rendered then (`rt_set_rest` in `rtloop.c`, as Schwung's host does on Move; no other module: a
+  sequencer would start late), an engine keeps its ring deep until the first notes of a new sound are
+  through (rule 10: the emulator compiles code on first use), an emulator starts only while half a
+  core stays free with every emulator playing (`govRoom`; costs in `limits.go`), Pung's own LFOs leave a
+  silent emulator alone (`pmodUnheard`), a device's pump looks 100 times a second instead of 500 once
+  nothing has happened for a second, and the view reads and draws only when there is something to show
+  (2 frames a second at rest, 30 while it moves, at once on a turn). `GET /api/governor?seconds=N` says
+  what everything costs; `POST /api/governor/rest {"ms":0}` lets nothing rest (a test, a doubt);
+  `scripts/governor.sh <push-ip> bench` is the pass/fail benchmark (in a NEW Set), `... rest <module>`
+  one emulator's rest in depth. `frame_why` in `/api/surface/state` counts why frames were drawn.
+- The Push sends Active Sensing four times a second, and pressure and pitch bend while pads are played:
+  the view takes only notes and controllers for input (`isControl`), or each one redraws it (it did until
+  2026-11-25). Live's indexer ("Ableton Index", nice 10) can take a whole core for hours: the governor
+  counts low-priority work as background, not busy.
 - Counters for a drop: `late` in `/api/devices` (Live gave up on Pung), `proc_max_us`/`gap_max_us`/
   `acquire_max_us`/`render_max_us` there (Pung's block), `skipped_blocks` in `/api/pung-devices`, and
   the module's `debug_info` (`underruns`, `block_max_us`: the emulator). `/api/debug/gc`, and

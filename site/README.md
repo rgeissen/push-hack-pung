@@ -1,6 +1,6 @@
 # The Pung pages
 
-Sources of the three pages at <https://rgeissen.github.io/push-hack-pung/>: Vision (the front page), Manual and Design.
+Sources of the four pages at <https://rgeissen.github.io/push-hack-pung/>: Vision (the front page), Manual, Design and Performance.
 
 - `*.src.html`: the text of each page. `[[screen …]]` draws a Push screen inside its bezel; `{{LINK:manual}}` links to another page.
 - `images.json`: the Push screens, inline.

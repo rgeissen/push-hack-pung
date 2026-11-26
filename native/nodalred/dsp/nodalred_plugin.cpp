@@ -1104,6 +1104,11 @@ void mod_set(Instance *in, const char *val); // (below: ASSIGN's routes)
 void v2_set_param(void *instance, const char *key, const char *val) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !val) return;
+    if (!strcmp(key, "rest_after_ms")) { // Pung's (docs/GOVERNOR.md), not the sound's: in no state
+        in->host.restAfterMs.store(std::max(0, atoi(val)), std::memory_order_relaxed);
+        if (atoi(val) <= 0) in->host.wake();
+        return;
+    }
     std::lock_guard<std::mutex> l(in->mu);
     if (!strcmp(key, "state")) {
         set_state(in, val);
@@ -1349,11 +1354,14 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     if (!strcmp(key, "is_loading")) return snprintf(buf, size_t(len), "%d", starting(in) ? 1 : 0);
     if (!strcmp(key, "name")) return snprintf(buf, size_t(len), "Nodal Red 2X");
     if (!strcmp(key, "ui_hierarchy")) return build_hierarchy(buf, len);
+    if (!strcmp(key, "rest_after_ms")) return snprintf(buf, size_t(len), "%d", in->host.restAfterMs.load());
+    if (!strcmp(key, "resting")) return snprintf(buf, size_t(len), "%d", int(in->host.resting()));
     if (!strcmp(key, "debug_info")) {
         eshm::Layout *L = in->host.L;
         if (!L) return snprintf(buf, size_t(len), "underruns=%u", in->underruns.load());
-        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u engine_pid=%d", in->underruns.load(),
-                        L->blockUs.load(), L->blockMaxUs.exchange(0), L->wr.load() - L->rd.load(), int(in->host.pid.load()));
+        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u engine_pid=%d resting=%d rests=%u rest_after_ms=%d",
+                        in->underruns.load(), L->blockUs.load(), L->blockMaxUs.exchange(0), L->wr.load() - L->rd.load(),
+                        int(in->host.pid.load()), int(in->host.resting()), in->host.rests.load(), in->host.restAfterMs.load());
     }
     if (!strcmp(key, "loading_status") || !strcmp(key, "load_error")) {
         char st[160], err[200];
@@ -1455,14 +1463,21 @@ void v2_render(void *instance, int16_t *out, int frames) {
         return;
     }
     eshm::Layout *L = in->host.L;
+    if (in->host.resting()) { // at rest (emu_host.h): silence, the ring kept as it is
+        memset(out, 0, size_t(frames) * 2 * sizeof(int16_t));
+        return;
+    }
     const uint32_t r = L->rd.load(std::memory_order_relaxed);
     const uint32_t have = L->wr.load(std::memory_order_acquire) - r;
     const uint32_t n = std::min<uint32_t>(have, uint32_t(frames));
+    int loud = 0;
     for (uint32_t i = 0; i < n; i++) {
         const uint32_t k = (r + i) & (RING - 1);
         out[i * 2] = L->ring[k * 2];
         out[i * 2 + 1] = L->ring[k * 2 + 1];
+        loud = std::max(loud, std::max(abs(int(out[i * 2])), abs(int(out[i * 2 + 1]))));
     }
+    in->host.heard(loud, n == uint32_t(frames), frames, in->held[0].load(std::memory_order_relaxed) || in->held[1].load(std::memory_order_relaxed));
     if (in->hole && n > 0) { // the block before ended short: back in with a fade
         const uint32_t f = std::min<uint32_t>(n, FADE);
         for (uint32_t i = 0; i < f; i++) {

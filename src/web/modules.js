@@ -179,7 +179,7 @@
     if (x.in_use) out.push(`<span class="tag">In your Set${x.in_use > 1 ? " ×" + x.in_use : ""}</span>`);
     const l = x.limits || {};
     if (l.one) out.push(`<span class="tag limit" title="${esc(oneText(l))}">One at a time</span>`);
-    if (l.emulator) out.push(`<span class="tag limit" title="${esc(EMU_TEXT)}">Emulator</span>`);
+    if (l.emulator) out.push(`<span class="tag limit" title="${esc(emuText(l))}">Emulator</span>`);
     return out.join("");
   }
   // a module's limits (limits.go), in words
@@ -188,7 +188,14 @@
       ? "One instance on the Push: a second one in the Set reports an error and stays silent. Remove the first to use it."
       : "One instance on the Push: a second one in the Set stays silent and says Waiting; it starts the moment the first is removed.";
   }
-  const EMU_TEXT = "An emulated hardware DSP: it takes most of a processor core. Two emulators run at once: a third waits, silent, until one of them is removed (three left the Push unreachable).";
+  // what an emulator costs and when it costs nothing (limits.go: cost in percent of one core, rests)
+  function emuText(l) {
+    const cores = l.cost ? (l.cost / 100).toFixed(1).replace(/\.0$/, "") : "";
+    const cost = cores ? `An emulated hardware DSP: about ${cores} of the Push's four processor cores while it plays.` : "An emulated hardware DSP: it takes most of a processor core.";
+    const rest = l.rests ? " In silence it rests and takes none, and wakes with the next note, on time."
+      : l.host_rests ? " In silence it rests and takes next to none, and wakes with the next note, on time." : "";
+    return cost + rest + " Two emulators run at once, and only while the Push has room for both: another waits, silent, and starts by itself when there is.";
+  }
 
   function action(x) {
     const j = x.job;
@@ -285,7 +292,7 @@
       ${x.surface_app ? `<p class="note">${x.surface_app_installed
         ? `<b>Takeover.</b> On the Push, opening this device hands the screen, the pads and the buttons to the <b>${esc(x.surface_app)}</b> app, which edits it. That app's own way back to Live ends it.`
         : `<b>Takeover, but its app is missing.</b> Its surface on the Push is the <b>${esc(x.surface_app)}</b> app, a Push Hack that is not installed on this Push. Until it is, opening the device shows Pung's own view.`}</p>` : ""}
-      ${x.limits && (x.limits.one || x.limits.emulator) ? `<p class="note limit"><b>Limits.</b> ${[x.limits.one ? oneText(x.limits) : "", x.limits.emulator ? EMU_TEXT : ""].filter(Boolean).map(esc).join(" ")}</p>` : ""}
+      ${x.limits && (x.limits.one || x.limits.emulator) ? `<p class="note limit"><b>Limits.</b> ${[x.limits.one ? oneText(x.limits) : "", x.limits.emulator ? emuText(x.limits) : ""].filter(Boolean).map(esc).join(" ")}</p>` : ""}
       <dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
       ${links.length ? `<p class="links">${links.join(" · ")}</p>` : ""}
       ${x.requires && !specs(x).length && !(x.asset_state || []).length ? `<p class="req">${esc(x.requires)}</p>` : ""}

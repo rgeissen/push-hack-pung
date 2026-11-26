@@ -214,11 +214,15 @@ int main(int argc, char **argv) {
     plog("running");
 
     std::vector<uint8_t> entry;
+    eshm::Cold cold;
     auto drain = [&] {
         uint8_t kind;
         while (eshm::take(L->toEngine, kind, entry)) {
             synthLib::SMidiEvent ev = to_event(entry);
-            if (entry.size() >= 3 && (entry[0] & 0xf0) == 0x90 && entry[2] > 0) note_started(*device, now_us());
+            if (entry.size() >= 3 && (entry[0] & 0xf0) == 0x90 && entry[2] > 0) {
+                cold.note_on(now_us());
+                note_started(*device, now_us());
+            }
             plugin->addMidiEvent(ev);
         }
     };
@@ -235,9 +239,11 @@ int main(int argc, char **argv) {
         drain();
         uint32_t fill = L->wr.load(std::memory_order_relaxed) - L->rd.load(std::memory_order_acquire);
         const int64_t tnow = now_us(), miss = L->missAt.load(std::memory_order_relaxed);
-        const bool deep = L->wantDeep.load(std::memory_order_relaxed) || tnow < L->deepUntil.load(std::memory_order_relaxed) ||
-                          (miss && tnow - miss < MISS_DEEP_US);
-        const uint32_t target = deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
+        // (the plugin asks for a deep ring around a sound it sends: a new sound)
+        const bool sounding = L->wantDeep.load(std::memory_order_relaxed) || tnow < L->deepUntil.load(std::memory_order_relaxed);
+        if (sounding) cold.sound();
+        const bool deep = sounding || (miss && tnow - miss < MISS_DEEP_US);
+        const uint32_t target = cold.deep(tnow) ? uint32_t(eshm::AHEAD_COLD) : deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
         while (fill < target && !L->quit.load(std::memory_order_relaxed)) {
             const int64_t t0 = now_us();
             for (auto &b : buf) memset(b, 0, sizeof(b));
@@ -259,11 +265,15 @@ int main(int argc, char **argv) {
             }
             L->wr.store(w + BLOCK, std::memory_order_release);
             const uint32_t us = uint32_t(now_us() - t0);
+            cold.block(us, t0);
             L->blockUs.store(us, std::memory_order_relaxed);
             if (us > L->blockMaxUs.load(std::memory_order_relaxed)) L->blockMaxUs.store(us, std::memory_order_relaxed);
             fill = L->wr.load(std::memory_order_relaxed) - L->rd.load(std::memory_order_acquire);
             drain(); // notes arrive while the ring fills
         }
+        // at rest (emu_host.h): the ring is full again and nobody reads it;
+        // wait for an entry, and read nothing from the emulator meanwhile
+        if (eshm::rest_wait(L)) continue;
         if (now_us() - liveAt >= 10000) {
             liveAt = now_us();
             publish_live(L, *device, liveAt);

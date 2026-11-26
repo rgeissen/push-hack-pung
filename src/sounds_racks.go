@@ -27,6 +27,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -276,8 +277,12 @@ func writeManifest(dir string, files map[string]bool, ref string) error {
 	for f := range files {
 		list = append(list, f)
 	}
+	sort.Strings(list) // (the same racks give the same file)
 	raw, _ := json.Marshal(list)
 	path := filepath.Join(dir, rackManifest)
+	if had, err := os.ReadFile(path); err == nil && bytes.Equal(had, raw) {
+		return nil // as it is: a file written again in Live's library is one more for its indexer
+	}
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		return err
 	}

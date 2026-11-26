@@ -28,11 +28,57 @@ extern char **environ;
 
 namespace eshm {
 
+// Rest: a sample this near zero is silence (2 of 32768: -84 dB).
+const int REST_LSB = 2;
+
 struct Host {
     Layout *L = nullptr;
     int memfd = -1;
     std::atomic<pid_t> pid{0};
     std::mutex qMu; // the queue to the engine has one writer at a time
+
+    // Rest (docs/GOVERNOR.md). An emulator runs its DSP whether a voice
+    // sounds or not: most of a core for nobody. Once the synth has been
+    // silent for restAfterMs, with no key held and nothing sent to it,
+    // render_block stops reading the ring (heard). The engine renders only
+    // to keep the ring ahead, so it stops with it, the ring full, and waits
+    // (rest_wait). Whatever is sent next (a note, a knob, a sound) ends the
+    // rest before it goes (send): the engine takes it with the ring as far
+    // ahead as it ever is, so a first note is as on time as any other
+    // (measured on a Push, 2026-11-25: 15.0 ms to its sound against 14.4
+    // awake, no underrun in 20 wakings). The emulated synth's time stands
+    // still meanwhile. restAfterMs 0: it never rests.
+    std::atomic<int> restAfterMs{0};
+    std::atomic<int64_t> lastSend{0}; // us (mono_us): anything to the engine
+    std::atomic<uint32_t> rests{0};   // times it went to rest
+    uint32_t quietFrames = 0;         // render_block's: frames of silence in a row
+
+    bool resting() const { return L && L->rest.load(std::memory_order_acquire); }
+
+    // Awake: before anything goes to the engine, and when a rest must end
+    // for another reason. (heard looks at lastSend again after it lets the
+    // synth rest: one of the two always ends a rest begun at this moment.)
+    void wake() {
+        lastSend.store(mono_us(), std::memory_order_release);
+        if (L) L->rest.store(0, std::memory_order_release);
+    }
+
+    // render_block's, after it read a block: loud is the block's loudest
+    // sample (of 32768), whole whether the ring had all of it, held whether
+    // a key is down. Lets the synth rest when it may.
+    void heard(int loud, bool whole, int frames, bool held) {
+        quietFrames = loud > REST_LSB || !whole || held ? 0 : quietFrames + uint32_t(frames);
+        const int ms = restAfterMs.load(std::memory_order_relaxed);
+        if (ms <= 0 || quietFrames / 44 < uint32_t(ms)) return;
+        const int64_t sent = lastSend.load(std::memory_order_acquire);
+        if (mono_us() - sent < int64_t(ms) * 1000 || L->wantDeep.load(std::memory_order_relaxed) || !empty(L->toEngine)) return;
+        quietFrames = 0;
+        L->rest.store(1, std::memory_order_release);
+        if (lastSend.load(std::memory_order_acquire) != sent) // something went meanwhile
+            L->rest.store(0, std::memory_order_release);
+        else
+            rests.fetch_add(1, std::memory_order_relaxed);
+    }
 
     bool make(const char *name) {
         memfd = memfd_create(name, MFD_CLOEXEC);
@@ -60,6 +106,7 @@ struct Host {
     bool send(uint8_t kind, const uint8_t *b, size_t n) {
         if (!L) return false;
         std::lock_guard<std::mutex> l(qMu);
+        wake(); // (a rest ends before the entry is there)
         const bool ok = put(L->toEngine, kind, b, n);
         sem_post(&L->wake);
         return ok;
@@ -80,6 +127,7 @@ struct Host {
         L->wr = 0;
         L->rd = 0;
         L->missAt = 0;
+        wake(); // (and no rest before the synth has been heard for a while)
         L->wantDeep = 0;
         L->deepUntil = 0;
         L->blockMaxUs = 0;

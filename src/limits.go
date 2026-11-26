@@ -16,18 +16,41 @@ import (
 //   - emulator: an emulated hardware DSP that takes most of a core. Three at
 //     once left the Push unreachable (2026-11-21, CLAUDE.md): no more than
 //     maxEmulators run together (emulatorsRunning, provider.New).
+//   - rests: the module stops its engine while nobody hears it, and wakes on
+//     time (govrest.go; NATIVE-MODULES.md, "Rest"). Pung's own emulators.
+//   - hostRests: the module is not asked for sound while nobody hears it
+//     (rtloop.c, rt_set_rest), as Schwung's own host does with every module
+//     on Move; its emulator, which renders ahead of what is read, stops by
+//     itself. Schwung's emulators.
+//   - cost: what its emulator takes while it plays, in percent of one core,
+//     measured on a Push (docs/GOVERNOR.md). The governor keeps room for it
+//     (govRoom).
 type moduleLimit struct {
-	One      string `json:"one,omitempty"` // "waits" | "refuses"
-	Emulator bool   `json:"emulator,omitempty"`
+	One       string  `json:"one,omitempty"` // "waits" | "refuses"
+	Emulator  bool    `json:"emulator,omitempty"`
+	Rests     bool    `json:"rests,omitempty"`
+	HostRests bool    `json:"host_rests,omitempty"`
+	Cost      float64 `json:"cost,omitempty"`
+}
+
+// emulatorCostUnknown: an emulator nobody measured counts as a Virus.
+const emulatorCostUnknown = 100
+
+func (l *moduleLimit) cost() float64 {
+	if l.Cost > 0 {
+		return l.Cost
+	}
+	return emulatorCostUnknown
 }
 
 var moduleLimits = map[string]moduleLimit{
-	"nodalred": {One: "waits", Emulator: true},
-	"ostirus":  {One: "waits", Emulator: true},
-	"vavra":    {One: "waits", Emulator: true},
-	"xenia":    {One: "waits", Emulator: true},
-	"jp8000":   {One: "refuses", Emulator: true},
-	"osirus":   {Emulator: true},
+	// costs: a six-note chord held, 2026-11-25 (docs/GOVERNOR.md)
+	"nodalred": {One: "waits", Emulator: true, Rests: true, Cost: 180},
+	"ostirus":  {One: "waits", Emulator: true, Rests: true, Cost: 100},
+	"vavra":    {One: "waits", Emulator: true, Rests: true, Cost: 65},
+	"xenia":    {One: "waits", Emulator: true, Rests: true, Cost: 80},
+	"jp8000":   {One: "refuses", Emulator: true, HostRests: true},
+	"osirus":   {Emulator: true, HostRests: true},
 }
 
 // limitsOf: a module's limits, nil where it has none.

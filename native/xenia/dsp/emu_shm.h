@@ -17,11 +17,12 @@
 #include <cstdio>
 #include <cstring>
 #include <semaphore.h>
+#include <time.h>
 
 namespace eshm {
 
 const uint32_t MAGIC = 0x454d5531; // "EMU1"
-const uint32_t VERSION = 2;
+const uint32_t VERSION = 3;
 
 const int RING = 4096;      // stereo frames, a power of two
 const int QUEUE = 1 << 16;  // bytes a queue holds
@@ -57,6 +58,9 @@ struct Layout {
     std::atomic<int32_t> wantDeep;  // a sound change waits: render AHEAD_DUMP ahead
     std::atomic<int64_t> deepUntil; // and stay that deep until then (CLOCK_MONOTONIC us)
     std::atomic<int64_t> missAt;    // the last underrun (us), from render_block
+    // 1: nobody hears the synth and render_block reads no ring (emu_host.h,
+    // "Rest"); the engine waits for an entry (rest_wait)
+    std::atomic<int32_t> rest;
     Queue toEngine;
     sem_t wake; // posted by render_block (the ring was read) and with every entry
 
@@ -77,6 +81,12 @@ struct Layout {
     std::atomic<uint32_t> wr, rd;
     int16_t ring[RING * 2];
 };
+
+inline int64_t mono_us() {
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return int64_t(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
+}
 
 // A queue's writer: one at a time (the plugin's under a lock of its own).
 // false: full, the entry is dropped.
@@ -103,9 +113,24 @@ template <class Vec> inline bool take(Queue &q, uint8_t &kind, Vec &out) {
     return true;
 }
 
+inline bool empty(const Queue &q) { return q.w.load(std::memory_order_acquire) == q.r.load(std::memory_order_acquire); }
+
 inline void clear(Queue &q) {
     q.w.store(0, std::memory_order_relaxed);
     q.r.store(0, std::memory_order_relaxed);
+}
+
+// The engine's part of a rest (emu_host.h, "Rest"), called once its ring is
+// full: true when the synth rests, after waiting for an entry (posted with
+// the wake semaphore) or a second, whichever is first; the engine then goes
+// round its loop again and reads nothing from the emulator. false: awake.
+inline bool rest_wait(Layout *l) {
+    if (!l->rest.load(std::memory_order_acquire) || !empty(l->toEngine)) return false;
+    timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 1; // (an engine looks for its parent each time round)
+    sem_timedwait(&l->wake, &ts);
+    return true;
 }
 
 // The blob, written by the engine, read by the plugin whole: its bytes and
@@ -143,5 +168,55 @@ inline void get_text(const Layout *l, char *status, size_t ns, char *error, size
         if (l->textSeq.load(std::memory_order_acquire) == a) return;
     }
 }
+
+// Cold: an engine that has not yet played the sound it holds. The emulator
+// compiles the synth's code the first time it runs it, and the first notes of
+// a sound it had not played underran the ring while it did: a freshly started
+// Vavra ten and six times on the first chord of a new sound with the ring
+// AHEAD deep; OsTIrus once, two seconds after its start, and not again in
+// twenty minutes of playing, its slowest block then all work and no waiting
+// (measured 2026-11-25). So the ring stays deep from a start or a new sound
+// until the first notes are through: a second and a half after the first of
+// them with no slow block, eight seconds at most. AHEAD_DUMP was not always
+// enough (a fresh Vavra: two underruns on one first chord in four, single
+// blocks of up to 33 ms), so a cold ring is AHEAD_COLD deep: ten cold starts,
+// no underrun. Those first notes sound that much later (36 ms); every note
+// after them as always.
+//
+// Not every synth needs it: a fresh Xenia's and Nodal Red's first chords of
+// three new sounds each had no slow block at all (0.4 and 1.9 ms at most).
+// So an engine finds out: when the first notes of its first three sounds go
+// by with no slow block it is never cold again; one slow block among first
+// notes, and it is cold with every new sound for as long as it runs.
+const int AHEAD_COLD = 1920; // 44 ms
+struct Cold {
+    bool cold = true;
+    bool needed = false, off = false; // a slow block among first notes; three sounds' first notes without one
+    bool hit = false;
+    int calm = 0;
+    int64_t note = 0, slow = 0;
+    void sound() { // a new sound (or the start): nothing of it is compiled yet
+        if (off) return;
+        cold = true;
+        hit = false;
+        note = 0;
+    }
+    void note_on(int64_t now) {
+        if (cold && !note) note = now;
+    }
+    void block(uint32_t us, int64_t now) {
+        if (us <= 3000) return;
+        slow = now;
+        if (cold && note) hit = true;
+    }
+    bool deep(int64_t now) { // the ring is to be deep
+        if (cold && note && ((now - note > 1500000 && now - slow > 1500000) || now - note > 8000000)) {
+            cold = false;
+            if (hit) needed = true;
+            else if (!needed && ++calm >= 3) off = true;
+        }
+        return cold;
+    }
+};
 
 } // namespace eshm

@@ -200,6 +200,7 @@ type pungMod struct {
 
 	running bool // under mu
 	kick    chan struct{}
+	unheard atomic.Bool // the runner leaves the device alone: nobody hears it (run)
 	// closed: the device is gone (set under the slot's lock): the slot's
 	// index may be another device's, and nothing is written to it again
 	closed bool
@@ -303,11 +304,29 @@ func (pm *pungMod) midi(msg []byte) {
 	}
 	if msg[0]&0xF0 == 0xB0 && len(msg) >= 3 && msg[1] == 1 {
 		pm.wheel.Store(math.Float64bits(float64(msg[2]) / 127))
+		pm.wakeUnheard()
 		return
 	}
 	if p, ok := pm.keys.event(msg); ok {
 		pm.press.Store(math.Float64bits(p))
+		pm.wakeUnheard()
 	}
+}
+
+// wakeUnheard: a runner that left a silent device alone (run) writes at the
+// first key or move of the wheel, not at its next look. A runner at work is
+// not hurried: it writes at its own pace, whatever the keys send.
+func (pm *pungMod) wakeUnheard() {
+	if pm.unheard.Load() {
+		pm.wake()
+	}
+}
+
+// any: a key is held
+func (k *pmodKeys) any() bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return len(k.held) > 0
 }
 
 // pmodKeys: Pressure as one value for the whole sound: the newest held
@@ -460,9 +479,34 @@ func (pm *pungMod) srcVal(id string) float64 {
 
 // ---- the runner -------------------------------------------------------------
 
+// pmodUnheardAfter: a device that may rest (an emulator: docs/GOVERNOR.md)
+// and has been silent this long with no key held is not written by an LFO:
+// each write would wake its synth, 50 times a second, for nobody.
+// pmodUnheardLook: how often the runner then looks whether it sounds again
+// (a key, the wheel, pressure and a change to the routes wake it at once).
+const (
+	pmodUnheardAfter = 2 * time.Second
+	pmodUnheardLook  = 250 * time.Millisecond
+)
+
+// unheard: nobody hears what the LFOs would do to this device now. since:
+// when it fell silent with no key held (zero: it sounds); the answer and
+// since for the next look.
+func pmodUnheard(mayRest, keyHeld, loud bool, since, now time.Time) (bool, time.Time) {
+	if keyHeld || loud {
+		return false, time.Time{}
+	}
+	if since.IsZero() {
+		since = now
+	}
+	return mayRest && now.Sub(since) >= pmodUnheardAfter, since
+}
+
 // run: while there are routes, the LFOs advance and every routed control is
 // written when its value changes; a control whose last route went is given
-// its root back
+// its root back. A device that may rest is left alone while nobody hears it
+// (pmodUnheard): the LFOs run on, unwritten, and the first key finds them
+// where they are by then.
 func (pm *pungMod) run() {
 	t := time.NewTicker(pm.period)
 	defer t.Stop()
@@ -470,10 +514,25 @@ func (pm *pungMod) run() {
 	var held [2]float64 // Random: the value of this cycle
 	last := time.Now()
 	active := map[string]bool{}
+	var (
+		quietSince       time.Time
+		unheard          bool
+		doneConf         *pmodConf // the routes and LFOs of the last pass that wrote
+		doneWheel, doneP uint64
+	)
 	for {
-		select {
-		case <-t.C:
-		case <-pm.kick:
+		if unheard {
+			look := time.NewTimer(pmodUnheardLook)
+			select {
+			case <-look.C:
+			case <-pm.kick:
+			}
+			look.Stop()
+		} else {
+			select {
+			case <-t.C:
+			case <-pm.kick:
+			}
 		}
 		now := time.Now()
 		dt := now.Sub(last).Seconds()
@@ -509,6 +568,16 @@ func (pm *pungMod) run() {
 		if pm.s.loading.Load() {
 			continue // a module loads: nothing written, nothing read
 		}
+		wheel, press := pm.wheel.Load(), pm.press.Load()
+		unheard, quietSince = pmodUnheard(pm.s.rests.Load(), pm.keys.any(), peakDB(pm.s.peak()) >= liveSilentDB, quietSince, now)
+		if unheard && (c != doneConf || wheel != doneWheel || press != doneP) {
+			unheard = false // a hand on the wheel or the routes: this pass writes
+		}
+		pm.unheard.Store(unheard)
+		if unheard {
+			continue
+		}
+		doneConf, doneWheel, doneP = c, wheel, press
 		restore := lockBoost()
 		pm.s.own.Lock()
 		if pm.closed {

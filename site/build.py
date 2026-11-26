@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds the three Pung pages: shared head and style, the Push figures, images inline, links between them.
+"""Builds the four Pung pages: shared head and style, the Push figures, images inline, links between them.
 
   build.py                 the page bodies beside this file (published as claude.ai artifacts)
   build.py --pages OUT     whole documents into OUT, linked to each other, for GitHub Pages
@@ -11,15 +11,16 @@ IMG = json.load(open(os.path.join(HERE, "images.json")))
 CSS = open(os.path.join(HERE, "pung.css")).read()
 LINKS = json.load(open(os.path.join(HERE, "links.json")))
 OUT = None  # set by --pages: whole documents, relative links
-SITE = {"vision": "./", "manual": "manual.html", "design": "design.html"}
+SITE = {"vision": "./", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
 DESC = {
     "vision": "Pung runs Schwung modules on Ableton Push 3 Standalone, as devices in Live: what it is and how it works.",
     "manual": "The Pung manual: installing Pung on a Push 3 Standalone, the Pung view and its controls, sounds, modules.",
     "design": "The design principles of the Pung view on Push 3: screens, controls, envelopes, colours.",
+    "performance": "How Pung spends a Push 3's processor and battery: emulators that rest in silence, measured costs, a view that draws only what changed.",
 }
-FILES = {"vision": "index.html", "manual": "manual.html", "design": "design.html"}
+FILES = {"vision": "index.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
 
-PAGES = [("vision", "Vision"), ("manual", "Manual"), ("design", "Design")]
+PAGES = [("vision", "Vision"), ("manual", "Manual"), ("design", "Design"), ("performance", "Performance")]
 FONTS = ("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900"
          "&family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap")
 

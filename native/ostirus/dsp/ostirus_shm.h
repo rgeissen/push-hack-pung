@@ -15,11 +15,12 @@
 #include <cstdio>
 #include <cstring>
 #include <semaphore.h>
+#include <time.h>
 
 namespace oshm {
 
 const uint32_t MAGIC = 0x4f535449; // "OSTI"
-const uint32_t VERSION = 2; // 2: the live cutoff (liveCut, liveAt, liveHook)
+const uint32_t VERSION = 4; // 2: the live cutoff (liveCut, liveAt, liveHook); 3: rest; 4: what a slow block was
 
 const int RING = 4096;  // stereo frames, a power of two
 const int QUEUE = 1 << 16; // bytes of MIDI and dumps waiting for the engine
@@ -50,6 +51,14 @@ struct Layout {
     std::atomic<int32_t> quit;
     std::atomic<int32_t> gain;    // percent
     std::atomic<int64_t> missAt;  // the last underrun (CLOCK_MONOTONIC us), from render_block
+    // 1: nobody hears the synth and render_block reads no ring
+    // (ostirus_plugin.cpp, "Rest"); the engine waits for an entry (rest_wait)
+    std::atomic<int32_t> rest;
+    // the newest note-on: where the ring's reader was when the plugin got it
+    // (noteRd), and its writer when the engine gave it to the synth (noteWr):
+    // the frames of ring the note sounds behind (debug_info: note_lead)
+    std::atomic<uint32_t> noteRd, noteWr;
+    std::atomic<uint32_t> wakes, dropped; // rests ended, and blocks of silence dropped as they did (debug_info)
     std::atomic<uint32_t> qw, qr; // the queue: [u16 length][u8 kind][bytes], wrapping
     uint8_t q[QUEUE];
     sem_t wake; // posted by render_block (the ring was read) and with every entry
@@ -60,6 +69,13 @@ struct Layout {
     char status[160];
     char error[200];
     std::atomic<uint32_t> blockUs, blockMaxUs;
+    // what stood behind the slowest moments since debug_info was read last:
+    // the processor time the whole engine took during the slowest block (far
+    // above the block's own time: the emulator worked, as when it compiles
+    // code it runs for the first time; far below: it waited for a processor),
+    // the longest reading of the live cutoff between two blocks, and the
+    // longest the engine's thread slept past the 2 ms it asked for
+    std::atomic<uint32_t> blockMaxCpuUs, tickMaxUs, waitMaxUs;
     std::atomic<int32_t> tables; // 0 not read yet, 1 read (tab), 2 none found in this firmware
     // Where the newest voice has Filter 1's cutoff now (Pung's live_mod): the
     // value the DSP's program works out for it, LFOs, envelope and keytrack in
@@ -103,6 +119,20 @@ template <class Vec> inline bool take(Layout *l, uint8_t &kind, Vec &out) {
     return true;
 }
 
+// The engine's part of a rest (ostirus_plugin.cpp, "Rest"), called once its
+// ring is full: true when the synth rests, after waiting for an entry (posted
+// with the wake semaphore) or a second, whichever is first; the engine then
+// goes round its loop again and reads nothing from the emulator. false: awake.
+inline bool rest_wait(Layout *l) {
+    if (!l->rest.load(std::memory_order_acquire) || l->qw.load(std::memory_order_acquire) != l->qr.load(std::memory_order_acquire))
+        return false;
+    timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 1; // (the engine looks for its parent each time round)
+    sem_timedwait(&l->wake, &ts);
+    return true;
+}
+
 // status and error, written by the engine, read by the plugin whole
 inline void set_text(Layout *l, const char *status, const char *error) {
     l->textSeq.fetch_add(1, std::memory_order_acq_rel);
@@ -120,5 +150,55 @@ inline void get_text(const Layout *l, char *status, size_t ns, char *error, size
         if (l->textSeq.load(std::memory_order_acquire) == a) return;
     }
 }
+
+// Cold: an engine that has not yet played the sound it holds. The emulator
+// compiles the synth's code the first time it runs it, and the first notes of
+// a sound it had not played underran the ring while it did: a freshly started
+// Vavra ten and six times on the first chord of a new sound with the ring
+// AHEAD deep; OsTIrus once, two seconds after its start, and not again in
+// twenty minutes of playing, its slowest block then all work and no waiting
+// (measured 2026-11-25). So the ring stays deep from a start or a new sound
+// until the first notes are through: a second and a half after the first of
+// them with no slow block, eight seconds at most. AHEAD_DUMP was not always
+// enough (a fresh Vavra: two underruns on one first chord in four, single
+// blocks of up to 33 ms), so a cold ring is AHEAD_COLD deep: ten cold starts,
+// no underrun. Those first notes sound that much later (36 ms); every note
+// after them as always.
+//
+// Not every synth needs it: a fresh Xenia's and Nodal Red's first chords of
+// three new sounds each had no slow block at all (0.4 and 1.9 ms at most).
+// So an engine finds out: when the first notes of its first three sounds go
+// by with no slow block it is never cold again; one slow block among first
+// notes, and it is cold with every new sound for as long as it runs.
+const int AHEAD_COLD = 1920; // 44 ms
+struct Cold {
+    bool cold = true;
+    bool needed = false, off = false; // a slow block among first notes; three sounds' first notes without one
+    bool hit = false;
+    int calm = 0;
+    int64_t note = 0, slow = 0;
+    void sound() { // a new sound (or the start): nothing of it is compiled yet
+        if (off) return;
+        cold = true;
+        hit = false;
+        note = 0;
+    }
+    void note_on(int64_t now) {
+        if (cold && !note) note = now;
+    }
+    void block(uint32_t us, int64_t now) {
+        if (us <= 3000) return;
+        slow = now;
+        if (cold && note) hit = true;
+    }
+    bool deep(int64_t now) { // the ring is to be deep
+        if (cold && note && ((now - note > 1500000 && now - slow > 1500000) || now - note > 8000000)) {
+            cold = false;
+            if (hit) needed = true;
+            else if (!needed && ++calm >= 3) off = true;
+        }
+        return cold;
+    }
+};
 
 } // namespace oshm

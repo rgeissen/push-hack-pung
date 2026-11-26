@@ -136,6 +136,8 @@ func main() {
 	mux := http.NewServeMux()
 	h.routes(mux)
 	h.webRoutes(mux)
+	h.governorRoutes(mux)
+	h.governRoutes(mux)
 	h.settingsRoutes(mux)
 	h.mods.routes(mux)
 	h.sounds.routes(mux)
@@ -238,8 +240,9 @@ func main() {
 	h.live = lv
 	go lv.run(stop)
 	surf := newSurface(h)
+	h.surf.Store(surf)
 	surf.live = lv
-	lv.state().onChange = func() { surf.dirty.Store(true) }
+	lv.state().onChange = func() { surf.frameStats.byLive.Add(1); surf.dirty.Store(true) }
 	go surf.run(stop)
 	surf.routes(mux)
 	mux.HandleFunc("GET /api/live", func(w http.ResponseWriter, r *http.Request) {

@@ -2,7 +2,7 @@
     "id": "vavra",
     "name": "Vavra",
     "abbrev": "mQ",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "description": "Waldorf microQ emulator (Gearmulator Vavra)",
     "author": "dsp56300/gearmulator (Pung module: rgeissen)",
     "license": "GPL-3.0",

@@ -35,6 +35,18 @@ void rt_free(rtloop *rt);
 
 void rt_set_out_ch(rtloop *rt, int ch);  /* the device's "MIDI Out Ch" */
 void rt_set_midifx(rtloop *rt, int on); /* a MIDI effect is loaded: it gets the clock */
+/* host rest: an instrument silent this many frames, with no key down and
+ * nothing sent to it, is not rendered until something is (0: always rendered) */
+void rt_set_rest(rtloop *rt, int frames);
+int rt_resting(rtloop *rt, uint32_t *rests); /* at rest now; how often it has rested */
+void rt_touch_slot(int slot);                /* Go changed the slot's module: a rested one wakes */
+/* the rule itself, apart from the thread (rtloop_test.go) */
+typedef struct {
+    int quiet, probe; /* frames of silence; frames since a rested module was looked at */
+    int resting;
+} rt_rest_t;
+int rt_rest_before(rt_rest_t *r, int busy, int frames);                               /* 1: render this block */
+int rt_rest_after(rt_rest_t *r, int busy, float peak, int frames, int rest_after); /* 1: a rest began */
 
 /* to Go */
 int rt_take_params(rtloop *rt, uint32_t *idx, float *norm, int max);
@@ -58,5 +70,14 @@ typedef struct {
     float out_peak, in_peak;                                       /* about the last second */
 } rt_stats_t;
 void rt_stats(rtloop *rt, rt_stats_t *out);
+
+/* since the thread started (governor.go): its processor time, the time in
+ * the module's render, the blocks served */
+typedef struct {
+    int64_t cpu_ns, render_ns;
+    uint64_t blocks;
+    float out_peak; /* about the last second */
+} rt_usage_t;
+void rt_usage(rtloop *rt, rt_usage_t *out);
 
 #endif

@@ -27,6 +27,46 @@
  * this thread's priority meanwhile (bridge.c), so a wait this long is a
  * holder in a long call. */
 #define LOCK_WAIT_NS 500000
+/* Host rest (rt_set_rest): an instrument whose module is built for a host
+ * that stops rendering it in silence, as Schwung's own does on Move
+ * (schwung_shim.c: idle after a second within 4 LSB, a look twice a second).
+ * Pung waits the governor's rest time, and for no key to be down. */
+#define REST_LEVEL (4.0f / 32768.0f)
+#define REST_PROBE 22050 /* frames between two looks at a rested module */
+#define RT_SLOTS 64
+
+/* rt_rest_before: whether this block is rendered. busy: something was sent
+ * to the module, a key is down, or it does not rest at all. A rested module
+ * is looked at every REST_PROBE frames. */
+int rt_rest_before(rt_rest_t *r, int busy, int frames) {
+    if (busy) r->quiet = 0, r->resting = 0;
+    if (!r->resting) return 1;
+    r->probe += frames;
+    if (r->probe < REST_PROBE) return 0;
+    r->probe = 0;
+    return 1;
+}
+
+/* rt_rest_after: a rendered block's peak. A block that sounds ends a rest
+ * and the count of silence; rest_after frames of silence begin one (1: it
+ * just did). */
+int rt_rest_after(rt_rest_t *r, int busy, float pk, int frames, int rest_after) {
+    if (pk > REST_LEVEL) {
+        r->quiet = 0, r->resting = 0;
+        return 0;
+    }
+    if (busy || r->resting || rest_after <= 0) return 0;
+    r->quiet += frames;
+    if (r->quiet < rest_after) return 0;
+    r->resting = 1, r->probe = 0;
+    return 1;
+}
+
+/* what Go did to a slot's module (a parameter, a sound): it wakes a rested one */
+static _Atomic uint32_t rt_touched[RT_SLOTS];
+void rt_touch_slot(int slot) {
+    if (slot >= 0 && slot < RT_SLOTS) atomic_fetch_add_explicit(&rt_touched[slot], 1, memory_order_relaxed);
+}
 
 typedef struct {
     uint32_t idx;
@@ -48,6 +88,13 @@ struct rtloop {
     uint8_t held[HELD][3];
     int clk_playing;
     long long clk_tick;
+    int keys;            /* keys down, of down[][] */
+    int midi_now;        /* this block carried a message for the chain (not a clock tick) */
+    rt_rest_t rest;      /* host rest (rt_set_rest) */
+    uint32_t touch_seen;
+    _Atomic int rest_frames; /* silence after which the module is not rendered; 0: never */
+    _Atomic int resting;
+    _Atomic uint32_t rests;
     int64_t last_t0;
     float out[LD_IPC_MAXF * 2], in[LD_IPC_MAXF * 2];
     uint8_t mbuf[1024];
@@ -75,6 +122,7 @@ struct rtloop {
 
     _Atomic uint64_t blocks, notes_in, notes_out, skipped, held_sent, rekeyed, preview_frames;
     _Atomic int64_t proc_max, gap_max, acq_max, render_max;
+    _Atomic int64_t render_sum; /* all the time spent in the module's render */
     _Atomic uint32_t out_peak, in_peak; /* float bits */
 };
 
@@ -124,11 +172,13 @@ static int unpack(uint32_t p, uint8_t *m) {
 /* The key guard (keyguard.go): a note-on for a key that is already down
  * gets a note-off in front of it, so a module never counts a key twice. */
 static void guard_send(rtloop *rt, const uint8_t *msg, int len) {
+    if (len < 1 || msg[0] != 0xF8) rt->midi_now = 1;
     if (len >= 3 && msg[1] <= 127) {
         int ch = msg[0] & 0x0F, key = msg[1];
         switch (msg[0] & 0xF0) {
         case 0x90:
             if (msg[2] == 0) {
+                rt->keys -= rt->down[ch][key];
                 rt->down[ch][key] = 0;
                 break;
             }
@@ -136,14 +186,20 @@ static void guard_send(rtloop *rt, const uint8_t *msg, int len) {
                 uint8_t off[3] = {(uint8_t)(0x80 | ch), (uint8_t)key, 0};
                 sb_midi_nolock(rt->slot, off, 3, 0);
                 atomic_fetch_add_explicit(&rt->rekeyed, 1, memory_order_relaxed);
+            } else {
+                rt->keys++;
             }
             rt->down[ch][key] = 1;
             break;
         case 0x80:
+            rt->keys -= rt->down[ch][key];
             rt->down[ch][key] = 0;
             break;
         case 0xB0:
-            if (key == 120 || key == 123) memset(rt->down[ch], 0, 128);
+            if (key == 120 || key == 123) {
+                for (int k = 0; k < 128; k++) rt->keys -= rt->down[ch][k];
+                memset(rt->down[ch], 0, 128);
+            }
             break;
         }
     }
@@ -257,6 +313,7 @@ static void block(rtloop *rt) {
     int64_t t0 = now_ns();
     if (rt->last_t0) keep_max(&rt->gap_max, t0 - rt->last_t0);
     rt->last_t0 = t0;
+    rt->midi_now = 0;
 
     int frames = (int)*u32(mem, LD_OFF_FRAMES);
     if (frames < 0 || frames > LD_IPC_MAXF) frames = 0;
@@ -365,9 +422,30 @@ static void block(rtloop *rt) {
             input = rt->in;
             peak(rt, &rt->in_peak, inL, inR, frames);
         }
-        int64_t tr = now_ns();
-        float pk = sb_render_nolock(rt->slot, rt->out, input, frames);
-        keep_max(&rt->render_max, now_ns() - tr);
+        /* host rest: a rested module is not rendered, and looked at twice
+         * a second; a message, a key down or anything Go did to it wakes it
+         * in this block, before its render */
+        int rest_after = rt->kind == RT_INSTRUMENT ? atomic_load_explicit(&rt->rest_frames, memory_order_relaxed) : 0;
+        uint32_t touch = atomic_load_explicit(&rt_touched[rt->slot & (RT_SLOTS - 1)], memory_order_relaxed);
+        /* (a MIDI effect in front of the synth may play by itself, on the
+         * clock or not, and only a render runs it: such a device never rests) */
+        int busy = rt->midi_now || rt->keys > 0 || touch != rt->touch_seen || rest_after <= 0 ||
+                   atomic_load_explicit(&rt->midifx, memory_order_relaxed);
+        rt->touch_seen = touch;
+        float pk = 0;
+        if (rt_rest_before(&rt->rest, busy, frames)) {
+            int64_t tr = now_ns();
+            pk = sb_render_nolock(rt->slot, rt->out, input, frames);
+            int64_t dr = now_ns() - tr;
+            keep_max(&rt->render_max, dr);
+            atomic_fetch_add_explicit(&rt->render_sum, dr, memory_order_relaxed);
+            if (rt_rest_after(&rt->rest, busy, pk, frames, rest_after))
+                atomic_fetch_add_explicit(&rt->rests, 1, memory_order_relaxed);
+        } else {
+            memset(rt->out, 0, sizeof(float) * 2 * (size_t)frames);
+        }
+        if (rt->rest.resting != atomic_load_explicit(&rt->resting, memory_order_relaxed))
+            atomic_store_explicit(&rt->resting, rt->rest.resting, memory_order_relaxed);
         if (pk > bitsf(atomic_load_explicit(&rt->meter, memory_order_relaxed)))
             atomic_store_explicit(&rt->meter, fbits(pk), memory_order_relaxed);
         /* the screens' copy (feedAudio, the capture) */
@@ -507,6 +585,11 @@ void rt_free(rtloop *rt) {
 
 void rt_set_out_ch(rtloop *rt, int ch) { atomic_store_explicit(&rt->out_ch, ch, memory_order_relaxed); }
 void rt_set_midifx(rtloop *rt, int on) { atomic_store_explicit(&rt->midifx, on != 0, memory_order_relaxed); }
+void rt_set_rest(rtloop *rt, int frames) { atomic_store_explicit(&rt->rest_frames, frames < 0 ? 0 : frames, memory_order_relaxed); }
+int rt_resting(rtloop *rt, uint32_t *rests) {
+    if (rests) *rests = atomic_load_explicit(&rt->rests, memory_order_relaxed);
+    return atomic_load_explicit(&rt->resting, memory_order_relaxed);
+}
 
 int rt_take_params(rtloop *rt, uint32_t *idx, float *norm, int max) {
     int n = 0;
@@ -598,6 +681,20 @@ int rt_put_preview(rtloop *rt, const float *pcm, int frames) {
 
 void rt_preview_stop(rtloop *rt) { atomic_store_explicit(&rt->prev_stop, 1, memory_order_release); }
 int rt_preview_stopping(rtloop *rt) { return atomic_load_explicit(&rt->prev_stop, memory_order_acquire); }
+
+/* rt_usage: what the thread has cost since it started. Its processor time is
+ * read from the thread's own clock by the caller's thread: nothing is added
+ * to a block for it. */
+void rt_usage(rtloop *rt, rt_usage_t *o) {
+    o->cpu_ns = 0;
+    clockid_t c;
+    struct timespec ts;
+    if (rt->running && pthread_getcpuclockid(rt->th, &c) == 0 && clock_gettime(c, &ts) == 0)
+        o->cpu_ns = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+    o->render_ns = atomic_load(&rt->render_sum);
+    o->blocks = atomic_load(&rt->blocks);
+    o->out_peak = bitsf(atomic_load(&rt->out_peak));
+}
 
 void rt_stats(rtloop *rt, rt_stats_t *o) {
     o->blocks = atomic_load(&rt->blocks);

@@ -53,6 +53,12 @@
 namespace {
 
 const int BLOCK = 64;        // frames the emulator renders at a time
+// WAKE_DROP: blocks of the emulator's silence dropped as it wakes from a rest
+// (the main loop, "waking"). Measured on a Push, 30 notes awake and 30 after a
+// rest, turn about (2026-11-25), a note to its sound: none dropped 19.3 ms
+// against 15.6 awake; two 16.6 against 14.9; three 13.7 against 15.2. Three:
+// the first note after a rest is never the later one.
+const int WAKE_DROP = 3;
 const int AHEAD = 320;       // frames kept ready for the host (7 ms)
 const int AHEAD_DUMP = 1280; // 29 ms, around a sound dump (the emulator stalls taking one)
 const int64_t MISS_DEEP_US = 3000000;
@@ -522,8 +528,13 @@ int main(int argc, char **argv) {
     // supersedes the knobs held for the one before (it already has them: the
     // plugin's sound is changed before a knob's byte is sent); notes stay.
     std::vector<std::vector<uint8_t>> held;
+    oshm::Cold cold;
     auto play = [&](const std::vector<uint8_t> &e) {
-        if (e.size() > 2 && (e[0] & 0xf0) == 0x90 && e[2] > 0) lv_note(live, now_us());
+        if (e.size() > 2 && (e[0] & 0xf0) == 0x90 && e[2] > 0) {
+            cold.note_on(now_us());
+            lv_note(live, now_us());
+            L->noteWr.store(L->wr.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
         synthLib::SMidiEvent ev = to_event(e);
         plugin->addMidiEvent(ev);
     };
@@ -547,6 +558,7 @@ int main(int argc, char **argv) {
         synthLib::SMidiEvent ev = to_event(sound);
         plugin->addMidiEvent(ev);
         dumpPending = false;
+        cold.sound();
         for (const auto &e : held) play(e);
         held.clear();
     };
@@ -604,9 +616,64 @@ int main(int argc, char **argv) {
     for (size_t i = 0; i < ins.size(); i++) ins[i] = silent;
     std::vector<synthLib::SMidiEvent> midiOut;
     int64_t deepUntil = 0, liveAt = 0;
+    // One block from the emulator into the ring. drop: a block of silence is
+    // thrown away instead (true: it was), see "waking" below.
+    auto cpu_us = [] { // the whole engine's processor time, every thread of it
+        timespec ts;
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
+        return int64_t(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
+    };
+    auto block = [&](bool drop) -> bool {
+        const int64_t t0 = now_us(), c0 = cpu_us();
+        for (auto &b : buf) memset(b, 0, sizeof(b));
+        plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
+        midiOut.clear();
+        plugin->getMidiOut(midiOut);
+        const float g = float(L->gain.load(std::memory_order_relaxed)) * 0.01f * 0.5f * 32767.0f;
+        if (drop) {
+            float loud = 0;
+            for (int i = 0; i < BLOCK; i++) loud = std::max(loud, std::max(fabsf(buf[0][i]), fabsf(buf[1][i])));
+            if (loud * g < 2.5f) return true; // silence (within 2 of 32768, as the plugin's rest)
+        }
+        const uint32_t w = L->wr.load(std::memory_order_relaxed);
+        for (int i = 0; i < BLOCK; i++) {
+            const uint32_t k = (w + uint32_t(i)) & (oshm::RING - 1);
+            L->ring[k * 2] = int16_t(lrintf(soft_limit(buf[0][i] * g)));
+            L->ring[k * 2 + 1] = int16_t(lrintf(soft_limit(buf[1][i] * g)));
+        }
+        L->wr.store(w + BLOCK, std::memory_order_release);
+        const uint32_t us = uint32_t(now_us() - t0);
+        cold.block(us, t0);
+        L->blockUs.store(us, std::memory_order_relaxed);
+        if (us > L->blockMaxUs.load(std::memory_order_relaxed)) {
+            L->blockMaxUs.store(us, std::memory_order_relaxed);
+            L->blockMaxCpuUs.store(uint32_t(cpu_us() - c0), std::memory_order_relaxed);
+        }
+        return false;
+    };
+    bool rested = false;
     while (!L->quit.load(std::memory_order_relaxed)) {
         if (getppid() != parent) break; // (PDEATHSIG covers it; this is in case)
         drain(true);
+        // Waking. At rest the emulated Virus stands with more audio rendered
+        // ahead than it keeps while it is played (its own buffers fill while
+        // nobody takes from them), all of it silence, and the note that ends
+        // the rest sounds behind it: 3.5 ms later than a note into the synth
+        // awake, with the ring equally far ahead both times (note_lead: 320
+        // frames in both). So the surplus is taken out here, before the ring
+        // is read again: WAKE_DROP blocks of the emulator's silence are
+        // thrown away (31 wakings, no underrun).
+        // A block that is not silence is kept and ends it: nothing that
+        // sounds is ever dropped.
+        if (rested && !L->rest.load(std::memory_order_acquire)) {
+            rested = false;
+            L->wakes.fetch_add(1, std::memory_order_relaxed);
+            for (int i = 0; i < WAKE_DROP && !L->quit.load(std::memory_order_relaxed); i++) {
+                if (!block(true)) break;
+                L->dropped.fetch_add(1, std::memory_order_relaxed);
+            }
+            drain(true);
+        }
         uint32_t fill = L->wr.load(std::memory_order_relaxed) - L->rd.load(std::memory_order_acquire);
         if (dumpPending && fill >= uint32_t(AHEAD_DUMP)) {
             send_sound();
@@ -614,30 +681,25 @@ int main(int argc, char **argv) {
         }
         const int64_t tnow = now_us(), miss = L->missAt.load(std::memory_order_relaxed);
         const bool deep = dumpPending || tnow < deepUntil || (miss && tnow - miss < MISS_DEEP_US);
-        const uint32_t target = deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
+        const uint32_t target = cold.deep(tnow) ? uint32_t(oshm::AHEAD_COLD) : deep ? uint32_t(AHEAD_DUMP) : uint32_t(AHEAD);
         while (fill < target && !L->quit.load(std::memory_order_relaxed)) {
-            const int64_t t0 = now_us();
-            for (auto &b : buf) memset(b, 0, sizeof(b));
-            plugin->process(ins, outs, BLOCK, 120.0f, 0.0f, false);
-            midiOut.clear();
-            plugin->getMidiOut(midiOut);
-            const float g = float(L->gain.load(std::memory_order_relaxed)) * 0.01f * 0.5f * 32767.0f;
-            const uint32_t w = L->wr.load(std::memory_order_relaxed);
-            for (int i = 0; i < BLOCK; i++) {
-                const uint32_t k = (w + uint32_t(i)) & (oshm::RING - 1);
-                L->ring[k * 2] = int16_t(lrintf(soft_limit(buf[0][i] * g)));
-                L->ring[k * 2 + 1] = int16_t(lrintf(soft_limit(buf[1][i] * g)));
-            }
-            L->wr.store(w + BLOCK, std::memory_order_release);
-            const uint32_t us = uint32_t(now_us() - t0);
-            L->blockUs.store(us, std::memory_order_relaxed);
-            if (us > L->blockMaxUs.load(std::memory_order_relaxed)) L->blockMaxUs.store(us, std::memory_order_relaxed);
+            block(false);
             fill = L->wr.load(std::memory_order_relaxed) - L->rd.load(std::memory_order_acquire);
             drain(true); // notes arrive while the ring fills
+        }
+        // at rest (ostirus_plugin.cpp): the ring is full again and nobody
+        // reads it; wait for an entry, and read nothing from the emulator
+        // meanwhile. (A sound waiting for the ring to be deep is not at rest:
+        // nothing rests within the rest time of anything sent.)
+        if (!dumpPending && oshm::rest_wait(L)) {
+            rested = true;
+            continue;
         }
         if (const int64_t t = now_us(); t - liveAt >= 10000) {
             liveAt = t;
             lv_tick(live, t);
+            const uint32_t took = uint32_t(now_us() - t);
+            if (took > L->tickMaxUs.load(std::memory_order_relaxed)) L->tickMaxUs.store(took, std::memory_order_relaxed);
         }
         timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -646,7 +708,10 @@ int main(int argc, char **argv) {
             ts.tv_sec++;
             ts.tv_nsec -= 1000000000;
         }
+        const int64_t w0 = now_us();
         sem_timedwait(&L->wake, &ts);
+        const uint32_t waited = uint32_t(now_us() - w0);
+        if (waited > L->waitMaxUs.load(std::memory_order_relaxed)) L->waitMaxUs.store(waited, std::memory_order_relaxed);
     }
     // no teardown: the process ends, and the emulator's threads with it
     _exit(0);

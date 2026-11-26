@@ -123,7 +123,8 @@
         b.innerHTML = `<span class="meter" aria-hidden="true">${"<i></i>".repeat(6)}</span>` +
           `<span class="nm">${esc(d.name)}</span>` +
           `<span class="sub"><i class="dot ${o}" title="${esc(ORIGIN[o])}"></i><span class="where">${esc(d.track || KIND[d.kind] || "")}</span>` +
-          (d.selected ? `<span class="sel" title="Selected in Live">● Live</span>` : "") + `</span>`;
+          (d.selected ? `<span class="sel" title="Selected in Live">● Live</span>` : "") +
+          `<span class="rest" title="At rest: silent, and taking no processor until its next note or knob" hidden>Resting</span></span>`;
         b.setAttribute("aria-label", `${d.name}, ${ORIGIN[o]}${d.track ? ", on " + d.track : ""}${d.selected ? ", selected in Live" : ""}`);
         b.onclick = () => { setFollow(false); selectDevice(d.n); renderRack(); };
         nav.appendChild(b);
@@ -135,6 +136,8 @@
       if (!b) return;
       const lit = Math.max(0, Math.min(6, Math.round(((d.peak_db ?? -120) + 48) / 8)));
       b.querySelectorAll(".meter i").forEach((seg, i) => seg.classList.toggle("on", i < lit));
+      const rest = b.querySelector(".rest");
+      if (rest) rest.hidden = !d.resting;
     });
   }
 

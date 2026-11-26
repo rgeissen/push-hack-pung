@@ -40,6 +40,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"image"
 	"log"
 	"math"
@@ -81,7 +82,9 @@ type surface struct {
 	push alsaseq.Addr
 
 	focused atomic.Bool
-	dirty   atomic.Bool
+	// focusWake: the view was opened (the frame loop waits on it while Push has the screen)
+	focusWake chan struct{}
+	dirty     atomic.Bool
 	// standIn: push-manager opened the view in place of Push's device view
 	// (pmclient.FocusInfo.DeviceView); its leaving buttons are push-manager's
 	standIn atomic.Bool
@@ -173,7 +176,7 @@ func newSurface(h *Host) *surface {
 	pm := pmclient.New("http://127.0.0.1:7701")
 	pm.App = "pung"
 	exe, _ := os.Executable()
-	u := &surface{h: h, pm: pm, view: "chain", touched: -1, peekEnc: -1, focus: -1,
+	u := &surface{h: h, pm: pm, view: "chain", touched: -1, peekEnc: -1, focus: -1, focusWake: make(chan struct{}, 1),
 		meta: map[string]*compMeta{}, vals: map[string]string{}, leds: map[uint16]uint8{},
 		ov: newOverrides(filepath.Join(h.dataDir, "overrides"), filepath.Join(filepath.Dir(exe), "overrides"))}
 	h.ui = u
@@ -218,6 +221,10 @@ func (u *surface) run(done <-chan struct{}) {
 			Pads: true,
 			OnFocus: func() {
 				u.focused.Store(true)
+				select { // the frame loop sleeps while Push has the screen (frames)
+				case u.focusWake <- struct{}{}:
+				default:
+				}
 				if u.live != nil {
 					u.live.state().active.Store(true)
 				}
@@ -286,13 +293,26 @@ func (u *surface) attach() error {
 	}()
 	go func() {
 		for msg := range events {
-			if u.focused.Load() {
+			if u.focused.Load() && isControl(msg) {
 				u.handle(msg)
 			}
 		}
 	}()
 	log.Printf("surface: reading the Push at %d:%d", port.Addr.Client, port.Addr.Port)
 	return nil
+}
+
+// isControl: a message the view acts on: a button, an encoder or a touch
+// (a note or a controller). The Push also sends Active Sensing four times a
+// second, and pressure and pitch bend while the pads are played: none of it
+// is the view's, and each one redrew the screen (found 2026-11-25: an idle
+// view drew 7 frames a second for it, a played pad one every tick).
+func isControl(msg []byte) bool {
+	if len(msg) != 3 {
+		return false
+	}
+	st := msg[0] & 0xF0
+	return st == 0x90 || st == 0x80 || st == 0xB0
 }
 
 type pushReader struct{ out chan<- []byte }
@@ -418,7 +438,7 @@ func (u *surface) routes(mux *http.ServeMux) {
 			"write_state": map[string]any{"ready": u.liveReady, "writable": u.liveWritable, "resolved": u.liveResolved,
 				"pung": u.livePung, "values": len(u.vals), "last_turn": u.lastTurn},
 			"turn_to_screen_ms": u.lagMS,
-			"frame_draw_us":     u.frameStats.drawUS.Load(), "frame_push_us": u.frameStats.pushUS.Load(), "frames": u.frameStats.n.Load(),
+			"frame_draw_us":     u.frameStats.drawUS.Load(), "frame_push_us": u.frameStats.pushUS.Load(), "frames": u.frameStats.n.Load(), "frame_why": u.frameStats.whys(),
 			"module_ui_draw_us": u.overlayDrawUS(p.Module),
 			"position":          p, "positions": u.positions, "bank": u.bank, "banks": banks, "keys": keys,
 			"toast": u.toast, "live": u.liveActive(), "live_params": u.lvIdx,
@@ -808,6 +828,7 @@ func (u *surface) handle(msg []byte) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	defer u.dirty.Store(true)
+	u.frameStats.byInput.Add(1)
 	st := msg[0] & 0xF0
 	switch {
 	case (st == 0x90 || st == 0x80) && len(msg) == 3:
@@ -1741,6 +1762,31 @@ func (u *surface) paintLEDs() {
 
 // ---- frames ---------------------------------------------------------------------
 
+// frameReadEvery: how often a frame that only moves (nothing changed) reads
+// Live's selection and values again. Live itself is asked every 150 ms.
+const frameReadEvery = 50 * time.Millisecond
+
+// frameRestEvery: at rest, with no value changed, a frame comes this often
+// (overrides.md: about 2 a second).
+const frameRestEvery = 500 * time.Millisecond
+
+// valsSig: a signature of the values the view shows, whatever their order.
+func valsSig(vals map[string]string) uint64 {
+	var sum uint64
+	for k, v := range vals {
+		h := fnv.New64a()
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+		h.Write([]byte(v))
+		sum += h.Sum64() // (a sum: the map's order does not matter)
+	}
+	return sum ^ uint64(len(vals))
+}
+
+// frameMoveEvery: the least time between two frames drawn only because
+// something moves: 30 a second, with room for the loop's own tick.
+const frameMoveEvery = 30 * time.Millisecond
+
 func (u *surface) frames(done <-chan struct{}) {
 	// 16 ms: a turn waits half a tick on average for its frame, and at 33 ms
 	// that wait was most of what was left between a knob and the screen. A
@@ -1748,6 +1794,9 @@ func (u *surface) frames(done <-chan struct{}) {
 	t := time.NewTicker(16 * time.Millisecond)
 	defer t.Stop()
 	var lastPeak float64 = -999
+	var lastLive uint64 // the live session's tick the last frame drew
+	var lastRead, lastDrawn time.Time
+	var lastSig uint64 // the values the last frame at rest was drawn for
 	for {
 		select {
 		case <-done:
@@ -1755,27 +1804,79 @@ func (u *surface) frames(done <-chan struct{}) {
 		case <-t.C:
 		}
 		if !u.focused.Load() {
+			// Push has the screen: nothing to draw until the view is opened
+			// (OnFocus wakes the loop), and no tick of this loop until then
+			t.Stop()
+			select {
+			case <-done:
+				return
+			case <-u.focusWake:
+			case <-time.After(time.Second): // (in case a wake was missed)
+			}
+			t.Reset(16 * time.Millisecond)
 			continue
 		}
 		u.mu.Lock()
-		u.refreshPositions(false)
-		if time.Since(u.lastVals) > 250*time.Millisecond {
-			u.refreshValues()
-			u.dirty.Store(true)
+		// What this tick could show: something changed (dirty), something
+		// moves (the meter, a peek, a notice, the live pictures, a screen
+		// that drew the time), or the values are due to be read again.
+		// Without any of it nothing is read and nothing is drawn. The live
+		// pictures move when their session ticked (30 times a second,
+		// overrides.md): a tick of this loop between two of its ticks would
+		// draw the same picture again.
+		now := time.Now()
+		stale := now.Sub(u.lastVals) > 250*time.Millisecond
+		peak := u.level()
+		liveOn, liveSeq := u.liveTick()
+		var why [len(frameWhys)]bool
+		why[whyChanged] = u.dirty.Load()
+		why[whyDue] = stale
+		why[whyMeter] = math.Abs(peak-lastPeak) > 0.5
+		why[whyPeek] = now.Before(u.peekUntil.Add(50 * time.Millisecond))
+		why[whyRows] = u.open && now.Before(u.rowsUntil.Add(50*time.Millisecond))
+		why[whyNotice] = u.toastShown(2600 * time.Millisecond)
+		why[whyLive] = liveOn && liveSeq != lastLive
+		why[whyMoved] = now.UnixNano()-ovMovedAt.Load() < int64(100*time.Millisecond)
+		animating := why[whyMeter] || why[whyPeek] || why[whyRows] || why[whyNotice] || why[whyLive] || why[whyMoved]
+		if !stale && !animating && !u.dirty.Load() {
+			u.mu.Unlock()
+			continue
+		}
+		// Live's selection and values, read for a frame that will be drawn:
+		// at once when something changed, else at most every frameReadEvery
+		// (a picture that only moves needs no new values 30 times a second).
+		if stale || u.dirty.Load() || now.Sub(lastRead) >= frameReadEvery {
+			lastRead = now
+			u.refreshPositions(false)
+		}
+		// The values were read again: a frame for it when one of them changed
+		// (a knob turned in Live, a sound loaded), and now and then
+		// regardless, for what a screen reads by itself (a status line).
+		if stale {
+			u.lastVals = now
+			if sig := valsSig(u.vals); sig != lastSig || now.Sub(lastDrawn) >= frameRestEvery {
+				lastSig = sig
+				u.dirty.Store(true)
+			}
 		}
 		if u.holdFrame() { // the last coherent frame stays; dirty stays set
 			u.mu.Unlock()
 			continue
 		}
-		peak := u.level()
-		animating := math.Abs(peak-lastPeak) > 0.5 || time.Now().Before(u.peekUntil.Add(50*time.Millisecond)) ||
-			(u.open && time.Now().Before(u.rowsUntil.Add(50*time.Millisecond))) ||
-			u.toastShown(2600*time.Millisecond) || u.liveWanted() ||
-			time.Now().UnixNano()-ovMovedAt.Load() < int64(100*time.Millisecond)
-		if !u.dirty.Swap(false) && !animating {
+		// A frame that only moves comes 30 times a second (overrides.md),
+		// whatever moves it: the meter of a sounding device would otherwise
+		// draw one every tick. A change (a turn, a press) is drawn at once.
+		if changed := u.dirty.Swap(false); !changed && (!animating || now.Sub(lastDrawn) < frameMoveEvery) {
 			u.mu.Unlock()
 			continue
 		}
+		lastDrawn = now
+		for i, on := range why {
+			if on {
+				u.frameStats.why[i].Add(1)
+			}
+		}
+		lastLive = liveSeq
 		lastPeak = peak
 		turnAt := u.turnAt
 		u.turnAt = time.Time{}
@@ -2012,11 +2113,12 @@ func (u *surface) refreshLive() {
 			}
 		}
 	}
+	pd, pprefix := u.pungDevice() // once: it is the same device for every parameter
 	for _, lp := range dev.Params {
 		if lp.Max <= lp.Min {
 			continue
 		}
-		key := u.liveParamKey(sel, cm, lp)
+		key := liveParamKey(pd, pprefix, sel, cm, lp)
 		if key == "" {
 			continue
 		}
@@ -2030,7 +2132,7 @@ func (u *surface) refreshLive() {
 	// device; Osirus has 156, the JV-880 419): read from Pung's own device
 	// for it, the keys this page and its compartment show.
 	u.fallbackDev, u.fallbackRead = -1, 0
-	if d, prefix := u.pungDevice(); d != nil {
+	if d, prefix := pd, pprefix; d != nil {
 		u.fallbackDev = d.s.Index
 		need := []string{}
 		free := map[string]bool{} // a screen's extra keys: values with no metadata (a patch name)
@@ -2070,8 +2172,8 @@ func (u *surface) refreshLive() {
 // indexes to several keys at once, so a tone page showed, and wrote,
 // another tone's value (and a tone's cutoff wrote the macro cutoff;
 // measured on the device, 2026-11-15).
-func (u *surface) liveParamKey(sel position, cm *compMeta, lp liveParam) string {
-	if d, prefix := u.pungDevice(); d != nil && d.c.module == sel.Module && lp.I >= 1 && lp.I-1 < len(d.c.order) {
+func liveParamKey(d *device, prefix string, sel position, cm *compMeta, lp liveParam) string {
+	if d != nil && d.c.module == sel.Module && lp.I >= 1 && lp.I-1 < len(d.c.order) {
 		if pi := d.c.order[lp.I-1]; pi < len(d.c.Params) {
 			if k, ok := strings.CutPrefix(d.c.Params[pi].Key, prefix+":"); ok {
 				if m := cm.Params[k]; m != nil && m.Name == lp.Name {
@@ -2186,4 +2288,4 @@ func (u *surface) overlayDrawUS(module string) int64 {
 }
 
 // redraw: the next frame draws, whatever changed.
-func (u *surface) redraw() { u.dirty.Store(true) }
+func (u *surface) redraw() { u.frameStats.byRedraw.Add(1); u.dirty.Store(true) }

@@ -185,6 +185,20 @@ struct Instance {
     std::mutex qMu;       // the queue's writer side (on_midi and set_param come from different threads)
     std::atomic<uint32_t> underruns{0};
     bool hole = false;    // render_block's: the block before ended short
+    // Rest (docs/GOVERNOR.md; emu_host.h has the same for the other
+    // emulators). The Virus's two DSPs run whether a voice sounds or not:
+    // three quarters of a core for nobody. Once the synth has been silent for
+    // restAfterMs, with no key held and nothing sent to it, render_block
+    // stops reading the ring (heard). The engine renders only to keep the
+    // ring ahead, so it stops with it, the ring full, and waits (rest_wait).
+    // Whatever is sent next (a note, a knob, a sound) ends the rest before it
+    // goes (send): the engine takes it with the ring as far ahead as it ever
+    // is, so a first note is as on time as any other. The emulated synth's
+    // time stands still meanwhile. restAfterMs 0: it never rests.
+    std::atomic<int> restAfterMs{0};
+    std::atomic<int64_t> lastSend{0}; // us: anything to the engine
+    std::atomic<uint32_t> rests{0};   // times it went to rest
+    uint32_t quietFrames = 0;         // render_block's: frames of silence in a row
     std::atomic<uint64_t> held[2] = {{0}, {0}}; // keys down now, a bit a note (live_mod)
     std::atomic<int64_t> lastOff{0};              // the last key let go (live_mod: the sound still sounds)
 
@@ -217,10 +231,43 @@ void set_status(Instance *in, const char *s) {
     snprintf(in->status, sizeof(in->status), "%s", s);
 }
 
+// Rest: a sample this near zero is silence (2 of 32768: -84 dB).
+const int REST_LSB = 2;
+
+bool resting(const Instance *in) { return in->L && in->L->rest.load(std::memory_order_acquire); }
+
+// Awake: before anything goes to the engine. (heard looks at lastSend again
+// after it lets the synth rest: one of the two always ends a rest begun at
+// this moment.)
+void wake(Instance *in) {
+    in->lastSend.store(now_us(), std::memory_order_release);
+    if (in->L) in->L->rest.store(0, std::memory_order_release);
+}
+
+// render_block's, after it read a block: loud is the block's loudest sample
+// (of 32768), whole whether the ring had all of it. Lets the synth rest when
+// it may.
+void heard(Instance *in, int loud, bool whole, int frames) {
+    oshm::Layout *L = in->L;
+    const bool held = in->held[0].load(std::memory_order_relaxed) || in->held[1].load(std::memory_order_relaxed);
+    in->quietFrames = loud > REST_LSB || !whole || held ? 0 : in->quietFrames + uint32_t(frames);
+    const int ms = in->restAfterMs.load(std::memory_order_relaxed);
+    if (ms <= 0 || in->quietFrames / 44 < uint32_t(ms)) return;
+    const int64_t sent = in->lastSend.load(std::memory_order_acquire);
+    if (now_us() - sent < int64_t(ms) * 1000 || L->qw.load(std::memory_order_acquire) != L->qr.load(std::memory_order_acquire)) return;
+    in->quietFrames = 0;
+    L->rest.store(1, std::memory_order_release);
+    if (in->lastSend.load(std::memory_order_acquire) != sent) // something went meanwhile
+        L->rest.store(0, std::memory_order_release);
+    else
+        in->rests.fetch_add(1, std::memory_order_relaxed);
+}
+
 // An event to the engine (dropped while it boots: the sound goes as a dump).
 void send(Instance *in, synthLib::SMidiEvent &ev, uint8_t kind = oshm::EVENT) {
     if (!in->L) return;
     std::lock_guard<std::mutex> l(in->qMu);
+    wake(in); // (a rest ends before the entry is there)
     if (!ev.sysex.empty()) {
         oshm::put(in->L, kind, ev.sysex.data(), ev.sysex.size());
     } else {
@@ -460,8 +507,12 @@ bool spawn(Instance *in, const std::string &romPath) {
     L->wr = 0;
     L->rd = 0;
     L->missAt = 0;
+    wake(in); // (and no rest before the synth has been heard for a while)
     L->tables = 0;
     L->blockMaxUs = 0;
+    L->blockMaxCpuUs = 0;
+    L->tickMaxUs = 0;
+    L->waitMaxUs = 0;
     oshm::set_text(L, "Starting", "");
     {
         std::lock_guard<std::mutex> l(in->mu);
@@ -732,6 +783,7 @@ void v2_on_midi(void *instance, const uint8_t *msg, int len, int) {
     // was let go less than 3 s ago)
     if ((st == 0x90 || st == 0x80) && len > 2) {
         const uint64_t bit = uint64_t(1) << (d1 & 63);
+        if (st == 0x90 && d2 > 0 && in->L) in->L->noteRd.store(in->L->rd.load(std::memory_order_relaxed), std::memory_order_relaxed);
         if (st == 0x90 && d2 > 0) in->held[d1 >> 6].fetch_or(bit);
         else in->held[d1 >> 6].fetch_and(~bit), in->lastOff = now_us();
     } else if (st == 0xb0 && (d1 == 120 || d1 == 123)) {
@@ -968,6 +1020,11 @@ void mod_set(Instance *in, const char *val) {
 void v2_set_param(void *instance, const char *key, const char *val) {
     Instance *in = static_cast<Instance *>(instance);
     if (!in || !key || !val) return;
+    if (!strcmp(key, "rest_after_ms")) { // Pung's (docs/GOVERNOR.md), not the sound's: in no state
+        in->restAfterMs.store(std::max(0, atoi(val)), std::memory_order_relaxed);
+        if (atoi(val) <= 0) wake(in);
+        return;
+    }
     if (!strcmp(key, "model")) {
         int m = -1;
         for (int i = 0; i < 3; i++)
@@ -1057,9 +1114,14 @@ int v2_get_param(void *instance, const char *key, char *buf, int len) {
     if (!in || !key || !buf || len <= 0) return -1;
     if (!strcmp(key, "debug_info")) {
         if (!in->L) return snprintf(buf, size_t(len), "underruns=%u", in->underruns.load());
-        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u engine_pid=%d", in->underruns.load(),
-                        in->L->blockUs.load(), in->L->blockMaxUs.exchange(0), in->L->wr.load() - in->L->rd.load(), int(in->pid.load()));
+        return snprintf(buf, size_t(len), "underruns=%u block_us=%u block_max_us=%u fill=%u engine_pid=%d resting=%d rests=%u rest_after_ms=%d note_lead=%u wakes=%u dropped=%u block_max_cpu_us=%u tick_max_us=%u wait_max_us=%u",
+                        in->underruns.load(), in->L->blockUs.load(), in->L->blockMaxUs.exchange(0), in->L->wr.load() - in->L->rd.load(),
+                        int(in->pid.load()), int(resting(in)), in->rests.load(), in->restAfterMs.load(),
+                        in->L->noteWr.load() - in->L->noteRd.load(), in->L->wakes.load(), in->L->dropped.load(),
+                        in->L->blockMaxCpuUs.exchange(0), in->L->tickMaxUs.exchange(0), in->L->waitMaxUs.exchange(0));
     }
+    if (!strcmp(key, "rest_after_ms")) return snprintf(buf, size_t(len), "%d", in->restAfterMs.load());
+    if (!strcmp(key, "resting")) return snprintf(buf, size_t(len), "%d", int(resting(in)));
     if (!strcmp(key, "status") || !strcmp(key, "load_error")) {
         char st[160], err[200];
         texts(in, st, sizeof(st), err, sizeof(err));
@@ -1230,14 +1292,21 @@ void v2_render(void *instance, int16_t *out, int frames) {
         return;
     }
     oshm::Layout *L = in->L;
+    if (resting(in)) { // at rest: silence, the ring kept as it is
+        memset(out, 0, size_t(frames) * 2 * sizeof(int16_t));
+        return;
+    }
     const uint32_t r = L->rd.load(std::memory_order_relaxed);
     const uint32_t have = L->wr.load(std::memory_order_acquire) - r;
     const uint32_t n = std::min<uint32_t>(have, uint32_t(frames));
+    int loud = 0;
     for (uint32_t i = 0; i < n; i++) {
         const uint32_t k = (r + i) & (RING - 1);
         out[i * 2] = L->ring[k * 2];
         out[i * 2 + 1] = L->ring[k * 2 + 1];
+        loud = std::max(loud, std::max(abs(int(out[i * 2])), abs(int(out[i * 2 + 1]))));
     }
+    heard(in, loud, n == uint32_t(frames), frames);
     if (in->hole && n > 0) { // the block before ended short: back in with a fade
         const uint32_t f = std::min<uint32_t>(n, FADE);
         for (uint32_t i = 0; i < f; i++) {
