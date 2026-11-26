@@ -35,6 +35,21 @@ function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value || 
 function num(v, k, d) { var n = parseFloat(known(v, k) ? v[k].value : ""); return isNaN(n) ? d : n; }
 function raw(v, k) { return known(v, k) ? String(v[k].value || "").toLowerCase() : ""; } // an enum's own name, whatever it reads as
 function on(v, k) { var s = raw(v, k); return s === "on" || s === "1"; }
+// Where the sound has a control now (v[k].now: the module's live_mod, the
+// newest voice's while a note sounds), 0..1 of its range; null when nothing
+// moves it. The knob's own mark stays where the knob is; the sound's place
+// goes beside it in the modulation colour.
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - v[k].frac) > 0.004; }
+function frNow(v, k, d) { var n = nowOf(v, k); return n === null ? fr(v, k, d) : n; }
+// on a track (x, y, w): a line from the knob's place to the sound's, and a dot
+function nowMark(g, v, k, x, y, w) {
+  if (!moved(v, k)) return;
+  var f = v[k].frac, n = nowOf(v, k);
+  g.fill(x + w * Math.min(f, n), y, Math.max(1, w * Math.abs(n - f)), 1, MOD_DK);
+  g.dot(x + w * n, y + 0.5, 2.8, MOD);
+}
 
 // ---- the oscillator types: the module's names, Plaits' engine, Plaits' names for the macros --
 var TYPES = [
@@ -147,7 +162,7 @@ function wavePts(x, y, w, h, cycles, fn) {
 }
 // the OLED's picture of the type
 function picture(g, v, i, x, y, w, h, col) {
-  var e = TYPES[i], H = fr(v, "harmonics", 0.5), T = fr(v, "timbre", 0.5), M = fr(v, "morph", 0.5);
+  var e = TYPES[i], H = frNow(v, "harmonics", 0.5), T = frNow(v, "timbre", 0.5), M = frNow(v, "morph", 0.5); // the wave the sound makes now
   var hq = Math.round(H * 64) / 64, tq = Math.round(T * 64) / 64, mq = Math.round(M * 64) / 64;
   var fn = waveFn(e[4], hq, tq, mq);
   if (fn) {
@@ -208,6 +223,7 @@ function plates(g, v, values, names) {
       var f = v[k].frac, bip = /_amt$|^pan$|^pitch$/.test(k);
       if (bip) { var cx = x + 60, wv = Math.round((f - 0.5) * 100); g.fill(wv < 0 ? cx + wv : cx, ys, Math.max(1, Math.abs(wv)), 2, c); g.fill(cx, ys - 2, 1, 6, PRINT3); }
       else g.fill(x + 10, ys, Math.max(1, Math.round(100 * f)), 2, c);
+      nowMark(g, v, k, x + 10, ys, 100);
     }
   }
 }
@@ -317,6 +333,7 @@ function panel(g, v) {
       var y = 67 + m * 11, k = ks[m];
       g.fill(146, y, 56, 1, "#2a2f35");
       if (known(v, k)) g.fill(146, y - 2, Math.max(2, Math.round(56 * fr(v, k, 0))), 5, t === k ? "slot" : OLED_FG);
+      nowMark(g, v, k, 146, y, 56);
     }
     if (known(v, "harmonics") && known(v, "timbre") && known(v, "morph")) picture(g, v, i, 214, 30, 118, 62, hot ? "slot" : OLED_FG);
   }
@@ -340,6 +357,7 @@ function panel(g, v) {
   g.text(952, 98, "VCF+VCA", col > 0.5 ? PRINT : PRINT3, 1);
   g.fill(760, 94, 128, 1, PRINT3);
   if (known(v, "lpg_color")) g.fill(758 + 128 * col, 89, 4, 10, t === "lpg_color" ? "slot" : COPPER);
+  nowMark(g, v, "lpg_color", 760, 94, 128);
   g.text(712, 98, known(v, "filter_cutoff") && fr(v, "filter_cutoff", 1) >= 0.999 && fr(v, "filter_resonance", 0) <= 0.0001 && mi === 0 ? "OPEN: BYPASSED" : "", PRINT3, 1);
 }
 // Pung's default pages on the black body, white print and copper plates
@@ -506,6 +524,7 @@ push.compartment({
     g.text(10, 48, "L", PRINT3, -1); g.text(222, 48, "R", PRINT3, 1);
     var px = 116 + pan * 100;
     g.dot(px, 44.5, 3 + Math.min(2, vol) * 2.5, t === "pan" || t === "volume" ? "slot" : COPPER);
+    nowMark(g, v, "pan", 16, 44, 200);
     g.text(116, 76, known(v, "volume") ? valueOf(v, "volume") + "   " + valueOf(v, "pan") : "--", t === "volume" || t === "pan" ? "slot" : PRINT2, 0);
     g.fill(236, 4, 1, 78, "#2a2a30");
     // over mode, polyphony, unison: the eight voices, grouped by note
@@ -520,12 +539,13 @@ push.compartment({
     g.fill(476, 4, 1, 78, "#2a2a30");
     // over detune and spread: the unison stack as the engine places it (pan across, pitch up)
     var det = num(v, "detune", 0), spr = num(v, "spread", 0);
+    var detN = frNow(v, "detune", det), sprN = frNow(v, "spread", spr); // the stack as the sound has it now (0..1 ranges)
     var cx = 600, cy = 46;
     g.fill(492, cy, 216, 1, "#2a2a30"); g.fill(cx, 18, 1, 58, "#2a2a30");
     g.text(496, 16, "+CENTS", PRINT3, -1); g.text(704, 80, "PAN", PRINT3, 1);
     var hot = t === "detune" || t === "spread";
     for (var u = 0; u < uni; u++) {
-      var st = (u - 0.5 * (uni - 1)) * det * 0.6, pp = uni > 1 ? (u / (uni - 1) * 2 - 1) * spr : 0;
+      var st = (u - 0.5 * (uni - 1)) * detN * 0.6, pp = uni > 1 ? (u / (uni - 1) * 2 - 1) * sprN : 0;
       g.dot(cx + pp * 100, cy - Math.max(-1, Math.min(1, st / 2.1)) * 26, 3.5, hot ? "slot" : PRINT);
     }
     g.text(704, 16, uni > 1 ? "+/- " + Math.round((uni - 1) * 0.5 * det * 0.6 * 100) + " CENTS" : "NO UNISON", PRINT2, 1);

@@ -31,6 +31,20 @@ function fr(v, k, d) { return known(v, k) ? v[k].frac : d; }
 function iv(v, k, d) { if (!known(v, k)) return d; var n = parseInt(v[k].value, 10); return isNaN(n) ? d : n; }
 function up(s) { return String(s).toUpperCase(); }
 function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : (x === x ? x : 0); }
+// where the sound has a control now (v[k].now: the module's live_mod: an LFO's
+// target, the filter's edges after its envelope, the pan after its key follow;
+// null when nothing moves it), 0..1 and in the control's raw units; the
+// sound's place is drawn in the modulation colour beside the knob's
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp01(v[k].now) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - fr(v, k, 0)) > 0.004; }
+function liveIv(v, k, d) { var n = nowOf(v, k); return n === null || !(v[k].max > v[k].min) ? iv(v, k, d) : v[k].min + n * (v[k].max - v[k].min); }
+function nowTrack(g, v, k, x, y, w) {
+  if (!moved(v, k)) return;
+  var f = fr(v, k, 0), n = nowOf(v, k);
+  g.fill(x + w * Math.min(f, n), y, Math.max(1, w * Math.abs(n - f)), 1, MOD_DK);
+  g.dot(x + w * n, y + 0.5, 2.8, MOD);
+}
 
 // ---- the machine's vocabulary (ui_chain.js) -------------------------------------------------
 
@@ -216,8 +230,8 @@ function pulse(x, y, w, h, cycles, pw) {
 function tri(x, y, w, h, cycles) { var p = []; for (var i = 0; i <= cycles * 2; i++) p.push([x + i * w / (cycles * 2), i % 2 ? y : y + h]); return p; }
 
 function machinePicture(g, v, m) {
-  var x = MACH.x, y = MACH.y, w = MACH.w, s = [];
-  for (var i = 1; i <= 16; i++) s[i] = iv(v, "syn" + i, 0);
+  var x = MACH.x, y = MACH.y, w = MACH.w, s = [], kv = [];
+  for (var i = 1; i <= 16; i++) { kv[i] = iv(v, "syn" + i, 0); s[i] = Math.round(liveIv(v, "syn" + i, 0)); }
   var hot = /^syn/.test(v.$touched || "") ? "slot" : LCD;
   if (m === 0 || m === 1) { // SuperWave: the stack, detuned, and the sub
     var uni = s[1] / 127, wid = s[2] / 127, pw = m === 1 ? 0.05 + 0.9 * s[5] / 127 : 0;
@@ -229,34 +243,36 @@ function machinePicture(g, v, m) {
     g.poly(m === 1 ? pulse(x + 8, y + 6, w - 24, 26, 3, pw) : saw(x + 8, y + 6, w - 24, 26, 3, 0), 2, hot);
     var sub = (m === 0 ? s[5] + s[6] : s[3] + s[4]) / 254;
     if (sub > 0) g.poly(pulse(x + 8, y + 44, w - 24, Math.max(3, Math.round(16 * sub)), 1.5, 0.5), 1.6, LCD);
-    g.text(x, y + 62, "UNISON " + s[1] + "  WIDTH " + s[2] + "  " + (sub > 0 ? "SUB " + Math.round(sub * 100) + "%" : "NO SUB"), LCD_DIM, -1, w);
+    var ksub = (m === 0 ? kv[5] + kv[6] : kv[3] + kv[4]) / 254;
+    g.text(x, y + 62, "UNISON " + kv[1] + "  WIDTH " + kv[2] + "  " + (ksub > 0 ? "SUB " + Math.round(ksub * 100) + "%" : "NO SUB"), LCD_DIM, -1, w);
   } else if (m === 2) { // the ensemble: four pitched voices over the root
     var lv = [127, s[9], s[10], s[11], s[12]];
     for (var e = 0; e < 4; e++) {
-      var val = e === 0 ? "ROOT" : valueOf("syn" + e, s[e], 2), lx = x + 4 + e * 48, on = e === 0 || val !== "OFF";
+      var val = e === 0 ? "ROOT" : valueOf("syn" + e, kv[e], 2), lx = x + 4 + e * 48, on = e === 0 || val !== "OFF";
       var hh = Math.round(36 * (on ? (lv[e + 1] === undefined ? 1 : lv[e + 1] / 127) : 0));
       g.fill(lx, y + 44 - hh, 30, hh, on ? (e === 0 ? LCD : LCD_DIM) : LCD_FAINT);
       g.fill(lx, y + 44, 30, 1, LCD_FAINT);
       g.text(lx + 15, y + 56, val, on ? LCD : LCD_DIM, 0);
     }
-    g.text(x, y + 66, "CHORUS " + s[6] + "  WIDTH " + s[7], LCD_DIM, -1);
+    g.text(x, y + 66, "CHORUS " + kv[6] + "  WIDTH " + kv[7], LCD_DIM, -1);
   } else if (m === 3) { // SID: the wave, its width, its modulation
     var wv = band(s[4], 5), pws = s[1] / 127;
     var pts = wv === 0 ? tri(x + 8, y + 6, w - 24, 30, 3) : wv === 1 ? saw(x + 8, y + 6, w - 24, 30, 3, 0) : wv === 2 ? pulse(x + 8, y + 6, w - 24, 30, 3, 0.05 + 0.9 * pws) : null;
     if (wv === 3) { g.poly(tri(x + 8, y + 6, w - 24, 30, 3), 1, LCD_DIM); pts = pulse(x + 8, y + 6, w - 24, 30, 3, 0.05 + 0.9 * pws); }
     if (wv === 4) { pts = []; for (var q = 0; q <= 48; q++) pts.push([x + 8 + q * (w - 24) / 48, y + 6 + ((q * 7919) % 31)]); }
     g.poly(pts, 2, hot);
-    var mod = valueOf("syn5", s[5], 3);
-    g.text(x, y + 52, "WAVE " + ["TRI", "SAW", "PULS", "MIX", "NOIS"][wv], LCD, -1);
-    g.text(x, y + 66, "MOD " + mod + (mod !== "OFF" ? " " + valueOf("syn7", s[7], 3) : ""), LCD_DIM, -1);
+    var mod = valueOf("syn5", kv[5], 3);
+    g.text(x, y + 52, "WAVE " + ["TRI", "SAW", "PULS", "MIX", "NOIS"][band(kv[4], 5)], LCD, -1);
+    g.text(x, y + 66, "MOD " + mod + (mod !== "OFF" ? " " + valueOf("syn7", kv[7], 3) : ""), LCD_DIM, -1);
   } else if (m === 4) { // DigiPRO: 32 tables, the one playing (and the blend's second)
     var wi = band(s[1], 32), w2 = band(s[9], 32), bl = s[10] / 127;
     for (var c = 0; c < 32; c++) {
       var cx = x + 4 + (c % 16) * 12, cy = y + 6 + Math.floor(c / 16) * 18;
       g.fill(cx, cy, 10, 14, c === wi ? hot : c === w2 && bl > 0 ? LCD_DIM : LCD_FAINT);
     }
-    g.text(x, y + 52, "WAVE " + valueOf("syn1", s[1], 4) + (bl > 0 ? "  BLEND W" + (w2 < 10 ? "0" : "") + w2 + " " + Math.round(bl * 100) + "%" : ""), LCD, -1);
-    g.text(x, y + 66, "SYNC " + valueOf("syn5", s[5], 4), LCD_DIM, -1);
+    var kw2 = band(kv[9], 32), kbl = kv[10] / 127;
+    g.text(x, y + 52, "WAVE " + valueOf("syn1", kv[1], 4) + (kbl > 0 ? "  BLEND W" + (kw2 < 10 ? "0" : "") + kw2 + " " + Math.round(kbl * 100) + "%" : ""), LCD, -1);
+    g.text(x, y + 66, "SYNC " + valueOf("syn5", kv[5], 4), LCD_DIM, -1);
   } else { // FM+ static: the operators, their ratios, the feedback
     var r1 = FM_RATIO[band(s[1], 32)], r2 = FM_RATIO[band(s[5], 32)], fb = s[3], l2 = s[6];
     var ops = [{ n: "1", r: r1, x: x + 4 }, { n: "2", r: r2, x: x + 70 }, { n: "3", r: FM_RATIO[band(s[11], 32)], x: x + 136 }];
@@ -266,8 +282,8 @@ function machinePicture(g, v, m) {
       g.text(ops[o].x + 46, y + 36, ops[o].r, o === 0 ? LCD_BG : LCD, 1);
     }
     if (fb > 0) { g.line(ops[0].x + 26, y + 14, ops[0].x + 26, y + 6, 1.5, LCD); g.line(ops[0].x + 26, y + 6, ops[0].x + 60, y + 6, 1.5, LCD); }
-    g.text(x, y + 56, "FB " + fb + "  OP2 LVL " + l2 + "  OP3 LVL " + s[12], LCD, -1);
-    g.text(x, y + 66, "TONE " + s[7], LCD_DIM, -1);
+    g.text(x, y + 56, "FB " + kv[3] + "  OP2 LVL " + kv[6] + "  OP3 LVL " + kv[12], LCD, -1);
+    g.text(x, y + 66, "TONE " + kv[7], LCD_DIM, -1);
   }
 }
 
@@ -300,6 +316,12 @@ function windowStrip(g, v, x, y, w, h, lo, hi, ink, dim, faint, labels) {
   // the window as it stands
   var x0 = X(o.hp), x1 = X(o.lp), hot = /^flt[1-4]$/.test(t);
   g.fill(Math.round(x0), y + 6, Math.max(2, Math.round(x1 - x0)), h - 12, hot ? "slot" : ink);
+  // where the sound has it now (the envelope, velocity, LFOs on BASE and WDTH)
+  if (moved(v, "flt1") || moved(v, "flt2")) {
+    var lb = liveIv(v, "flt1", 0), lw = liveIv(v, "flt2", 127), n0 = X(lb / 8 - 2), n1 = X(lb / 8 - 2 + lw / 8);
+    g.fill(Math.round(n0), y + h - 4, Math.max(2, Math.round(n1 - n0)), 2, MOD);
+    g.fill(Math.round(n0), y + 2, 2, h - 4, MOD); g.fill(Math.round(n1) - 1, y + 2, 2, h - 4, MOD);
+  }
   if (labels) {
     g.text(x0, y + h + 9, "HP", t === "flt1" ? "slot" : ink, 0);
     g.text(x1, y + h + 9, "LP", t === "flt2" ? "slot" : ink, 0);
@@ -327,6 +349,7 @@ function lfoBank(g, v) {
     // the depth, as a bar
     g.fill(788, y + 19, 158, 3, "#30333a");
     g.fill(788, y + 19, Math.round(158 * L.depth / 127), 3, L.on ? LCD : LCD_DIM);
+    nowTrack(g, v, "lfo" + n + "_7", 788, y + 23, 158);
   }
 }
 
@@ -350,6 +373,11 @@ function row(g, v, machine) {
     if (ok) {
       var a = Math.PI * (0.75 + 1.5 * clamp01(f));
       g.line(cx, cy, cx + Math.cos(a) * (r - 1), cy + Math.sin(a) * (r - 1), 2, hot ? "slot" : LCD);
+      if (moved(v, k)) {
+        var nf = nowOf(v, k), lo = Math.min(f, nf), an = Math.PI * (0.75 + 1.5 * nf);
+        g.arc(cx, cy, r + 3, Math.PI * (0.75 + 1.5 * clamp01(lo)), Math.PI * 1.5 * Math.abs(nf - clamp01(f)), 2, MOD_DK);
+        g.dot(cx + Math.cos(an) * (r + 3), cy + Math.sin(an) * (r + 3), 2.6, MOD);
+      }
     }
     g.value(x + 32, sm ? 139 : 150, ok ? valueOf(k, iv(v, k, 0), machine) : "--", hot ? "slot" : LCD, -1, 78);
     if (i) g.fill(Math.round(x0) - 1, ty, 1, sm ? 30 : 40, LCD_FAINT);
@@ -428,11 +456,13 @@ push.compartment({
     g.text(612, 12, "VOL", vh ? "slot" : LCD_DIM, -1);
     g.fill(614, 22, 12, 58, LCD_FAINT);
     g.fill(614, 80 - Math.round(58 * vol), 12, Math.round(58 * vol), vh ? "slot" : LCD);
+    if (moved(v, "amp6")) g.fill(610, 80 - Math.round(58 * nowOf(v, "amp6")), 20, 2, MOD);
     // pan, a position
     var pan = (iv(v, "amp7", 64) - 64) / 64, ph = t === "amp7";
     g.text(732, 12, "PAN " + valueOf("amp7", iv(v, "amp7", 64)), ph ? "slot" : LCD_DIM, -1);
     g.fill(732, 50, 96, 1, LCD_FAINT); g.fill(780, 44, 1, 13, LCD_DIM);
     g.fill(Math.round(778 + pan * 46), 42, 5, 17, ph ? "slot" : LCD);
+    if (moved(v, "amp7")) g.dot(780 + (liveIv(v, "amp7", 64) - 64) / 64 * 46, 64, 3, MOD);
     // portamento: the glide's time
     var pt = iv(v, "amp8", 0), gh = t === "amp8";
     g.text(852, 12, "GLIDE " + (pt ? shortTime(secs(pt, 3)) : "OFF"), gh ? "slot" : LCD_DIM, -1);

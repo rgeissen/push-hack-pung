@@ -20,6 +20,7 @@
 
 var BG = "#0e1013", PANEL = "#191b20", BAR = "#23262c", EDGE = "#2e323a", TXT = "#c3c8d1", DIM = "#767c88";
 var ACC = "#d2884f", ACC_DK = "#8a5a37", WAVE = "#4fd06a", HI = "#e8e04a", KNOB = "#0a0b0d";
+var MODC = "#3cc8e6", MOD_DK = "#1f5f6c"; // the modulation colour (Pung's), and its trail
 
 function known(v, k) { return v[k] && v[k].known; }
 function fr(v, k, d) { return known(v, k) ? v[k].frac : d; }
@@ -28,6 +29,12 @@ function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""
 function up(s) { return String(s).toUpperCase(); }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function hot(v, k) { return v.$touched === k; }
+// where the sound has a key now (v[k].now: Tablor's live_mod, the newest
+// voice's), 0..1 of its range; null when nothing moves it
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - fr(v, k, 0)) > 0.004; }
+// the key's raw value as the sound has it (lo..hi: its range), the knob's when nothing moves it
+function numNow(v, k, d, lo, hi) { var n = nowOf(v, k); return n === null ? num(v, k, d) : lo + n * (hi - lo); }
 function anyHot(v, ks) { for (var i = 0; i < ks.length; i++) if (v.$touched === ks[i]) return true; return false; }
 function hex2(n) { var s = Math.round(clamp(n, 0, 255)).toString(16); return s.length < 2 ? "0" + s : s; }
 function mix(a, b, t) {
@@ -45,7 +52,17 @@ function attackSecs(x) { var f = pot01(x); return 0.0005 + 10 * f * f * f * f * 
 function envSecs(x) { return Math.pow(10, pot01(x) * 4 - 3); }
 function noteHz(n) { return 440 * Math.pow(2, (n - 69) / 12); }
 // where the cutoff really stands on Pung's axis (three decades from 20 Hz)
-function fltAt(v) { return clamp(Math.log(noteHz(8 + pot01(num(v, "flt_freq", 127)) * 127) / 20) / Math.LN10 / 3, 0, 1); }
+function fltAtRaw(x) { return clamp(Math.log(noteHz(8 + pot01(x) * 127) / 20) / Math.LN10 / 3, 0, 1); }
+function fltAt(v) { return fltAtRaw(numNow(v, "flt_freq", 127, 0, 127)); } // as the sound has it
+// the filter picture at the sound's cutoff (at: above): the knob's place kept,
+// marked at the foot, the way from it to the sound's in the modulation colour
+function fltKnobMark(g, v, x, y, w, h) {
+  if (!moved(v, "flt_freq")) return;
+  var xk = x + w * fltAtRaw(num(v, "flt_freq", 127)), xn = x + w * fltAt(v), yb = y + h - 2;
+  g.fill(Math.round(xk), yb - 6, 2, 7, TXT);
+  g.fill(Math.min(xk, xn), yb - 1, Math.abs(xn - xk), 2, MOD_DK);
+  g.dot(xn, yb, 3.2, MODC);
+}
 function secText(s) { return s < 1 ? Math.round(s * 1000) + " MS" : s.toFixed(s < 10 ? 2 : 1) + " S"; }
 
 push.envelopeTimes(function (env) {
@@ -141,6 +158,11 @@ function rail(g, v, o, x, y, w, lit) {
     g.dot(x + w * to, y - i * 3, 2.5, ACC);
   }
   if (known(v, "wt" + o + "_pos")) g.fill(Math.round(x + w * pos) - 1, y - 5, 3, 11, lit ? "slot" : HI);
+  if (moved(v, "wt" + o + "_pos")) { // where the sound has it now
+    var nx = x + w * nowOf(v, "wt" + o + "_pos");
+    g.fill(Math.min(x + w * pos, nx), y, Math.abs(nx - x - w * pos), 1, MOD_DK);
+    g.dot(nx, y + 0.5, 3.2, MODC);
+  }
 }
 function tableName(v, o) {
   var s = txt(v, "wt" + o + "_select");
@@ -150,7 +172,7 @@ function tableName(v, o) {
 
 // ---- knobs, the web panel's: a dark cap, the value as an amber arc ---------------------------
 var A0 = Math.PI * 0.75, SWEEP = Math.PI * 1.5;
-function knob(g, cx, cy, r, f, ok, on, bipolar) {
+function knob(g, cx, cy, r, f, ok, on, bipolar, now) {
   g.arc(cx, cy, r + 3, A0, SWEEP, 2, EDGE);
   g.dot(cx, cy, r, KNOB);
   if (!ok) return;
@@ -158,6 +180,10 @@ function knob(g, cx, cy, r, f, ok, on, bipolar) {
   if (bipolar) { var m = A0 + SWEEP / 2; g.arc(cx, cy, r + 3, Math.min(m, a), Math.abs(a - m), 2.5, on ? "slot" : ACC); }
   else if (f > 0.004) g.arc(cx, cy, r + 3, A0, SWEEP * f, 2.5, on ? "slot" : ACC);
   g.line(cx + Math.cos(a) * 3, cy + Math.sin(a) * 3, cx + Math.cos(a) * (r - 1), cy + Math.sin(a) * (r - 1), 2, on ? "slot" : TXT);
+  if (now === null || now === undefined || Math.abs(now - f) <= 0.004) return;
+  var an = A0 + SWEEP * now; // where the sound has it: beside the knob's arc, in the modulation colour
+  g.arc(cx, cy, r + 6, A0 + SWEEP * Math.min(f, now), SWEEP * Math.abs(now - f), 1.5, MOD_DK);
+  g.dot(cx + Math.cos(an) * (r + 6), cy + Math.sin(an) * (r + 6), 3, MODC);
 }
 var BIPOLAR = /_(tune|pan|bend|formant)$|^sub_tune$|_amt$/;
 // how Tablor's values read, everywhere (push.display): pot positions 0..127
@@ -195,7 +221,7 @@ function row(g, v, knobs) {
     var on = v.$touched === k, x0 = i * 120;
     var sg = !!v.$segmode;
     g.text(x0 + 8, sg ? 114 : 116, SHORT[k] || up(v[k].name || k), on ? "slot" : DIM, -1, COL_W - 16);
-    knob(g, x0 + 22, sg ? 127 : 138, sg ? 9 : 12, fr(v, k, 0), known(v, k), on, BIPOLAR.test(k));
+    knob(g, x0 + 22, sg ? 127 : 138, sg ? 9 : 12, fr(v, k, 0), known(v, k), on, BIPOLAR.test(k), nowOf(v, k));
     var s = shown(v, k), uw = s[1] ? g.measure(s[1]) + 3 : 0;
     g.value(x0 + 46, sg ? 136 : 146, s[0], on ? "slot" : ACC, -1, 70 - uw);
     if (s[1]) g.text(x0 + 46 + Math.min(70 - uw, g.measure(s[0], "value")) + 3, sg ? 136 : 146, s[1], DIM, -1);
@@ -229,15 +255,15 @@ function frontGround(g, v, t1, t2, knobs) {
 }
 function oscFront(g, v, o, x0, t) {
   var p = "wt" + o + "_", pos = pot01(num(v, p + "pos", 0)), lit = anyHot(v, [p + "pos", p + "select"]);
-  var name = tableName(v, o);
+  var name = tableName(v, o), posNow = pot01(numNow(v, p + "pos", 0, 0, 127));
   g.text(x0 + 346, FP.top + 10, name, hot(v, p + "select") ? "slot" : ACC, 1, 260);
-  drawPlayed(g, t, pos, x0 + 6, FP.top + 16, 224, 62, lit);
+  drawPlayed(g, t, posNow, x0 + 6, FP.top + 16, 224, 62, lit);
   rail(g, v, o, x0 + 10, FP.bot - 4, 216, hot(v, p + "pos"));
   // the frame as it is played, bent and formant-shifted, at its level
   var wx = x0 + 244, wy = FP.top + 18, ww = 106, wh = 56;
   if (t) {
-    var lv = pot01(num(v, p + "level", 100)), a = 0.25 + 0.75 * lv * lv;
-    var pts = playedWave(t, pos, potBi(num(v, p + "bend", 64)), potBi(num(v, p + "formant", 64)), wx + 4, wy + wh / 2 - (wh / 2 - 3) * a, ww - 8, (wh - 6) * a);
+    var lv = pot01(numNow(v, p + "level", 100, 0, 127)), a = 0.25 + 0.75 * lv * lv;
+    var pts = playedWave(t, posNow, potBi(numNow(v, p + "bend", 64, 0, 127)), potBi(numNow(v, p + "formant", 64, 0, 127)), wx + 4, wy + wh / 2 - (wh / 2 - 3) * a, ww - 8, (wh - 6) * a);
     g.fill(wx + 4, wy + wh / 2, ww - 8, 1, EDGE);
     g.poly(pts, 2, hot(v, p + "level") ? "slot" : (lv > 0.01 ? HI : DIM));
   }
@@ -262,6 +288,7 @@ function filterFront(g, v) {
   var x = 724, w = 232, ft = txt(v, "flt_type") || "LP 24";
   g.text(x + w - 8, FP.top + 10, up(ft), hot(v, "flt_type") ? "slot" : ACC, 1);
   g.filter(x + 2, FP.top + 13, w - 4, 42, { cutoff: "flt_freq", at: fltAt(v), resonance: "flt_res", type: "flt_type", color: TXT });
+  fltKnobMark(g, v, x + 2, FP.top + 13, w - 4, 42);
   g.fill(x + 8, FP.top + 55, w - 16, 1, EDGE);
   g.text(x + 8, FP.top + 66, "AMP", DIM, -1);
   g.envelope(x + 30, FP.top + 56, w - 32, FP.bot - FP.top - 56, { attack: "vca_a", decay: "vca_d", sustain: "vca_s", release: "vca_r", color: TXT });
@@ -302,17 +329,17 @@ push.compartment({
 // (Bend, Formant), 5-7 its level, tune and place in the stereo field.
 // Unison page: cols 1-3 the voices (Unison, Detune, Spread), 4-8 the table.
 function playedBox(g, v, o, t, x, y, w, h) {
-  var p = "wt" + o + "_", pos = pot01(num(v, p + "pos", 0)), bend = potBi(num(v, p + "bend", 64)), form = potBi(num(v, p + "formant", 64));
-  var lit = anyHot(v, [p + "bend", p + "formant"]);
+  var p = "wt" + o + "_", pos = pot01(numNow(v, p + "pos", 0, 0, 127)), bend = potBi(num(v, p + "bend", 64)), form = potBi(num(v, p + "formant", 64));
+  var lit = anyHot(v, [p + "bend", p + "formant"]), bendNow = potBi(numNow(v, p + "bend", 64, 0, 127)), formNow = potBi(numNow(v, p + "formant", 64, 0, 127));
   g.text(x, y + 8, "AS PLAYED", lit ? "slot" : DIM, -1);
   g.text(x + w, y + 8, (Math.abs(bend) > 0.01 ? "BEND " + (bend > 0 ? "+" : "") + Math.round(bend * 100) + "  " : "") +
     (Math.abs(form) > 0.01 ? "FORMANT " + (form > 0 ? "+" : "") + Math.round(form * 100) : ""), lit ? "slot" : DIM, 1);
   if (!t) return;
   g.fill(x, y + 14 + (h - 14) / 2, w, 1, EDGE);
-  g.poly(playedWave(t, pos, bend, form, x, y + 14, w, h - 14), 2, lit ? "slot" : HI);
+  g.poly(playedWave(t, pos, bendNow, formNow, x, y + 14, w, h - 14), 2, lit ? "slot" : HI);
 }
 function tableBox(g, v, o, t, x, y, w, h) {
-  var p = "wt" + o + "_", pos = pot01(num(v, p + "pos", 0));
+  var p = "wt" + o + "_", pos = pot01(numNow(v, p + "pos", 0, 0, 127));
   g.text(x + 2, y + 8, tableName(v, o), hot(v, p + "select") ? "slot" : ACC, -1, w - 50);
   g.text(x + w, y + 8, "POS " + Math.round(num(v, p + "pos", 0)), hot(v, p + "pos") ? "slot" : DIM, 1);
   drawPlayed(g, t, pos, x, y + 6, w, h - 18, anyHot(v, [p + "pos", p + "select"]));
@@ -320,7 +347,7 @@ function tableBox(g, v, o, t, x, y, w, h) {
 }
 function unisonBox(g, v, o, x, w, lit) {
   var p = "wt" + o + "_", uni = Math.round(clamp(num(v, p + "uni", 1), 1, 4)), det = pot01(num(v, p + "detune", 0));
-  var spr = pot01(num(v, p + "spread", 0)), pan = potBi(num(v, p + "pan", 64)), lv = pot01(num(v, p + "level", 100));
+  var spr = pot01(num(v, p + "spread", 0)), pan = potBi(numNow(v, p + "pan", 64, 0, 127)), lv = pot01(numNow(v, p + "level", 100, 0, 127));
   var cx = x + w / 2, base = 72, top = 30;
   g.fill(x, base, w, 1, EDGE);
   g.text(x, base + 12, "L", DIM, -1); g.text(x + w, base + 12, "R", DIM, 1);
@@ -347,6 +374,7 @@ function oscPage(o) {
     g.fill(lx + 30, 22, 8, 60, BAR);
     g.fill(lx + 30, 22 + Math.round(60 * (1 - lv)), 8, Math.round(60 * lv), hot(v, p + "level") ? "slot" : ACC);
     g.text(lx + 46, 82, Math.round(lv * lv * 100) + "%", DIM, -1);
+    if (moved(v, p + "level")) { var ly = 22 + 60 * (1 - nowOf(v, p + "level")); g.fill(lx + 40, Math.min(ly, 22 + 60 * (1 - lv)), 1, Math.abs(60 * (lv - nowOf(v, p + "level"))), MOD_DK); g.dot(lx + 41, ly, 3, MODC); }
     var tx = 614;
     g.text(tx, 10, "TUNE", hot(v, p + "tune") ? "slot" : DIM, -1);
     g.value(tx, 50, (tu > 0 ? "+" : "") + tu, hot(v, p + "tune") ? "slot" : TXT, -1);
@@ -355,6 +383,7 @@ function oscPage(o) {
     g.text(px, 10, "PAN", hot(v, p + "pan") ? "slot" : DIM, -1);
     g.fill(px, 50, pw, 2, BAR); g.fill(px + pw / 2, 44, 1, 14, DIM);
     g.fill(Math.round(px + pw / 2 + pan * pw / 2) - 2, 43, 5, 16, hot(v, p + "pan") ? "slot" : ACC);
+    if (moved(v, p + "pan")) { var pn = px + pw / 2 + potBi(127 * nowOf(v, p + "pan")) * pw / 2, pk = px + pw / 2 + pan * pw / 2; g.fill(Math.min(pk, pn), 51, Math.abs(pn - pk), 1, MOD_DK); g.dot(pn, 51, 3, MODC); }
     g.text(px, 70, "L", DIM, -1); g.text(px + pw, 70, "R", DIM, 1);
     var uni = Math.round(clamp(num(v, p + "uni", 1), 1, 4));
     g.text(948, 10, "UNISON", DIM, 1);
@@ -366,7 +395,7 @@ function oscPage(o) {
 // detune of 1 semitone: the outer voices half a semitone either side)
 function unisonWaves(t, v, o, x, y, w, h) {
   var p = "wt" + o + "_", uni = Math.round(clamp(num(v, p + "uni", 1), 1, 4)), det = pot01(num(v, p + "detune", 0));
-  var pos = pot01(num(v, p + "pos", 0)), bend = potBi(num(v, p + "bend", 64)), form = potBi(num(v, p + "formant", 64));
+  var pos = pot01(numNow(v, p + "pos", 0, 0, 127)), bend = potBi(numNow(v, p + "bend", 64, 0, 127)), form = potBi(numNow(v, p + "formant", 64, 0, 127));
   return cached("uw|" + t.id + "|" + [uni, det.toFixed(2), pos.toFixed(3), bend.toFixed(2), form.toFixed(2), x, y, w, h].join(","), function () {
     var f0 = frameAt(t, pos), fmul = Math.exp(form * 1.60943791243), out = [], cyc = 3, n = 96;
     for (var i = 0; i < uni; i++) {
@@ -437,7 +466,7 @@ push.compartment({
   extra_keys: ["wt1_level", "wt2_level"],
   screen: function (g, v) {
     // the sub over its three knobs: its wave, an octave (or Sub Tune) below
-    var sw = idxOf(v, "sub_wave", SUBW), st = Math.round(num(v, "sub_tune", -12)), sl = pot01(num(v, "sub_level", 0));
+    var sw = idxOf(v, "sub_wave", SUBW), st = Math.round(num(v, "sub_tune", -12)), sl = pot01(numNow(v, "sub_level", 0, 0, 127));
     var sh = anyHot(v, ["sub_level", "sub_wave", "sub_tune"]);
     g.text(8, 10, "SUB  " + up(SUBW[sw] || "") + "  " + (st > 0 ? "+" : "") + st + " ST", sh ? "slot" : DIM, -1);
     g.poly(cached("sub|" + sw + "|" + sl.toFixed(2), function () {
@@ -446,7 +475,7 @@ push.compartment({
       return p;
     }), 2, sh ? "slot" : (sl > 0.005 ? HI : DIM));
     // the noise over its two: white is flat, pink falls 3 dB an octave
-    var nl = pot01(num(v, "noise_level", 0)), pink = /pink/i.test(txt(v, "noise_type")) || txt(v, "noise_type") === "1";
+    var nl = pot01(numNow(v, "noise_level", 0, 0, 127)), pink = /pink/i.test(txt(v, "noise_type")) || txt(v, "noise_type") === "1";
     var nh = anyHot(v, ["noise_level", "noise_type"]);
     g.text(368, 10, "NOISE  " + (pink ? "PINK" : "WHITE"), nh ? "slot" : DIM, -1);
     g.poly(cached("nz|" + pink + "|" + nl.toFixed(2), function () {
@@ -477,6 +506,7 @@ push.compartment({
     var hz = noteHz(8 + pot01(num(v, "flt_freq", 127)) * 127);
     g.text(470, 10, (hz < 1000 ? Math.round(hz) + " HZ" : (hz / 1000).toFixed(1) + " KHZ") + (Math.abs(amt) > 0.01 ? "  ENV " + (amt > 0 ? "+" : "") + Math.round(amt * 100) : ""), DIM, 1);
     g.filter(2, 12, 472, 74, { cutoff: "flt_freq", at: fltAt(v), resonance: "flt_res", type: "flt_type", color: TXT });
+    fltKnobMark(g, v, 2, 12, 472, 74);
     g.line(480, 4, 480, 84, 1, EDGE);
     g.text(490, 10, "FILTER ENVELOPE", anyHot(v, ["flt_a", "flt_d", "flt_s", "flt_r"]) ? TXT : DIM, -1);
     g.envelope(484, 12, 464, 74, { attack: "flt_a", decay: "flt_d", sustain: "flt_s", release: "flt_r", labels: true, color: TXT });

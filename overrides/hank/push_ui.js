@@ -28,6 +28,14 @@ function num(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].valu
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 function up(s) { return String(s).toUpperCase(); }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
+// Where the sound has a control now (v[k].now: the module's live_mod, the newest voice's while a
+// note sounds: BRIGHT as the modulator's envelope scales the index, TONE with its keytracking),
+// 0..1 of its range; null when nothing moves it. The knob's own mark stays where the knob is; the
+// sound's place goes beside it in the modulation colour.
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - v[k].frac) > 0.004; }
+function frNow(v, k, d) { var n = nowOf(v, k); return n === null ? fr(v, k, d) : n; }
 
 // ---- the engine's own laws (hank_curves.h, hank_engine.cpp applyMacros) -------------
 var RATIOS = [0.5, 1, 1.5, 2, 2.5, 3, 3.7, 4, 5, 5.4, 6, 7, 8, 9.2, 11, 14];
@@ -185,6 +193,14 @@ function drawPartials(g, v) {
     var carrier = Math.abs(ps[i][0] - 1) < 0.001;
     g.fill(Math.round(pxOf(ps[i][0])) - 1, PBASE - ph, 3, ph, lit ? "slot" : (carrier ? INK : YARN));
   }
+  // now: the partials at the index the sound has this moment, a cap on each in the modulation colour
+  if (moved(v, "bright")) {
+    var now = partials(r, indexOf(nowOf(v, "bright")));
+    for (var q = 0; q < now.length; q++) {
+      var nh = Math.round(h * dbH(now[q][1]));
+      if (nh >= 1) g.fill(Math.round(pxOf(now[q][0])) - 3, PBASE - nh - 1, 7, 2, MOD);
+    }
+  }
 }
 
 // BITE: the modulator's own wave, its feedback, the shaper
@@ -197,11 +213,13 @@ function bar(g, x, y, w, label, f, on, lit) {
 function drawModulator(g, v) {
   var x = 2 * COL + 4, w = COL - 8, r = ratioOf(v);
   var bright = fr(v, "bright", 0.35), bite = fr(v, "bite", 0), fbk = feedbackOf(bright, bite), sh = shaperOf(bite);
+  // the wave as the sound has it now: the modulator's envelope scales its level and its feedback alike
+  var bn = frNow(v, "bright", bright), fbn = bright > 0.0001 ? fbk * bn / bright : fbk;
   var cx = x + 8, cw = w - 16, cy = TOP + 35, ch = 24;
   if (r === null || !known(v, "bite")) { g.text(x + w / 2, cy + 4, "--", INK_DIM, 0); return; }
   g.text(x + w - 6, TOP + 11, "x" + (r % 1 ? r.toFixed(1) : String(r)), INK_DIM, 1);
-  var pts = cached("m|" + r + "|" + bright.toFixed(2) + "|" + fbk.toFixed(2), function () {
-    var wv = modWave(r, bright, fbk, 52), out = [];
+  var pts = cached("m|" + r + "|" + bn.toFixed(2) + "|" + fbn.toFixed(2), function () {
+    var wv = modWave(r, bn, fbn, 52), out = [];
     for (var i = 0; i < wv.length; i++) out.push(cx + cw * i / (wv.length - 1), cy - wv[i] * ch / 2);
     return out;
   });
@@ -216,10 +234,17 @@ function drawModulator(g, v) {
 function drawTone(g, v) {
   var x = 3 * COL + 4, w = COL - 8, t = fr(v, "tone", 0.8);
   if (!known(v, "tone")) { g.filter(x, TOP + 14, w, BOT - TOP - 12, { cutoff: "tone" }); return; }
-  var u = 0.4924 * (1 + t);                                  // 600 Hz * 30^tone at middle C, on Pung's 20 Hz..20 kHz axis
+  var tn = frNow(v, "tone", t);                              // where the sound has it (keytracking: the newest note's)
+  var u = 0.4924 * (1 + tn);                                 // 600 Hz * 30^tone at middle C, on Pung's 20 Hz..20 kHz axis
   var peak = Math.max(0, 1 - Math.abs(t - 0.55) / 0.55) * 0.55, q = 1 / (2 - 1.85 * peak);
   var res = clamp(Math.log(q / 0.707) / Math.LN10 / 1.15, 0, 1);
   g.filter(x - 2, TOP + 14, w + 4, BOT - TOP - 12, { cutoff: "tone", at: u, resonance: res, type: "LP 12", color: INK });
+  if (moved(v, "tone")) { // the knob's place at the foot, the way to the sound's in the modulation colour
+    var fx0 = x - 2, fw = w + 4, yb = BOT - 5, xs = fx0 + fw * 0.4924 * (1 + t), xn = fx0 + fw * u;
+    g.fill(Math.round(xs), yb - 5, 2, 7, INK);
+    g.fill(Math.min(xs, xn), yb, Math.abs(xn - xs), 2, MOD_DK);
+    g.dot(xn, yb + 1, 3, MOD);
+  }
   var hz = 600 * Math.pow(30, t);
   var rd = readout("tone", t);
   g.text(x + w - 4, TOP + 11, rd[0] + " " + up(rd[1]), hot(v, "tone") ? "slot" : INK_DIM, 1);
@@ -286,6 +311,11 @@ function row(g, v) {
       if (f > 0.004) g.arc(kx, ky, 17 * rs, A0, SWEEP * f, 3, on ? "slot" : YARN);
       var a = A0 + SWEEP * f;
       g.line(kx + Math.cos(a) * 3, ky + Math.sin(a) * 3, kx + Math.cos(a) * 10.5 * rs, ky + Math.sin(a) * 10.5 * rs, 2.5, on ? "slot" : INK);
+      if (moved(v, k)) { // the sound's place: an arc from the knob's, a dot
+        var n = nowOf(v, k);
+        g.arc(kx, ky, 21 * rs, A0 + SWEEP * Math.min(f, n), SWEEP * Math.abs(n - f), 2, MOD_DK);
+        g.dot(kx + Math.cos(A0 + SWEEP * n) * 21 * rs, ky + Math.sin(A0 + SWEEP * n) * 21 * rs, 2.8, MOD);
+      }
     }
     var s = shown(v, k), uw = s[1] ? g.measure(s[1]) + 3 : 0;
     g.value(x0 + 52, rg.val, s[0], on ? "slot" : INK, -1, COL - 58 - uw);

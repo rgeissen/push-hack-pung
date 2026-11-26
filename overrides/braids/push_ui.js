@@ -274,6 +274,16 @@ function knobPointer(g, cx, cy, r, f, ok, hot) {
   var a = A0 + f * SWEEP;
   g.line(cx + Math.cos(a) * r * 0.2, cy + Math.sin(a) * r * 0.2, cx + Math.cos(a) * (r - 3), cy + Math.sin(a) * (r - 3), r > 14 ? 3 : 2, "#111111");
 }
+// where the sound has a knob now (v[k].now: live_mod): an arc in the modulation colour from
+// the pointer to a dot on radius rr, round the cap; the pointer stays where the knob is
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function liveMark(g, v, k, cx, cy, rr) {
+  if (!known(v, k) || typeof v[k].now !== "number") return;
+  var f = Math.max(0, Math.min(1, v[k].frac)), n = Math.max(0, Math.min(1, v[k].now));
+  if (Math.abs(n - f) <= 0.004) return;
+  g.arc(cx, cy, rr, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(cx + Math.cos(A0 + n * SWEEP) * rr, cy + Math.sin(A0 + n * SWEEP) * rr, 2.8, MOD);
+}
 
 // ---- segments: the active section's legend lit (Pung's bar stands above it) ----------------
 var SEG_LEGEND = { vcf: [660, "VCF"], vca: [812, "VCA ENV"] };
@@ -298,6 +308,7 @@ function row(g, v, values) {
     g.text(x + 60, seg ? 115 : 118, String(v[k].name).toUpperCase(), hot ? SILK : SILK2, 0, 112);
     knobBody(g, x + 24, ky, kr, false);
     knobPointer(g, x + 24, ky, kr, fr(v, k, 0), ok, hot);
+    liveMark(g, v, k, x + 24, ky, kr + 5); // outside the touch ring, every frame
     var val = values[i] !== undefined && values[i] !== null ? values[i] : (ok ? disp(v, k) + (v[k].unit ? " " + v[k].unit : "") : "--");
     g.value(x + 44, seg ? 136 : 147, val, hot ? "slot" : (ok ? SILK : SILK2), -1, 72);
   }
@@ -451,6 +462,9 @@ function panel(g, v) {
     if (env > 0.01) { // how far the filter envelope opens it
       var x0 = 664 + 132 * cut, x1 = 664 + 132 * Math.min(1, cut + env);
       g.fill(x0, 94, Math.max(2, x1 - x0), 2, t === "filt_env" ? "slot" : LED);
+      // where the sound has it now (live_mod: the newest voice's envelope)
+      var cn = known(v, "cutoff") && typeof v.cutoff.now === "number" ? Math.max(0, Math.min(1, v.cutoff.now)) : null;
+      if (cn !== null && Math.abs(cn - cut) > 0.004) g.dot(664 + 132 * cn, 95, 3.5, "mod");
     }
   }
   g.envelope(812, 20, 140, 78, { attack: "attack", decay: "decay", sustain: "sustain", release: "release", color: SILK });
@@ -540,6 +554,9 @@ push.compartment({
       var top = Math.min(1, cut + env), x0 = 8 + 340 * cut, x1 = 8 + 340 * top, c = t === "filt_env" ? "slot" : "mod";
       g.fill(x0, 79, Math.max(2, x1 - x0), 3, c);
       g.dot(x1, 80.5, 3.5, c);
+      // where the sound has it now (live_mod: the newest voice's envelope), ringed on the reach
+      var cn = known(v, "cutoff") && typeof v.cutoff.now === "number" ? Math.max(0, Math.min(1, v.cutoff.now)) : null;
+      if (cn !== null && Math.abs(cn - cut) > 0.004) { g.dot(8 + 340 * cn, 80.5, 5.5, "black"); g.dot(8 + 340 * cn, 80.5, 3.5, "mod"); }
       g.text(348, 12, "ENVELOPE " + Math.round(cut * 100) + " > " + Math.round(top * 100) + " %", c, 1);
     } else g.text(348, 12, "NO ENVELOPE", "faint", 1);
     // over the envelope's four knobs: the envelope, and each stage in the plugin's time

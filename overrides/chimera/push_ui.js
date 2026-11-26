@@ -13,9 +13,9 @@
 //            in section exactly as the model computes it from the knobs (jaw, tongue body and
 //            tip, lips, velum, larynx, epiglottis; a child's smaller, a woman's shorter
 //            pharynx), the same air unrolled as a tube from the glottis to the lips, and the
-//            formants it makes. Singing and speaking, the words move the mouth (which the
-//            module does not tell): the lyrics with the syllable or word sounding lit, the
-//            tract at rest, the body's vowels
+//            formants it makes. Singing and speaking, the words move the mouth (the module
+//            says where, live_mod): the lyrics with the syllable or word sounding lit, the
+//            tract as the voice has it (at rest while it is silent), the body's vowels
 //   MOUTH    the tract large, its tube, and the vowel chart: the body's thirteen vowels where
 //            the engine measured them, and this mouth among them
 //   TONE     the source large: the folds' cycles, how open, how pressed, how much air leaks
@@ -33,6 +33,10 @@ function int(v, k, d) { return Math.round(num(v, k, d)); }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function lerp(a, b, t) { return a + (b - a) * t; }
+// where the voice has a knob now (v[k].now: the module's live_mod, 0..1 of the range), null when
+// nothing moves it; the modulation colour (Pung's) and its trail
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+var MODC = "#3cc8e6", MOD_DK = "#1f5f6c";
 function smoothstep(e0, e1, x) { var t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); }
 
 // ---- the knobs as the engine reads them (params_gen.rs DRIVES: lo + v (hi - lo)) ---------------
@@ -487,8 +491,11 @@ function knobsOf(v, w) {
     var a0 = at(s), a1 = at(se);
     for (var k in a0) kv[k] = clamp(kv[k] + a1[k] - a0[k], 0, 1);
   }
+  // where the voice has the mouth, while it sounds (a sung or spoken phoneme, pressure): the engine's own
+  for (i = 0; i < MOUTH_KEYS.length; i++) { var n = nowOf(v, MOUTH_KEYS[i]); if (n !== null) kv[MOUTH_KEYS[i]] = n; }
   return kv;
 }
+function mouthLive(v) { for (var i = 0; i < MOUTH_KEYS.length; i++) if (nowOf(v, MOUTH_KEYS[i]) !== null) return true; return false; }
 function bodyW(v) { return weights(num(v, "female", 0), num(v, "child", 0)); }
 function keyOf(kv, w) { var s = w.map(function (x) { return x.toFixed(3); }).join(","); for (var i = 0; i < MOUTH_KEYS.length; i++) s += "|" + kv[MOUTH_KEYS[i]].toFixed(3); return s; }
 
@@ -600,12 +607,12 @@ function panel(g, v, t) {
   var w = bodyW(v), kv = knobsOf(v, w), a = articOf(kv), body = bodyOf(w), key = keyOf(kv, w), R = null;
   var T = cached("tract|" + key, function () { return tractOf(a, body); });
   // the ground and the tract in section: they change only with the mode and the mouth
-  var built = false;
-  g.layer("chm|" + mode + "|" + seg + "|" + key, function () {
+  var built = false, rest = mode !== 2 && !mouthLive(v); // singing or speaking, the mouth as the voice has it
+  g.layer("chm|" + mode + "|" + seg + "|" + rest + "|" + key, function () {
     built = true;
     panelGround(g, mode, seg);
-    CLIP_Y = 101; drawSection(g, T, SEC_C[0] + 18, 96, 7.0, mode !== 2); CLIP_Y = 1e9;
-    if (mode !== 2) g.text(SEC_C[0] + SEC_C[1], 101, "AT REST", DIM, 1);
+    CLIP_Y = 101; drawSection(g, T, SEC_C[0] + 18, 96, 7.0, rest); CLIP_Y = 1e9;
+    if (rest) g.text(SEC_C[0] + SEC_C[1], 101, "AT REST", DIM, 1);
   });
   // VOICE: the mode, the sound, the body
   for (i = 0; i < 3; i++) g.text(SEC_A[0] + i * 46, 26, MODES[i], i === mode ? (tch === "mode" ? "slot" : INK) : DIM, -1);
@@ -732,6 +739,8 @@ function row(g, v) {
     var f = known(v, k) ? clamp(v[k].frac, 0, 1) : 0, gy = seg ? 139 : 150;
     g.fill(x0, gy, tw, 2, FAINT);
     if (known(v, k)) g.fill(x0, gy, Math.max(2, tw * f), 2, hot ? "slot" : TEAL);
+    var n = nowOf(v, k); // where the voice has it, beside the knob's
+    if (n !== null && Math.abs(n - f) > 0.004) { g.fill(x0 + tw * Math.min(f, n), gy + 3, Math.max(1, tw * Math.abs(n - f)), 1, MOD_DK); g.dot(x0 + tw * n, gy + 1, 3, MODC); }
   }
 }
 var NAMES = { tongue_x: "TONGUE FRONT", tongue_y: "TONGUE HIGH", jaw: "JAW", lips: "LIPS OPEN", round: "ROUND", protrude: "POUT",

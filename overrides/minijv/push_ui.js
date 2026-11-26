@@ -311,6 +311,24 @@ function row(g, v) {
   }
 }
 
+// where the sound has a field's value now (the module's live_mod: each
+// tone's TVF cutoff, and Cutoff's own tone, as its envelopes and LFOs move
+// it): a tick in the modulation colour on the field's dot blocks, the span
+// from the knob to it dimmer. Drawn over the layer, every frame.
+var MOD_DK = "#1f5f6c";
+function liveMarks(g, v) {
+  var knobs = v.$knobs || [], STRIP = strip(v), span = BLOCKS * 6 - 2;
+  for (var i = 0; i < 8; i++) {
+    var k = knobs[i];
+    if (!k || !known(v, k) || typeof v[k].now !== "number") continue;
+    var f = Math.max(0, Math.min(1, v[k].frac)), n = Math.max(0, Math.min(1, v[k].now));
+    if (Math.abs(n - f) < 0.004) continue;
+    var x0 = blockX(i, 0), xf = x0 + Math.round(f * span), xn = x0 + Math.round(n * span), y = STRIP.y + STRIP.blk;
+    g.fill(Math.min(xf, xn), y + 4, Math.max(1, Math.abs(xn - xf)), 1, MOD_DK);
+    g.fill(xn - 1, y - 3, 2, 9, "mod");
+  }
+}
+
 var toneExtras = [];
 for (var ti = 0; ti < 4; ti++) {
   ["toneswitch", "wavegroup", "wavenumber", "level", "pan"].concat(ENV.Amp.t, ENV.Amp.l).forEach(function (s) { toneExtras.push(tk(ti, s)); });
@@ -378,6 +396,7 @@ push.compartment({
     var vs = voices(v);
     if (vs) chip(g, v, vs);
     for (var j = 0; j < 4; j++) toneEnvelope(g, v, j);
+    liveMarks(g, v);
   }
 });
 

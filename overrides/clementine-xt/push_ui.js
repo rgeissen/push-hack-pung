@@ -41,6 +41,25 @@ function int(v, k, d) { return Math.round(num(v, k, d)); }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function fr(v, k, d) { return known(v, k) ? clamp(v[k].frac, 0, 1) : d; }
+// where the sound has a control now (v[k].now: the module's live_mod, the newest voice's; null when
+// nothing moves it), as 0..1 and in the key's raw units; the sound's place in the modulation colour
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - fr(v, k, 0)) > 0.004; }
+function liveNum(v, k, d) { var n = nowOf(v, k); return n === null || !(v[k].max > v[k].min) ? num(v, k, d) : v[k].min + n * (v[k].max - v[k].min); }
+function filterNow(g, x, y, w, h, knobAt, soundAt, ink) {   // a g.filter given at: (it draws the sound's): the knob's place on its base line, and the way to the sound's
+  if (Math.abs(soundAt - knobAt) <= 0.002) return;
+  var x0 = x + 6, x1 = x + w - 6, b = y + h - 6, xs = x0 + (x1 - x0) * knobAt, xc = x0 + (x1 - x0) * soundAt;
+  g.fill(xs, b - 7, 2, 7, ink);
+  g.line(xs, b - 2, xc, b - 2, 2, MOD_DK);
+  g.dot(xc, b - 2, 3, MOD);
+}
+function nowTrack(g, v, k, x, y, w) {   // on a level track (x, y, w): the knob's place to the sound's, and the sound's
+  if (!moved(v, k)) return;
+  var f = fr(v, k, 0), n = nowOf(v, k);
+  g.fill(x + w * Math.min(f, n), y, Math.max(1, w * Math.abs(n - f)), 1, MOD_DK);
+  g.dot(x + w * n, y + 0.5, 2.8, MOD);
+}
 
 // ---- the engine's tables, exactly (waves.c) ----------------------------------------------------
 var LEN = 128, HALF = 64, ROT = 3;
@@ -269,7 +288,7 @@ function waveReach(v, w) {
   for (i = 0; i < lv.length; i++) { eMin = Math.min(eMin, 1.1 * env * lv[i]); eMax = Math.max(eMax, 1.1 * env * lv[i]); }
   var vMin = Math.min(0, 1.1 * vel), vMax = Math.max(0, 1.1 * vel);
   var kMin = Math.min(kt * 0.03125 * (36 - 64), kt * 0.03125 * (96 - 64)), kMax = Math.max(kt * 0.03125 * (36 - 64), kt * 0.03125 * (96 - 64));
-  return { start: clamp(start, 0, top), top: top, lo: clamp(Math.round(start + eMin + vMin + kMin), 0, top), hi: clamp(Math.round(start + eMax + vMax + kMax), 0, top),
+  return { start: clamp(start, 0, top), now: clamp(Math.round(liveNum(v, "w" + w + "_start", start)), 0, top), top: top, lo: clamp(Math.round(start + eMin + vMin + kMin), 0, top), hi: clamp(Math.round(start + eMax + vMax + kMax), 0, top),
     env: env, kt: kt, vel: vel };
 }
 
@@ -317,8 +336,8 @@ var F1 = [["LP 24 dB", ""], ["LP 12 dB", ""], ["BandPass 24 dB", ""], ["BandPass
   ["Notch", ""], ["Notch", ""], ["Notch", "BAND STOP"]];
 function resonanceOf(q) { return clamp(Math.log(q / 0.707) / Math.LN10 / 1.15, 0, 1); }
 function atOf(hz) { return clamp(Math.log(hz / 20) / Math.log(1000), 0, 1); }
-function f1Geom(v) {
-  var c = num(v, "f1_cutoff", 127), r = num(v, "f1_reso", 0), ty = clamp(int(v, "f1_type", 0), 0, 12), ra = resAt(c, r);
+function f1Geom(v, live) {
+  var c = live ? liveNum(v, "f1_cutoff", 127) : num(v, "f1_cutoff", 127), r = live ? liveNum(v, "f1_reso", 0) : num(v, "f1_reso", 0), ty = clamp(int(v, "f1_type", 0), 0, 12), ra = resAt(c, r);
   var hz = ty === 0 || ty === 1 || ty === 2 || ty === 3 || ty === 4 || ty === 7 || ty === 10 || ty === 11 ? ra.hz : poleHz(c);
   var q = ty === 0 || ty === 1 || ty === 2 || ty === 3 || ty === 4 || ty === 7 || ty === 10 || ty === 11 ? ra.q : 1 / interpD(r);
   return { type: ty, hz: hz, q: q, name: F1[ty][0], adds: F1[ty][1] };
@@ -492,6 +511,7 @@ function panel(g, v) {
     var col = hw ? "slot" : !lit ? DIMC : w === 1 ? CREAM : PALE, xs = stripX(MAP_X, FRW, FRG, R.start), yb = MAP_Y + FRH + 4 + (w - 1) * 8;
     if (R.hi > R.lo) g.fill(stripX(MAP_X, FRW, FRG, R.lo), yb, stripX(MAP_X, FRW, FRG, R.hi) - stripX(MAP_X, FRW, FRG, R.lo), 2, col === DIMC ? INK_DIM : col === CREAM ? INK : col);
     if (lit || hw) g.fill(xs - 1, MAP_Y, 2, FRH, col);
+    if (lit && R.now !== R.start) { var xn = stripX(MAP_X, FRW, FRG, R.now); g.fill(xn - 1, MAP_Y, 2, FRH, MOD); }   // where the sound reads the table now
     g.poly([xs - 4, yb + 6, xs, yb + 1, xs + 4, yb + 6], 2, lit || hw ? (hw ? "slot" : INK) : INK_DIM);
     g.text(xs + 7, yb + 7, String(w) + (R.start > 60 ? " " + ["TRI", "SQR", "SAW"][R.start - 61] : ""), lit || hw ? (hw ? "#000000" : INK) : INK_DIM, -1);
   }
@@ -502,7 +522,7 @@ function panel(g, v) {
     for (w = 2; w >= 1; w--) {
       var R2 = waveReach(v, w), on = num(v, "mix_w" + w, 0) > 0;
       if (!on && w === 2) continue;
-      var pts = cached("st|" + n + kind + "|" + R2.start, function () { return stepPts(slotOf(tab, R2.start), WV_X, 21, WV_W - 4, 42); });
+      var pts = cached("st|" + n + kind + "|" + R2.now, function () { return stepPts(slotOf(tab, R2.now), WV_X, 21, WV_W - 4, 42); });
       g.poly(pts, w === 1 ? 2 : 1.5, /^w[12]_start$/.test(t) && t.charAt(1) === String(w) ? "slot" : w === 1 ? CREAM : PALE);
     }
     g.text(WV_X, 66 - 1, "", DIMC, -1);
@@ -514,10 +534,12 @@ function panel(g, v) {
     g.text(mx, 91, mn[i], mh ? "#000000" : f > 0 ? INK : INK_DIM, -1);
     g.fill(mx, 95, mw - 6, 3, "#a65200");
     if (f > 0 || mh) g.fill(mx, 95, Math.max(2, (mw - 6) * f), 3, mh ? "#000000" : INK);
+    nowTrack(g, v, mk[i], mx, 99, mw - 6);
   }
   // filter 1 where the engine's pole and Q put it; the amp's envelope
-  var F = f1Geom(v);
-  g.filter(FL_X - 4, 17, FL_W + 4, 34, { cutoff: "f1_cutoff", resonance: resonanceOf(F.q), type: F.name, at: atOf(F.hz), color: CREAM });
+  var F = f1Geom(v), FL = f1Geom(v, true);
+  g.filter(FL_X - 4, 17, FL_W + 4, 34, { cutoff: "f1_cutoff", resonance: resonanceOf(FL.q), type: F.name, at: atOf(FL.hz), color: CREAM });
+  filterNow(g, FL_X - 4, 17, FL_W + 4, 34, atOf(F.hz), atOf(FL.hz), CREAM);
   var fh = /^f1_/.test(t);
   g.text(FL_X + FL_W, 12, known(v, "f1_type") ? txt(v, "f1_type").toUpperCase() : "--", fh ? "#000000" : INK, 1, 90);
   adsr(g, v, "aenv_", FL_X - 4, 67, FL_W + 4, 33, false, CREAM);
@@ -531,6 +553,11 @@ function row(g, v) {
     if (!k) continue;
     var x0 = c * 120, hot = k === t, cx = x0 + 24, cy = seg ? 124 : 132, r = seg ? 10 : 14;
     knobAt(g, cx, cy, r, known(v, k) ? knobF(v, k) : 0, /^play_v/.test(k) ? RED : KNOB, hot);
+    if (moved(v, k)) {
+      var kf = fr(v, k, 0), nf = nowOf(v, k), a0 = Math.PI * 0.75 + Math.min(kf, nf) * Math.PI * 1.5, an = Math.PI * 0.75 + nf * Math.PI * 1.5;
+      g.arc(cx, cy, r + 5, a0, Math.abs(nf - kf) * Math.PI * 1.5, 2, MOD_DK);
+      g.dot(cx + Math.cos(an) * (r + 5), cy + Math.sin(an) * (r + 5), 3, MOD);
+    }
     var tx = x0 + (seg ? 40 : 46), tw = (c === 7 ? 952 : x0 + 117) - tx, pv = parts(v, k);
     g.text(tx, seg ? 119 : 124, NAMES[k] || String((v[k] && v[k].name) || k).toUpperCase(), hot ? "slot" : PALE, -1, tw);
     var uw = pv[1] ? g.measure(pv[1]) + 4 : 0;
@@ -634,13 +661,14 @@ function wavesScreen(g, v) {
     var col = hw ? "slot" : !lit ? DIMC : w === 1 ? CREAM : PALE, xs = stripX(BX, BFW, BFG, R.start), yb = BY + BFH + 12 + (w - 1) * 6;
     if (R.hi > R.lo) g.fill(stripX(BX, BFW, BFG, R.lo), yb, stripX(BX, BFW, BFG, R.hi) - stripX(BX, BFW, BFG, R.lo), 2, col);
     if (lit || hw) g.fill(xs - 1, BY, 2, BFH, col);
+    if (lit && R.now !== R.start) g.fill(stripX(BX, BFW, BFG, R.now) - 1, BY, 2, BFH, MOD);   // where the sound reads the table now
     g.dot(xs, yb + 1, 2.5, col);
   }
   if (tab) {
     for (w = 2; w >= 1; w--) {
       var R2 = waveReach(v, w);
       if (w === 2 && !(num(v, "mix_w2", 0) > 0) && !/^w2_/.test(t)) continue;
-      var pts = cached("bst|" + n + kind + "|" + R2.start, function () { return stepPts(slotOf(tab, R2.start), 540, 20, 184, 52); });
+      var pts = cached("bst|" + n + kind + "|" + R2.now, function () { return stepPts(slotOf(tab, R2.now), 540, 20, 184, 52); });
       g.poly(pts, 2, /^w[12]_/.test(t) && t.charAt(1) === String(w) ? "slot" : w === 1 ? CREAM : PALE);
     }
   }
@@ -676,8 +704,9 @@ push.unused(["mix_ext", "aliasing", "quantize", "accuracy", "amp_keytrack", "pan
 // ---- FILTERS: filter 1 where the engine puts it, filter 2 after it, the filter envelope ----------------------
 function filtersScreen(g, v) {
   band(g, "clem-filt", [[10, "FILTER 1"], [452, "FILTER 2"], [596, "FILTER ENVELOPE"]]);
-  var t = v.$touched || "", F = f1Geom(v);
-  g.filter(6, 14, 436, 72, { cutoff: "f1_cutoff", resonance: resonanceOf(F.q), type: F.name, at: atOf(F.hz), color: "#ff9a2e" });
+  var t = v.$touched || "", F = f1Geom(v), FL = f1Geom(v, true);
+  g.filter(6, 14, 436, 72, { cutoff: "f1_cutoff", resonance: resonanceOf(FL.q), type: F.name, at: atOf(FL.hz), color: "#ff9a2e" });
+  filterNow(g, 6, 14, 436, 72, atOf(F.hz), atOf(FL.hz), CREAM);
   var h = hz(F.hz), env = int(v, "f1_env", 64) - 64, kt = int(v, "f1_keytrack", 64) - 64;
   g.text(436, 24, (known(v, "f1_type") ? txt(v, "f1_type").toUpperCase() : "--"), t === "f1_type" ? "slot" : CREAM, 1);
   g.text(436, 35, h[0] + " " + h[1].toUpperCase() + "  Q " + F.q.toFixed(F.q < 9.95 ? 1 : 0), t === "f1_cutoff" || t === "f1_reso" ? "slot" : DIMC, 1);
@@ -691,7 +720,8 @@ function filtersScreen(g, v) {
   }
   // filter 2: one pole, low or high pass
   var f2 = int(v, "f2_type", 0);
-  g.filter(448, 14, 140, 72, { cutoff: "f2_cutoff", type: f2 ? "HP 6 dB" : "LP 6 dB", at: atOf(poleHz(num(v, "f2_cutoff", 127))), color: PALE });
+  g.filter(448, 14, 140, 72, { cutoff: "f2_cutoff", type: f2 ? "HP 6 dB" : "LP 6 dB", at: atOf(poleHz(liveNum(v, "f2_cutoff", 127))), color: PALE });
+  filterNow(g, 448, 14, 140, 72, atOf(poleHz(num(v, "f2_cutoff", 127))), atOf(poleHz(liveNum(v, "f2_cutoff", 127))), CREAM);
   g.text(584, 24, f2 ? "6 DB HIGH PASS" : "6 DB LOW PASS", /^f2_/.test(t) ? "slot" : CREAM, 1);
   adsr(g, v, "fenv_", 596, 14, 348, 72, true, "#ff9a2e");
   g.text(944, 24, (env > 0 ? "+" : "") + env + " TO CUTOFF", t === "f1_env" ? "slot" : env ? CREAM : DIMC, 1);

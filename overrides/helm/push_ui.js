@@ -32,6 +32,11 @@ function known(v, k) { return v[k] && v[k].known; }
 function fr(v, k, d) { return known(v, k) ? v[k].frac : d; }
 function num(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
+// where the sound has a control now (v[k].now: Helm's live_mod, its modulation totals for the newest voice, the
+// cutoff with the key track and filter envelope), 0..1 of its range; null when nothing moves it. rawNow: the
+// same in Helm's units, else the knob
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function rawNow(v, k, d) { var n = nowOf(v, k); return n === null || !(v[k].max > v[k].min) ? num(v, k, d) : v[k].min + n * (v[k].max - v[k].min); }
 function up(s) { return String(s).toUpperCase(); }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function hot(v, k) { return v.$touched === k; }
@@ -165,7 +170,29 @@ function filterType(v) {
   var poles = st === 1 ? " 24 dB" : " 12 dB";
   return b < 0.5 ? "LP" + poles : (b < 1.5 ? "BP" : "HP" + poles);
 }
-function filterAt(v) { return clamp(Math.log(noteHz(num(v, "cutoff", 100)) / 20) / Math.LN10 / 3, 0, 1); }
+function cutAt(n) { return clamp(Math.log(noteHz(n) / 20) / Math.LN10 / 3, 0, 1); }
+function filterAt(v) { return cutAt(num(v, "cutoff", 100)); }
+// the response is drawn where the sound has the cutoff (g.filter, given at, does not follow it by itself); while
+// modulation moves it, the knob's own mark under the response and the way from there to the sound's place
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function filterNowAt(v) { return cutAt(rawNow(v, "cutoff", 100)); }
+function filterMod(g, v, x, y, w, h) {
+  var n = nowOf(v, "cutoff");
+  if (n === null || Math.abs(n - v.cutoff.frac) < 0.004) return;
+  var x0 = x + 6, x1 = x + w - 6, base = y + h - 6, xs = x0 + (x1 - x0) * filterAt(v), xc = x0 + (x1 - x0) * filterNowAt(v);
+  g.fill(xs, base - 7, 2, 7, INK);
+  g.fill(Math.min(xs, xc), base - 3, Math.max(1, Math.abs(xc - xs)), 2, MOD_DK);
+  g.dot(xc, base - 2, 3, MOD);
+}
+// the sound's place beside an encoder's ring (r: the mark's radius): an arc in the modulation colour from the
+// knob's place, and a dot
+function modMark(g, v, k, cx, cy, r) {
+  var n = nowOf(v, k);
+  if (n === null || Math.abs(n - v[k].frac) < 0.004) return;
+  var f = v[k].frac;
+  g.arc(cx, cy, r, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(cx + Math.cos(A0 + n * SWEEP) * r, cy + Math.sin(A0 + n * SWEEP) * r, 2.8, MOD);
+}
 function filterName(v) {
   if (known(v, "filter_on") && !isOn(v, "filter_on")) return "OFF";
   var st = idx(v, "filter_style", ["12dB", "24dB", "Shelf"]);
@@ -264,7 +291,8 @@ function frontLower(g, v) {
   var nm = filterName(v), lit = anyHot(v, ["cutoff", "resonance", "fil_env_depth"]);
   g.text(10, 76, "FILTER", DIM, -1);
   g.text(10, 90, nm, nm === "OFF" ? DIM : GREEN, -1);
-  g.filter(70, 66, 284, 35, { cutoff: "cutoff", at: filterAt(v), resonance: "resonance", type: filterType(v), color: INK });
+  g.filter(70, 66, 284, 35, { cutoff: "cutoff", at: filterNowAt(v), resonance: "resonance", type: filterType(v), color: INK });
+  filterMod(g, v, 70, 66, 284, 35);
   // where the filter envelope takes the cutoff, in semitones
   var dep = num(v, "fil_env_depth", 0), c = filterAt(v);
   if (Math.abs(dep) > 0.5 && nm !== "OFF") {
@@ -293,6 +321,7 @@ function row(g, v) {
       var bip = (v[k].min !== undefined && v[k].min < 0) || /depth|amount|tune|transpose/.test(k);
       if (bip) { var m = A0 + SWEEP / 2, a = A0 + SWEEP * f; g.arc(cx, rg.ky, rg.r, Math.min(m, a), Math.abs(a - m), 4, on ? "slot" : INK); }
       else if (f > 0.004) g.arc(cx, rg.ky, rg.r, A0, SWEEP * f, 4, on ? "slot" : INK);
+      modMark(g, v, k, cx, rg.ky, rg.r + 4);
     }
     var s = known(v, k) ? (readout(k, v[k].value) || [txt(v, k), v[k].unit || ""]) : ["--", ""], uw = s[1] ? g.measure(s[1]) + 3 : 0;
     g.value(x0 + 46, rg.val, s[0], on ? "slot" : INK, -1, COL - 52 - uw);
@@ -394,7 +423,8 @@ push.compartment({
     g.text(8, 11, nm, nm === "OFF" ? DIM : GREEN, -1);
     var hz = hzText(noteHz(num(v, "cutoff", 100)));
     g.text(470, 11, hz[0] + " " + up(hz[1]) + "  DRIVE " + readout("filter_drive", num(v, "filter_drive", 0))[0] + " DB", DIM, 1);
-    g.filter(2, 13, 472, 58, { cutoff: "cutoff", at: filterAt(v), resonance: "resonance", type: filterType(v), color: INK });
+    g.filter(2, 13, 472, 58, { cutoff: "cutoff", at: filterNowAt(v), resonance: "resonance", type: filterType(v), color: INK });
+    filterMod(g, v, 2, 13, 472, 58);
     // the blend: Helm's one knob from low-pass through band-pass to high-pass
     var b = clamp(num(v, "filter_blend", 0) / 2, 0, 1), shelf = idx(v, "filter_style", ["12dB", "24dB", "Shelf"]) === 2;
     var bx = 40, bw = 400, by = 80;

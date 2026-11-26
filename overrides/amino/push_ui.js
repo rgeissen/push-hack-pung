@@ -38,6 +38,41 @@ function rawStr(v, k) { return v[k] ? String(v[k].value || "") : ""; }
 function up(s) { return String(s).toUpperCase(); }
 function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
 function c01(x) { return clamp(x, 0, 1); }
+// Where the sound has a control now (v[k].now: the module's live_mod, the edit
+// layer's newest voice while it sounds), 0..1 of its range; null when nothing
+// moves it. The knob's own mark stays where the knob is; the sound's place
+// goes beside it in the modulation colour.
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? c01(v[k].now) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - v[k].frac) > 0.004; }
+// the value where the sound has it, in the key's own units (the knob's while nothing moves it)
+function numNow(v, k, d) { return moved(v, k) ? +v[k].min + nowOf(v, k) * (+v[k].max - +v[k].min) : num(v, k, d); }
+// on a horizontal track (x, y, w): a line from the knob's place to the sound's, a dot
+function hMark(g, v, k, x, y, w) {
+  if (!moved(v, k)) return;
+  var f = v[k].frac, n = nowOf(v, k);
+  g.fill(x + w * Math.min(f, n), y, Math.max(1, w * Math.abs(n - f)), 1, MOD_DK);
+  g.dot(x + w * n, y + 0.5, 3, MOD);
+}
+// beside a fader rising from y + h: the sound's level, a tick
+function vMark(g, v, k, x, y, h) { if (moved(v, k)) g.fill(x, Math.round(y + h * (1 - nowOf(v, k))) - 1, 5, 3, MOD); }
+// on a table's 64 places: the one the oscillator plays now, when the knob's is another
+function posMark(g, v, k, x, y, cw) {
+  if (!moved(v, k)) return;
+  var at = Math.round(numNow(v, k, 0));
+  if (at !== idx(v, k, 64)) g.fill(x + at * cw - 1, y - 2, cw + 1, 9, MOD);
+}
+// the filter where the sound has its cutoff (the module's note mapped onto Pung's
+// axis: at), the knob's place marked at the foot, the way between in the modulation colour
+function liveFilter(g, v, x, y, w, h, ft, lc) {
+  var c = num(v, "cutoff", 100), cn = numNow(v, "cutoff", c);
+  g.filter(x, y, w, h, { cutoff: "cutoff", resonance: moved(v, "res") ? nowOf(v, "res") : "res", type: FNAMES[ft], at: cutAt(cn), color: lc });
+  if (!moved(v, "cutoff")) return;
+  var xs = x + w * cutAt(c), xn = x + w * cutAt(cn), yb = y + h - 3;
+  g.fill(Math.round(xs), yb - 5, 2, 7, TEXT);
+  g.fill(Math.min(xs, xn), yb, Math.abs(xn - xs), 2, MOD_DK);
+  g.dot(xn, yb + 1, 3, MOD);
+}
 var CACHE = {}, CACHED = 0;
 function cached(key, make) {
   if (key in CACHE) return CACHE[key];
@@ -257,6 +292,7 @@ function encoderRow(g, v, lc) {
     if (!k) continue;
     var x = c * 120, hot = k === t, ok = known(v, k), col = hot ? "slot" : lc;
     pixelRing(g, x + 22, cy, r, ok ? v[k].frac : 0, isBip(v, k), col, ok);
+    if (moved(v, k)) { var ri = RING[Math.round(nowOf(v, k) * 14)]; g.dot(x + 22 + ri[0] * (r + 5), cy + ri[1] * (r + 5), 2.5, MOD); }
     g.text(x + 42, seg ? ROW + 14 : ROW + 20, nameOf(v, k), hot ? "slot" : DIM, -1, 76);
     g.value(x + 42, seg ? ROW + 32 : ROW + 42, valueOf(v, k), hot ? "slot" : TEXT, -1, 76);
   }
@@ -307,6 +343,7 @@ function oscCard(g, v, n, el, t, lit) {
   var x0 = c[0] + 11, cw = 3;
   pixelWave(g, x0, CARD_Y + 19, cw, 44, w, hot ? "slot" : lc, LC_DK[el], lvl < 0.004);
   positions(g, x0, CARD_Y + 66, cw, known(v, p + "wave") ? pos : -1, 0, lc, LC_DK[el], t === p + "wave");
+  posMark(g, v, p + "wave", x0, CARD_Y + 66, cw);
   var cap = known(v, p + "wave") ? (CLASSIC[pos] ? "CLASSIC " + CLASSIC[pos] : "WAVE " + pos + " OF 64") : "--";
   g.text(x0, CARD_Y + CARD_H - 3, cap, t === p + "wave" ? "slot" : DIM, -1, 110);
   var semi = Math.round(num(v, p + "semi", 0)), fine = Math.round(num(v, p + "fine", 0));
@@ -323,7 +360,7 @@ function frontPanel(g, v) {
   var c = CARDS.filter, ft = idx(v, "ftype", 7), dirt = num(v, "dirt", 0), dt = idx(v, "drv_type", 5), dr = num(v, "drive", 0);
   if (lit === "filter") g.text(c[0] + 7, CARD_Y + 12, "FILTER", "slot", -1);
   cardFact(g, "filter", known(v, "ftype") ? FTYPES[ft] : "--", t === "ftype" ? "slot" : TEXT);
-  g.filter(c[0] + 2, CARD_Y + 16, c[1] - 4, 46, { cutoff: "cutoff", resonance: "res", type: FNAMES[ft], at: cutAt(num(v, "cutoff", 100)), color: lc });
+  liveFilter(g, v, c[0] + 2, CARD_Y + 16, c[1] - 4, 46, ft, lc);
   var dl = dirt > 0.004 ? DIRT[idx(v, "dirt_type", 6)] + " " + Math.round(dirt * 100) + "%" : "NO DIRT";
   var drt = dt && dr > 0.004 ? DRIVE[dt] + " " + Math.round(dr * 100) + "% " + (num(v, "drv_pos", 0) >= 0.5 ? "POST" : "PRE") : "NO DRIVE";
   g.text(c[0] + 8, CARD_Y + CARD_H - 3, dl, /^dirt/.test(t) ? "slot" : dirt > 0.004 ? TEXT : FAINT, -1, 72);
@@ -429,6 +466,7 @@ function oscScreen(n) {
     pixelWave(g, wx, 16, cw, 44, w, wh ? "slot" : lc, LC_DK[el], lvl < 0.004);
     var we = n === 1 ? num(v, "osc1_wenv", 0) : 0, reach = Math.abs(we) > 0.004 && pos <= 60 ? clamp(Math.round(pos + we * 63), 0, 60) : 0;
     positions(g, wx, 66, cw, known(v, p + "wave") ? pos : -1, reach, lc, LC_DK[el], t === p + "wave");
+    posMark(g, v, p + "wave", wx, 66, cw);
     g.text(wx, 84, CLASSIC[pos] ? "CLASSIC " + CLASSIC[pos] : "WAVE " + pos + " OF 64", t === p + "wave" ? "slot" : TEXT, -1, 150);
     var semi = Math.round(num(v, p + "semi", 0)), fine = Math.round(num(v, p + "fine", 0));
     g.text(wx + 64 * cw, 84, (semi ? (semi > 0 ? "+" : "") + semi + " ST  " : "") + (fine ? (fine > 0 ? "+" : "") + fine + " CT" : semi ? "" : "IN TUNE"), hotIn(t, [p + "semi", p + "fine"]) ? "slot" : DIM, 1, 160);
@@ -436,6 +474,7 @@ function oscScreen(n) {
     var lh = t === p + "level";
     g.fill(500, 18, 12, 58, LINE);
     g.fill(500, 18 + 58 * (1 - c01(lvl)), 12, 58 * c01(lvl), lh ? "slot" : lc);
+    vMark(g, v, p + "level", 513, 18, 58);
     g.text(522, 52, lvl < 0.004 ? "SILENT" : "", FAINT, -1);
     if (n === 1) {
       // the wave envelope's reach on the table
@@ -461,6 +500,7 @@ function oscScreen(n) {
       var xt = idx(v, "xmod_type", 4), xa = num(v, "xmod", 0), xh = hotIn(t, ["xmod_type", "xmod"]);
       for (var i = 0; i < 4; i++) smallBox(g, 724 + i * 54, 26, 50, XMOD[i], known(v, "xmod_type") && i === xt, t === "xmod_type" && i === xt, lc);
       bar(g, 724, 54, 212, xt ? xa : 0, t === "xmod" ? "slot" : xt ? lc : FAINT);
+      if (xt) hMark(g, v, "xmod", 724, 55, 212);
       g.text(724, 76, !xt ? "THE OSCILLATORS RUN APART" : xt === 1 ? "OSC 2 BENDS OSC 1'S PHASE" : xt === 2 ? "OSC 2 SCALES OSC 1" : "OSC 1 RESTARTS, UP TO +36 ST",
         xh ? "slot" : xt ? TEXT : FAINT, -1, 220);
     }
@@ -476,6 +516,7 @@ function wenvScreen(g, v) {
     var reach = pos <= 60 ? clamp(Math.round(pos + we * 63), 0, 60) : pos, w = waveOf(v, n === 1 ? "wave_view" : "wave_view2");
     pixelWave(g, x0, 16, cw, 36, w, hot ? "slot" : lc, LC_DK[el], num(v, p + "level", 1) < 0.004);
     positions(g, x0, 60, cw, known(v, p + "wave") ? pos : -1, Math.abs(we) > 0.004 ? reach : 0, lc, LC_DK[el], t === p + "wave");
+    posMark(g, v, p + "wave", x0, 60, cw);
     if (Math.abs(we) > 0.004 && pos <= 60) {
       var xa = x0 + pos * cw + 1, xb = x0 + reach * cw + 1, ac = t === p + "wenv" ? "slot" : lc;
       g.fill(Math.min(xa, xb), 70, Math.abs(xb - xa), 2, ac);
@@ -500,7 +541,7 @@ function mixerScreen(g, v) {
   var el = editLayer(v), lc = LC[el], t = v.$touched || "";
   band(g, "mixer", lc, [[0, 236, "INTO THE FILTER"], [238, 236, "DIRT"], [476, 357, "DRIVE"], [835, 117, "LAYER"]]);
   layerTag(g, v, 924, 10);
-  g.mix(0, 13, 236, 73, ["osc1_level", "osc2_level"], { color: lc });
+  g.mix(0, 13, 236, 73, ["osc1_level", "osc2_level"].map(function (k) { return moved(v, k) ? nowOf(v, k) : k; }), { color: lc }); // the mix the sound has now
   // dirt: its kind and how loud, under the filter
   var dt = idx(v, "dirt_type", 6), dl = num(v, "dirt", 0), dh = hotIn(t, ["dirt_type", "dirt"]);
   for (var i = 0; i < 6; i++) {
@@ -509,13 +550,15 @@ function mixerScreen(g, v) {
     g.text(x, y, DIRT[i], sel ? "#000000" : FAINT, -1);
   }
   bar(g, 246, 66, 218, dl, t === "dirt" ? "slot" : lc);
+  hMark(g, v, "dirt", 246, 67, 218);
   g.text(246, 84, dl < 0.004 ? "NO NOISE" : dt === 5 ? "OSC 1 x OSC 2 RING, " + Math.round(dl * 100) + "%" : "NOISE " + Math.round(dl * 100) + "%", dh ? "slot" : dl > 0.004 ? TEXT : FAINT, -1, 218);
   // drive: its own transfer curve at this gain (voice.c shaper), and where it sits
   var ty = idx(v, "drv_type", 5), d = num(v, "drive", 0), on = ty > 0 && d > 0.004, gx = 590, gy = 48, gs = 32, dh2 = hotIn(t, ["drv_type", "drive"]);
   g.fill(gx - gs, gy, 2 * gs, 1, LINE); g.fill(gx, gy - gs, 1, 2 * gs, LINE);
-  var pts = cached("drv" + ty + "|" + d.toFixed(3), function () {
+  var dn = numNow(v, "drive", d), onN = ty > 0 && dn > 0.004; // the curve at the gain the sound has now
+  var pts = cached("drv" + ty + "|" + dn.toFixed(3), function () {
     var out = [];
-    for (var j = 0; j <= 48; j++) { var xx = -1 + 2 * j / 48, yy = on ? shaper(ty, xx * (1 + 15 * d)) / (1 + d) : xx; out.push(gx + xx * gs, gy - clamp(yy, -1.2, 1.2) * gs * 0.9); }
+    for (var j = 0; j <= 48; j++) { var xx = -1 + 2 * j / 48, yy = onN ? shaper(ty, xx * (1 + 15 * dn)) / (1 + dn) : xx; out.push(gx + xx * gs, gy - clamp(yy, -1.2, 1.2) * gs * 0.9); }
     return out;
   });
   g.poly(pts, 2, dh2 ? "slot" : on ? lc : FAINT);
@@ -531,13 +574,14 @@ function mixerScreen(g, v) {
   var vol = num(v, "vol", 0.8);
   g.fill(851, 18, 14, 60, LINE);
   g.fill(851, 18 + 60 * (1 - vol), 14, 60 * vol, t === "vol" ? "slot" : lc);
+  vMark(g, v, "vol", 866, 18, 60);
   g.text(874, 52, Math.round(vol * 100) + "%", t === "vol" ? "slot" : TEXT, -1);
 }
 function filterScreen(g, v) {
   var el = editLayer(v), lc = LC[el], t = v.$touched || "", ft = idx(v, "ftype", 7);
   band(g, "filter", lc, [[0, 474, "FILTER"], [476, 476, "FILTER ENVELOPE"]]);
   layerTag(g, v, 924, 10);
-  g.filter(0, 13, 474, 73, { cutoff: "cutoff", resonance: "res", type: FNAMES[ft], at: cutAt(num(v, "cutoff", 100)), color: lc });
+  liveFilter(g, v, 0, 13, 474, 73, ft, lc);
   g.text(466, 27, FTYPES[ft], t === "ftype" ? "slot" : lc, 1);
   // where the envelope takes the cutoff at its peak: +-72 semitones at full
   var fe = num(v, "fenv", 0), c = num(v, "cutoff", 100);
@@ -556,6 +600,7 @@ function ampScreen(g, v) {
   g.envelope(0, 13, 474, 73, { attack: "e3_a", decay: "e3_d", sustain: "e3_s", release: "e3_r", curves: ENV_CURVES, labels: true, color: lc });
   var vol = num(v, "vol", 0.8), av = num(v, "amp_vel", 0.5);
   g.fill(492, 18, 14, 60, LINE); g.fill(492, 18 + 60 * (1 - vol), 14, 60 * vol, t === "vol" ? "slot" : lc);
+  vMark(g, v, "vol", 507, 18, 60);
   // velocity: the level a soft and a hard note reach (1 - amount x (1 - vel))
   for (var i = 0; i < 5; i++) {
     var vel = (i + 1) / 5, lv = 1 - av * (1 - vel), bh = 50 * lv;
@@ -567,7 +612,7 @@ function ampScreen(g, v) {
   g.fill(cx - w, 46, 2 * w, 1, LINE2); g.fill(cx, 36, 1, 20, FAINT);
   g.text(cx - w - 4, 50, "L", FAINT, 1); g.text(cx + w + 4, 50, "R", FAINT, -1);
   var pc = ph ? "slot" : lc;
-  if (pm === 0) g.dot(cx + pn * w, 46, 6, pc);
+  if (pm === 0) { g.dot(cx + pn * w, 46, 6, pc); hMark(g, v, "pan", cx - w, 46, 2 * w); }
   else if (pm === 4 || pm === 5) { g.fill(cx - Math.abs(pn) * w, 44, 2 * Math.abs(pn) * w, 5, LC_DK[el]); g.dot(cx, 46, 4, pc); }
   else { for (var j = -2; j <= 2; j++) g.dot(cx + j / 2 * Math.abs(pn) * w, 46, 4, pc); }
   g.text(cx, 30, PANM[pm] + (pm >= 4 ? " MOVES IT" : pm ? " PER NOTE" : ""), t === "pan_mode" ? "slot" : TEXT, 0, 230);

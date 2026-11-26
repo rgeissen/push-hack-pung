@@ -63,6 +63,8 @@ var VCO = [
 ];
 
 function known(v, k) { return !!(v[k] && v[k].known); }
+// where the sound has a key now (live_mod: 0..1 of its range), null when nothing moves it
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
 function raw(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
 function idx(v, k, n, d) { return Math.max(0, Math.min(n - 1, Math.round(raw(v, k, d === undefined ? 0 : d)))); }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
@@ -285,6 +287,7 @@ var NAMES = {
 var STEPS = { wave1: 5, wave2: 5, oct1: 5, oct2: 5, div1a: 8, div1b: 8, div2a: 8, div2b: 8, filt_mode: 3, filt_env: 5, env_attack: 7, env_decay: 7, env_release: 7 };
 function vcoOf(k) { return /^(wave|oct|div|lvl)1/.test(k) ? 0 : /^(wave|oct|div|lvl)2/.test(k) ? 1 : -1; }
 function colourOf(k) { var o = vcoOf(k); return o >= 0 ? COL[o] : k === "volume" ? INK : LILAC; }
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c"; // the modulation colour: the sound's place beside a knob's
 function encoderRow(g, v, seg) {
   var kn = v.$knobs || [], t = v.$touched || "";
   var ny = seg ? 117 : 120, vy = seg ? 134 : 141, ty = seg ? 138 : 150;
@@ -314,6 +317,13 @@ function encoderRow(g, v, seg) {
       g.fill(x, ty, w, 3, GRID);
       if (ok && fr > 0) g.fill(x, ty, Math.max(2, w * fr), 3, hot ? "slot" : col);
       if (k === "cutoff") g.fill(x + w * log2(FC_MAX / 30) / 9, ty - 3, 1, 9, LEG); // the coefficient's stop
+      // where the sound has it now (live_mod), every frame: under the strip, from the knob's place to a dot
+      var n = nowOf(v, k);
+      if (n !== null && Math.abs(n - fr) > 0.004) {
+        var uy = ty + (seg ? 3 : 4);
+        g.fill(Math.round(x + w * Math.min(fr, n)), uy, Math.max(1, Math.round(w * Math.abs(n - fr))), 2, MOD_DK);
+        g.dot(x + w * n, uy + (seg ? 0.5 : 1), seg ? 2.2 : 2.8, MOD);
+      }
     }
   }
 }
@@ -385,8 +395,12 @@ function sweep(g, v, x0, x1, y, t, big) {
   g.fill(xc, y - 4, 2, 8, col);
   g.poly([xe - 6, y - 4, xe, y, xe - 6, y + 4], 2, col);
   if (big) g.text(470, 9, "THE CONTOUR TAKES IT TO " + hz(fe).join(" "), col, 1);
+  // where the contour has it now (live_mod), on the sweep
+  var n = nowOf(v, "cutoff");
+  if (n !== null && Math.abs(n - raw(v, "cutoff", 0)) > 0.004) g.dot(xOf(cutHz(n)), y, big ? 3.5 : 3, "mod");
 }
-function filterAt(v) { return Math.log(cutHz(raw(v, "cutoff", 0.75)) / 20) / Math.log(1000); }
+// where the response stands: where the sound has it now (live_mod), else the knob
+function filterAt(v) { var n = nowOf(v, "cutoff"); return Math.log(cutHz(n !== null ? n : raw(v, "cutoff", 0.75)) / 20) / Math.log(1000); }
 function panel(g, v) {
   var seg = !!v.$segmode, t = v.$touched || "";
   g.layer("dsm|" + (seg ? 1 : 0), function () { panelGround(g, seg); });

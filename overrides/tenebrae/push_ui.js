@@ -33,6 +33,8 @@
 // ---- values -----------------------------------------------------------------------------------
 function known(v, k) { return !!(v[k] && v[k].known); }
 function num(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
+// where the sound has a key now (live_mod, the newest voice's: 0..1 of its range), else d
+function nowOr(v, k, d) { return known(v, k) && typeof v[k].now === "number" ? c01(v[k].now) : d; }
 function idx(v, k, n) { return Math.max(0, Math.min(n - 1, Math.round(num(v, k, 0)))); }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 function up(s) { return String(s).toUpperCase(); }
@@ -263,6 +265,16 @@ function knob(g, cx, cy, r, f, bip, col, ok) {
   var an = A0 + SW * f;
   g.line(cx + Math.cos(an) * 2, cy + Math.sin(an) * 2, cx + Math.cos(an) * (r - 2), cy + Math.sin(an) * (r - 2), 2, col === "slot" ? "slot" : BONE);
 }
+// where the sound has a knob now (v[k].now: live_mod): an arc in the modulation colour from
+// the pointer to a dot on radius rr, outside the value's arc; drawn every frame
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function liveMark(g, v, k, cx, cy, rr) {
+  if (!known(v, k) || typeof v[k].now !== "number") return;
+  var f = c01(v[k].frac), n = c01(v[k].now);
+  if (Math.abs(n - f) <= 0.004) return;
+  g.arc(cx, cy, rr, A0 + Math.min(f, n) * SW, Math.abs(n - f) * SW, 2, MOD_DK);
+  g.dot(cx + Math.cos(A0 + n * SW) * rr, cy + Math.sin(A0 + n * SW) * rr, 2.8, MOD);
+}
 // a switch (an enum): the same cap, a tick at each position, the pointer on
 // the one it is at, lit in the section's colour
 var ENUM_N = { model: 8, layer: 8, voice: 18, flt_type: 4, lfo_dest: 7, press_dest: 4, cho_mode: 5, pump_rate: 4, dly_time: 7 };
@@ -295,7 +307,7 @@ function encoderRow(g, v) {
     if (!k) continue;
     var x = c * 120, hot = k === t, ok = known(v, k), col = hot ? "slot" : colOf(k);
     if (ENUM_N[k]) rotary(g, x + 24, cy, r, ENUM_N[k], idx(v, k, ENUM_N[k]), col, ok);
-    else knob(g, x + 24, cy, r, ok ? v[k].frac : 0.5, !!BIPOLAR[k], col, ok);
+    else { knob(g, x + 24, cy, r, ok ? v[k].frac : 0.5, !!BIPOLAR[k], col, ok); liveMark(g, v, k, x + 24, cy, r + 6); }
     g.text(x + 44, seg ? ROW + 14 : ROW + 20, nameOf(v, k), hot ? "slot" : DIM, -1, 74);
     g.value(x + 44, seg ? ROW + 32 : ROW + 42, valueOf(v, k), hot ? "slot" : BONE, -1, 74);
   }
@@ -426,8 +438,8 @@ function fltCurves() { return { attack: Q_RISE, decay: Q_RISE, release: Q_RISE }
 function frontPanel(g, v) {
   var t = v.$touched || "", seg = !!v.$segmode, lit = v.$segmode === "segment" ? v.$segment : "";
   g.layer(["tp", txt(v, "preset_name"), num(v, "preset", -1), v.$page, (v.$pages || []).length, seg].join("|"), function () { panelGround(g, v, seg); });
-  var model = idx(v, "model", 8), shape = num(v, "shape", 0.5), layer = idx(v, "layer", 8), blend = num(v, "blend", 0);
-  // OSC: the voice's wave, its stack and layer
+  var model = idx(v, "model", 8), shape = nowOr(v, "shape", num(v, "shape", 0.5)), layer = idx(v, "layer", 8), blend = num(v, "blend", 0);
+  // OSC: the voice's wave (at the shape the sound has now), its stack and layer
   var x0 = tileX(0), st = stackOf(num(v, "stack", 0), model), osHot = SECTIONS[0].keys.indexOf(t) >= 0, vm = idx(v, "voice", 18);
   tileHead(g, 0, v, known(v, "model") ? MODELS[model] + (blend > 0.004 ? " + " + LAYER_SHORT[layer] : "") : "--", lit === "osc");
   waveIn(g, x0 + 8, TILE_Y + 22, TILE_W - 16, 38, voiceWave(model, shape, layer, blend, 140), osHot ? "slot" : BONE, known(v, "model"));
@@ -436,7 +448,7 @@ function frontPanel(g, v) {
   // FILTER: Pung's response, live; the zone Drive is in
   var x1 = tileX(1), ft = idx(v, "flt_type", 4), dr = num(v, "drive", 0);
   tileHead(g, 1, v, known(v, "flt_type") ? FTYPES[ft] : "--", lit === "filter");
-  g.filter(x1 + 2, TILE_Y + 17, TILE_W - 4, 46, { cutoff: "cutoff", resonance: "reso", type: FNAMES[ft], at: c01(num(v, "cutoff", 0.6) * 1.0034), color: RED });
+  g.filter(x1 + 2, TILE_Y + 17, TILE_W - 4, 46, { cutoff: "cutoff", resonance: "reso", type: FNAMES[ft], at: c01(nowOr(v, "cutoff", num(v, "cutoff", 0.6)) * 1.0034), color: RED });
   caption(g, 1, "DRIVE " + (dr < 0.004 ? "OFF" : DRIVE_WORDS[driveZone(dr)]), "", t === "drive" ? "slot" : dr > 0.004 ? BONE : DIM);
   // AMP: Pung's envelope, live, quadratic as the engine runs it
   var x2 = tileX(2), spr = num(v, "spread", 0);
@@ -510,9 +522,10 @@ push.compartment({
       g.text(x, y, MODELS[i], on ? "#000000" : DIM, -1);
     }
     // the wave at Shape, and where the filter envelope takes Shape
-    var sh = hotIn(t, ["shape", "shape_env"]), ok = known(v, "shape") && known(v, "model"), sx0 = 129, sw = 216;
-    waveIn(g, sx0, 17, sw, 42, voiceWave(model, shape, 0, 0, 120), sh ? "slot" : BONE, ok);
+    var sh = hotIn(t, ["shape", "shape_env"]), ok = known(v, "shape") && known(v, "model"), sx0 = 129, sw = 216, shNow = nowOr(v, "shape", shape);
+    waveIn(g, sx0, 17, sw, 42, voiceWave(model, shNow, 0, 0, 120), sh ? "slot" : BONE, ok);
     bar(g, sx0, 66, sw, shape, t === "shape" ? "slot" : RED);
+    if (Math.abs(shNow - shape) > 0.004) g.dot(sx0 + sw * shNow, 67.5, 3.5, "mod"); // the sound's place, beside the knob's
     if (Math.abs(se) > 0.004) {
       var to = c01(shape + se), xs = sx0 + sw * shape, xt = sx0 + sw * to, ec = t === "shape_env" ? "slot" : GIALLO, d = se > 0 ? -5 : 5;
       g.fill(Math.min(xs, xt), 72, Math.abs(xt - xs), 2, ec);
@@ -534,7 +547,7 @@ push.compartment({
     for (i = 1; i < 7; i++) if (st.copies[i].gain > 0.002) spread = Math.max(spread, Math.abs(st.copies[i].cents));
     g.text(cx, 84, st.n === 1 ? "ONE OSCILLATOR" : st.n + " OSCS  ±" + Math.round(spread) + " CT", stH ? "slot" : st.n > 1 ? BONE : DIM, 0, 112);
     // the layer under the model, summed at Blend: the voice it makes
-    var lh = hotIn(t, ["layer", "blend"]), wv = voiceWave(model, shape, layer, blend, 140), bx = 486, bw = 216;
+    var lh = hotIn(t, ["layer", "blend"]), wv = voiceWave(model, shNow, layer, blend, 140), bx = 486, bw = 216;
     waveIn(g, bx, 17, bw, 42, wv, lh ? "slot" : BONE, known(v, "layer") && known(v, "blend"));
     g.fill(bx, 66, bw, 3, FAINT);
     g.fill(bx, 66, bw * blend, 3, t === "blend" ? "slot" : RED);
@@ -600,7 +613,7 @@ push.compartment({
   screen: function (g, v) {
     band(g, "filter", RED, [[0, 355, "FILTER"], [357, 117, "DRIVE"], [476, 117, "ENV AMOUNT"], [595, 357, "FILTER ENVELOPE  (RELEASES WITH THE AMP)"]]);
     var t = v.$touched || "", ft = idx(v, "flt_type", 4), cut = num(v, "cutoff", 0.6), i;
-    g.filter(0, 13, 355, 73, { cutoff: "cutoff", resonance: "reso", type: FNAMES[ft], at: c01(cut * 1.0034), color: RED });
+    g.filter(0, 13, 355, 73, { cutoff: "cutoff", resonance: "reso", type: FNAMES[ft], at: c01(nowOr(v, "cutoff", cut) * 1.0034), color: RED });
     g.text(346, 26, FTYPES[ft], t === "flt_type" ? "slot" : GIALLO, 1);
     // Drive: three zones on one knob, stacked as a meter, the level in its zone
     var d = num(v, "drive", 0), dh = t === "drive", z = driveZone(d), mx = 367, my0 = 74, mh = 56;

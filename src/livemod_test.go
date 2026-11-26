@@ -63,6 +63,16 @@ func TestScreenSeesModulation(t *testing.T) {
 	if !hasColor(img, color.NRGBA{255, 0, 0, 255}) {
 		t.Fatal("the screen did not see cut's modulation (or saw one on res)")
 	}
+	// only the modulation moves (the knob stands): a new picture, not the
+	// last one kept (a screen whose marks follow .now stood still)
+	vals["cut"] = ovValue{Frac: 0.5, Known: true, Now: 0.6, HasNow: true}
+	img2 := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+	if !set.render(img2, pl, vals, "", slotColor(0)) {
+		t.Fatalf("render: %s", set.failed)
+	}
+	if !hasColor(img2, color.NRGBA{0, 0, 255, 255}) || hasColor(img2, color.NRGBA{255, 0, 0, 255}) {
+		t.Fatal("the screen's picture did not follow the modulation: the frame kept from before was drawn")
+	}
 }
 
 // A knob modulation moves draws its place in the modulation colour, on

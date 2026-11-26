@@ -26,6 +26,10 @@ function known(v, k) { return !!(v[k] && v[k].known); }
 function raw(v, k) { return known(v, k) ? String(v[k].value) : ""; }
 function num(v, k, d) { var n = parseFloat(raw(v, k)); return isNaN(n) ? d : n; }
 function hot(v, k) { return v.$touched === k; }
+// where the sound has a key now (v[k].now: the module's live_mod, the newest voice's: its channel
+// volume as the envelope and velocity leave it), 0..1 of the range; null when nothing moves it
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+var MODC = "#3cc8e6", MOD_DK = "#1f5f6c"; // the modulation colour (Pung's), and its trail
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function isGB(v) { var s = raw(v, "chip").toUpperCase(); return s === "GB" || s === "1"; }
 function allocOf(v) { var s = raw(v, "alloc_mode").toLowerCase(); return s === "auto" || s === "0" ? 0 : (s === "locked" || s === "2" ? 2 : 1); }
@@ -356,6 +360,12 @@ function panelRow(g, v, P) {
       for (var j = 0; j < n; j++) {
         var litj = sel >= 0 ? j === sel : j < lit;
         g.fill(fx + j * (sw + gap), FY, sw, FH, litj ? (on ? "slot" : P.ink) : P.cell);
+      }
+      var nw = sel < 0 ? nowOf(v, k) : null;
+      if (nw !== null && Math.round(nw * n) !== lit) { // the step the sound stands at, under the knob's
+        var nl = Math.round(nw * n), a0 = Math.min(lit, nl), b0 = Math.max(lit, nl);
+        g.fill(fx + a0 * (sw + gap), FY + FH + 1, (b0 - a0) * (sw + gap) - gap, 1, MOD_DK);
+        if (nl > 0) g.fill(fx + (nl - 1) * (sw + gap), FY + FH + 1, sw, 2, MODC);
       }
     }
     // the value, with its unit

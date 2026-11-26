@@ -38,6 +38,22 @@ var BG = "#161719", PANEL = "#232427", PANEL2 = "#2b2c30", EDGE = "#3a3b40", WEL
 var TEXT = "#e9e7e2", LABEL = "#c9c7c1", DIM = "#8c8e94", FAINT = "#5a5c62", ACC = "#ff4a36", ACC_DK = "#7a2c24";
 var TRACE = "#f4f1ea", TRACE_DIM = "#6d6f76", FILL = "#4a2420", SCREEN = "#05080b", SCREEN_FG = "#bfe6ff", SCREEN_DIM = "#5f7f93";
 var CAP = "#2f3034", CAP_RIM = "#4a4b51", MODC = "#6fc3f2", MOD_DK = "#24465a";
+// Where the sound has a control now (v[k].now: the module's live_mod, the newest voice's and the
+// effects' while a note sounds), 0..1 of its range; null when nothing moves it. The knob's own mark
+// stays where the knob is; the sound's place goes beside it in the modulation colour.
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - v[k].frac) > 0.004; }
+// the value where the sound has it, in the key's own units (the knob's while nothing moves it)
+function numNow(v, k, d) { return moved(v, k) ? +v[k].min + nowOf(v, k) * (+v[k].max - +v[k].min) : num(v, k, d); }
+// on a horizontal track (x, y, w): a line from the knob's place to the sound's, a dot
+function hMark(g, v, k, x, y, w) {
+  if (!moved(v, k)) return;
+  var f = v[k].frac, n = nowOf(v, k);
+  g.fill(x + w * Math.min(f, n), y, Math.max(1, w * Math.abs(n - f)), 1, MOD_DK);
+  g.dot(x + w * n, y + 0.5, 3, MODC);
+}
+// the levels for g.mix: the sound's where modulation moves them, else the keys
+function mixNow(v, ks) { return ks.map(function (k) { return moved(v, k) ? nowOf(v, k) : k; }); }
 
 // ---- readings in real units (tools/gen/params.py DISP, src/web/format.js) -------------------------
 var TABLES = ["Glass", "Reed", "Vowel", "Digital", "Bell", "Organ", "PWM Sweep", "Sync Sweep", "Formant", "Metal", "Additive",
@@ -220,6 +236,14 @@ function oscOf(v, n) {
     dens: num(v, p + "dens", 0), ddet: num(v, p + "ddet", 0.3), vsync: num(v, p + "vsync", 0), level: num(v, "mx_o" + n, 0),
     coarse: num(v, p + "coarse", 0), fine: num(v, p + "fine", 0), fixed: num(v, p + "fixed", 0), shsrc: idx(v, p + "shsrc", 3), shamt: num(v, p + "shamt", 0) };
 }
+// an oscillator as the sound has it now: shape, density, sync and level where modulation moves them
+function liveOsc(v, o) {
+  var l = {}, p = o.p;
+  for (var f in o) l[f] = o[f];
+  l.shape = clamp(numNow(v, p + "shape", o.shape), 0, 1); l.dens = numNow(v, p + "dens", o.dens);
+  l.vsync = numNow(v, p + "vsync", o.vsync); l.level = numNow(v, "mx_o" + o.n, o.level);
+  return l;
+}
 function waveName(o) { return o.wave === 4 ? up(TABLES[o.table] || "") : WAVES[o.wave]; }
 // what reaches the mixer: virtual sync restarts the wave 2^(4 vsync) times faster each cycle;
 // density (classic waves only) adds three copies detuned by +-ddet^3 * 35 cents, each faded in
@@ -374,6 +398,11 @@ function encoderRow(g, v) {
     var x = i * 120, hot = k === t, ok = known(v, k), col = hot ? "slot" : ACC, kx = x + 21;
     if (v[k] && v[k].type === "enum") chooser(g, kx, cy, v, k, hot ? "slot" : ACC);
     else knob(g, kx, cy, r, ok ? v[k].frac : 0, BIPKEY.test(k), col, ok);
+    if (moved(v, k) && !(v[k] && v[k].type === "enum")) { // the sound's place: an arc from the knob's, a dot
+      var kf = v[k].frac, kn2 = nowOf(v, k);
+      g.arc(kx, cy, r + 4, A0 + SW * Math.min(kf, kn2), SW * Math.abs(kn2 - kf), 2, MOD_DK);
+      g.dot(kx + Math.cos(A0 + SW * kn2) * (r + 4), cy + Math.sin(A0 + SW * kn2) * (r + 4), 2.8, MODC);
+    }
     g.text(x + 41, ny, nameOf(v, k, kn), hot ? "slot" : LABEL, -1, 76);
     var vs = val(v, k), vc = hot ? "slot" : inert(v, k) ? DIM : TEXT;
     // a long choice (a routing) in the label face rather than cut
@@ -388,6 +417,17 @@ var MIX_X = 382, MIX_W = 170, FLT_X = 556, FLT_W = 146, ENV_X = 706, ENV_W = 124
 var FT = ["LP24", "LP12", "BP12", "BP6", "HP24", "HP12"];
 // g.filter's axis is 20 Hz .. 20 kHz; the cutoff knob is MIDI note 20 + 115 x (voice.c)
 function cutAt(x) { return clamp(Math.log(cutHz(x) / 20) / Math.log(1000), 0, 1); }
+// the filter where the sound has its cutoff (at: its place on g.filter's axis) and resonance, the
+// knob's place marked at the foot, the way between in the modulation colour
+function liveFilter(g, v, x, y, w, h, type) {
+  var c = num(v, "flt_cut", 0.5), cn = numNow(v, "flt_cut", c);
+  g.filter(x, y, w, h, { cutoff: "flt_cut", resonance: moved(v, "flt_res") ? nowOf(v, "flt_res") : "flt_res", type: type, at: cutAt(cn), color: ACC });
+  if (!moved(v, "flt_cut")) return;
+  var xs = x + w * cutAt(c), xn = x + w * cutAt(cn), yb = y + h - 3;
+  g.fill(Math.round(xs), yb - 5, 2, 7, TEXT);
+  g.fill(Math.min(xs, xn), yb, Math.abs(xn - xs), 2, MOD_DK);
+  g.dot(xn, yb + 1, 3, MODC);
+}
 // each stage's bend as env.c makes it: the attack aims at 3 and stops at 1, the decay aims 0.01
 // below the sustain, the release 0.01 below zero (from the sustain level here)
 function envCurves(v, p) {
@@ -450,6 +490,7 @@ function frontPanel(g, v) {
     g.text(x + OSC_W - 6, TOP + 11, o.ok ? waveName(o) : "--", hot ? "slot" : TEXT, 1, 66);
     var wx = x + 7, wy = TOP + 17, ww = OSC_W - 14, wh = OSC_H - 24;
     if (!o.ok) continue;
+    o = liveOsc(v, o); // the wave the sound makes now
     var pts = cached("fp" + n + "|" + oscSig(o), function () { return curve(wx, wy, ww, wh, function (u) { return 0.92 * oscOut(o, u); }, 96); });
     var live = o.level > 0.001;
     if (live) g.area(pts, wy + wh / 2, FILL);
@@ -462,17 +503,18 @@ function frontPanel(g, v) {
     var fx = 34 + i * 85, f = num(v, fm[i][0], 0), fh = t === fm[i][0], act = f > 0.001;
     g.text(fx, FM_Y + 11, fm[i][1], fh ? "slot" : act ? TEXT : DIM, -1);
     bar(g, fx + 26, FM_Y + 6, 48, f, fh ? "slot" : ACC);
+    hMark(g, v, fm[i][0], fx + 26, FM_Y + 7, 48);
   }
   // the mixer: Pung's, in Crest's red
   heading(g, v, "mix", MIX_X + 6, TOP + 11, "MIXER");
-  g.mix(MIX_X + 2, TOP + 15, MIX_W - 4, 50, ["mx_o1", "mx_o2", "mx_o3", "mx_ring", "mx_noise"], { color: ACC });
+  g.mix(MIX_X + 2, TOP + 15, MIX_W - 4, 50, mixNow(v, ["mx_o1", "mx_o2", "mx_o3", "mx_ring", "mx_noise"]), { color: ACC });
   var ML = ["1", "2", "3", "RM", "NOISE"], mcw = (MIX_W - 4) / 5;
   for (i = 0; i < 5; i++) g.text(MIX_X + 2 + mcw * (i + 0.5), TOP + 74, ML[i], t === ["mx_o1", "mx_o2", "mx_o3", "mx_ring", "mx_noise"][i] ? "slot" : DIM, 0);
   // the filter
   var ft = idx(v, "flt_type", 6);
   heading(g, v, "filter", FLT_X + 6, TOP + 11, "FILTER");
   g.text(FLT_X + FLT_W - 6, TOP + 11, known(v, "flt_type") ? FT[ft] : "--", t === "flt_type" ? "slot" : TEXT, 1);
-  g.filter(FLT_X + 2, TOP + 15, FLT_W - 4, 48, { cutoff: "flt_cut", resonance: "flt_res", type: FT[ft], at: cutAt(num(v, "flt_cut", 0.5)), color: ACC });
+  liveFilter(g, v, FLT_X + 2, TOP + 15, FLT_W - 4, 48, FT[ft]);
   g.text(FLT_X + 6, TOP + 74, known(v, "flt_cut") ? val(v, "flt_cut") : "--", t === "flt_cut" ? "slot" : TEXT, -1);
   g.text(FLT_X + FLT_W - 6, TOP + 74, "RES " + val(v, "flt_res"), t === "flt_res" ? "slot" : DIM, 1);
   // the amp envelope, on the engine's curves
@@ -493,6 +535,7 @@ function frontPanel(g, v) {
     led(g, FX_X + 10, yy - 3, lit);
     g.text(FX_X + 18, yy, FXSHORT[e], eh ? "slot" : lit ? TEXT : DIM, -1);
     bar(g, FX_X + 68, yy - 5, FX_W - 76, lvl, eh ? "slot" : ACC);
+    hMark(g, v, e + "_lvl", FX_X + 68, yy - 4, FX_W - 76);
   }
   g.text(FX_X + FX_W / 2, TOP + 75, par ? "IN PARALLEL" : "IN SERIES", rh ? "slot" : DIM, 0);
   encoderRow(g, v);
@@ -583,6 +626,13 @@ function oscScreen(n) {
       return curve(fx, fy - WF_A, WF_W, 2 * WF_A, function (u) { return 0.95 * waveAt(o.wave, o.table, o.shape, u); }, 76);
     });
     g.poly(lit, 2, sh ? "slot" : TRACE);
+    var lo2 = liveOsc(v, o);
+    if (lo2.shape !== o.shape && Math.abs(lo2.shape - o.shape) > 0.004) { // the frame the sound plays now, at its depth, in the modulation colour
+      var nfx = wfX(lo2.shape), nfy = wfY(lo2.shape);
+      g.poly(cached("wfn" + n + "|" + o.wave + "|" + o.table + "|" + lo2.shape.toFixed(3), function () {
+        return curve(nfx, nfy - WF_A, WF_W, 2 * WF_A, function (u) { return 0.95 * waveAt(o.wave, o.table, lo2.shape, u); }, 76);
+      }), 1.5, MODC);
+    }
     // the title strip: the table's name and number, the frame (or what Shape does), its mover
     var nm = o.wave === 4 ? TABLES[o.table] : ["Sine", "Triangle", "Saw", "Pulse"][o.wave];
     g.value(8, 16, nm, sh ? "slot" : TEXT, -1, 130);
@@ -593,7 +643,7 @@ function oscScreen(n) {
     if (ms) g.text(364, 15, ms, mh ? "slot" : MODC, 1);
     // what leaves the oscillator: virtual sync, the density copies, its level
     var live = o.level > 0.001, wh = t === p + "dens" || t === p + "vsync" || t === p + "ddet";
-    var out = cached("out" + n + "|" + oscSig(o), function () { return curve(384, 18, 314, 60, function (u) { return 0.92 * oscOut(o, (u * 2) % 1); }, 200); });
+    var out = cached("out" + n + "|" + oscSig(lo2), function () { return curve(384, 18, 314, 60, function (u) { return 0.92 * oscOut(lo2, (u * 2) % 1); }, 200); }); // as the sound has it now
     if (live) g.area(out, 48, FILL);
     g.poly(out, 2, wh ? "slot" : live ? TRACE : TRACE_DIM);
     g.text(382, 12, "TO THE MIXER", LABEL, -1);
@@ -616,6 +666,7 @@ function oscScreen(n) {
     var lh = t === "mx_o" + n;
     g.text(x, 78, "LEVEL", lh ? "slot" : LABEL, -1);
     bar(g, x + 72, 73, 70, o.level, lh ? "slot" : ACC);
+    hMark(g, v, "mx_o" + n, x + 72, 74, 70);
     g.text(944, 78, val(v, "mx_o" + n), lh ? "slot" : TEXT, 1);
   };
 }
@@ -659,6 +710,7 @@ function fmScreen(g, v) {
     var o = oscOf(v, i), B = FM_BOX[i];
     g.text(B[1] - 6, 31, o.ok ? waveName(o) : "--", DIM, 1, 70);
     if (!o.ok) continue;
+    o = liveOsc(v, o); // the wave the sound makes now
     var pts = cached("fmw" + i + "|" + oscSig(o), function () { return curve(B[0] + 6, 36, B[1] - B[0] - 12, 19, function (u) { return 0.9 * oscOut(o, (2 * u) % 1); }, 64); });
     g.poly(pts, 2, o.level > 0.001 ? TRACE : TRACE_DIM);
   }
@@ -667,11 +719,12 @@ function fmScreen(g, v) {
   g.text(14, 48, nc < -0.001 ? "DARK" : nc > 0.001 ? "THIN" : "WHITE", DIM, -1);
   var f12 = num(v, "fm_12", 0), f23 = num(v, "fm_23", 0), f31 = num(v, "fm_31", 0), fn1 = num(v, "fm_n1", 0);
   var fo3 = num(v, "flt_o3", 0), fns = num(v, "flt_ns", 0);
-  route(g, [92, 40, 130, 40], fn1, t === "fm_n1", 1);
-  route(g, [252, 40, 290, 40], f12, t === "fm_12", 1);
-  route(g, [412, 40, 450, 40], f23, t === "fm_23", 1);
-  route(g, [512, 60, 512, 76, 192, 76, 192, 62], f31, t === "fm_31", 2);
-  route(g, [572, 40, 646, 40], Math.abs(fo3), t === "flt_o3", 1);
+  // each route as thick as the sound has it now (the numbers stay the knobs')
+  route(g, [92, 40, 130, 40], numNow(v, "fm_n1", fn1), t === "fm_n1", 1);
+  route(g, [252, 40, 290, 40], numNow(v, "fm_12", f12), t === "fm_12", 1);
+  route(g, [412, 40, 450, 40], numNow(v, "fm_23", f23), t === "fm_23", 1);
+  route(g, [512, 60, 512, 76, 192, 76, 192, 62], numNow(v, "fm_31", f31), t === "fm_31", 2);
+  route(g, [572, 40, 646, 40], Math.abs(numNow(v, "flt_o3", fo3)), t === "flt_o3", 1);
   var nsl = "NOISE > CUTOFF  " + (Math.abs(fns) > 0.002 ? val(v, "flt_ns") : "OFF"), nw = g.measure(nsl) / 2 + 8;
   g.poly([50, 20, 50, 9, 420 - nw, 9], 1, FAINT);
   route(g, [420 + nw, 9, 796, 9, 796, 18], Math.abs(fns), t === "flt_ns", -2);
@@ -707,7 +760,7 @@ push.compartment({
 function mixerScreen(g, v) {
   var t = v.$touched || "";
   band(g, "mixer", [[0, 595], [599, 116], [719, 115], [838, 114]]);
-  g.mix(4, 14, 587, 72, ["mx_o1", "mx_o2", "mx_o3", "mx_ring", "mx_noise"], { color: ACC });
+  g.mix(4, 14, 587, 72, mixNow(v, ["mx_o1", "mx_o2", "mx_o3", "mx_ring", "mx_noise"]), { color: ACC });
   g.text(8, 10, "MIXER", LABEL, -1);
   g.text(587, 10, "LEVELS GAIN X^1.5, SUMMED, SOFT-SATURATED", DIM, 1);
   // the noise's colour: one pole, low pass 20 kHz..200 Hz to the left, high pass 20 Hz..8 kHz right
@@ -726,11 +779,11 @@ function mixerScreen(g, v) {
   g.poly(nz, 2, ch ? "slot" : TRACE);
   g.text(657, 72, col < -0.001 ? "LP " + val2Hz(20000 * Math.pow(0.01, -col)) : col > 0.001 ? "HP " + val2Hz(20 * Math.pow(400, col)) : "WHITE", ch ? "slot" : TEXT, 0);
   // the overdrive before the filter: tanh at gain 1 + 15 p^2, over 1 + 0.6 p
-  var od = num(v, "pre_od", 0), oh = t === "pre_od";
+  var od = numNow(v, "pre_od", 0), oh = t === "pre_od"; // the curves at the drive the sound has now
   g.text(725, 10, "OVERDRIVE", oh ? "slot" : LABEL, -1);
   transfer(g, 725, 16, 104, 66, "od" + od.toFixed(3), function (x) { return od <= 0.001 ? x : tanh((1 + 15 * od * od) * x) / (1 + 0.6 * od); }, oh, od > 0.001);
   // the distortion after it: asymmetric (a bias of 0.15 p), gain 1 + 24 p^2, over 1 + p
-  var pd = num(v, "post_dist", 0), ph = t === "post_dist";
+  var pd = numNow(v, "post_dist", 0), ph = t === "post_dist";
   g.text(844, 10, "POST DIST", ph ? "slot" : LABEL, -1);
   transfer(g, 844, 16, 104, 66, "pd" + pd.toFixed(3), function (x) { var gg = 1 + 24 * pd * pd, b = 0.15 * pd; return pd <= 0.001 ? x : (tanh(gg * x + b) - tanh(b)) / (1 + pd); }, ph, pd > 0.001);
 }
@@ -766,7 +819,7 @@ function filterScreen(g, v) {
     g.text(bx + 25, by + 13, FT[i], on ? "#1a0d0b" : DIM, 0);
   }
   var cut = num(v, "flt_cut", 0.5), cst = 20 + 115 * cut;
-  g.filter(FA_X, 2, FA_W, 50, { cutoff: "flt_cut", resonance: "flt_res", type: FT[ft], at: cutAt(cut), color: ACC });
+  liveFilter(g, v, FA_X, 2, FA_W, 50, FT[ft]);
   // the reaches, one row each, from the cutoff
   var rows = [], fe = num(v, "flt_env", 0), fae = num(v, "flt_ae", 0), fl = num(v, "flt_lfo", 0), fv = num(v, "flt_vel", 0), fk = num(v, "flt_key", 0);
   [["MOD ENV 1", "flt_env", 96 * fe * fe * fe, 0], ["AMP ENV", "flt_ae", 96 * fae * fae * fae, 0], ["LFO 1", "flt_lfo", 96 * fl * fl * fl, 1],
@@ -795,6 +848,7 @@ function filterScreen(g, v) {
   var dr = num(v, "flt_drive", 0), dh = t === "flt_drive";
   g.text(x, 50, "DRIVE", dh ? "slot" : LABEL, -1);
   bar(g, x + 50, 45, 80, dr, dh ? "slot" : ACC);
+  hMark(g, v, "flt_drive", x + 50, 46, 80);
   g.text(944, 50, val(v, "flt_drive"), dh ? "slot" : TEXT, 1);
   var kh = t === "flt_key";
   g.text(x, 68, "KEY TRACK", kh ? "slot" : LABEL, -1);
@@ -988,6 +1042,7 @@ function fxScreen(g, v) {
     else g.text(x + FXB_W - 8, 17, up(txt(v, "dly_mode")), t === "dly_mode" ? "slot" : on ? TEXT : DIM, 1, 90);
     g.text(x + 8, 82, "LEVEL", lh ? "slot" : LABEL, -1);
     bar(g, x + 50, 77, 120, lvl, lh ? "slot" : ACC);
+    hMark(g, v, e + "_lvl", x + 50, 78, 120);
     g.text(x + FXB_W - 8, 82, val(v, e + "_lvl"), lh ? "slot" : on ? TEXT : DIM, 1);
     FXDRAW[e](g, v, x + 6, 22, FXB_W - 12, 38, on, t);
     // the signal's way on: in series an arrow, in parallel each fed from the distortion

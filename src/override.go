@@ -1368,6 +1368,9 @@ func frameSig(w, h int, sc color.NRGBA, p placement, vals map[string]ovValue, to
 	for _, k := range p.w.keys {
 		e := vals[k]
 		fmt.Fprint(hh, k, "=", e.Value, "\x00", e.Display, "\x00", e.Frac, e.Known, e.Name, ";")
+		if e.HasNow { // where the module's modulation has it now (live_mod): a new picture as it moves
+			fmt.Fprint(hh, "~", e.Now, ";")
+		}
 	}
 	fmt.Fprint(hh, p.info, p.liveOut.Keys) // fmt prints a map in key order
 	// a sounding envelope moves: every tick of the live session is a new picture

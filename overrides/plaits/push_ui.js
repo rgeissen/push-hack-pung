@@ -28,6 +28,10 @@ var GREEN = "#3ee06a", RED = "#ff4134", AMBER = "#ffb21e", LED_OFF = "#7f8386";
 
 function known(v, k) { return !!(v[k] && v[k].known); }
 function fr(v, k, d) { return known(v, k) ? v[k].frac : d; }
+// where the sound has a knob now (v[k].now: Plaits' live_mod, TIMBRE and MORPH as the decay envelope moves
+// them), 0..1; null when nothing moves it
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
+function frNow(v, k, d) { var n = nowOf(v, k); return n === null ? fr(v, k, d) : n; }
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value || "") : ""; }
 function num(v, k, d) { var n = parseFloat(known(v, k) ? v[k].value : ""); return isNaN(n) ? d : n; }
 
@@ -140,7 +144,7 @@ function wavePts(x, y, w, h, cycles, fn) {
 }
 // the window: what the engine makes, in Plaits' light print on black
 function window(g, v, i, x, y, w, h, col, dim) {
-  var e = ENGINES[i], H = fr(v, "harmonics", 0.5), T = fr(v, "timbre", 0.5), M = fr(v, "morph", 0.5);
+  var e = ENGINES[i], H = fr(v, "harmonics", 0.5), T = frNow(v, "timbre", 0.5), M = frNow(v, "morph", 0.5); // as the sound has them
   var hq = Math.round(H * 64) / 64, tq = Math.round(T * 64) / 64, mq = Math.round(M * 64) / 64;
   var fn = waveFn(e[4], hq, tq, mq);
   if (fn) {
@@ -183,6 +187,8 @@ function window(g, v, i, x, y, w, h, col, dim) {
     g.text(x + 10, yy, e[1 + m], dim, -1);
     g.fill(x + 96, yy - 4, w - 106, 2, "#2a2c2e");
     if (known(v, ks[m])) g.fill(x + 96, yy - 6, Math.max(2, Math.round((w - 106) * fr(v, ks[m], 0))), 6, col);
+    var mn = nowOf(v, ks[m]);
+    if (mn !== null && Math.abs(mn - fr(v, ks[m], 0)) > 0.004) { g.dot(x + 96 + (w - 106) * mn, yy - 3, 3.8, KNOB_EDGE); g.dot(x + 96 + (w - 106) * mn, yy - 3, 2.8, MOD); }
   }
 }
 
@@ -199,6 +205,17 @@ function pointer(g, cx, cy, r, f, ok, hot, col) {
   var a = A0 + f * SWEEP;
   g.line(cx + Math.cos(a) * r * 0.25, cy + Math.sin(a) * r * 0.25, cx + Math.cos(a) * (r - 2), cy + Math.sin(a) * (r - 2), r > 12 ? 3 : 2, col);
 }
+// the sound's place beside a knob (r: the mark's radius, outside the knob): an arc in the modulation colour from
+// the pointer, and a dot
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function modMark(g, v, k, cx, cy, r) {
+  var n = nowOf(v, k);
+  if (n === null || Math.abs(n - v[k].frac) < 0.004) return;
+  var f = v[k].frac, px = cx + Math.cos(A0 + n * SWEEP) * r, py = cy + Math.sin(A0 + n * SWEEP) * r;
+  g.arc(cx, cy, r, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(px, py, 3.8, KNOB_EDGE);
+  g.dot(px, py, 2.8, MOD);
+}
 function trim(g, cx, cy, r) { g.dot(cx, cy, r + 1, INK3); g.dot(cx, cy, r, TRIM); } // a white trimmer
 
 // ---- the encoder row: the module's lower half, a white trimmer under each encoder ----------
@@ -213,6 +230,7 @@ function row(g, v, values, names) {
     g.text(x + 60, seg ? 115 : 118, nm, hot ? INK : INK2, 0, 112);
     trim(g, x + 22, ky, kr);
     pointer(g, x + 22, ky, kr, fr(v, k, 0), ok, hot, INK);
+    modMark(g, v, k, x + 22, ky, kr + 3); // clear of the value at x + 40
     var val = values && values[i] !== undefined && values[i] !== null ? values[i] : (ok ? disp(v, k) + (v[k].unit ? " " + v[k].unit : "") : "--");
     g.value(x + 40, seg ? 136 : 147, val, hot ? "slot" : (ok ? INK : INK3), -1, 76);
   }
@@ -285,7 +303,7 @@ function panel(g, v) {
   var i = engineIndex(v), t = v.$touched || "";
   g.layer("plaits|" + i, function () { panelGround(g, i); });
   var keys = ["harmonics", "timbre", "morph"], big = [22, 18, 18];
-  for (var k = 0; k < 3; k++) pointer(g, KX[k], 50, big[k], fr(v, keys[k], 0), known(v, keys[k]), t === keys[k], "#f4f4f0");
+  for (var k = 0; k < 3; k++) { pointer(g, KX[k], 50, big[k], fr(v, keys[k], 0), known(v, keys[k]), t === keys[k], "#f4f4f0"); modMark(g, v, keys[k], KX[k], 50, big[k] + 7); }
   if (t === "engine") g.arc(14, 31 + (i >= 0 ? i - BANK_FIRST[bankOf(i)] : 0) * 9.6 - 3, 6, 0, Math.PI * 2, 1.5, "slot");
   if (i < 0) { g.text(600, 56, "--", "#6e7276", 0); return; }
   var hot = t === "harmonics" || t === "timbre" || t === "morph";
@@ -338,7 +356,7 @@ push.compartment({
 // Plaits' modulation: value + amount' * envelope, amount' = a * max(a - 0.05, 0.05) * 1.05
 // (voice.cc, ApplyModulations), the envelope at 1 when a note starts.
 function modAmount(a) { return a * Math.max(Math.abs(a) - 0.05, 0.05) * 1.05; }
-function modDial(g, cx, cy, r, base, amt, ok, hot, label, sub) {
+function modDial(g, cx, cy, r, base, amt, ok, hot, label, sub, now) {
   g.arc(cx, cy, r, A0, SWEEP, 2, "line");
   if (ok) {
     var to = Math.min(1, base + amt);
@@ -348,6 +366,12 @@ function modDial(g, cx, cy, r, base, amt, ok, hot, label, sub) {
     }
     var ba = A0 + base * SWEEP;
     g.line(cx + Math.cos(ba) * (r - 9), cy + Math.sin(ba) * (r - 9), cx + Math.cos(ba) * (r + 4), cy + Math.sin(ba) * (r + 4), 2, "fg");
+    // where the sound has it now (now: live_mod), a playhead on the way the envelope takes it
+    if (now !== null && now !== undefined && Math.abs(now - base) > 0.004) {
+      var na = A0 + now * SWEEP;
+      g.dot(cx + Math.cos(na) * r, cy + Math.sin(na) * r, 5, KNOB_EDGE);
+      g.dot(cx + Math.cos(na) * r, cy + Math.sin(na) * r, 3.6, MOD);
+    }
   }
   g.text(cx, cy + 4, label, "dim", 0);
   g.text(cx, cy + r + 16, sub, hot ? "slot" : "fg", 0, 116);
@@ -360,7 +384,7 @@ push.compartment({
     var t = v.$touched || "", i = engineIndex(v), six = isSixOp(i);
     var tn = i >= 0 ? ENGINES[i][2] : "TIMBRE", mn = i >= 0 ? ENGINES[i][3] : "MORPH";
     var ta = modAmount(fr(v, "timbre_mod", 0)), ma = modAmount(fr(v, "morph_mod", 0)), fa = six ? 0 : modAmount(fr(v, "fm_amount", 0));
-    modDial(g, 60, 36, 26, fr(v, "timbre", 0), ta, known(v, "timbre"), t === "timbre_mod", "T", tn);
+    modDial(g, 60, 36, 26, fr(v, "timbre", 0), ta, known(v, "timbre"), t === "timbre_mod", "T", tn, nowOf(v, "timbre"));
     // frequency: the note's pitch, raised at the start of each note and falling back with the envelope
     g.arc(180, 36, 26, A0, SWEEP, 2, "line");
     if (fa > 0.004) {
@@ -369,7 +393,7 @@ push.compartment({
     g.line(180, 36 - 17, 180, 36 - 30, 2, "fg");
     g.text(180, 40, "F", "dim", 0);
     g.text(180, 78, six ? "OFF ON 6-OP" : "PITCH", t === "fm_amount" ? "slot" : (six ? "faint" : "fg"), 0);
-    modDial(g, 300, 36, 26, fr(v, "morph", 0), ma, known(v, "morph"), t === "morph_mod", "M", mn);
+    modDial(g, 300, 36, 26, fr(v, "morph", 0), ma, known(v, "morph"), t === "morph_mod", "M", mn, nowOf(v, "morph"));
     // over decay: the envelope itself, which all three follow
     g.fill(362, 4, 1, 78, "line");
     g.text(420, 12, known(v, "decay") ? secs(decaySecs(num(v, "decay", 0)) / 2) : "--", t === "decay" ? "slot" : "fg", 0);

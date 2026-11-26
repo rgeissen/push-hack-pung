@@ -26,6 +26,19 @@ function known(v, k) { return !!(v[k] && v[k].known); }
 function fr(v, k, d) { return known(v, k) ? v[k].frac : d; }
 function raw(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
+// where the sound has a control now (v[k].now: Hera's live_mod, the newest
+// voice's cutoff and pulse width; null when nothing moves it), 0..1 and in the
+// key's own units; a fader keeps its cap, the sound's place beside it in cyan
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - fr(v, k, 0)) > 0.004; }
+function lraw(v, k, d) { var n = nowOf(v, k); return n === null || !(v[k].max > v[k].min) ? raw(v, k, d) : v[k].min + n * (v[k].max - v[k].min); }
+function faderNow(g, v, k, x, ybot, span) {   // a vertical fader: from its cap's place to the sound's
+  if (!moved(v, k)) return;
+  var f = fr(v, k, 0), n = nowOf(v, k), ya = ybot - span * f, yb = ybot - span * n;
+  g.fill(x - 1, Math.min(ya, yb), 2, Math.max(1, Math.abs(yb - ya)), MOD_DK);
+  g.dot(x, yb, 3, MOD);
+}
 function idx(v, k, n) { return Math.max(0, Math.min(n - 1, Math.round(raw(v, k, 0)))); }
 
 // ---- Hera's tables: evenly spaced points, linear between ----------------------------------
@@ -170,6 +183,7 @@ function panel(g, v) {
     }
     var f = ok ? fr(v, k, 0) : 0.5;
     cap(g, x, F_BOT - 4 - (F_BOT - F_TOP - 8) * f, hot ? "slot" : ok ? CAPC : DIM_CAP);
+    faderNow(g, v, k, x + 12, F_BOT - 4, F_BOT - F_TOP - 8);
   }
   // chorus: I and II, each a button with its LED
   var c1 = known(v, "chorus_i") && raw(v, "chorus_i", 0) >= 0.5, c2 = known(v, "chorus_ii") && raw(v, "chorus_ii", 0) >= 0.5;
@@ -205,6 +219,7 @@ function panel(g, v) {
       if (key === "vcf_env") g.fill(cx - 6, top + len / 2, 3, 1, TICK);
       var f2 = ok2 ? fr(v, key, 0) : 0.5;
       cap(g, cx, top + len - 5 - (len - 10) * f2, hot2 ? "slot" : ok2 ? CAPC : DIMI);
+      faderNow(g, v, key, cx + 12, top + len - 5, len - 10);
     }
     g.text(cx + 18, segOn ? 119 : 124, NAMES[key] || String((v[key] && v[key].name) || key).toUpperCase(), hot2 ? "slot" : LEG, -1, 80);
     g.value(cx + 18, segOn ? 138 : 148, valueOf(v, key), hot2 ? "slot" : INK, -1, 80);
@@ -337,9 +352,11 @@ push.compartment({
     var px0 = 248, px1 = 352, hi = 22, lo = 70, cw = px1 - px0;
     var pw = src === 0 ? width(depth) : 0.5; // a moving width starts square, depth takes it narrower
     if (src !== 0 && depth > 0.004) g.fill(px0 + cw * width(depth), hi, cw * (0.5 - width(depth)), lo - hi, "#3b2615");
-    var e = px0 + cw * pw;
+    var kpw = pw, e = px0 + cw * pw;
+    if (nowOf(v, "pwm_depth") !== null) { pw = width(lraw(v, "pwm_depth", 0)); e = px0 + cw * pw; }   // the width the sound has now: the pulse and the sum drawn at it
     g.poly([px0, lo, px0, hi, e, hi, e, lo, px1, lo, px1, hi], 2, !known(v, "pwm_depth") ? DIMI : wh ? "slot" : CAPC);
-    g.text(px0, 84, src === 0 ? "WIDTH " + Math.round(pw * 100) + "%" : depth > 0.004 ? "50 TO " + Math.round(width(depth) * 100) + "% BY " + PWM_SRC[src] : "SQUARE", wh ? "slot" : LEG, -1);
+    if (Math.abs(pw - kpw) > 0.002) { g.fill(px0 + cw * kpw, lo + 2, 2, 5, LEG); g.line(px0 + cw * kpw, lo + 4, e, lo + 4, 2, MOD_DK); g.dot(e, lo + 4, 3, MOD); }
+    g.text(px0, 84, src === 0 ? "WIDTH " + Math.round(kpw * 100) + "%" : depth > 0.004 ? "50 TO " + Math.round(width(depth) * 100) + "% BY " + PWM_SRC[src] : "SQUARE", wh ? "slot" : LEG, -1);
     toggle(g, 384, 28, "pwm_mod", v, t === "pwm_mod");
     // the sum, over the four level faders
     var lv = [];

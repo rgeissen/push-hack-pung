@@ -27,6 +27,17 @@ function raw(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].valu
 function fr(v, k, d) { return known(v, k) ? v[k].frac : d; }
 function idx(v, k, n, d) { return Math.max(0, Math.min(n - 1, Math.round(raw(v, k, d === undefined ? 0 : d)))); }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
+// where the sound has a control now (v[k].now: TinyK's live_mod, the edited layer's newest voice), 0..1 of its
+// range; null when nothing moves it. rawNow: the same in the control's own units, else its knob
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
+function rawNow(v, k, d) { var n = nowOf(v, k); return n === null || !(v[k].max > v[k].min) ? raw(v, k, d) : v[k].min + n * (v[k].max - v[k].min); }
+function frNow(v, k, d) { var n = nowOf(v, k); return n === null ? fr(v, k, d) : n; }
+// Osc 1's Control 1 as the wave plays it, 0..1 (the Square plays Pulse Width, which follows Control 1)
+function ctrl1Now(v, w1) {
+  var n = nowOf(v, "osc1_ctrl1");
+  if (n === null && w1 === 1) n = nowOf(v, "pulse_width");
+  return n === null ? raw(v, "osc1_ctrl1", 0) / 127 : n;
+}
 var DWGS = "wtpnllmnpruwxyxvsojeYSMIEBAACEHLPSWYaaZYWURPONOQTXchntz37+//9740abdghjkkjheaWSOLIHHILPUagnu048+/+840vqlgcaYXXYaceghijjigfdbZYXYY/851xtokgdZWUSRQQRRSUVXYabcddddcbaYXVUSRQQQQRTVXZcfimpsuxz01111z64zskdWQOOQUafjmmkgZSLFBABFLTaglnnkgbVRPPRXelt05774ztnhecehmsy36/6xlaUTXfnrsmeUNKNVfotsmdUNLPWflniaPGABHRaikhbUPOUer29+5ypkjnv4+88vikv1qbXhrmYQXkmaPSgnfSPbmiTLSfgTHJWdUHFRdbPKUkpgXdu3xmmz/8vnvgrxqpy1ss32nekkZVcbRRejaVbcROUSEALSLLWaUWikYSbeWVfiadt1ur02trzxkuvxyz0122221zxurokfbWSOKHECBAABCEGJLORUWZbdfgijkllmmnnnooppqqrstphaTOLJJJKLMNNOOPPQSUXbfkpuy1466654310zyxwvusplgZSLFBADJTeox242xxtgjjcbfaTWSKIPMLQXSRVXSUabceiirmm++u293vtdocAFPDLGKfhZw4zz4321w98765320ywuspnljihggfAFGHHHGGFFFFFFFGHIJKMOPSUXZdgjnruy136799+++899987530yvspnkjhhggfAEFGHHHGFEEDCCCDEGILNQTWYbceeffg/7654445677xyyyyyxywsLLMADFIKMORUWZbegjlnopqrssssssqnFFIWVWYZacefhjlnprsuvwyurpnlkiiggdFMQTVYZbcdeffggePTysrponmlkjjiigLPTWZacdffghhiiiik/1qqpppppppppppppppppqpAFHJKMNPQRSTUVWXXYZZaabbcccccdcdyvuutssrrrqiiiiihhghggffffeeeeeeedf3zzxxwwvuttssrspRVVWXXYXAEFHIJKNmjjjjjji5321zyxvtqdDEGHIJLMNOPQVg9654311zyxwvutroTCEFHIJKLNOPQRUXVVX/+76mlluWTXYZnvykjiaVLATbany39upobWKMMNSotzywslhKMMOZbixywubjXYPQdolnmmljAGqonnmmllODaponnmmlhDHqponnmmkBFFJtrqpponnOEdqponnmmgDJpon20zhxxwvVqvuttQdntsqGBAQIXLQMLQJTKVQUgSvUmLboTpJYyRb2Rc0MXt2753rnccTfjbSdbqlaadmbML/zjXkmkUVmlukdjrfeUcliLYeiliifqdgShcecjkpwYZjzyywvTTUVWWXYiiiiiiihFHIJKLNOrqqppoomJLMMNNPR/+765420WYYYYYZa210rtsXaeilprtjmptvz1rAEJOSWabTXbfimpmSWaehlopgjmqsvxrLPTXbfiiaehlonoppppponmljihgeddcccccdefgiklnprsuvwxxxxwvusqnliebYUROLIGECBAAAlmllkjjjjiiiihhhhgggggffffffffefeel664321000zYWWXYYaabbaABDEGHJKihecaYWVTRPON7+52ywtqnkigecaYWUTRQa/841ywtrpnljhfecbZYWVUSRQONMLrmgaTOKIJMSZhpw26751umdUMFBADJRblu28//71tjZQJDABFMVfow27862wogYRfLNXTVdVepxg1qXSmKWkwZYRoqgdyydkzdNWdkpb7YhaiyLfqbhrO4AsaTlboZLyxcYtVRrecndTqiWmeZumg/oeniXXjRmkIngXhhQXrUfvQokXhgfcrKZwWijcfnhYjegklkcZXjomefgbdbfeiYjdjt/neXfdiadfdehhgolcTYfjjffcljlZbYeXcenlofleXYTTgXbdZhtw/2qkXRaSXWOTXWljjnfgrlrkaZXShcfkggjYfZQWacqloncgposxUkSVib1oqpoZdWYRWZM/txyylmfYaTUHsZhdagWUSbRYQzv10nqWZGKPbgnqgfgffVWUTWZXTTQMLNILOSVYiiw38/9+1751yrognllkigaeXXUVUTaTZbhlnsij71zrhpchSdkt0mpbkXTNLbVdKNIJLAOPopsoisgkUcgnrcgTeVVVZut5psomlVdYudWdqdSRXLLbwqklrdZjyofgnccr/4wvyhagtgVTZNMbvpjjpaWfujaahWWl5yqprrqqonlkigfdbZXVSPLHGLd2/4xtsrqponljihfedcbaaZYYXWVTROMJJNcy+5xsronmljihffgfcbdfcabeebacfdaaddbZabaYYXWWWUSRRQMKNSWZht1469/82yxvz/+ujiiYOPZcYUYZYVXYZcgfYZgjbWdmjZYimfXcjjbbgjfcccbcefcfjhZXhrspuu5mutipjfhebccXcZVeWZfWedXgaaeZZaWVYTQYNRYHaVLkRaqSsqc5ms+l54o/38//83yussvyyupiZSMLNRVXVTOJFDGLRWZZXTPNOSYfjkjgcYWYelrvwusollpwhebYVSPMKIJMQWbhntz48//94yrkeZUPMLMPUbhnsvy010xsmgbYVVUUVWYaehii1vngdfiifXOKLScjmkgdeinplbPFBDHMNLJKRds4//7436994sfVQSYcdbXWajt0mnzxjkwvijvtghtreepmYXiePOYVGFQOABNMACQRGKabSWmoeixynp33rs53qq20WgmmmliikiddhidchligjmljihimpfMADNSUWXXaghfhmojhlnjfhjighilsyrbR///9zqnllkkjlnmkkjhgXPNOPQSTcmqrrqqpfWUUVWWXbddddcccTLKLNPQSfw488+1wropqiVOVTJAHRZVTPPUYTPSipldmw1vussuwnaSXUKBIUedcadjpmjn294u1akgZbgliaZmtndcgu1z0cOZZZIADRlty1tkWVfeenogXTcpunfegeXRRglkihjifX/glov8YetgXJmgTcnwbLcfdcjvvtvvv1591wwkeQNJLHGODWKcWVUXeMYailfrc1upmkjhgfilmlkgefhjlliiiiieXRLGFECAABDFFGIJMQVcjosvxz11100014798eeggffeZYUVTTWRXZat04/41skjedcZbbZebeedfdcfcgdegdegeffhihijiggggedfdebhYWdgZWLkrhWI/riYh2tmgjpmclfgfgfeeefedfhfhhghccdcecfhgeffgmmmllkjjjkklllkjhfdccehknpokdULEAAEKQVZbdefghijklmnnnnmmllkkkllmx0476ztncTNIEBABEHLPSVZbdgiklmmnmllkjihhgghhhijijkiijjihfgjjimsv66555320zxvtpmjfbXSNJGDBABEINTahnqplfXQJFEEGILPTXbeilpsuxz124456flgjjlloorijkdgchiul0yntfPVFHLAKJJCMFLJQOSaUefgjoqoxtw2w3wwwpomjnwtelPWCLAKGSLbbmq6348/1u0mifbaUOVMPSPXZgianrinnhmgdkXghXggcsmr96khnw3lfZr10oVZewneUUlliKDFTdTNBRZeVFHQnjfPReknSOQlxvmXls6wkjo//2qhdbliev64tXe0iXy/3pVgvYTu1tiVYcSUdjsfLORSSLd1cCPWRPMk4dLabVWashXMTPQNWULcjgmbOu/1khcchandqtktjSS2wjfTeqplkmrinvkax5ifCASbUMYUbponmpu1551siaVVXZZXVVXbhmonibSMIJLNPQRSWckrvsmdVRQVadffgjqz6/+4v2/9lgnnioiYQKAHVflx1wpmmoommgVNNOVfsy1wrnmkkkjdVQNOQVZaYUQNJMf00upjkeQORgustkmjaUMXgqtrrojcVYcjmklggbXXXbddeaZUPKElx/6itciPFTc11ypcdcfWTQcnrsikjliYSTdggnfnnyofAGWcybmny5rYFNOiYahn7ztYSSaZRWYuybZkzsbIWjrpnkRSSn3jMf1xkAjgiSf2aUMvmWajyUXboiZsmgLapnmemRPbwzcXU";
 var VOX = "jihgfedccbbXSNKGECBAAABDEHJMPSVYcfilortvxz022344332210yxvusrpomlddccbbbbbbYSNJGDBAAABDFHKNQTXbeiloruwy023444443210yxvusqonljigfebcccddeffcVPKGDBAAACDGJMQTXbfjnqtwz12345544320zxvtrpnlkihfeddccbhijklllkdVOJFCAABCFIMQUZdimqtwy0223221zywusqnljigfedccccccdeefghjjiihhdTLGCAABEIMSXchmruxz010zywurpmkhfedcbbbccdefghijkkllllllkkghhhhdRIDAACGLRYekptxzzzywuroligedccccdefgijjklllllkkjiihhggggggghhgbNEAADKRZhotxyyxurnkheccccdeghijkkkkkjiihhgggggghhhhiihhhhhhhhhePEABHQZiqvxxvrnjfdbbcdfgijkkkkjihhggggghhhhiiihhhhhgggggghhhghfSEAEOaltxwtojfcbcdfijkkjjhhggggghhhihhhhggggghhhhhhhgggggggggggdJADOcovwtnhdbbdgikkkihggggghhhhhhhgggghhhhhgggggggggggggggggggfWAAOftxunfbacgjkkihgfgghhhhggggghhhhhggggggggggggggggggggggggggeOAKdrvricacgjjihgfghhhhggggghhgggggggggggggggggggggggggggggggggbAAZtxpeacgjjhggghhhhghhhhggggggggggggggggggggggggggggggggggggggaANmvoebeijhggghhhggggggggggggggggggggggggggggggggggggggggggggggVAbvpdbgjiffghggggggggggggggggggggggggggggggggggggggggggggggggggNAoxgZfjhffhhgggggggggggggggggggggggggggggggggggggggggggggggggggAG1qXekhfghggghgggggggggggggggggggggggggggggggggggggggggggggggg"; // Control 1 = 0, 8, ... 120, 127
 
@@ -174,6 +185,28 @@ function knob(g, cx, cy, r, f, ok, hot, bip) {
   if (ok) { var a = K0 + KS * f; g.line(cx + Math.cos(a) * 2, cy + Math.sin(a) * 2, cx + Math.cos(a) * (r - 1), cy + Math.sin(a) * (r - 1), 2, hot ? "slot" : INK); }
 }
 function led(g, x, y, lit) { g.dot(x, y, 2.5, lit ? LED : LED_OFF); }
+// the sound's place beside a knob (r: the mark's radius, outside the knob's scale): an arc in the modulation
+// colour from the knob's line, and a dot
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function modMark(g, v, k, cx, cy, r) {
+  var n = nowOf(v, k);
+  if (n === null || Math.abs(n - v[k].frac) < 0.004) return;
+  var f = v[k].frac;
+  g.arc(cx, cy, r, K0 + Math.min(f, n) * KS, Math.abs(n - f) * KS, 2, MOD_DK);
+  g.dot(cx + Math.cos(K0 + n * KS) * r, cy + Math.sin(K0 + n * KS) * r, 2.8, MOD);
+}
+// g.filter is given TinyK's cutoff on its own axis (at), so it draws where the sound has it; while modulation
+// moves it, the knob's own mark under the response (as Pung marks it) and the way from there to the sound's
+// place in the modulation colour
+function cutNow(v) { return frNow(v, "cutoff", 0.5); }
+function filterMod(g, v, x, y, w, h) {
+  var n = nowOf(v, "cutoff");
+  if (n === null || Math.abs(n - v.cutoff.frac) < 0.004) return;
+  var x0 = x + 6, x1 = x + w - 6, base = y + h - 6, xs = x0 + (x1 - x0) * cutAt(v.cutoff.frac), xc = x0 + (x1 - x0) * cutAt(n);
+  g.fill(xs, base - 7, 2, 7, INK);
+  g.fill(Math.min(xs, xc), base - 3, Math.max(1, Math.abs(xc - xs)), 2, MOD_DK);
+  g.dot(xc, base - 2, 3, MOD);
+}
 
 // ---- the oscillators as TinyK makes them (one period of Osc 1 at C4) --------------------------------------------
 var AL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -216,7 +249,7 @@ function wavePts(key, x0, x1, cy, amp, n, f) {
   return (WCACHE[key] = pts);
 }
 // Osc 2 against Osc 1: its pitch (semitones and cents), sync restarting it at Osc 1's wrap
-function osc2Ratio(v) { return Math.pow(2, (raw(v, "osc2_semi", 0) + raw(v, "osc2_tune", 0) / 100) / 12); }
+function osc2Ratio(v) { return Math.pow(2, (rawNow(v, "osc2_semi", 0) + raw(v, "osc2_tune", 0) / 100) / 12); }
 function osc2Phase(t, ratio, sync) { return sync ? (t - Math.floor(t)) * ratio : t * ratio; } // t in Osc 1 periods
 
 // ---- PANEL ------------------------------------------------------------------------------------------------------
@@ -299,7 +332,7 @@ function panel(g, v) {
   led(g, 192, 97, layer && te === 1); g.text(198, 101, "2", th ? "slot" : layer && te === 1 ? INK : DIM, -1);
   // OSC 1 and OSC 2: each wave as TinyK makes it, as loud as the mix leaves it; sync restarts Osc 2, ring
   // multiplies it by Osc 1
-  var w1 = idx(v, "wave1", 7), w2 = idx(v, "wave2", 3), c1 = raw(v, "osc1_ctrl1", 0) / 127, c2 = raw(v, "osc1_ctrl2", 0);
+  var w1 = idx(v, "wave1", 7), w2 = idx(v, "wave2", 3), c1 = ctrl1Now(v, w1), c2 = raw(v, "osc1_ctrl2", 0);
   var dw = idx(v, "dwgs_wave", 64), sr = idx(v, "sync_ring", 4), ratio = osc2Ratio(v);
   var mix = fr(v, "osc_mix", 0.5), g1 = lcurve(Math.min(1, 2 * (1 - mix))) * (w1 === 1 ? 0.667 : w1 === 2 ? 1.333 : 1);
   var g2 = lcurve(Math.min(1, 2 * mix)) * (w2 === 1 ? 0.667 : w2 === 2 ? 1.333 : 1), gm = Math.max(g1, g2, 1e-6);
@@ -309,7 +342,7 @@ function panel(g, v) {
   var p1 = wavePts(key1, 220, 308, 57, 17 * g1 / gm, 96, function (x, j) { return w1 === 6 ? noiseAt(j) : osc1At(w1, 2 * x, c1, dw); });
   g.fill(220, 57, 88, 1, GRID);
   g.poly(p1, 2, known(v, "wave1") ? (o1h || tk === "osc_mix" ? "slot" : WAVE) : DIM);
-  var ct1 = w1 === 5 ? (dw + 1) + " " + String(txt(v, "dwgs_wave")).replace(/^\d+\s*/, "").toUpperCase() : CTRL1[w1] + " " + Math.round(c1 * 127);
+  var ct1 = w1 === 5 ? (dw + 1) + " " + String(txt(v, "dwgs_wave")).replace(/^\d+\s*/, "").toUpperCase() : CTRL1[w1] + " " + Math.round(raw(v, "osc1_ctrl1", 0));
   g.text(218, 89, ct1, tk === "osc1_ctrl1" || tk === "dwgs_wave" ? "slot" : LEG, -1, 92);
   if (CTRL2[w1]) g.text(218, 100, CTRL2[w1] + " " + Math.round(c2), tk === "osc1_ctrl2" ? "slot" : c2 > 0 ? LEG : DIM, -1, 92);
   g.text(406, 33, WAVES2[w2] === "TRIANGLE" ? "TRI" : WAVES2[w2], tk === "wave2" ? "slot" : INK, 1);
@@ -327,7 +360,8 @@ function panel(g, v) {
   // FILTER: Pung's response where TinyK's knob really puts the cutoff
   var ft = idx(v, "filter_type", 4), cut = fr(v, "cutoff", 0.5);
   g.text(576, 33, FILTER_NAME[ft], tk === "filter_type" ? "slot" : INK, 1);
-  g.filter(420, 36, 158, 50, { cutoff: "cutoff", resonance: "resonance", type: FILTERS[ft], at: cutAt(cut), color: CURVE });
+  g.filter(420, 36, 158, 50, { cutoff: "cutoff", resonance: "resonance", type: FILTERS[ft], at: cutAt(cutNow(v)), color: CURVE });
+  filterMod(g, v, 420, 36, 158, 50);
   var ei = (raw(v, "env_int", 0.5) - 0.5) * 126;
   g.text(422, 100, known(v, "cutoff") ? hzTxt(cutHz(cut)) : "--", tk === "cutoff" ? "slot" : INK, -1);
   g.text(522, 100, "RES " + k127(fr(v, "resonance", 0)), tk === "resonance" ? "slot" : LEG, 1);
@@ -387,7 +421,7 @@ function encoders(g, v, kn, tk, seg) {
       var lit = ok && raw(v, k, 0) >= 0.5;
       g.dot(cx, cy, 6, lit ? LED : LED_OFF);
       if (hot) g.arc(cx, cy, 9, 0, Math.PI * 2, 2, "slot");
-    } else knob(g, cx, cy, 8, ok ? v[k].frac : 0.5, ok, hot, !!BIP[k]);
+    } else { knob(g, cx, cy, 8, ok ? v[k].frac : 0.5, ok, hot, !!BIP[k]); modMark(g, v, k, cx, cy, 16); }
     g.text(x0 + 38, seg ? 119 : 124, NAMES[k] || String((v[k] && v[k].name) || k).toUpperCase(), hot ? "slot" : LEG, -1, 80);
     g.value(x0 + 38, seg ? 138 : 148, valueOf(v, k), hot ? "slot" : ok ? INK : DIM, -1, 80);
   }
@@ -436,7 +470,7 @@ function band(g, key, secs, extra) {
 
 // ---- OSC -----------------------------------------------------------------------------------------------------------
 function oscScreen(g, v) {
-  var tk = v.$touched || "", w1 = idx(v, "wave1", 7), w2 = idx(v, "wave2", 3), c1 = raw(v, "osc1_ctrl1", 0) / 127, c2 = raw(v, "osc1_ctrl2", 0);
+  var tk = v.$touched || "", w1 = idx(v, "wave1", 7), w2 = idx(v, "wave2", 3), c1 = ctrl1Now(v, w1), c2 = raw(v, "osc1_ctrl2", 0);
   var dw = idx(v, "dwgs_wave", 64), sr = idx(v, "sync_ring", 4), ratio = osc2Ratio(v), mix = fr(v, "osc_mix", 0.5);
   band(g, "osc", [[0, 356, "OSC 1"], [360, 476, "OSC 2"], [840, 112, "MIXER"]], function () {
     g.fill(8, 16, 232, 64, PANEL_DK); g.fill(368, 16, 232, 64, PANEL_DK);
@@ -469,7 +503,7 @@ function oscScreen(g, v) {
   g.text(612, 78, srs, tk === "sync_ring" ? "slot" : sr ? INK : DIM, -1, 216);
   // the mixer: each source's level by its knob's law, the wave's own level with it
   var g1 = lcurve(Math.min(1, 2 * (1 - mix))) * (w1 === 1 ? 0.667 : w1 === 2 ? 1.333 : 1), g2 = lcurve(Math.min(1, 2 * mix)) * (w2 === 1 ? 0.667 : w2 === 2 ? 1.333 : 1);
-  var nz = lcurve(fr(v, "noise_level", 0)), mx = Math.max(1, g1, g2);
+  var nz = lcurve(frNow(v, "noise_level", 0)), mx = Math.max(1, g1, g2);
   g.mix(846, 16, 100, 66, [g1 / mx, g2 / mx, nz], { color: CURVE });
 }
 
@@ -480,7 +514,8 @@ function filterScreen(g, v) {
   var kto = Math.abs(kt) <= 48 ? Math.abs(kt) / 48 : 1 + (Math.abs(kt) - 48) / 15;
   band(g, "filter", [[0, 476, "FILTER"], [480, 472, "FILTER EG"]]);
   g.text(470, 11, FILTER_NAME[ft], tk === "filter_type" ? "slot" : INK, 1);
-  g.filter(4, 14, 468, 70, { cutoff: "cutoff", resonance: "resonance", type: FILTERS[ft], at: cutAt(cut), color: CURVE });
+  g.filter(4, 14, 468, 70, { cutoff: "cutoff", resonance: "resonance", type: FILTERS[ft], at: cutAt(cutNow(v)), color: CURVE });
+  filterMod(g, v, 4, 14, 468, 70);
   // the envelope's reach: +-63 is 7.98 octaves at the envelope's top (and its sustain), never past the knob's top
   var x0 = 10, x1 = 466, a0 = cutAt(cut);
   function axX(h) { return x0 + (x1 - x0) * Math.max(0, Math.min(1, Math.log(Math.max(20, h) / 20) / Math.LN10 / 3)); }
@@ -505,6 +540,8 @@ function ampScreen(g, v) {
   // over each knob: the level (the amp's gain is its square), the pan (constant power), distortion, velocity
   var lh = tk === "level";
   g.fill(20, 24, 80, 6, PANEL_DK); g.fill(20, 24, Math.round(80 * lv), 6, lh ? "slot" : CURVE);
+  var ln = nowOf(v, "level");
+  if (ln !== null && Math.abs(ln - lv) > 0.004) { g.fill(20 + 80 * Math.min(lv, ln), 32, Math.max(1, 80 * Math.abs(ln - lv)), 2, MOD_DK); g.dot(20 + 80 * ln, 33, 3, MOD); }
   g.value(20, 52, String(k127(lv)), lh ? "slot" : INK, -1);
   g.text(20, 68, lv > 0 ? (40 * Math.log(lv) / Math.LN10).toFixed(1) + " DB" : "OFF", DIM, -1);
   var ph = tk === "pan", px = 140 + 80 * pan;

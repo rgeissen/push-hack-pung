@@ -38,6 +38,17 @@ function known(v, k) { return !!(v[k] && v[k].known); }
 function num(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
+// where the sound has a control now (v[k].now: Frodhes' live_mod, the FX filter's
+// FREQ as its LFO sweeps it; null when nothing moves it), in the key's own units
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function lnum(v, k, d) { return known(v, k) && typeof v[k].now === "number" && v[k].max > v[k].min ? v[k].min + clamp(v[k].now, 0, 1) * (v[k].max - v[k].min) : num(v, k, d); }
+function filterNow(g, x, y, w, h, knobAt, soundAt, ink) {   // a g.filter given at: (the sound's): the knob's place and the way there
+  if (Math.abs(soundAt - knobAt) <= 0.002) return;
+  var x0 = x + 6, x1 = x + w - 6, b = y + h - 6, xs = x0 + (x1 - x0) * knobAt, xc = x0 + (x1 - x0) * soundAt;
+  g.fill(xs, b - 7, 2, 7, ink);
+  g.line(xs, b - 2, xc, b - 2, 2, MOD_DK);
+  g.dot(xc, b - 2, 3, MOD);
+}
 function lerp(a, b, t) { return a + (b - a) * t; }
 function idiv(a, b) { var q = a / b; return q < 0 ? Math.ceil(q) : Math.floor(q); } // C's integer division
 
@@ -950,7 +961,9 @@ function driveScreen(g, v, t) {
   }
   // the filter: Pung's, live; where its cutoff stands on Pung's axis (20 Hz .. 20 kHz)
   var hz = flHz(num(v, "p_fl_freq", 127)), at = Math.log(hz / 20) / Math.log(1000), fon = num(v, "p_fl_type", 0) > 0;
-  g.filter(276, 16, 460, 52, { cutoff: "p_fl_freq", resonance: "p_fl_reso", type: "p_fl_type", at: at, color: ORANGE });
+  var nowAt = Math.log(flHz(lnum(v, "p_fl_freq", 127)) / 20) / Math.log(1000);   // where the LFO has it now
+  g.filter(276, 16, 460, 52, { cutoff: "p_fl_freq", resonance: "p_fl_reso", type: "p_fl_type", at: nowAt, color: ORANGE });
+  filterNow(g, 276, 16, 460, 52, at, nowAt, INK);
   var lfo = num(v, "p_fl_lfo", 0) / 127;
   if (fon && lfo > 0.004) { // the LFO's reach: +-4 octaves at full
     var oct = 4 * lfo, xc = 282 + 448 * at, px = 448 / Math.log2(1000), sw = oct * px, lc = touched === "p_fl_lfo" ? "slot" : SILVER_LO;

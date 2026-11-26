@@ -37,6 +37,8 @@ var RED = "#ff2a17", RED_OFF = "#6b2a22", KNOB = "#1a1a1a", KEY = "#ecece7", CUR
 
 // ---- values -----------------------------------------------------------------------------
 function known(v, k) { return !!(v[k] && v[k].known); }
+// where the sound has a key now (live_mod: 0..1 of its range), null when nothing moves it
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
 function fr(v, k, d) { return known(v, k) ? Math.max(0, Math.min(1, v[k].frac)) : d; }
 // an enum's second option: the module answers "1" or the option's name
 function second(v, k, name) {
@@ -155,6 +157,15 @@ function knobPointer(g, cx, cy, r, f, hot, unknown) {
   var a = A0 + SWEEP * f;
   g.line(cx + Math.cos(a) * 3, cy + Math.sin(a) * 3, cx + Math.cos(a) * (r - 1), cy + Math.sin(a) * (r - 1), 2, hot ? "slot" : "#f4f4f0");
 }
+// where the sound has a knob now (v[k].now: live_mod): an arc in the modulation colour from
+// the pointer to a dot on radius rr, round the cap; the pointer stays where the knob is
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function liveMark(g, v, k, cx, cy, rr) {
+  var n = nowOf(v, k), f = fr(v, k, 0);
+  if (n === null || Math.abs(n - f) <= 0.004) return;
+  g.arc(cx, cy, rr, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(cx + Math.cos(A0 + n * SWEEP) * rr, cy + Math.sin(A0 + n * SWEEP) * rr, 2.8, MOD);
+}
 
 // ---- the knob row: the encoders, as the 303's own row ----------------------------------
 // Drawn from v.$knobs: the page's keys, or a segment's. While segment mode is
@@ -208,6 +219,7 @@ function rowValues(g, v, keys, tight) {
       if (hot) box(g, x + 21, G.sw - 2, 18, G.swh + 4, "slot");
     } else {
       knobPointer(g, x + 30, G.cy, G.r, fr(v, k, 0), hot, !kn);
+      liveMark(g, v, k, x + 30, G.cy, G.r + 4); // on the printed scale, every frame
     }
     g.value(x + 52, G.val, shown(v, k), kn ? INK : INK_DIM, -1, 64);
   }
@@ -290,6 +302,9 @@ function sweepBar(g, x, w, y, v, hotEnv, hotAcc) {
   var lx = c + 4;
   if (lx + 24 > x1) lx = Math.max(b + 2, c - 26);
   g.text(lx, y + 5, "ACC", hotAcc ? "slot" : RED, -1);
+  // where the sound has it now (live_mod: the engine's cutoff, within the knob's range), ringed on the sweep
+  var n = nowOf(v, "cutoff");
+  if (n !== null && Math.abs(n - fr(v, "cutoff", 0.5)) > 0.004) { var xn = X(place(cutHz(n))); g.dot(xn, y + 1.5, 5.5, WIN); g.dot(xn, y + 1.5, 3.5, "mod"); }
 }
 
 // the accent's gain at a note's start (getSample: the VCA is the amp
@@ -367,7 +382,7 @@ function panel(g, v) {
 
   // the filter, and its sweep
   var sw = sweep(v), hotC = t === "cutoff";
-  g.filter(WB[0], WB[1] + 4, WB[2], WB[3] - 14, { cutoff: "cutoff", at: known(v, "cutoff") ? sw.cut : undefined, resonance: "resonance", type: "LP 24 dB", color: CURVE });
+  g.filter(WB[0], WB[1] + 4, WB[2], WB[3] - 14, { cutoff: "cutoff", at: known(v, "cutoff") ? (nowOf(v, "cutoff") !== null ? place(cutHz(nowOf(v, "cutoff"))) : sw.cut) : undefined, resonance: "resonance", type: "LP 24 dB", color: CURVE });
   g.text(WB[0] + 6, WB[1] + 11, "VCF", hotC ? "slot" : PRINT_DIM, -1);
   g.text(WB[0] + WB[2] - 6, WB[1] + 11, known(v, "env_mod") ? "ENV TO " + fmtHz(sw.hiHz).toUpperCase() + "   ACCENT TO " + fmtHz(sw.accHz).toUpperCase() : "",
     t === "env_mod" || t === "accent" ? "slot" : PRINT_DIM, 1);

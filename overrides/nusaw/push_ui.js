@@ -124,6 +124,9 @@ function envReach(g, v, x, w, y, lit) {
   var x0 = x + 6 + (w - 12) * c, x1 = x + 6 + (w - 12) * Math.min(1, c + amt * 8 / 9.966);
   g.fill(Math.round(x0), y, Math.max(2, Math.round(x1 - x0)), 2, lit ? "slot" : NEON);
   g.dot(x1, y + 1, 2.5, lit ? "slot" : NEON);
+  // where the sound has it now (live_mod: the newest voice's envelope), on the reach
+  var n = known(v, "cutoff") && typeof v.cutoff.now === "number" ? Math.max(0, Math.min(1, v.cutoff.now)) : null;
+  if (n !== null && Math.abs(n - c) > 0.004) g.dot(x + 6 + (w - 12) * n, y + 1, 3.5, "mod");
 }
 
 // ---- the front panel --------------------------------------------------------------------
@@ -219,6 +222,17 @@ function shown(v, k) {
   var r = readout(k, v[k].value) || [txt(v, k), v[k].unit || ""];
   return r;
 }
+// where the sound has a control now (v[k].now: live_mod), in the modulation colour, every
+// frame: under the LED bar a segment from the knob's place to a dot at the sound's
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function liveMark(g, v, k, x0, rg) {
+  if (typeof v[k].now !== "number") return;
+  var f = clamp(fr(v, k, 0), 0, 1), n = clamp(v[k].now, 0, 1), seg = !!v.$segmode;
+  if (Math.abs(n - f) <= 0.004) return;
+  var xf = x0 + 10 + f * 94, xn = x0 + 10 + n * 94, uy = rg.led + rg.lh + (seg ? 0 : 1);
+  g.fill(Math.round(Math.min(xf, xn)), uy, Math.max(1, Math.round(Math.abs(xn - xf))), 2, MOD_DK);
+  g.dot(xn, uy + (seg ? 0.5 : 1), seg ? 2.2 : 2.8, MOD);
+}
 function row(g, v) {
   var knobs = v.$knobs || [];
   for (var i = 0; i < 8; i++) {
@@ -233,6 +247,7 @@ function row(g, v) {
     if (!known(v, k)) continue;
     var lit = Math.round(fr(v, k, 0) * 16);
     for (var j = 0; j < lit; j++) g.fill(x0 + 10 + j * 6, rg.led, 4, rg.lh, on ? "slot" : (j === lit - 1 ? INK : NEON));
+    liveMark(g, v, k, x0, rg);
   }
   var ps = v.$pages || [];
   if (ps.length > 1) g.text(950, 31, up(ps[v.$page] || "") + "  " + ((v.$page || 0) + 1) + "/" + ps.length, INK_DIM, 1);

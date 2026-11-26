@@ -132,6 +132,14 @@ function lcdRow(g, v) {
       var l = BIPOLAR[k] ? (f >= 0.5 ? b >= n / 2 && b < Math.max(n / 2 + 1, lit) : b < n / 2 && b >= lit) : b < lit;
       g.fill(bx + b * (bw + gap), R.bar, bw, R.barH, known && l ? on : CV.lcdOff);
     }
+    // where the sound has it now (v[k].now: the module's live_mod, the newest
+    // voice's Filter 1 cutoff with its envelope, LFOs and key follow in it): a
+    // cyan tick on the bar, the way from the knob's place under it
+    if (known && typeof v[k].now === "number" && Math.abs(v[k].now - f) > 0.004) {
+      var bl = n * (bw + gap) - gap, xf = bx + f * bl, xn = bx + Math.max(0, Math.min(1, v[k].now)) * bl;
+      g.fill(Math.round(Math.min(xf, xn)), R.bar + R.barH + 1, Math.max(1, Math.round(Math.abs(xn - xf))), 2, "#1f5f6c");
+      g.fill(Math.round(xn) - 1, R.bar - 2, 2, R.barH + 5, "#3cc8e6");
+    }
   }
 }
 function virusPanel(g, v) {

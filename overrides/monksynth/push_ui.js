@@ -23,6 +23,12 @@ function num(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].valu
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : "--"; }
 function up(s) { return String(s).toUpperCase(); }
 function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : (x === x ? x : 0); }
+// where the singer has a knob now (v[k].now: the module's live_mod, 0..1 of the range: the vowel
+// as pressure or the wheel push it), null when nothing moves it; the modulation colour (Pung's)
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp01(v[k].now) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - fr(v, k, 0)) > 0.004; }
+function vowelNow(v) { var n = nowOf(v, "vowel"); return n === null ? num(v, "vowel", 0.5) : n; }
+var MODC = "#3cc8e6", MOD_DK = "#1f5f6c";
 
 // ---- the faces: the module's rig (canvas.js, MonkSynth), drawn through g -----------------
 //
@@ -832,7 +838,7 @@ function nameBlock(g, v, fi) {
     g.dot(cx, 47, i === fi ? 3.5 : 2, i === fi ? (t === "face" ? "slot" : SAFFRON) : RULE);
   }
   // the vowel, as the singer says it
-  var vw = clamp01(num(v, "vowel", 0.5)), vh = t === "vowel";
+  var vw = clamp01(vowelNow(v)), vh = t === "vowel";
   g.value(x, 76, known(v, "vowel") ? vowelName(vw) : "--", vh ? "slot" : SAFFRON, -1);
   g.text(x + 42, 70, "VOWEL", INK_DIM, -1);
   g.text(x + 42, 80, "HEAD " + Math.round(headScale(num(v, "head_size", 0.5)) * 100) + "%", t === "head_size" ? "slot" : INK_DIM, -1);
@@ -842,7 +848,7 @@ function nameBlock(g, v, fi) {
 }
 
 function formants(g, v) {
-  var vw = num(v, "vowel", 0.5), hd = num(v, "head_size", 0.5), br = num(v, "aspiration", 0.5), t = v.$touched || "";
+  var vw = vowelNow(v), hd = num(v, "head_size", 0.5), br = num(v, "aspiration", 0.5), t = v.$touched || "";
   var ok = known(v, "vowel") && known(v, "head_size");
   if (!ok) return;
   var m = formantCurve(vw, hd, br), base = FMT.y + FMT.h;
@@ -860,8 +866,13 @@ function formants(g, v) {
     g.text(vx, y, VOWELS[k], on ? INK : INK_DIM, 0);
     if (k < 4) g.fill(Math.round(vx + 12), y - 4, Math.round((x1 - x0) / 4 - 24), 1, RULE);
   }
-  var px = x0 + clamp01(vw) * (x1 - x0);
+  var px = x0 + clamp01(num(v, "vowel", 0.5)) * (x1 - x0); // the knob's place
   g.fill(Math.round(px) - 1, y - 14, 3, 6, vh ? "slot" : SAFFRON);
+  if (moved(v, "vowel")) { // and the singer's, beside it
+    var nx = x0 + nowOf(v, "vowel") * (x1 - x0);
+    g.fill(Math.min(px, nx), y - 11, Math.abs(nx - px), 1, MOD_DK);
+    g.dot(nx, y - 10.5, 3, MODC);
+  }
 }
 
 // ---- the encoder row: saffron knobs on the robe ---------------------------------------------
@@ -907,6 +918,11 @@ function row(g, v) {
     var sm = !!v.$segmode, x0 = i * 120, hot = k === t, ok = known(v, k);
     g.text(x0 + 60, sm ? 116 : 120, up(v[k].name), hot ? "slot" : INK_DIM, 0, 110);
     knob(g, x0 + 30, sm ? 129 : 138, k === "face" ? (ok ? parseInt(v[k].value, 10) / 11 : 0) : fr(v, k, 0), ok, hot, sm ? 0.7 : 1);
+    if (moved(v, k)) { // where the singer has it, beside the knob's arc
+      var f0 = clamp01(fr(v, k, 0)), fn = nowOf(v, k), an = Math.PI * (0.75 + 1.5 * fn), r = 18 * (sm ? 0.7 : 1), cy = sm ? 129 : 138;
+      g.arc(x0 + 30, cy, r, Math.PI * (0.75 + 1.5 * Math.min(f0, fn)), Math.PI * 1.5 * Math.abs(fn - f0), 1.5, MOD_DK);
+      g.dot(x0 + 30 + Math.cos(an) * r, cy + Math.sin(an) * r, 3, MODC);
+    }
     g.value(x0 + 82, sm ? 138 : 149, valueOf(v, k), hot ? "slot" : INK, 0, 70);
   }
   var ps = v.$pages || [];
@@ -947,7 +963,7 @@ push.compartment({
       // the mouth: the vowel's aperture, wider as the voice gets louder
       var L = v.$live, amp = L && L.known && L.level > 0 ? Math.min(1, L.level) : 0;
       var u = unitBox(g, PORT.x + 4, PORT.y + 2, PORT.w - 8, PORT.h - 4, face.portrait || face.crop, face.pickerXScale || 1);
-      drawMouth(g, u, face, num(v, "vowel", 0.5), 1 + Math.round(amp * 4) / 4 * 0.35, t === "vowel");
+      drawMouth(g, u, face, vowelNow(v), 1 + Math.round(amp * 4) / 4 * 0.35, t === "vowel");
     }
     nameBlock(g, v, fi);
     formants(g, v);

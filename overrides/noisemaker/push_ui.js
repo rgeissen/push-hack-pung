@@ -47,6 +47,10 @@ function pick(v, k, names) {
 }
 function pct(v, k, d) { return known(v, k) ? clamp(num(v, k, d * 100) / 100, 0, 1) : d; }
 function on(v, k) { var s = up(txt(v, k)); return s === "ON" || s === "1"; }
+// where the sound has a control now (v[k].now: Noisemaker's live_mod, the newest voice's pulse width, FM, osc
+// pitches and cutoff), 0..1 of its range; null when nothing moves it
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function pctNow(v, k, d) { var n = nowOf(v, k); return n === null ? pct(v, k, d) : n; }
 
 // ---- the engine's own laws (Engine/AudioUtils.h, Vco.h, the wrapper's macros) ---------------
 var OSC1W = ["Saw", "Pulse", "Noise"], OSC2W = ["Saw", "Pulse", "Tri", "Sine", "Noise"];
@@ -55,6 +59,7 @@ var FILT_PUNG = ["LP 24 dB", "LP 18 dB", "LP 12 dB", "LP 6 dB", "HP 24 dB", "BP"
 var WAVE_STOPS = [[1, "SINE", "sine"], [12, "FM", "fm"], [23, "TRIANGLE", "tri"], [34, "SAW", "saw"], [45, "DUAL SAW", "saw2"],
   [56, "SQUARE", "square"], [67, "THIN PULSE", "pulse"], [78, "PULSE+SAW", "pulsesaw"], [89, "RING", "ring"], [100, "SUB BASS", "sub"]];
 function semis(v, k) { return Math.floor(pct(v, k, 0.5) * 48 - 24); }                 // getOscTuneValue
+function semisNow(v, k) { var n = nowOf(v, k); return n === null ? semis(v, k) : semis(v, k) + (n - pct(v, k, 0.5)) * 48; } // + what modulation adds
 function fine(v, k) { return (pct(v, k, 0.5) - 0.5) * 2; }                             // getOscFineTuneValue
 function tune2Semis(raw) {                                                             // the Osc2 Pitch macro
   raw = Math.round(clamp(raw, 0, 255));
@@ -88,9 +93,9 @@ function dutyOf(pw) { return clamp(0.5 - Math.abs(pw - 0.5) * 0.9, 0.06, 0.5); }
 // pulse two octaves down; ring modulation crossfades the sum into the product)
 function oscState(v) {
   var w1 = OSC1W[pick(v, "osc1_wave", OSC1W)] || "Saw", w2 = OSC2W[pick(v, "osc2_wave", OSC2W)] || "Saw";
-  var r = Math.pow(2, (semis(v, "osc2_tune") + fine(v, "osc2_fine") - semis(v, "osc1_tune") - fine(v, "osc1_fine")) / 12);
+  var r = Math.pow(2, (semisNow(v, "osc2_tune") + fine(v, "osc2_fine") - semisNow(v, "osc1_tune") - fine(v, "osc1_fine")) / 12);
   return { w1: w1, w2: w2, v1: pct(v, "osc1_vol", 0.8), v2: pct(v, "osc2_vol", 0), v3: pct(v, "osc3_vol", 0),
-    duty: dutyOf(pct(v, "osc1_pw", 0.5)), ratio: r, ring: pct(v, "ringmod", 0), sync: on(v, "osc_sync"), fm: pct(v, "osc2_fm", 0) };
+    duty: dutyOf(pctNow(v, "osc1_pw", 0.5)), ratio: r, ring: pct(v, "ringmod", 0), sync: on(v, "osc_sync"), fm: Math.round(pctNow(v, "osc2_fm", 0) * 100) / 100 };
 }
 function stateKey(s) { return [s.w1, s.w2, s.v1, s.v2, s.v3, s.duty.toFixed(2), s.ratio.toFixed(3), s.ring, s.sync, s.fm].join("|"); }
 function mixPts(s, x, y, w, h, cyc, which) {
@@ -275,6 +280,16 @@ function shown(v, k) {
 }
 var SHORT = { wave: "WAVE", tune2: "OSC 2 PITCH", cutoff: "CUTOFF", resonance: "RESONANCE", filter_env: "FILTER ENV",
   fenv_time: "FILTER TIME", aenv_time: "AMP TIME", volume: "VOLUME" };
+// the sound's place beside a knob (r: the mark's radius, outside the knob): an arc in the modulation colour from
+// the pointer, and a dot
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function modMark(g, v, k, x, y, r) {
+  var n = nowOf(v, k);
+  if (n === null || Math.abs(n - v[k].frac) < 0.004) return;
+  var f = v[k].frac;
+  g.arc(x, y, r, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(x + Math.cos(A0 + n * SWEEP) * r, y + Math.sin(A0 + n * SWEEP) * r, 2.8, MOD);
+}
 function row(g, v) {
   var knobs = v.$knobs || [];
   for (var i = 0; i < 8; i++) {
@@ -286,6 +301,7 @@ function row(g, v) {
     if (known(v, k)) {
       var a = A0 + SWEEP * fr(v, k, 0);
       g.line(kx + Math.cos(a) * 3, ky + Math.sin(a) * 3, kx + Math.cos(a) * 11 * rs, ky + Math.sin(a) * 11 * rs, 2.5, h ? "slot" : INK);
+      modMark(g, v, k, kx, ky, 18 * rs);
     }
     var s = shown(v, k), uw = s[1] ? g.measure(s[1]) + 3 : 0;
     g.value(x0 + rg.vx, rg.val, s[0], h ? "slot" : INK, -1, COL - rg.vx - 6 - uw);

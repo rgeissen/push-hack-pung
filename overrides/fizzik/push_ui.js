@@ -46,6 +46,21 @@ function fr(v, k, d) { return known(v, k) ? v[k].frac : (d === undefined ? 0 : d
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 function num(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
+// where the sound has a control now (v[k].now: Fizzik's live_mod, its LFOs,
+// aftertouch and CC74 on the cutoff, resonance, couple, balance and the newest
+// voice's tone and tension; null when nothing moves it), 0..1 and in the key's
+// own units; the pictures draw the sound's, the knobs keep their marks
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - clamp(v[k].frac, 0, 1)) > 0.004; }
+function lnum(v, k, d) { var n = nowOf(v, k); return n === null || !(v[k].max > v[k].min) ? num(v, k, d) : v[k].min + n * (v[k].max - v[k].min); }
+function filterNow(g, x, y, w, h, knobAt, soundAt, ink) {   // a g.filter given at: (the sound's): the knob's place and the way there
+  if (Math.abs(soundAt - knobAt) <= 0.002) return;
+  var x0 = x + 6, x1 = x + w - 6, b = y + h - 6, xs = x0 + (x1 - x0) * knobAt, xc = x0 + (x1 - x0) * soundAt;
+  g.fill(xs, b - 7, 2, 7, ink);
+  g.line(xs, b - 2, xc, b - 2, 2, MOD_DK);
+  g.dot(xc, b - 2, 3, MOD);
+}
 function mexp(x, lo, hi) { return lo * Math.pow(hi / lo, clamp(x, 0, 1)); }
 function hot(v, k) { return v.$touched === k; }
 function hotAny(v, ks) { for (var i = 0; i < ks.length; i++) if (v.$touched === ks[i]) return true; return false; }
@@ -219,7 +234,7 @@ function modesOf(v, pre) {
   var model = modelOf(v, pre + "model");
   if (model < 0) return null;
   var s = num(v, pre + "struct", 0), dec = num(v, pre + "decay", 0.5), dmp = num(v, pre + "damp", 0.5);
-  var pos = num(v, pre + "pos", 0.2), tone = num(v, pre + "tone", 0.5);
+  var pos = num(v, pre + "pos", 0.2), tone = lnum(v, pre + "tone", 0.5);   // the tone the newest voice has
   var key = [model, s.toFixed(2), dec.toFixed(2), dmp.toFixed(2), pos.toFixed(2), model === 0 ? tone.toFixed(2) : ""].join("|");
   return cached("modes|" + key, function () {
     var ms = model === 0 ? stringModes(s, dec, dmp, pos, tone) : modalModes(model, s, dec, dmp, pos);
@@ -448,6 +463,7 @@ function meterRow(g, v) {
       g.line(cx, cy, cx + Math.cos(a) * (M.r - 2), cy + Math.sin(a) * (M.r - 2), h ? 3 : 2, h ? "slot" : INK);
     }
     g.dot(cx, cy, 3, h ? "slot" : INK2);
+    if (moved(v, k)) { var an = Math.PI + nowOf(v, k) * Math.PI; g.dot(cx + Math.cos(an) * (M.r + 2), cy + Math.sin(an) * (M.r + 2), 2.8, MOD); }
     if (sv[1]) g.text(x0 + 113, M.uy, sv[1], h ? "slot" : INK3, 1);
     g.value(x0 + 113, M.vy, sv[0], ink, 1, 56);
   }
@@ -525,15 +541,15 @@ function panel(g, v) {
   var cp = num(v, "couple", 0), ch = hot(v, "couple"), x0 = A ? A.r : PX.a + PX.bw, x1 = B ? B.l : PX.b, cy = BODY_Y + BODY_H / 2;
   var gx = (PX.a + PX.bw + PX.b) / 2, cseg = v.$segmode === "segment" && v.$segment === "couple";
   if (known(v, "couple") && cp > 0.005) {
-    springH(g, x0 + 2, x1 - 2, cy, 5, ch ? "slot" : INK, 1.2 + 1.8 * cp);
+    springH(g, x0 + 2, x1 - 2, cy, 5, ch ? "slot" : INK, 1.2 + 1.8 * clamp(lnum(v, "couple", cp), 0, 1));
     g.text(gx, cy - 10, Math.round(cp * 100) + "%", ch ? "slot" : INK, 0);
     g.text(gx, cy + 18, "COUPLE", ch || cseg ? "slot" : INK3, 0);
   } else {
     g.text(gx, cy + 3, "APART", ch || cseg ? "slot" : INK3, 0);
   }
   // what each gives to the output: a line as heavy as its share
-  var bal = num(v, "balance", 0.5), bhot = hot(v, "balance");
-  var ax = PX.a + PX.bw / 2, bx = PX.b + PX.bw / 2, wa = 1 + 4 * (1 - bal), wb = 1 + 4 * bal;
+  var bal = num(v, "balance", 0.5), bhot = hot(v, "balance"), lb = clamp(lnum(v, "balance", bal), 0, 1);   // lb: the balance the sound has
+  var ax = PX.a + PX.bw / 2, bx = PX.b + PX.bw / 2, wa = 1 + 4 * (1 - lb), wb = 1 + 4 * lb;
   var ca = bhot ? "slot" : mix(ACOL, GROUND, 0.2 + 0.5 * bal), cb = bhot ? "slot" : mix(BCOL, GROUND, 0.7 - 0.5 * bal);
   var nx = PX.flt - 14, ny = BUS - 2;
   g.line(ax, BODY_Y + BODY_H + 4, ax, BUS, wa, ca);
@@ -547,7 +563,9 @@ function panel(g, v) {
   g.text(PX.flt + PX.fltW, 33, (ft + " " + vo).toUpperCase(), hotAny(v, ["ftype", "voicing"]) ? "slot" : INK, 1, 130);
   // the knob spans 30 Hz .. 18 kHz; Pung's axis 20 Hz .. 20 kHz: the handle where the engine has it
   var at = known(v, "cutoff") ? clamp(Math.log(mexp(num(v, "cutoff", 1), 30, 18000) / 20) / Math.LN10 / 3, 0, 1) : undefined;
-  g.filter(PX.flt, 38, PX.fltW, 62, { cutoff: "cutoff", at: at, resonance: "resonance", type: filterName(v), color: SCOPE });
+  var nowAt = known(v, "cutoff") ? clamp(Math.log(mexp(lnum(v, "cutoff", 1), 30, 18000) / 20) / Math.LN10 / 3, 0, 1) : undefined;   // where the sound has it
+  g.filter(PX.flt, 38, PX.fltW, 62, { cutoff: "cutoff", at: nowAt, resonance: nowOf(v, "resonance") === null ? "resonance" : nowOf(v, "resonance"), type: filterName(v), color: SCOPE });
+  if (at !== undefined) filterNow(g, PX.flt, 38, PX.fltW, 62, at, nowAt, INK);
   // the amp envelope: Pung's, every note running along it
   var eh = hotAny(v, ["amp_attack", "amp_release"]);
   g.text(PX.amp + PX.ampW, 33, UNITS.amp_attack(num(v, "amp_attack", 0)).join(" ") + " / " + UNITS.amp_release(num(v, "amp_release", 0)).join(" "), eh ? "slot" : INK2, 1, 150);
@@ -734,10 +752,11 @@ push.compartment({
     g.text(48, 31, "A " + (ma >= 0 ? MODELS[ma].toUpperCase() : ""), ACOL, 0, 72);
     g.fill(10, 56, 76, 18, mix(BCOL, GROUND, 0.75)); box(g, 10, 56, 76, 18, 1.5, BCOL);
     g.text(48, 69, "B " + (mb >= 0 ? MODELS[mb].toUpperCase() : ""), BCOL, 0, 72);
-    if (cp > 0.005) spring(g, 48, 37, 55, 7, cp, ch ? "slot" : INK, 1.2 + 1.8 * cp);
+    var lcp = clamp(lnum(v, "couple", cp), 0, 1), lbal = clamp(lnum(v, "balance", bal), 0, 1);   // as the sound has them
+    if (cp > 0.005) spring(g, 48, 37, 55, 7, lcp, ch ? "slot" : INK, 1.2 + 1.8 * lcp);
     g.text(62, 50, cp > 0.005 ? Math.round(cp * 100) + "%" : "APART", ch ? "slot" : INK2, -1);
-    g.line(87, 27, 214, 46, 1 + 4 * (1 - bal), bh ? "slot" : mix(ACOL, GROUND, 0.25));
-    g.line(87, 65, 214, 46, 1 + 4 * bal, bh ? "slot" : mix(BCOL, GROUND, 0.25));
+    g.line(87, 27, 214, 46, 1 + 4 * (1 - lbal), bh ? "slot" : mix(ACOL, GROUND, 0.25));
+    g.line(87, 65, 214, 46, 1 + 4 * lbal, bh ? "slot" : mix(BCOL, GROUND, 0.25));
     g.dot(218, 46, 5, bh ? "slot" : INK); g.dot(218, 46, 3, GROUND);
     g.text(218, 30, Math.round((1 - bal) * 100) + ":" + Math.round(bal * 100), bh ? "slot" : INK2, 0);
     g.text(10, 84, cp > 0.005 ? Math.round(cp * 100) + "% OF EACH DRIVES THE OTHER" : "A AND B RING APART", ch ? "slot" : INK3, -1, 226);

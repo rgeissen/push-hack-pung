@@ -29,6 +29,21 @@ function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : 
 function raw(v, k) { return known(v, k) ? String(v[k].value) : ""; }
 function up(s) { return String(s).toUpperCase(); }
 function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : (x === x ? x : 0); }
+// where the sound has a control now (v[k].now: Essaim's live_mod, the selected
+// voice's speed, cutoff and volume as its rhythm LFO and drift move them; null
+// when nothing moves it), 0..1 and in the key's own units; the pictures draw the
+// sound's, the knobs keep their marks, the sound's beside them in cyan
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp01(v[k].now) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - clamp01(v[k].frac)) > 0.004; }
+function lnum(v, k, d) { var n = nowOf(v, k); return n === null || !(v[k].max > v[k].min) ? num(v, k, d) : v[k].min + n * (v[k].max - v[k].min); }
+function filterNow(g, x, y, w, h, knobAt, soundAt, ink) {   // a g.filter given at: (the sound's): the knob's place and the way there
+  if (Math.abs(soundAt - knobAt) <= 0.002) return;
+  var x0 = x + 6, x1 = x + w - 6, b = y + h - 6, xs = x0 + (x1 - x0) * knobAt, xc = x0 + (x1 - x0) * soundAt;
+  g.fill(xs, b - 7, 2, 7, ink);
+  g.line(xs, b - 2, xc, b - 2, 2, MOD_DK);
+  g.dot(xc, b - 2, 3, MOD);
+}
 function hex2(n) { var s = Math.round(n).toString(16); return s.length < 2 ? "0" + s : s; }
 function mixc(a, b, t) {
   var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
@@ -196,6 +211,8 @@ function field(g, v, sw, cur) {
     var c = sw[cur], cx = sx(c.speed), cy = ny(voiceNote(c.freq, c.octave, root, sc)), hot = t !== "" && !allHot;
     g.arc(cx, cy, 9, 0, Math.PI * 2, 1.6, INK);
     g.text(cx + 12, cy - 6, "V" + (cur + 1), INK, -1);
+    if (moved(v, "speed") || moved(v, "volume"))   // the voice as it sounds now: its speed and its level
+      g.dot(known(v, "speed") ? sx(lnum(v, "speed", c.speed)) : cx, cy, 1.8 + clamp01(lnum(v, "volume", c.volume)) * 4, MOD);
   }
 }
 
@@ -210,10 +227,11 @@ function voiceBlock(g, v, sw, cur) {
   var sp = num(v, "speed", 1), lfoI = nameIndex(v, "v_lfo_shape", LFO_NAMES, 0);
   g.text(x, 30, "RHYTHM", LEGEND, -1);
   g.text(x + 100, 30, sp.toFixed(1) + "HZ", t === "speed" ? "slot" : INK_DIM, 1);
-  g.lfo(x - 2, 34, 106, 64, { shape: LFO_PUNG[lfoI] || "Sine", rate: clamp01((sp - 1) / 4), color: me ? MODE_COL[mode] : GLOW });
+  g.lfo(x - 2, 34, 106, 64, { shape: LFO_PUNG[lfoI] || "Sine", rate: clamp01((lnum(v, "speed", 1) - 1) / 4), color: me ? MODE_COL[mode] : GLOW });   // at the speed the sound has
   g.text(x + 112, 30, "FILTER", LEGEND, -1);
-  g.filter(x + 110, 34, 106, 64, { cutoff: "cutoff", at: cutoffAt(num(v, "cutoff", 0.7)), resonance: me ? clamp01(me.q) : 0.5,
+  g.filter(x + 110, 34, 106, 64, { cutoff: "cutoff", at: cutoffAt(lnum(v, "cutoff", 0.7)), resonance: me ? clamp01(me.q) : 0.5,
     type: me ? MODE_NAME[mode] : "LP", color: me ? MODE_COL[mode] : INK });
+  filterNow(g, x + 110, 34, 106, 64, cutoffAt(num(v, "cutoff", 0.7)), cutoffAt(lnum(v, "cutoff", 0.7)), INK);
   g.text(x + 224, 30, "AMP", LEGEND, -1);
   g.envelope(x + 222, 34, 102, 64, { attack: "v_attack", sustain: 1, release: "decay", color: INK });
 }
@@ -245,6 +263,10 @@ function row(g, v) {
       // a randomizer: a turn fires it, nothing to point at
       for (var j = 0; j < 7; j++) g.dot(x0 + 22 + (j * 37 % 17), cy - 12 + (j * 23 % (sm ? 13 : 19)), 1.6, hot ? "slot" : INK_DIM);
     } else dotRing(g, x0 + 30, cy, fr(v, k, 0), ok, hot, SIGNED[k], sm ? 10 : 14);
+    if (!trig && ok && moved(v, k)) {   // the sound's place on the ring
+      var an = Math.PI * (0.75 + 1.5 * nowOf(v, k)), rr = (sm ? 10 : 14) + 4;
+      g.dot(x0 + 30 + Math.cos(an) * rr, cy + Math.sin(an) * rr, 2.8, MOD);
+    }
     var val = ok ? String(v[k].display || v[k].value) : "--";
     g.value(x0 + 82, sm ? 138 : 149, val, hot ? "slot" : INK, 0, 70);
   }

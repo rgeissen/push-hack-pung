@@ -56,10 +56,12 @@ function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""
 function opt(v, k) { return known(v, k) ? String(v[k].value) : ""; }
 function on(v, k) { var s = opt(v, k).toLowerCase(); return s === "on" || s === "1"; }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
+// where the sound has a key now (live_mod: 0..1 of its range), else d (the knob's)
+function nowOr(v, k, d) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : d; }
 
 // ---- the engine's units ------------------------------------------------------------------------
 function cutHz(c) { return 20 * Math.pow(900, c); }
-function atOf(v, k) { return clamp(Math.log(cutHz(num(v, k, 0.5)) / 20) / Math.LN10 / 3, 0, 1); }
+function atOf(v, k) { return clamp(Math.log(cutHz(nowOr(v, k, num(v, k, 0.5))) / 20) / Math.LN10 / 3, 0, 1); } // where it sounds now
 function mgHz(r) { return 0.05 * Math.pow(800, r); }
 function fmtHz(h) { return h >= 1000 ? (h >= 9950 ? Math.round(h / 1000) : (h / 1000).toFixed(1)) + " kHz" : (h >= 10 ? Math.round(h) : h.toFixed(h >= 1 ? 1 : 2)) + " Hz"; }
 function fmtS(s) { return s >= 1 ? s.toFixed(s >= 9.95 ? 0 : 2) + " s" : (s * 1000 >= 10 ? Math.round(s * 1000) : (s * 1000).toFixed(1)) + " ms"; }
@@ -217,6 +219,16 @@ function pointer(g, x, y, r, f, c, w) {
   var a = A0 + f * SWEEP;
   g.line(x, y, x + Math.cos(a) * (r - 2), y + Math.sin(a) * (r - 2), w || 2, c);
 }
+// where the sound has a knob now (v[k].now: live_mod): an arc in the modulation colour from
+// the pointer to a dot on radius rr, round the cap; the pointer stays where the knob is
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function liveMark(g, v, k, x, y, rr) {
+  if (!known(v, k) || typeof v[k].now !== "number") return;
+  var f = fr(v, k, 0), n = clamp(v[k].now, 0, 1);
+  if (Math.abs(n - f) <= 0.004) return;
+  g.arc(x, y, rr, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(x + Math.cos(A0 + n * SWEEP) * rr, y + Math.sin(A0 + n * SWEEP) * rr, 2.8, MOD);
+}
 // a section's title as the panel prints it: the words, a rule running on to the section's end
 function title(g, x, w, y, s, hot) {
   g.text(x, y, s, hot ? "slot" : SILK, -1);
@@ -262,7 +274,7 @@ function panel(g, v) {
   var ps = v.$pages || [];
   if (ps.length > 1) g.text(952, 15, String(ps[v.$page] || "").toUpperCase() + "  " + ((v.$page || 0) + 1) + "/" + ps.length, SILK_DIM, 1);
   // VCO 1 and 2: the waves, the scales, the levels; sync and ring
-  var w1 = opt(v, "v1_wave") || "Saw", w2 = opt(v, "v2_wave") || "Saw", pw = fr(v, "v1_pw", 0.5) * 0.9 + 0.05, c1 = code1(w1), c2 = code2(w2), pw2 = fr(v, "v2_pw", 0.15);
+  var w1 = opt(v, "v1_wave") || "Saw", w2 = opt(v, "v2_wave") || "Saw", pw = nowOr(v, "v1_pw", fr(v, "v1_pw", 0.5)) * 0.9 + 0.05, c1 = code1(w1), c2 = code2(w2), pw2 = nowOr(v, "v2_pw", fr(v, "v2_pw", 0.15));
   var ms10 = on(v, "ms10_mode"), sync = on(v, "v2_sync");
   g.poly(cached("f1|" + w1 + "|" + pw.toFixed(2), function () { return wavePts(VX + 12, 37, 72, 14, function (q) { return vco1(c1, q * 2, pw); }, 2); }), 1.5,
     t === "v1_wave" ? "slot" : SILK);
@@ -346,6 +358,7 @@ function row(g, v) {
     }
     if (hot) g.arc(cx, cy, r + 8, 0, Math.PI * 2, 2, "slot");
     if (known(v, k)) pointer(g, cx, cy, r - 1, fr(v, k, 0), hot ? "slot" : SILK, 2.5);
+    liveMark(g, v, k, cx, cy, r + 4); // on the printed scale, every frame (the row is outside the layer)
     g.value(x0 + 82, cmp ? 135 : 146, shown(v, k), hot ? "slot" : SILK, 0, 66);
   }
 }
@@ -421,7 +434,7 @@ push.compartment({
   extra_keys: ["mix_v1", "mix_v2", "ms10_mode", "pb_pwm_in", "pb_vco2_cv"],
   screen: function (g, v) {
     edge(g);
-    var t = v.$touched || "", w1 = opt(v, "v1_wave") || "Saw", w2 = opt(v, "v2_wave") || "Saw", pw = fr(v, "v1_pw", 0.5) * 0.9 + 0.05, c1 = code1(w1), c2 = code2(w2), pw2 = fr(v, "v2_pw", 0.15);
+    var t = v.$touched || "", w1 = opt(v, "v1_wave") || "Saw", w2 = opt(v, "v2_wave") || "Saw", pw = nowOr(v, "v1_pw", fr(v, "v1_pw", 0.5)) * 0.9 + 0.05, c1 = code1(w1), c2 = code2(w2), pw2 = nowOr(v, "v2_pw", fr(v, "v2_pw", 0.15));
     var sync = on(v, "v2_sync"), iv = interval(v), r2 = Math.pow(2, iv / 12), ms10 = on(v, "ms10_mode"), xm = fr(v, "x_mod_amt", 0);
     var o1 = function (ph) { return vco1(c1, ph, pw); };
     var o2 = function (ph) { return vco2(c2, sync ? (ph - Math.floor(ph)) * r2 : ph * r2, pw2, o1(ph)); };
@@ -431,7 +444,7 @@ push.compartment({
     var x = 10;
     box(x, bw, /^v1_/.test(t));
     g.text(x, y + 14, "VCO 1", "dim", -1);
-    g.text(x + bw, y + 14, String(w1).toUpperCase() + "  " + (opt(v, "v1_pitch") || "") + (/pw|square/i.test(w1) ? "  PW " + pct(pw) : ""), "fg", 1);
+    g.text(x + bw, y + 14, String(w1).toUpperCase() + "  " + (opt(v, "v1_pitch") || "") + (/pw|square/i.test(w1) ? "  PW " + pct(fr(v, "v1_pw", 0.5) * 0.9 + 0.05) : ""), "fg", 1);
     g.poly(cached("v1|" + sig, function () { return wavePts(x, y + 20, bw, h - 26, function (q) { return o1(q * 2); }, 2); }), 2, "fg");
     var pj = feeds(v, 6);
     if (pj !== "NONE" && /pw|square/i.test(w1)) g.text(x, y + h - 4, "PWM FROM " + pj, "mod", -1);

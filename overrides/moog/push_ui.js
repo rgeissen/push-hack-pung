@@ -160,6 +160,16 @@ function pointer(g, x, y, r, f, c, w) {
   var a = A0 + f * SWEEP;
   g.line(x + Math.cos(a) * r * 0.25, y + Math.sin(a) * r * 0.25, x + Math.cos(a) * (r - 2), y + Math.sin(a) * (r - 2), w || 2, c);
 }
+// where the sound has a knob now (v[k].now: live_mod): an arc in the modulation colour from
+// the pointer to a dot on radius rr, round the cap; the pointer stays where the knob is
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function liveMark(g, v, k, x, y, rr) {
+  if (!known(v, k) || typeof v[k].now !== "number") return;
+  var f = fr(v, k, 0), n = clamp(v[k].now, 0, 1);
+  if (Math.abs(n - f) <= 0.004) return;
+  g.arc(x, y, rr, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(x + Math.cos(A0 + n * SWEEP) * rr, y + Math.sin(A0 + n * SWEEP) * rr, 2.8, MOD);
+}
 // a rocker switch: lit or not, in its colour
 function rocker(g, x, y, on, c, off) {
   g.fill(x, y, 9, 13, "#000000");
@@ -275,6 +285,7 @@ function row(g, v) {
     g.text(x0 + 60, cmp ? 114 : 118, NAMES[k] || String(v[k].name).toUpperCase(), hot ? "slot" : PRINT, 0, 104);
     if (hot) g.arc(cx, cy, r + 6, 0, Math.PI * 2, 2, "slot");
     if (known(v, k)) pointer(g, cx, cy, r - 1.5, fr(v, k, 0), hot ? "slot" : PRINT, 3);
+    liveMark(g, v, k, cx, cy, r + 4); // on the printed scale, every frame (the row is outside the layer)
     // the last column ends at the wooden cheek
     g.value(x0 + (c === 7 ? 78 : 84), cmp ? 135 : 146, shown(v, k), hot ? "slot" : PRINT, 0, c === 7 ? 56 : 64);
   }

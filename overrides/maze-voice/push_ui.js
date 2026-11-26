@@ -82,10 +82,15 @@ function cached(key, make) {
 // phase is integrated as the engine does (increment f1 * (1 + index * tri)),
 // so thru-zero FM runs the sine backwards where the index passes -1. The
 // window holds one MOD cycle (2 to 6 VCO cycles).
+// a key where the sound has it now (live_mod: the EGs on it), in its own units; else the knob's
+function liveRaw(v, k, d) {
+  if (!(v[k] && v[k].known) || typeof v[k].now !== "number") return raw(v, k, d);
+  return v[k].min + clamp(v[k].now, 0, 1) * (v[k].max - v[k].min);
+}
 function oscModel(v) {
-  var tune = raw(v, "vco_tune", 0), vk = raw(v, "vco_key", 100) / 100, mf = raw(v, "mod_freq", 55);
+  var tune = liveRaw(v, "vco_tune", 0), vk = raw(v, "vco_key", 100) / 100, mf = liveRaw(v, "mod_freq", 55);
   var f1 = 440 * Math.pow(2, (vk * (60 - 69) + tune) / 12), r = mf / f1;
-  var idx = clamp(raw(v, "fm_depth", 0) / 100, 0, 1) * 3;
+  var idx = clamp(liveRaw(v, "fm_depth", 0) / 100, 0, 1) * 3;
   return { f1: f1, r: r, idx: idx, cyc: clamp(1 / r, 2, 6) };
 }
 function oscPts(m, x, y, w, h, which, idx) {
@@ -163,6 +168,17 @@ function knobTab(g, x, y, r, f, c) {
   var a = A0 + f * SWEEP;
   g.line(x + Math.cos(a) * r * 0.18, y + Math.sin(a) * r * 0.18, x + Math.cos(a) * (r - 1), y + Math.sin(a) * (r - 1), 3, c);
 }
+// where the sound has a knob now (v[k].now: live_mod): an arc in the modulation colour from
+// the tab to a dot on radius rr, round the skirt; the tab stays where the knob is
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function liveMark(g, v, k, x, y, rr, f) {
+  if (!known(v, k) || typeof v[k].now !== "number") return;
+  var n = clamp(v[k].now, 0, 1);
+  f = clamp(f, 0, 1);
+  if (Math.abs(n - f) <= 0.004) return;
+  g.arc(x, y, rr, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(x + Math.cos(A0 + n * SWEEP) * rr, y + Math.sin(A0 + n * SWEEP) * rr, 2.8, MOD);
+}
 
 // ---- values as the voice means them ---------------------------------------------------------
 var NAMES = {
@@ -232,7 +248,7 @@ function orderGeom(x0, y0, w, h) {
 }
 // what each stage box shows: the folded sine, or the filter's response (live)
 function stageVCW(g, v, x, y, w, h) {
-  var d = raw(v, "fold_drive", 0) / 100, b = raw(v, "fold_bias", 0) / 100;
+  var d = liveRaw(v, "fold_drive", 0) / 100, b = raw(v, "fold_bias", 0) / 100; // the fold where the sound has it now
   g.poly(foldedPts(x + 4, y + 13, w - 8, h - 17, d, b, 1.5), 1.5, hot(v, "fold_drive") || hot(v, "fold_bias") ? "slot" : INK);
 }
 function filterType(v) { return raw(v, "filter_mode", 0) < 50 ? "LP 12 dB" : "BandPass"; }
@@ -362,6 +378,7 @@ function panel(g, v) {
     g.text(x0 + 60, seg ? 113 : 117, NAMES[k] || String(v[k].name).toUpperCase(), on ? "slot" : INK_DIM, 0, 112);
     if (on) g.arc(kx, ky, seg ? 13 : 18.5, 0, Math.PI * 2, 2, "slot");
     if (known(v, k)) knobTab(g, kx, ky, seg ? 7 : 10, knobFrac(v, k), on ? "slot" : TAB);
+    liveMark(g, v, k, kx, ky, seg ? 14 : 19, knobFrac(v, k)); // on the printed scale (skirt + 4), every frame
     var sv = shown(v, k), uw = sv[1] ? g.measure(sv[1]) + 4 : 0, room = 66 - uw;
     var vw = Math.min(g.measure(sv[0], "value"), room), cx = x0 + 85;
     g.value(cx - (vw + uw) / 2, vy, sv[0], on ? "slot" : INK, -1, room);
@@ -509,14 +526,16 @@ function folderScreen(g, v) {
   });
   var d = raw(v, "fold_drive", 0) / 100, b = raw(v, "fold_bias", 0) / 100, e = raw(v, "fold_eg1", 0) / 100, kf = raw(v, "fold_key", 0) / 100;
   var pk = clamp(d + e, 0, 1), tD = hot(v, "fold_drive") || hot(v, "fold_bias");
+  // while a note moves it (live_mod): the fold where the sound has it, in place of EG1's peak
+  var dn = liveRaw(v, "fold_drive", 0) / 100, lv = Math.abs(dn - d) > 0.005, cv = lv ? dn : pk;
   head(g, 10, "FOLD IN > OUT", tD, "", 0);
-  if (Math.abs(pk - d) > 0.005) g.poly(transferPts(11, 15, 94, 66, pk, b), 1, "mod");
+  if (Math.abs(cv - d) > 0.005) g.poly(transferPts(11, 15, 94, 66, cv, b), lv ? 2 : 1, "mod");
   g.poly(transferPts(11, 15, 94, 66, d, b), 2, tD ? "slot" : INK);
   // a sine through it: at rest, and at EG1's peak
   var side = (Math.abs(pk - d) > 0.005 ? "EG1 PEAK " + Math.round(pk * 100) : "") + (kf > 0.005 ? "  KEY +" + Math.round(kf * 100) + "/2 OCT" : "");
   head(g, 124, "A SINE, FOLDED", tD, side, 470);
   g.fill(124, 48, 346, 1, "#24211e");
-  if (Math.abs(pk - d) > 0.005) g.poly(foldedPts(124, 16, 346, 66, pk, b, 2), 1, hot(v, "fold_eg1") ? "slot" : "mod");
+  if (Math.abs(cv - d) > 0.005) g.poly(foldedPts(124, 16, 346, 66, cv, b, 2), lv ? 2 : 1, hot(v, "fold_eg1") ? "slot" : "mod");
   g.poly(foldedPts(124, 16, 346, 66, d, b, 2), 2, tD ? "slot" : INK);
   // the key: two octaves up adds kf of fold
   // the ORDER
@@ -546,6 +565,9 @@ function filterScreen(g, v) {
     g.fill(a, 80, Math.max(2, b - a), 3, on ? "slot" : "mod");
     g.dot(ax(f1), 81.5, 3, on ? "slot" : "mod");
   }
+  // where the sound has it now (live_mod: EG1 and the key on the knob), ringed on the sweep
+  var cl = liveRaw(v, "cutoff", c);
+  if (Math.abs(cl - c) > 0.4) { g.dot(ax(cutHz(cl)), 81.5, 5.5, PLATE); g.dot(ax(cutHz(cl)), 81.5, 3.5, "mod"); }
   // the right: EG1, keys, drive, in the voice's words
   var x = 612;
   g.text(x, 12, "EG1 SWEEP", hot(v, "cutoff_eg1") ? "slot" : INK_DIM, -1);

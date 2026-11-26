@@ -39,6 +39,14 @@ function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""
 function num(v, k, d) { var n = known(v, k) ? parseFloat(v[k].value) : NaN; return isNaN(n) ? d : n; }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function up(s) { return String(s).toUpperCase(); }
+// where the sound has a control now (v[k].now: Denis's live_mod, the matrix and
+// velocity on its targets; null when nothing moves it): 0..1, and in the key's
+// own units (lnum, kept to 1/400 of the range so the curves' caches hold);
+// the pictures draw the sound's shape, the knobs keep their own marks
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - clamp(v[k].frac, 0, 1)) > 0.004; }
+function lnum(v, k, d) { var n = nowOf(v, k); return n === null || !(v[k].max > v[k].min) ? num(v, k, d) : v[k].min + Math.round(n * 400) / 400 * (v[k].max - v[k].min); }
 
 // ---- the panel's colours ------------------------------------------------------------
 var PANEL = "#132c58", DEEP = "#0b1c3c", RULE = "#081430", SCOPE = "#050a16", SCOPE_EDGE = "#2a4377";
@@ -147,7 +155,16 @@ function fold(x, depth, type) {
 // cutoff knob to Hz, as the filter has it
 function cutoffHz(c) { return 30 * Math.pow(20000 / 30, c * c); }
 // where that stands on Pung's axis (20 Hz to 20 kHz, logarithmic): the knob is squared
-function cutAt(v) { return clamp(Math.log(cutoffHz(clamp(num(v, "filter_cutoff", 1), 0, 1)) / 20) / Math.log(1000), 0, 1); }
+function cutAt(v) { return clamp(Math.log(cutoffHz(clamp(lnum(v, "filter_cutoff", 1), 0, 1)) / 20) / Math.log(1000), 0, 1); }
+function cutAtKnob(v) { return clamp(Math.log(cutoffHz(clamp(num(v, "filter_cutoff", 1), 0, 1)) / 20) / Math.log(1000), 0, 1); }
+// a g.filter given at: draws the sound's cutoff: the knob's place on its base line, and the way there
+function filterNow(g, x, y, w, h, knobAt, soundAt, ink) {
+  if (Math.abs(soundAt - knobAt) <= 0.002) return;
+  var x0 = x + 6, x1 = x + w - 6, b = y + h - 6, xs = x0 + (x1 - x0) * knobAt, xc = x0 + (x1 - x0) * soundAt;
+  g.fill(xs, b - 7, 2, 7, ink);
+  g.line(xs, b - 2, xc, b - 2, 2, MOD_DK);
+  g.dot(xc, b - 2, 3, MOD);
+}
 // a fixed noise, so the picture holds still: white, pink (smoother), brown (a wander)
 function rnd(i) { var x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return (x - Math.floor(x)) * 2 - 1; }
 var NOISE = {};
@@ -167,8 +184,8 @@ function noiseAt(type, i) {
 }
 // what the oscillators and noise put into the wave multiplier, over a cycle of osc 1
 function mixFn(v) {
-  var ct = cpxTab(num(v, "osc1_timbre", 0.5)), ntb = ntoTab(num(v, "osc2_harmonics", 0.5));
-  var detune = (clamp(num(v, "osc1_freq", 0.5), 0, 1) - 0.5) * 2, ratio = Math.pow(2, num(v, "osc2_pitch", 0) - detune);
+  var ct = cpxTab(lnum(v, "osc1_timbre", 0.5)), ntb = ntoTab(lnum(v, "osc2_harmonics", 0.5));
+  var detune = (clamp(lnum(v, "osc1_freq", 0.5), 0, 1) - 0.5) * 2, ratio = Math.pow(2, lnum(v, "osc2_pitch", 0) - detune);
   var mix = clamp(num(v, "osc_mix", 0.5), 0, 1), nm = clamp(num(v, "noise_mix", 0), 0, 1) * 0.5, nt = txt(v, "noise_type");
   return function (ph, i) {
     var o = tab(ct, ph) * (1 - mix) + tab(ntb, ph * ratio) * mix;
@@ -177,7 +194,7 @@ function mixFn(v) {
 }
 function sigOf(v, keys) {
   var s = [];
-  for (var i = 0; i < keys.length; i++) s.push(known(v, keys[i]) ? String(v[keys[i]].value) : "-");
+  for (var i = 0; i < keys.length; i++) s.push(known(v, keys[i]) ? String(nowOf(v, keys[i]) === null ? v[keys[i]].value : lnum(v, keys[i], 0)) : "-");
   return s.join("|");
 }
 var MIX_KEYS = ["osc1_timbre", "osc2_harmonics", "osc1_freq", "osc2_pitch", "osc_mix", "noise_mix", "noise_type"];
@@ -212,7 +229,7 @@ function peak(ys) { var m = 0.001; for (var i = 0; i < ys.length; i++) m = Math.
 function foldCurves(v, x, y, w, h, n) {
   var key = "fold|" + [x, y, w, h, n].join(",") + "|" + sigOf(v, MIX_KEYS.concat(["fold_depth", "fold_type"]));
   return cached(key, function () {
-    var f = mixFn(v), d = clamp(num(v, "fold_depth", 0), 0, 1), ty = clamp(num(v, "fold_type", 0.5), 0, 1);
+    var f = mixFn(v), d = clamp(lnum(v, "fold_depth", 0), 0, 1), ty = clamp(lnum(v, "fold_type", 0.5), 0, 1);
     var inp = sample(f, n, 2), out = [];
     for (var i = 0; i < n; i++) out.push(fold(inp[i], d, ty));
     var s = 1 / Math.max(peak(inp), peak(out));
@@ -243,6 +260,12 @@ function strip(g, x, w, y, names, at, f, hot, ok) {
     g.text(px, y - 2, names[i], INK_DIM, i === 0 ? -1 : (i === names.length - 1 ? 1 : 0));
   }
   if (ok) g.fill(x + w * f - 2, y, 5, 8, hot ? "slot" : TRACE);
+}
+function stripNow(g, v, k, x, w, y) {
+  if (!moved(v, k)) return;
+  var f = clamp(v[k].frac, 0, 1), n = nowOf(v, k);
+  g.fill(x + w * Math.min(f, n), y + 3, Math.max(1, w * Math.abs(n - f)), 1, MOD_DK);
+  g.dot(x + w * n, y + 3.5, 2.8, MOD);
 }
 
 // ---- value formats: in the instrument's units (denis.c) -----------------------------
@@ -338,13 +361,13 @@ function panelModules(g, v) {
   var t = v.$touched || "";
   function hot(k) { return t === k; }
   // complex oscillator: its wave as the morph has it
-  var tb = clamp(num(v, "osc1_timbre", 0.5), 0, 1);
+  var tb = clamp(lnum(v, "osc1_timbre", 0.5), 0, 1);
   var m = MODS[0];
   if (known(v, "osc1_timbre")) g.poly(cached("p-cpx|" + tb, function () {
     return pts(m.x + 8, SY + 2, m.w - 16, SH - 4, sample(function (p) { return tab(cpxTab(tb), p); }, 90, 2), 1.15);
   }), 2, hot("osc1_timbre") ? "slot" : TRACE);
   // timbral oscillator: its wave from its partials
-  var hm = clamp(num(v, "osc2_harmonics", 0.5), 0, 1);
+  var hm = clamp(lnum(v, "osc2_harmonics", 0.5), 0, 1);
   m = MODS[1];
   if (known(v, "osc2_harmonics")) g.poly(cached("p-nto|" + hm, function () {
     var nt = ntoTab(hm), ys = sample(function (p) { return tab(nt, p); }, 90, 2);
@@ -361,7 +384,7 @@ function panelModules(g, v) {
   }
   // wave multiplier: in (dim) and out, the stages that are folding
   m = MODS[3];
-  var d = clamp(num(v, "fold_depth", 0), 0, 1), st = stages(d);
+  var d = clamp(lnum(v, "fold_depth", 0), 0, 1), st = stages(d);
   for (var s = 0; s < 3; s++) {
     var lx = m.x + m.w - 32 + s * 11;
     g.dot(lx, 27, 3, st[s] ? "#ff5a4a" : "#2c3b5e");
@@ -376,6 +399,7 @@ function panelModules(g, v) {
   var ft = txt(v, "filter_type");
   g.text(m.x + m.w - 5, 31, { Lowpass: "LP", Bandpass: "BP", Highpass: "HP", Notch: "NOTCH" }[ft] || up(ft), INK_DIM, 1);
   g.filter(m.x + 5, SY + 1, m.w - 10, SH - 2, { cutoff: "filter_cutoff", at: cutAt(v), resonance: "filter_q", type: "filter_type", color: TRACE });
+  filterNow(g, m.x + 5, SY + 1, m.w - 10, SH - 2, cutAtKnob(v), cutAt(v), INK);
   // the envelope, into the VCA (and out as a source: its colour)
   m = MODS[5];
   g.envelope(m.x + 5, SY + 1, m.w - 10, SH - 2, { attack: "attack", decay: "decay", sustain: "sustain", release: "release", color: SRC[0].c });
@@ -454,6 +478,11 @@ function row(g, v) {
     if (ok) {
       var f = clamp(v[k].frac, 0, 1), a = Math.PI * (0.75 + 1.5 * f);
       g.line(kx + Math.cos(a) * 3, ky + Math.sin(a) * 3, kx + Math.cos(a) * (KR - 1), ky + Math.sin(a) * (KR - 1), 2.5, hot ? "slot" : INK);
+      if (moved(v, k)) {
+        var nf = nowOf(v, k), an = Math.PI * (0.75 + 1.5 * nf);
+        g.arc(kx, ky, KR + 5, Math.PI * (0.75 + 1.5 * Math.min(f, nf)), Math.PI * 1.5 * Math.abs(nf - f), 2, MOD_DK);
+        g.dot(kx + Math.cos(an) * (KR + 5), ky + Math.sin(an) * (KR + 5), 3, MOD);
+      }
     }
     var fv = fmt(v, k);
     if (seg) {
@@ -531,18 +560,20 @@ push.compartment({
       for (var h = 1; h <= 8; h++) g.text(368 + 7 + (h - 1) * 12.4 + 3, 82, String(h), INK_FAINT, 0);
     });
     // complex oscillator
-    var tb = clamp(num(v, "osc1_timbre", 0.5), 0, 1);
+    var tk = clamp(num(v, "osc1_timbre", 0.5), 0, 1), tb = clamp(lnum(v, "osc1_timbre", 0.5), 0, 1);
     title(g, 8, "COMPLEX OSC", t === "osc1_freq" || t === "osc1_timbre");
     g.text(232, 11, known(v, "osc1_freq") ? "DETUNE " + fmt(v, "osc1_freq").join(" ") : "", t === "osc1_freq" ? "slot" : INK_DIM, 1);
-    strip(g, 10, 216, 22, ["SINE", "TRI", "SAW", "PULSE"], [0, 0.33, 0.67, 1], tb, t === "osc1_timbre", known(v, "osc1_timbre"));
+    strip(g, 10, 216, 22, ["SINE", "TRI", "SAW", "PULSE"], [0, 0.33, 0.67, 1], tk, t === "osc1_timbre", known(v, "osc1_timbre"));
+    stripNow(g, v, "osc1_timbre", 10, 216, 22);
     if (known(v, "osc1_timbre")) g.poly(cached("o-cpx|" + tb, function () {
       return pts(10, 33, 216, 48, sample(function (p) { return tab(cpxTab(tb), p); }, 80, 2), 1.15);
     }), 2, t === "osc1_timbre" ? "slot" : TRACE);
     // timbral oscillator: its wave, its partials
-    var hm = clamp(num(v, "osc2_harmonics", 0.5), 0, 1), parts = ntoPartials(hm);
+    var hk = clamp(num(v, "osc2_harmonics", 0.5), 0, 1), hm = clamp(lnum(v, "osc2_harmonics", 0.5), 0, 1), parts = ntoPartials(hm);
     title(g, 248, "TIMBRAL OSC", t === "osc2_pitch" || t === "osc2_harmonics");
     g.text(472, 11, known(v, "osc2_pitch") ? fmt(v, "osc2_pitch").join(" ") : "", t === "osc2_pitch" ? "slot" : INK_DIM, 1);
-    strip(g, 250, 216, 22, ["ODD", "ODD+EVEN", "EVEN"], [0, 0.5, 1], hm, t === "osc2_harmonics", known(v, "osc2_harmonics"));
+    strip(g, 250, 216, 22, ["ODD", "ODD+EVEN", "EVEN"], [0, 0.5, 1], hk, t === "osc2_harmonics", known(v, "osc2_harmonics"));
+    stripNow(g, v, "osc2_harmonics", 250, 216, 22);
     if (known(v, "osc2_harmonics")) {
       g.poly(cached("o-nto|" + hm, function () {
         var nt = ntoTab(hm), ys = sample(function (p) { return tab(nt, p); }, 80, 2);
@@ -571,7 +602,7 @@ push.compartment({
 // FOLD & VCF: the three stages, before and after, the response, what leaves on a C3
 function svfOut(v, inY) {
   // the filter (Cytomic SVF, as Denis has it) run on the folded wave at C3 until it settles
-  var fc = cutoffHz(clamp(num(v, "filter_cutoff", 1), 0, 1)), q = clamp(num(v, "filter_q", 0), 0, 4), ty = txt(v, "filter_type");
+  var fc = cutoffHz(clamp(lnum(v, "filter_cutoff", 1), 0, 1)), q = clamp(num(v, "filter_q", 0), 0, 4), ty = txt(v, "filter_type");
   // run at a quarter of Denis's rate: the harmonics of a C3 that a picture shows lie far below it
   var sr = 11025, f0 = 130.81, per = Math.round(sr / f0), gg = Math.tan(Math.PI * Math.min(fc, sr * 0.45) / sr);
   var k = Math.max(0.08, 2 - q * 0.475), a1 = 1 / (1 + gg * (gg + k)), a2 = gg * a1, a3 = gg * a2, gc = 1 + q * 0.25;
@@ -596,7 +627,7 @@ function foldFilter(g, v) {
     g.fill(238, 4, 1, 80, RULE); g.fill(716, 4, 1, 80, RULE);
   });
   // the wave multiplier
-  var d = clamp(num(v, "fold_depth", 0), 0, 1), ty = clamp(num(v, "fold_type", 0.5), 0, 1), st = stages(d);
+  var d = clamp(num(v, "fold_depth", 0), 0, 1), ty = clamp(num(v, "fold_type", 0.5), 0, 1), st = stages(clamp(lnum(v, "fold_depth", 0), 0, 1));
   title(g, 8, "WAVE MULTIPLIER", t === "fold_depth" || t === "fold_type");
   // the three stages (saturation, fold, rectified fold), lit as the depth brings each in
   g.text(170, 11, "STAGE", INK_FAINT, 1);
@@ -606,6 +637,7 @@ function foldFilter(g, v) {
     g.text(sx + 7, 11, String(s + 1), st[s] ? PANEL : INK_FAINT, 0);
   }
   strip(g, 10, 216, 25, ["ODD", "EVEN"], [0, 1], ty, t === "fold_type", known(v, "fold_type"));
+  stripNow(g, v, "fold_type", 10, 216, 25);
   if (known(v, "fold_depth")) {
     var fcv = foldCurves(v, 8, 33, 220, 48, 110);
     if (d >= 0.001) g.poly(fcv.inp, 1, TRACE_DIM);
@@ -618,6 +650,7 @@ function foldFilter(g, v) {
   g.text(708, 11, vel > 0.005 ? "VELOCITY OPENS IT UP TO +" + hz(vel * 6000).join(" ") : "VELOCITY: NONE",
     t === "vel_to_filter" ? "slot" : (vel > 0.005 ? INK_DIM : INK_FAINT), 1);
   g.filter(246, 18, 460, 64, { cutoff: "filter_cutoff", at: cutAt(v), resonance: "filter_q", type: "filter_type", color: TRACE });
+  filterNow(g, 246, 18, 460, 64, cutAtKnob(v), cutAt(v), INK);
   // what leaves the filter, on a C3
   g.text(728, 11, "OUT ON A C3", INK, -1);
   g.text(948, 11, "FOLDED, FILTERED", INK_FAINT, 1);

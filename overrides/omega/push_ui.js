@@ -26,6 +26,11 @@
 function known(v, k) { return !!(v[k] && v[k].known); }
 function num(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
 function frac(v, k, d) { return known(v, k) ? v[k].frac : d; }
+// where the sound has a control now (v[k].now: Omega's live_mod, the groove's LFO on the rumble's LPF and the
+// room's tone, the sequence's filter envelope), 0..1; null when nothing moves it
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - v[k].frac) > 0.004; }
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 function up(s) { return String(s).toUpperCase(); }
 function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
@@ -196,6 +201,13 @@ function ledBar(g, x, y, w, h, v, k, hot, col) {
   g.fill(x, y, w - 1, h, LED_OFF);
   if (lit) g.fill(x, y, Math.round(lit * sw) - 1, h, hot ? "slot" : col);
   g.area(comb(x, sw, n, y), y + h, WELL);
+  // the sound's place on the bar while modulation moves it: the way from the knob in the modulation colour, a dot
+  if (on && moved(v, k)) {
+    var f = v[k].frac, nw = nowOf(v, k), cy = y + h / 2;
+    g.fill(x + (w - 1) * Math.min(f, nw), cy - 1, Math.max(1, (w - 1) * Math.abs(nw - f)), 2, MOD_DK);
+    g.dot(x + (w - 1) * nw, cy, 3.6, WELL);
+    g.dot(x + (w - 1) * nw, cy, 2.6, MOD);
+  }
 }
 var COMBS = {};
 function comb(x, sw, n, y) {
@@ -627,8 +639,16 @@ function rumbleScreen(g, v) {
   var t = v.$touched || "", m = modelOf(v), bpm = (v.$live && v.$live.bpm > 20) ? v.$live.bpm : 120, R = taps(v, bpm), K = kickOf(v, m);
   // the band: the high pass (1 pole, 20 Hz..2 kHz, off at the bottom) and the
   // 2-pole low pass COLOR (30 Hz..20 kHz) the ghosts go through
-  var lpAt = Math.log(30 * Math.pow(20000 / 30, frac(v, "grv_color", 0.4375)) / 20) / Math.log(1000), ft = idx(v, "grv_filtype", 3);
+  // (at: the response where the sound has it, the LFO's sweep included; g.filter given at does not follow it)
+  function lpAtOf(f) { return Math.log(30 * Math.pow(20000 / 30, f) / 20) / Math.log(1000); }
+  var lpAt = lpAtOf(moved(v, "grv_color") ? nowOf(v, "grv_color") : frac(v, "grv_color", 0.4375)), ft = idx(v, "grv_filtype", 3);
   if (ft < 2) g.filter(0, 14, 352, 72, { cutoff: "grv_color", at: lpAt, type: ft ? "HP 12 dB" : "LP 12 dB", color: RUMB });
+  if (ft < 2 && moved(v, "grv_color")) { // the knob's own mark under the response, the way to the sound's place
+    var xs = 6 + 340 * lpAtOf(v.grv_color.frac), xc = 6 + 340 * lpAt;
+    g.fill(xs, 73, 2, 7, INK);
+    g.fill(Math.min(xs, xc), 77, Math.max(1, Math.abs(xc - xs)), 2, MOD_DK);
+    g.dot(xc, 78, 3, MOD);
+  }
   else { g.fill(6, 40, 340, 2, RUMB); g.text(176, 34, "FILTER OFF", t === "grv_filtype" ? "slot" : LEG, 0); }
   var hp = frac(v, "grv_hpf", 0);
   if (hp > 0.001) {

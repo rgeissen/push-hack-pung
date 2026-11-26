@@ -410,6 +410,32 @@ function row(g, v) {
   }
 }
 
+// Where the sound has a control now (v[k].now: the module's live_mod, the
+// newest voice's cutoff with its envelope, LFOs, key follow and velocity in
+// it): beside the knob, an arc in the modulation colour from the pointer to a
+// dot (beside a slider, upright). Drawn every frame over the panel's layer:
+// it moves while the knob stands.
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function liveMarks(g, v) {
+  var knobs = v.$knobs || [], G = rowGeo(v), A0 = Math.PI * 0.75, SW = Math.PI * 1.5;
+  for (var i = 0; i < 8; i++) {
+    var k = knobs[i];
+    if (!k || !known(v, k) || typeof v[k].now !== "number") continue;
+    var f = Math.max(0, Math.min(1, fr(v, k, 0))), n = Math.max(0, Math.min(1, v[k].now)), cx = i * 120 + 26;
+    if (Math.abs(n - f) < 0.004) continue;
+    var kind = kindOf(v, k);
+    if (kind === "knob") {
+      var r = G.r + 4;
+      g.arc(cx, G.cy, r, A0 + Math.min(f, n) * SW, Math.abs(n - f) * SW, 2, MOD_DK);
+      g.dot(cx + Math.cos(A0 + n * SW) * r, G.cy + Math.sin(A0 + n * SW) * r, 2.8, MOD);
+    } else if (kind === "slider") {
+      var yf = G.top + G.h - 4 - f * (G.h - 8), yn = G.top + G.h - 4 - n * (G.h - 8);
+      g.fill(cx + 12, Math.round(Math.min(yf, yn)), 2, Math.max(1, Math.round(Math.abs(yf - yn))), MOD_DK);
+      g.dot(cx + 13, yn, 2.8, MOD);
+    }
+  }
+}
+
 // ---- segments: the panel's sections under the hands -----------------------------------
 // The JP's own sections, each with the keys its panel has there, in the
 // panel's order. Pung draws the bar above the active one; a titled section
@@ -463,6 +489,7 @@ push.compartment({
       row(g, v);
     });
     pictures(g, v);
+    liveMarks(g, v);
   }
 });
 

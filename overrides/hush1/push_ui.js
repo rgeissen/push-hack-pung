@@ -42,6 +42,8 @@ var LED = "#ff3b2a", LED_OFF = "#4c1a15", CURVE = "#ecece8";
 function known(v, k) { return !!(v[k] && v[k].known); }
 function fr(v, k, d) { return known(v, k) ? Math.max(0, Math.min(1, v[k].frac)) : d; }
 function num(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
+// where the sound has a key now (live_mod: 0..1 of its range), null when nothing moves it
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 // an enum's index among its options, whether the module answers its index or its name
 function pick(v, k, opts) {
@@ -208,7 +210,24 @@ function rowValues(g, v, keys, tight) {
       var n = positions(v, k), at = Math.round(f * (n - 1)), step = Math.min(8, (G.len - 2) / (n - 1));
       for (var p = 0; p < n; p++) g.dot(x + 25, G.top + G.len - 2 - p * step, 2.6, kn && p === at ? (hot ? "slot" : LED) : "#5e2820");
     }
+    liveMark(g, v, k, kind, x, G, f);
     g.value(x + 44, G.val, shown(v, k), kn ? (hot ? "slot" : PRINT) : PRINT_DIM, -1, 72);
+  }
+}
+// where the sound has a control now (v[k].now: live_mod), in the modulation colour, every
+// frame: beside a slider an upright segment from its cap to a dot, round RANGE an arc
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function liveMark(g, v, k, kind, x, G, f) {
+  var n = nowOf(v, k);
+  if (n === null || Math.abs(n - f) <= 0.004) return;
+  if (kind === "slider") {
+    var yf = G.top + G.len - 2.5 - f * G.travel, yn = G.top + G.len - 2.5 - n * G.travel;
+    g.fill(x + 35, Math.round(Math.min(yf, yn)), 2, Math.max(1, Math.round(Math.abs(yf - yn))), MOD_DK);
+    g.dot(x + 36, yn, 2.8, MOD);
+  } else if (kind === "range") {
+    var A0 = Math.PI * 0.75, SW = Math.PI * 1.5, rr = G.r + 4;
+    g.arc(x + 25, G.cy, rr, A0 + Math.min(f, n) * SW, Math.abs(n - f) * SW, 2, MOD_DK);
+    g.dot(x + 25 + Math.cos(A0 + n * SW) * rr, G.cy + Math.sin(A0 + n * SW) * rr, 2.8, MOD);
   }
 }
 
@@ -236,6 +255,12 @@ function pulseWave(g, v, x, y, w, h, cyc, t, col) {
     }
     return pts;
   }), 2, known(v, "pulse_width") ? (t === "pulse_width" ? "slot" : (col || CURVE)) : PRINT_DIM);
+  // where the sound has the edge now (the LFO or the envelope moving it), beside the knob's
+  var pn = nowOf(v, "pulse_width");
+  if (pn !== null && Math.abs(pn - fr(v, "pulse_width", 0)) > 0.004) {
+    var pl = v.pulse_width.min + pn * (v.pulse_width.max - v.pulse_width.min);
+    for (var c3 = 0; c3 < cyc; c3++) g.fill(x + w * (c3 + pl) / cyc - 1, y, 2, h, "mod");
+  }
 }
 
 // the filter as it stands at middle C, on Pung's axis (20 Hz to 20 kHz over
@@ -252,8 +277,8 @@ function envReach(v) {
 // h is the whole area: the response above, two rows under it (ENV, LFO)
 function filterWithReach(g, v, x, y, w, h, t) {
   var c = num(v, "cutoff", 0.5), e = envReach(v), lfo = 0.5 * depthCurve(num(v, "lfo_filter", 0));
-  var fh = h - 15;
-  g.filter(x, y, w, fh, { cutoff: "cutoff", at: known(v, "cutoff") ? place(cutHz(c)) : undefined, resonance: "resonance", type: "LP 24 dB", color: CURVE });
+  var fh = h - 15, cn = nowOf(v, "cutoff"); // cn: where the sound has it now (the played note's, as the knob at middle C)
+  g.filter(x, y, w, fh, { cutoff: "cutoff", at: known(v, "cutoff") ? place(cutHz(cn !== null ? cn : c)) : undefined, resonance: "resonance", type: "LP 24 dB", color: CURVE });
   var x0 = x + 6, x1 = x + w - 6;
   function X(cn) { return x0 + (x1 - x0) * place(cutHz(Math.max(0, Math.min(1, cn)))); }
   var xc = X(c);
@@ -266,6 +291,7 @@ function filterWithReach(g, v, x, y, w, h, t) {
   }
   if (Math.abs(e) > 0.002 && known(v, "env_amt")) row(X(Math.min(c, c + e)), X(Math.max(c, c + e)), y + fh + 3, "ENV", "mod", t === "env_amt");
   if (lfo > 0.002 && known(v, "lfo_filter")) row(X(c - lfo), X(c + lfo), y + fh + 11, "LFO", PRINT_DIM, t === "lfo_filter");
+  if (cn !== null && Math.abs(cn - c) > 0.004) g.fill(X(cn) - 1, y + fh, 2, 15, "mod"); // the sound's place, beside the knob's
   return X;
 }
 

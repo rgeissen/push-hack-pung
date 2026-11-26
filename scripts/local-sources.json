@@ -1,7 +1,7 @@
 {
  "schwung-je8086": {
   "path": "../schwung-je8086",
-  "why": "rgeissen's fork, branch remote-ui: the JP-8000 front panel as the module's web page, and the modulation lever; not upstream yet",
+  "why": "rgeissen's fork, branch remote-ui: the JP-8000 front panel as the module's web page, the modulation lever, and live_mod (each voice's cutoff from the H8S's ASIC writes); not upstream yet",
   "github_repo": "rgeissen/schwung-je8086"
  },
  "schwung-jv880": {
@@ -18,5 +18,210 @@
   "path": "../schwung-surge",
   "why": "rgeissen's fork, branch pung-modulation: the modulation map, routes and live modulation (mod_map, mod_set, live_mod) for Pung's ASSIGN; proposed upstream",
   "github_repo": "rgeissen/schwung-surge"
+ },
+ "amino": {
+  "path": "../pung-forks/amino",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/amino"
+ },
+ "aphex-move": {
+  "path": "../pung-forks/aphex-move",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/aphex-move"
+ },
+ "bizar": {
+  "path": "../pung-forks/bizar",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/bizar"
+ },
+ "concat-move": {
+  "path": "../pung-forks/concat-move",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/concat-move"
+ },
+ "crest": {
+  "path": "../pung-forks/crest",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/crest"
+ },
+ "denis-move": {
+  "path": "../pung-forks/denis-move",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/denis-move"
+ },
+ "dubstarmoonicon": {
+  "path": "../pung-forks/dubstarmoonicon",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/dubstarmoonicon"
+ },
+ "essaim-move": {
+  "path": "../pung-forks/essaim-move",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/essaim-move"
+ },
+ "fizzik-move": {
+  "path": "../pung-forks/fizzik-move",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/fizzik-move"
+ },
+ "frodhes": {
+  "path": "../pung-forks/frodhes",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/frodhes"
+ },
+ "move-anything-plaits": {
+  "path": "../pung-forks/move-anything-plaits",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/move-anything-plaits"
+ },
+ "move-everything-granny": {
+  "path": "../pung-forks/move-everything-granny",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/move-everything-granny"
+ },
+ "move-everything-mrhyde": {
+  "path": "../pung-forks/move-everything-mrhyde",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/move-everything-mrhyde"
+ },
+ "schwung-303": {
+  "path": "../pung-forks/schwung-303",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-303"
+ },
+ "schwung-braids": {
+  "path": "../pung-forks/schwung-braids",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-braids"
+ },
+ "schwung-chimera": {
+  "path": "../pung-forks/schwung-chimera",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-chimera"
+ },
+ "schwung-chiptune": {
+  "path": "../pung-forks/schwung-chiptune",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-chiptune"
+ },
+ "schwung-chordism": {
+  "path": "../pung-forks/schwung-chordism",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-chordism"
+ },
+ "schwung-clementineXT": {
+  "path": "../pung-forks/schwung-clementineXT",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-clementineXT"
+ },
+ "schwung-hank": {
+  "path": "../pung-forks/schwung-hank",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-hank"
+ },
+ "schwung-helm": {
+  "path": "../pung-forks/schwung-helm",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-helm"
+ },
+ "schwung-hera": {
+  "path": "../pung-forks/schwung-hera",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-hera"
+ },
+ "schwung-hush1": {
+  "path": "../pung-forks/schwung-hush1",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-hush1"
+ },
+ "schwung-maze": {
+  "path": "../pung-forks/schwung-maze",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-maze"
+ },
+ "schwung-model72": {
+  "path": "../pung-forks/schwung-model72",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-model72"
+ },
+ "schwung-monksynth": {
+  "path": "../pung-forks/schwung-monksynth",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-monksynth"
+ },
+ "schwung-mono": {
+  "path": "../pung-forks/schwung-mono",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-mono"
+ },
+ "schwung-moog": {
+  "path": "../pung-forks/schwung-moog",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-moog"
+ },
+ "schwung-mrsample": {
+  "path": "../pung-forks/schwung-mrsample",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-mrsample"
+ },
+ "schwung-noisemaker": {
+  "path": "../pung-forks/schwung-noisemaker",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-noisemaker"
+ },
+ "schwung-nusaw": {
+  "path": "../pung-forks/schwung-nusaw",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-nusaw"
+ },
+ "schwung-obxd": {
+  "path": "../pung-forks/schwung-obxd",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-obxd"
+ },
+ "schwung-omega": {
+  "path": "../pung-forks/schwung-omega",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-omega"
+ },
+ "schwung-quark": {
+  "path": "../pung-forks/schwung-quark",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-quark"
+ },
+ "schwung-tablor": {
+  "path": "../pung-forks/schwung-tablor",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-tablor"
+ },
+ "schwung-tenebrae": {
+  "path": "../pung-forks/schwung-tenebrae",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/schwung-tenebrae"
+ },
+ "signal-move": {
+  "path": "../pung-forks/signal-move",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/signal-move"
+ },
+ "TinyHouse": {
+  "path": "../pung-forks/TinyHouse",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/TinyHouse"
+ },
+ "TinyK": {
+  "path": "../pung-forks/TinyK",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/TinyK"
+ },
+ "TinyScratch": {
+  "path": "../pung-forks/TinyScratch",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
+  "github_repo": "rgeissen/TinyScratch"
+ },
+ "schwung-virus": {
+  "path": "../pung-forks/schwung-virus",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, each voice's Filter 1 cutoff from a hook on the A/B/C DSP program (src/dsp/virus_livemod.h); proposed upstream",
+  "github_repo": "rgeissen/schwung-virus"
  }
 }

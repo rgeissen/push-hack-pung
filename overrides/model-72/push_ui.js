@@ -45,6 +45,11 @@ function on(v, k, d) { return idx(v, k, 2, d ? 1 : 0) === 1; }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function log2(x) { return Math.log(x) / Math.LN2; }
+// where the sound has a key now (v[k].now: Model-72's live_mod, the newest voice's), 0..1 of
+// its range; null when nothing moves it. The modulation colour (Pung's) and its trail.
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - fr(v, k, 0)) > 0.004; }
+var MODC = "#3cc8e6", MOD_DK = "#1f5f6c";
 function interp(xs, ys, x) {
   if (x <= xs[0]) return ys[0];
   for (var i = 1; i < xs.length; i++) if (x <= xs[i]) return ys[i - 1] + (ys[i] - ys[i - 1]) * (x - xs[i - 1]) / (xs[i] - xs[i - 1]);
@@ -543,14 +548,21 @@ function voices(g, v, xr, y) {
 function filterGeom(v) {
   var lg = cutLog2(num(v, "cutoff", 0)), k = loopGain(num(v, "emphasis", 0), lg), c = contourOf(v, 0);
   var oct = CONTOUR_OCT_PER_V * contourShare(num(v, "contour_amount", 5));
-  return { lg: lg, k: k, peak: lg + oct * (c.stop - c.rest), sus: lg + oct * (c.sus - c.rest) };
+  var n = nowOf(v, "cutoff"), lgNow = n === null ? lg : cutLog2(n * 10 - 5); // the cutoff as the sound has it
+  return { lg: lg, k: k, peak: lg + oct * (c.stop - c.rest), sus: lg + oct * (c.sus - c.rest), lgNow: lgNow, kNow: loopGain(num(v, "emphasis", 0), lgNow) };
 }
 function axisX(x, w, lg2) { return x + 6 + (w - 12) * clamp((lg2 - log2(20)) / log2(1000), 0, 1); }
 function filterPic(g, v, x, y, w, h, big) {
   var f = filterGeom(v), t = v.$touched || "";
-  var at = clamp((f.lg - log2(20)) / log2(1000), 0, 1);
-  g.filter(x, y, w, h, { cutoff: "cutoff", resonance: resonanceOf(f.k), type: on(v, "filter_mode") ? "HP 24 dB" : "LP 24 dB", at: at, color: CURVE });
+  var at = clamp((f.lgNow - log2(20)) / log2(1000), 0, 1);
+  g.filter(x, y, w, h, { cutoff: "cutoff", resonance: resonanceOf(f.kNow), type: on(v, "filter_mode") ? "HP 24 dB" : "LP 24 dB", at: at, color: CURVE });
   if (!known(v, "cutoff")) return;
+  if (moved(v, "cutoff")) { // the response at the sound's cutoff: the knob's place kept at the foot, the way to the sound's
+    var xk = axisX(x, w, f.lg), xn = axisX(x, w, f.lgNow), yf = y + h - 2;
+    g.fill(xk - 1, yf - 6, 2, 7, CURVE);
+    g.fill(Math.min(xk, xn), yf - 1, Math.abs(xn - xk), 2, MOD_DK);
+    g.dot(xn, yf, 3.2, MODC);
+  }
   // the contour's reach along the foot: from the cutoff to its peak, the sustain marked
   var xa = axisX(x, w, f.lg), xp = axisX(x, w, f.peak), xs = axisX(x, w, f.sus), yb = y + h - 5, hot = t === "contour_amount";
   if (xp - xa > 1.5) {
@@ -578,6 +590,11 @@ function row(g, v) {
     if (!k) continue;
     var x0 = c * 120, hot = k === t, cx = x0 + (c === 7 ? 26 : 29), cy = seg ? 125 : 134, r = seg ? 10 : 14;
     if (known(v, k)) knobPointer(g, cx, cy, r, knobF(v, k), hot);
+    if (moved(v, k)) { // where the sound has it: beside the knob, in the modulation colour
+      var f0 = knobF(v, k), fn = nowOf(v, k), an = A0 + fn * SWEEP;
+      g.arc(cx, cy, r + 4, A0 + Math.min(f0, fn) * SWEEP, Math.abs(fn - f0) * SWEEP, 1.5, MOD_DK);
+      g.dot(cx + Math.cos(an) * (r + 4), cy + Math.sin(an) * (r + 4), 3, MODC);
+    }
     var tx = x0 + (seg ? 45 : c === 7 ? 46 : 52), tw = (c === 7 ? 946 : x0 + 117) - tx, pv = parts(v, k);
     g.text(tx, seg ? 120 : 125, NAMES[k] || String((v[k] && v[k].name) || k).toUpperCase(), hot ? "slot" : PRINT_DIM, -1, tw);
     valueUnit(g, tx, seg ? 139 : 149, pv[0], pv[1], hot ? "slot" : PRINT, tw);
@@ -853,6 +870,11 @@ function ctlScreen(g, v) {
   for (i = 0; i < 8; i++) g.fill(wx - 7, 25 + i * 6, 14, 1, "#1c1c1c");
   var wy = 64 - 38 * clamp(wheel, 0, 1);
   g.fill(wx - 7, wy - 2, 14, 4, t === "mod_wheel" ? "slot" : ALU);
+  if (moved(v, "mod_wheel")) { // the wheel as the sound has it (the MIDI wheel, pad pressure): beside the knob's
+    var wn = 64 - 38 * nowOf(v, "mod_wheel");
+    g.fill(wx + 11, Math.min(wy, wn), 1, Math.abs(wn - wy), MOD_DK);
+    g.dot(wx + 11, wn, 3, MODC);
+  }
   g.text(wx, 81, "WHEEL " + Math.round(wheel * 100) + "%" + (at ? " + PRESS" : ""), t === "mod_wheel" || t === "at_mod" ? "slot" : PRINT_DIM, 0);
   // where it goes
   var po = om && flow, pf = fm && flow;

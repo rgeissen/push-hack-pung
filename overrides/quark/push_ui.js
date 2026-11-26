@@ -130,6 +130,18 @@ var QWT = [
 function known(v, k) { return !!(v[k] && v[k].known); }
 function raw(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].value); return isNaN(n) ? d : n; }
 function fr(v, k, d) { return known(v, k) ? v[k].frac : d; }
+// Where the sound has a control now (v[k].now: the module's live_mod, the newest Atmos voice's and
+// Melody note's while they sound), 0..1 of its range; null when nothing moves it. Pictures draw the
+// sound's value; the knob's own mark stays where the knob is, the sound's beside it in "mod".
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp(v[k].now, 0, 1) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - v[k].frac) > 0.004; }
+function rawNow(v, k, d) { return moved(v, k) ? +v[k].min + nowOf(v, k) * (+v[k].max - +v[k].min) : raw(v, k, d); }
+// at a picture's foot (yb), from xa (the knob's place: a tick) to xb (the sound's: a dot)
+function footMark(g, xa, xb, yb) {
+  g.fill(Math.round(xa), yb - 5, 2, 7, INK);
+  g.fill(Math.min(xa, xb), yb, Math.abs(xb - xa), 2, mix("#3cc8e6", 0.45));
+  g.dot(xb, yb + 1, 3, "mod");
+}
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
 function ix(v, k, n) { return Math.max(0, Math.min(n - 1, Math.round(raw(v, k, 0)))); }
 function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
@@ -400,9 +412,11 @@ function cached(key, make) {
 // the Atmos filter in its box: Pung's picture (live: the sound's spectrum behind it) where Pung
 // knows the type, else the module's own curve drawn as Pung draws one (same axis, same dB range)
 function atmosFilter(g, v, x, y, w, h, col, hot) {
-  var type = ix(v, "flt_type", 11), res = raw(v, "flt_res", 0), note = 20 + 115 * raw(v, "flt_cut", 0.9);
+  var type = ix(v, "flt_type", 11), res = raw(v, "flt_res", 0), note = 20 + 115 * rawNow(v, "flt_cut", 0.9); // where the sound has it
+  var mv = type > 0 && moved(v, "flt_cut"), knobAt = axisAt(20 + 115 * raw(v, "flt_cut", 0.9));
   if (PUNG_FLT[type] !== undefined || !known(v, "flt_type")) {
     g.filter(x, y, w, h, { cutoff: "flt_cut", resonance: type === 0 ? 0 : svfRes(type, res), type: PUNG_FLT[type] || "LP 12 dB", at: axisAt(note), color: col });
+    if (mv) footMark(g, x + w * knobAt, x + w * axisAt(note), y + h - 4);
     return;
   }
   var x0 = x + 6, x1 = x + w - 6, top = y + 6, base = y + h - 6;
@@ -422,6 +436,7 @@ function atmosFilter(g, v, x, y, w, h, col, hot) {
   g.poly(c, hot ? 3 : 2, hot ? "slot" : INK);
   var xc = x0 + (x1 - x0) * axisAt(note);
   g.dot(xc, yOf(20 * Math.log(Math.max(1e-6, filterMag(type, noteHz(note), noteHz(note), res))) / Math.LN10), 3, INK);
+  if (mv) footMark(g, x0 + (x1 - x0) * knobAt, xc, base - 2);
 }
 
 // ---- colours: Quark's own panel (its web page): graphite, beige legends, red, the OLED's blue -----
@@ -449,7 +464,7 @@ function wavePts(vals, x, y, w, h) {
 }
 // the Atmos oscillator, two periods of the note, in a box
 function atmosWave(g, v, x, y, w, h, col) {
-  var T = texType(v), xv = raw(v, "tx_var", 0);
+  var T = texType(v), xv = rawNow(v, "tx_var", 0); // the wave the sound plays now
   var c = cached("tw|" + T[1] + "|" + T[2] + "|" + xv.toFixed(3) + "|" + w + "|" + h, function () {
     return wavePts(texWave(T, xv, Math.max(48, Math.round(w / 1.5))), x, y, w, h);
   });
@@ -460,7 +475,7 @@ function atmosWave(g, v, x, y, w, h, col) {
 // the registration: the divide-down's seven taps under their footages, as stops pulled out
 var FEET = ["16'", "8'", "4'", "2'"];
 function stops(g, v, x, y, w, h, hot) {
-  var T = texType(v), r = regAt(T[2], raw(v, "tx_var", 0)), cw = w / 4, bw = Math.max(4, Math.min(8, Math.floor(cw / 3)));
+  var T = texType(v), r = regAt(T[2], rawNow(v, "tx_var", 0)), cw = w / 4, bw = Math.max(4, Math.min(8, Math.floor(cw / 3)));
   for (var f = 0; f < 4; f++) {
     var cx = x + cw * f + cw / 2;
     // saw (s16 s8 s4: no 2' saw) left, square (q16..q2) right
@@ -552,6 +567,11 @@ function encoderRow(g, v, seg) {
     if (!k) continue;
     var hot = k === t, ok = known(v, k), x = c * 120;
     knob(g, x + 26, seg ? 123 : 132, seg ? 9 : 13, fr(v, k, 0.5), !!BIPOLAR[k], hot ? "slot" : BEIGE, ok);
+    if (moved(v, k)) { // the sound's place: an arc outside the knob from its own, a dot
+      var kr = (seg ? 9 : 13) + 7, ky = seg ? 123 : 132, kf = v[k].frac, kn2 = nowOf(v, k), KA = Math.PI * 0.75, KS = Math.PI * 1.5;
+      g.arc(x + 26, ky, kr, KA + KS * Math.min(kf, kn2), KS * Math.abs(kn2 - kf), 2, mix("#3cc8e6", 0.45));
+      g.dot(x + 26 + Math.cos(KA + KS * kn2) * kr, ky + Math.sin(KA + KS * kn2) * kr, 2.6, "mod");
+    }
     g.text(x + 47, seg ? 118 : 124, nameOf(v, k), hot ? "slot" : DIM, -1, 71);
     g.value(x + 47, seg ? 137 : 147, valueOf(v, k), hot ? "slot" : INK, -1, 71);
   }
@@ -750,8 +770,9 @@ function panel(g, v) {
   B = BOXES[4]; W = wellOf(B);
   var hm = hotIn(["ln_shape", "ln_var", "ln_tune"]);
   heading(g, B, lit(B), "", INK);
-  var lw = cached("lw|" + shape + "|" + raw(v, "ln_var", 0).toFixed(3) + "|" + raw(v, "ln_tune", 0) + "|" + W[2], function () {
-    return wavePts(lineWave(shape, raw(v, "ln_var", 0), tuneSemis(raw(v, "ln_tune", 0)), 72), W[0] + 4, W[1] + 5, W[2] - 8, 36);
+  var lvn = rawNow(v, "ln_var", 0); // the wave the sound plays now
+  var lw = cached("lw|" + shape + "|" + lvn.toFixed(3) + "|" + raw(v, "ln_tune", 0) + "|" + W[2], function () {
+    return wavePts(lineWave(shape, lvn, tuneSemis(raw(v, "ln_tune", 0)), 72), W[0] + 4, W[1] + 5, W[2] - 8, 36);
   });
   g.fill(W[0] + 4, W[1] + 23, W[2] - 8, 1, FAINT);
   g.poly(lw, 2, hm ? "slot" : mOn ? MELODY : mix(MELODY, 0.45));
@@ -761,8 +782,9 @@ function panel(g, v) {
   // LADDER: Pung's filter at the ladder's own peak; the envelope's reach
   B = BOXES[5]; W = wellOf(B);
   heading(g, B, lit(B), "", DIM);
-  var ln0 = 20 + 115 * raw(v, "ln_cut", 0.75);
-  g.filter(W[0], W[1], W[2], 42, { cutoff: "ln_cut", resonance: ladderRes(raw(v, "ln_res", 0)), type: "LP 24 dB", at: axisAt(ln0), color: MELODY });
+  var ln0 = 20 + 115 * raw(v, "ln_cut", 0.75), lnN = 20 + 115 * rawNow(v, "ln_cut", 0.75);
+  g.filter(W[0], W[1], W[2], 42, { cutoff: "ln_cut", resonance: ladderRes(raw(v, "ln_res", 0)), type: "LP 24 dB", at: axisAt(lnN), color: MELODY });
+  if (moved(v, "ln_cut")) footMark(g, W[0] + W[2] * axisAt(ln0), W[0] + W[2] * axisAt(lnN), W[1] + 38);
   var lf = raw(v, "ln_fenv", 0);
   if (Math.abs(lf) > 0.004) {
     var lx0 = W[0] + 6, lx1 = W[0] + W[2] - 6, la = lx0 + (lx1 - lx0) * axisAt(ln0), lb = lx0 + (lx1 - lx0) * axisAt(ln0 + lf * 72);
@@ -930,6 +952,12 @@ function atmosScreen(g, v) {
   if (!motionOn(v, 0) && anim > 0.004) g.text(x1, Math.abs(dep) > 0.004 ? 36 : 26, "MOTION MOVES " + up(txt(v, "an_dest")), DIM, 1, 200);
   g.fill(xc - 1, T[1] === 2 ? 54 : 20, 3, T[1] === 2 ? yA - 54 : yA - 20, t === "tx_var" ? "slot" : INK);
   g.dot(xc, yA + 1, 4, t === "tx_var" ? "slot" : INK);
+  if (moved(v, "tx_var")) { // where the sound has Variation now
+    var xn = xOf(rawNow(v, "tx_var", xv));
+    g.fill(Math.min(xc, xn), yA, Math.abs(xn - xc), 2, mix("#3cc8e6", 0.45));
+    g.fill(xn - 1, T[1] === 2 ? 54 : 24, 2, T[1] === 2 ? yA - 54 : yA - 24, "mod");
+    g.dot(xn, yA + 1, 3, "mod");
+  }
   // the amp envelope over its four knobs
   g.envelope(722, 14, 228, 70, { attack: "tx_a", decay: "tx_d", sustain: "tx_s", release: "tx_r", labels: true,
     curves: { attack: -1.609, decay: -5, release: -5 }, color: ATMOS });
@@ -1096,6 +1124,7 @@ function layerScreen(g, v) {
   g.fill(250, 70, 96, 1, FAINT);
   g.poly(pa, 2, both ? ATMOS : FAINT); g.poly(pb, 2, both ? INK : FAINT);
   if (both) g.fill(250 + 96 * bl - 1, 18, 2, 54, hb ? "slot" : INK);
+  if (both && moved(v, "pl_blend")) { var bn = rawNow(v, "pl_blend", bl); g.fill(250 + 96 * bn - 1, 24, 2, 48, "mod"); g.dot(250 + 96 * bn, 72, 3, "mod"); } // where the sound has it
   g.text(298, 82, both ? (bl < 0.03 ? "A" : bl > 0.97 ? "B" : "A " + Math.round(Math.cos(bl * Math.PI / 2) * 100) + " / B " + Math.round(Math.sin(bl * Math.PI / 2) * 100)) : sets[0] || sets[1] ? "NEEDS A AND B" : "LAYER OFF", hb ? "slot" : both ? INK : DIM, 0, 104);
   // the others, in words and marks over their knobs
   var lvl = raw(v, "pl_lvl", 0), on = !!(sets[0] || sets[1]);
@@ -1127,8 +1156,9 @@ function melodyScreen(g, v) {
   band(g, "mel", S);
   var hs = hot(t, ["ln_shape", "ln_tune"]);
   right(g, S[0], lineName(v) + (shape < QD.lineVA ? "  OSC 2 " + valueOf(v, "ln_tune") : ""), hs ? "slot" : INK);
-  var c = cached("mw|" + shape + "|" + xv.toFixed(3) + "|" + tu, function () {
-    return wavePts(lineWave(shape, xv, tuneSemis(tu), 160), 10, 20, 216, 40);
+  var xvn = rawNow(v, "ln_var", xv); // the wave the sound plays now (Var Env)
+  var c = cached("mw|" + shape + "|" + xvn.toFixed(3) + "|" + tu, function () {
+    return wavePts(lineWave(shape, xvn, tuneSemis(tu), 160), 10, 20, 216, 40);
   });
   g.fill(10, 40, 216, 1, FAINT);
   g.poly(c, 2, hs ? "slot" : MELODY);
@@ -1139,13 +1169,15 @@ function melodyScreen(g, v) {
     var parts = [shape === 1 || shape === 2 ? "PWM" : "SHIMMER", "TREMOLO", "VIBRATO"];
     g.text(x0, 28, "VARIATION " + Math.round(xv * 100) + "%", hv ? "slot" : INK, -1, 110);
     for (var i = 0; i < 3; i++) {
-      var d = clamp(xv * 3 - i, 0, 1), yy = 44 + i * 14;
+      var d = clamp(xv * 3 - i, 0, 1), yy = 44 + i * 14, dn = clamp(xvn * 3 - i, 0, 1);
       g.text(x0, yy, parts[i], d > 0 ? INK : DIM, -1);
       g.fill(x0 + 56, yy - 5, 52, 4, "#0b0c0e"); if (d > 0) g.fill(x0 + 56, yy - 5, 52 * d, 4, hv ? "slot" : MELODY);
+      if (moved(v, "ln_var") && Math.abs(dn - d) > 0.004) g.dot(x0 + 56 + 52 * dn, yy - 3, 2.5, "mod");
     }
   } else {
     g.text(x0, 28, "TABLE " + Math.round(xv * 100) + "%", hv ? "slot" : INK, -1, 110);
     g.fill(x0, 44, x1 - x0, 4, "#0b0c0e"); g.fill(x0, 44, (x1 - x0) * xv, 4, hv ? "slot" : MELODY);
+    if (moved(v, "ln_var")) g.dot(x0 + (x1 - x0) * xvn, 46, 3, "mod");
     g.text(x0, 64, "VARIATION READS", DIM, -1); g.text(x0, 76, "THE TABLE", DIM, -1);
   }
   g.text(10, 80, shape === 3 ? "OSC 2 SYNCED TO OSC 1" : shape >= QD.lineVA ? "BOTH OSCILLATORS READ THE TABLE" : "TWO OSCILLATORS, OSC 2 TUNED " + valueOf(v, "ln_tune"), DIM, -1, 340);
@@ -1173,7 +1205,9 @@ function melFilterScreen(g, v) {
   band(g, "mfl", S);
   var cut = 20 + 115 * raw(v, "ln_cut", 0), fe = raw(v, "ln_fenv", 0), we = raw(v, "ln_wenv", 0);
   right(g, S[0], valueOf(v, "ln_cut") + "  RES " + Math.round(raw(v, "ln_res", 0) * 100) + "%", hot(t, ["ln_cut", "ln_res"]) ? "slot" : INK);
-  g.filter(4, 14, 468, 48, { cutoff: "ln_cut", resonance: ladderRes(raw(v, "ln_res", 0)), type: "LP 24 dB", at: axisAt(cut), color: MELODY });
+  var cutN = 20 + 115 * rawNow(v, "ln_cut", 0); // where the sound has it
+  g.filter(4, 14, 468, 48, { cutoff: "ln_cut", resonance: ladderRes(raw(v, "ln_res", 0)), type: "LP 24 dB", at: axisAt(cutN), color: MELODY });
+  if (moved(v, "ln_cut")) footMark(g, 4 + 468 * axisAt(cut), 4 + 468 * axisAt(cutN), 58);
   var x0 = 10, x1 = 466;
   function xOf(n) { return x0 + (x1 - x0) * axisAt(n); }
   if (Math.abs(fe) > 0.004) {

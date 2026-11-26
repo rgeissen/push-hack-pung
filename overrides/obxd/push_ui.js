@@ -36,6 +36,10 @@ function raw(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].valu
 function p01(v, k, d) { return known(v, k) ? raw(v, k, 0) / 100 : d; } // a 0..100 knob as the engine's 0..1
 function on(v, k) { return known(v, k) && raw(v, k, 0) >= 0.5; }
 function txt(v, k) { return v[k] ? String(v[k].display || v[k].value || "") : ""; }
+// where the sound has a knob now (v[k].now: OB-Xd's live_mod, the newest
+// voice's cutoff, pulse width and osc pitches), 0..1; null when nothing moves it
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? Math.max(0, Math.min(1, v[k].now)) : null; }
+function rawNow(v, k, d) { var n = nowOf(v, k); return n === null ? raw(v, k, d) : n * 100; } // a 0..100 knob, where the sound has it
 
 // SynthEngine.h's scale
 function logsc(p, lo, hi, roll) { roll = roll || 19; return ((Math.exp(p * Math.log(roll + 1)) - 1) / roll) * (hi - lo) + lo; }
@@ -106,6 +110,17 @@ function knobBody(g, x, y, r) { g.dot(x, y, r, SKIRT); g.dot(x, y, r * 0.74, CAP
 function pointer(g, x, y, r, f, col) {
   var a = A0 + f * SWEEP;
   g.line(x + Math.cos(a) * r * 0.15, y + Math.sin(a) * r * 0.15, x + Math.cos(a) * r * 0.95, y + Math.sin(a) * r * 0.95, 2, col);
+}
+// the sound's place beside a knob's pointer: an arc in the modulation colour
+// from the pointer, outside the knob (r: its radius), and a dot
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function modMark(g, v, k, x, y, r) {
+  var n = nowOf(v, k);
+  if (n === null) return;
+  var f = v[k].frac;
+  if (Math.abs(n - f) < 0.004) return;
+  g.arc(x, y, r + 4, A0 + Math.min(f, n) * SWEEP, Math.abs(n - f) * SWEEP, 2, MOD_DK);
+  g.dot(x + Math.cos(A0 + n * SWEEP) * (r + 4), y + Math.sin(A0 + n * SWEEP) * (r + 4), 2.8, MOD);
 }
 function led(g, x, y, lit, s, legend) {
   g.dot(x, y, 2.5, lit ? LED_ON : LED_OFF);
@@ -200,6 +215,7 @@ function panel(g, v) {
     var k = KNOBS[i], key = k[0], ok = known(v, key);
     if (key === t) g.arc(k[1], k[2], KR + 3, 0, Math.PI * 2, 2, "slot");
     pointer(g, k[1], k[2], KR * 0.74, ok ? fr(v, key, 0) : 0.5, ok ? INK : LEG);
+    modMark(g, v, key, k[1], k[2], KR);
     if (held[key]) g.text(k[1], k[2] + 20, k[3], key === t ? "slot" : INK, 0);
   }
   // the program, its name and bank
@@ -242,6 +258,7 @@ function panel(g, v) {
     g.arc(cx, ry, kr + 4, A0, SWEEP, 2, RULE);
     if (ok2) g.arc(cx, ry, kr + 4, A0, Math.max(0.02, f) * SWEEP, 2, hot ? "slot" : BLUE);
     pointer(g, cx, ry, kr * 0.74, ok2 ? f : 0.5, hot ? "slot" : INK);
+    modMark(g, v, key2, cx, ry, kr + 2.5); // outside the value arc (kr + 4), clear of the value
     g.text(x + 50, segOn ? 119 : 124, short(v, key2), hot ? "slot" : LEG, -1, 66);
     g.value(x + 50, segOn ? 138 : 148, valueOf(v, key2), hot ? "slot" : INK, -1, 66);
   }
@@ -441,8 +458,8 @@ function mixerScreen(g, v) {
   title(g, 0, 356, "MIXER", RED);
   g.mix(0, 12, 356, 74, ["osc1_mix", "osc2_mix", "noise"], { color: RED });
   var s1 = on(v, "osc1_saw"), q1 = on(v, "osc1_pulse"), s2 = on(v, "osc2_saw"), q2 = on(v, "osc2_pulse");
-  var pw = p01(v, "pw", 0), d1 = duty(pw * 0.95), d2 = duty(pw * 0.95 + p01(v, "pw_ofs", 0) * 0.75);
-  var st = (raw(v, "osc2_pitch", 50) - raw(v, "osc1_pitch", 50)) * 0.48, sync = on(v, "osc2_sync");
+  var pw = rawNow(v, "pw", 0) / 100, d1 = duty(pw * 0.95), d2 = duty(pw * 0.95 + p01(v, "pw_ofs", 0) * 0.75);
+  var st = (rawNow(v, "osc2_pitch", 50) - rawNow(v, "osc1_pitch", 50)) * 0.48, sync = on(v, "osc2_sync");
   var ratio = Math.pow(2, Math.max(-24, Math.min(36, st)) / 12);
   var m1 = p01(v, "osc1_mix", 0), m2 = p01(v, "osc2_mix", 0), nz = logsc(p01(v, "noise", 0), 0, 1, 35);
   var x0 = 372, w = 572, y = 18, h = 64, mid = y + h / 2, cyc = 2, n = 143;
@@ -481,8 +498,8 @@ push.compartment({
     band(g, "osc");
     var t = v.$touched || "";
     var s1 = on(v, "osc1_saw"), q1 = on(v, "osc1_pulse"), s2 = on(v, "osc2_saw"), q2 = on(v, "osc2_pulse");
-    var pw = p01(v, "pw", 0), ofs = p01(v, "pw_ofs", 0) * 0.75, d1 = duty(pw * 0.95), d2 = duty(pw * 0.95 + ofs);
-    var st = (raw(v, "osc2_pitch", 50) - raw(v, "osc1_pitch", 50)) * 0.48, sync = on(v, "osc2_sync");
+    var pw = rawNow(v, "pw", 0) / 100, ofs = p01(v, "pw_ofs", 0) * 0.75, d1 = duty(pw * 0.95), d2 = duty(pw * 0.95 + ofs);
+    var st = (rawNow(v, "osc2_pitch", 50) - rawNow(v, "osc1_pitch", 50)) * 0.48, sync = on(v, "osc2_sync");
     var ratio = Math.pow(2, Math.max(-24, Math.min(36, st)) / 12), xm = p01(v, "xmod", 0);
     var ok = known(v, "osc1_saw") && known(v, "osc2_saw");
     function name(saw, pul) { return !ok ? "--" : saw && pul ? "SAW + PULSE" : saw ? "SAW" : pul ? "PULSE" : "TRIANGLE"; }
@@ -556,6 +573,9 @@ push.compartment({
       g.fill(Math.min(x0, x1), 78, Math.max(2, Math.abs(x1 - x0)), 2, ec);
       g.poly([x1 + (inv ? 6 : -6), 74, x1, 79, x1 + (inv ? 6 : -6), 84], 2, ec);
     }
+    // where the sound has the cutoff now, on the same line
+    var cn = nowOf(v, "cutoff");
+    if (cn !== null && Math.abs(cn - cut) > 0.004) g.dot(8 + (half - 20) * cn, 79, 3, MOD);
     // the multimode knob's travel, in the mode the switches set
     var mx = half + 6, mw = 150, my = 26, mm = fr(v, "multimode", 0), mh = t === "multimode" || t === "fourpole" || t === "bandpass";
     g.text(mx, 14, "MULTIMODE", mh ? "slot" : LEG, -1);

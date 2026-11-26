@@ -30,6 +30,14 @@ function num(v, k, d) { if (!known(v, k)) return d; var n = parseFloat(v[k].valu
 function disp(v, k) { return known(v, k) ? String(v[k].display || v[k].value) : "--"; }
 function up(s) { return String(s).toUpperCase(); }
 function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : (x === x ? x : 0); }
+// where the sound has a control now (v[k].now: Chordism's live_mod: the filter
+// envelope and LFO, the shape and morph LFOs, the control source; null when
+// nothing moves it), 0..1 and in the key's own units; pictures draw the
+// sound's, the knobs keep their own marks, the sound's beside them in cyan
+var MOD = "#3cc8e6", MOD_DK = "#1f5f6c";
+function nowOf(v, k) { return known(v, k) && typeof v[k].now === "number" ? clamp01(v[k].now) : null; }
+function moved(v, k) { var n = nowOf(v, k); return n !== null && Math.abs(n - clamp01(v[k].frac)) > 0.004; }
+function lnum(v, k, d) { var n = nowOf(v, k); return n === null || !(v[k].max > v[k].min) ? num(v, k, d) : v[k].min + n * (v[k].max - v[k].min); }
 function hex2(n) { var s = Math.round(n).toString(16); return s.length < 2 ? "0" + s : s; }
 function mixc(a, b, t) {
   var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
@@ -101,7 +109,7 @@ function lastNote(v) {
 // each voice's level: the level morph's row (interpolated, toward flat by its
 // intensity) times the mixer's trim
 function morphLevels(v) {
-  var x = clamp01(num(v, "morph_index", 0)) * 15, lo = Math.floor(x), hi = Math.min(15, lo + 1), f = x - lo, it = num(v, "morph_intensity", 0), out = [];
+  var x = clamp01(lnum(v, "morph_index", 0)) * 15, lo = Math.floor(x), hi = Math.min(15, lo + 1), f = x - lo, it = num(v, "morph_intensity", 0), out = [];
   for (var i = 0; i < 4; i++) {
     var lut = LEVEL_LUT[lo][i] * (1 - f) + LEVEL_LUT[hi][i] * f;
     out.push(1 + (lut - 1) * it);
@@ -109,7 +117,7 @@ function morphLevels(v) {
   return out;
 }
 function morphPans(v) {
-  var x = clamp01(num(v, "pan_morph_index", 0)) * 15, lo = Math.floor(x), hi = Math.min(15, lo + 1), f = x - lo, it = num(v, "pan_morph_intensity", 0), out = [];
+  var x = clamp01(lnum(v, "pan_morph_index", 0)) * 15, lo = Math.floor(x), hi = Math.min(15, lo + 1), f = x - lo, it = num(v, "pan_morph_intensity", 0), out = [];
   for (var i = 0; i < 4; i++) out.push((PAN_LUT[lo][i] * (1 - f) + PAN_LUT[hi][i] * f) * it);
   return out;
 }
@@ -149,7 +157,7 @@ function wavePts(w, s, x, y, ww, hh, cycles) {
   return (waveMemo[key] = pts);
 }
 function waveOf(v, i) { return idx(v, "wave_" + (i + 1), 1); }
-function shapeOf(v, i) { return clamp01(num(v, "shape_" + (i + 1), 0)); }
+function shapeOf(v, i) { return clamp01(lnum(v, "shape_" + (i + 1), 0)); }   // as the sound has it
 
 // a degree's name from its distance to the root
 function degree(iv) {
@@ -351,6 +359,11 @@ function row(g, v) {
         }
       }
     }
+    if (ok && !isChoice(v, k) && moved(v, k)) {
+      var nf = nowOf(v, k);
+      g.fill(gx + Math.round(Math.min(f, nf) * gw), gy + 4, Math.max(1, Math.round(Math.abs(nf - f) * gw)), 1, MOD_DK);
+      g.dot(gx + nf * gw, gy + 4.5, 2.8, MOD);
+    }
     g.value(gx, sm ? 139 : 152, valueText(v, k), hot ? "slot" : INK, -1, gw);
   }
 }
@@ -551,6 +564,7 @@ push.compartment({
     var ix = 8 + clamp01(num(v, "morph_index", 0)) * 15 * rw + 5;
     g.fill(Math.round(ix) - 6, 82, 13, 2, lhot ? "slot" : INK);
     g.fill(Math.round(ix), 44, 1, 38, lhot ? "slot" : INK_DIM);
+    if (moved(v, "morph_index")) { var nx = 8 + nowOf(v, "morph_index") * 15 * rw + 5; g.fill(Math.round(nx), 44, 2, 38, MOD); g.dot(nx + 1, 83, 3, MOD); }
     // the four levels now
     for (var i = 0; i < 4; i++) {
       var bx = 268 + i * 44, h = Math.round(clamp01(lv[i]) * 60);
