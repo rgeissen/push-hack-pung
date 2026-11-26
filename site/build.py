@@ -13,7 +13,7 @@ LINKS = json.load(open(os.path.join(HERE, "links.json")))
 OUT = None  # set by --pages: whole documents, relative links
 SITE = {"vision": "./", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
 DESC = {
-    "vision": "Pung runs Schwung modules on Ableton Push 3 Standalone, as devices in Live: what it is and how it works.",
+    "vision": "Pung runs Schwung modules, and modules written for the Push alone, on Ableton Push 3 Standalone, as devices in Live: what it is and how it works.",
     "manual": "The Pung manual: installing Pung on a Push 3 Standalone, the Pung view and its controls, sounds, modules.",
     "design": "The design principles of the Pung view on Push 3: screens, controls, envelopes, colours.",
     "performance": "How Pung spends a Push 3's processor and battery: emulators that rest in silence, measured costs, a view that draws only what changed.",
@@ -57,7 +57,7 @@ def footer():
 <a href="https://github.com/charlesvestal/schwung">Schwung</a>
 <a href="https://github.com/federico-pepe/ableton-push-hack">Push Hack</a>
 </div>
-<p>Pung is a hack for Push Hack. It runs Schwung modules; Schwung and its modules are the work of Charles Vestal and the module authors, and every module keeps its own licence. Pung is not made, approved or supported by Ableton. Ableton, Push, Move and Live are trademarks of Ableton AG.</p>
+<p>Pung is a hack for Push Hack. It runs Schwung modules and modules of its own; Schwung and its modules are the work of Charles Vestal and the module authors, Pung's emulators are built on gearmulator, and every module keeps its own licence. Pung is not made, approved or supported by Ableton. Ableton, Push, Move and Live are trademarks of Ableton AG.</p>
 <p>Every Push screen on these pages is Pung's own drawing, captured from a Push 3 or rendered by the same code.</p>
 </div></footer>"""
 

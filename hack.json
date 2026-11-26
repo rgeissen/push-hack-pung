@@ -2,7 +2,7 @@
   "id": "pung",
   "name": "Pung",
   "version": "0.4.9",
-  "description": "Pung runs Schwung modules (the module ecosystem of Ableton Move) on Push 3 as devices in Live: instruments, audio effects and MIDI effects in Push's browser and device view, with Pung's own view on the Push screen, on Push Hack's Live device layer (core/livedevice). Needs Push Manager's VST3 scan switched on.",
+  "description": "Pung runs Schwung modules (the module ecosystem of Ableton Move), and modules written for the Push alone, on Push 3 as devices in Live: instruments, audio effects and MIDI effects in Push's browser and device view, with Pung's own view on the Push screen, on Push Hack's Live device layer (core/livedevice). Needs Push Manager's VST3 scan switched on.",
   "author": "rgeissen",
   "binary": "pung",
   "port": 7720,

@@ -1,31 +1,40 @@
 # Pung for Push 3
 
-Pung runs [Schwung](https://github.com/charlesvestal/schwung) modules on Ableton Push 3 Standalone.
+Pung runs [Schwung](https://github.com/charlesvestal/schwung) modules, and modules of its own, on Ableton Push 3
+Standalone.
 Schwung is the module system of Ableton Move: synths, audio effects and MIDI effects, each a small native
 plugin. Pung runs those plugins on Push as devices in Live, with a native Push interface, the modules' own
 web pages, and room for modules to draw their own pictures on the Push screen.
+
+Beside them run **Pung-native modules**, written for the Push alone and for what its processor can do:
+Nodal Red 2X (Clavia Nord Lead 2X), OsTIrus (Access Virus TI), Vavra (Waldorf microQ), Xenia (Waldorf
+Microwave II/XT) and Vivace, a wavetable synth. The emulators need their synth's firmware, which you bring
+yourself. A governor measures what every device costs and lets an emulator rest while nothing sounds.
 
 It is a hack for [Push Hack](https://github.com/federico-pepe/ableton-push-hack). It is not made, approved or
 supported by Ableton.
 
 ## Read more
 
-Three pages go with this repository, with pictures of every screen:
+Four pages go with this repository, with pictures of every screen:
 
 - **[Manual](https://rgeissen.github.io/push-hack-pung/manual.html)** ([as a Claude artifact](https://claude.ai/artifact/BJ47JjYFTh39t4RKWkNtEY)): installing Pung, the Pung view and its
   controls, sounds, the web page, troubleshooting.
 - **[Vision](https://rgeissen.github.io/push-hack-pung/)** ([as a Claude artifact](https://claude.ai/artifact/UXRfdHMtyVs9HqevVoNqt1)): what Pung is, how it runs Schwung modules
-  as Live devices, and where it is going.
+  and its own as Live devices, and where it is going.
 - **[Design](https://rgeissen.github.io/push-hack-pung/design.html)** ([as a Claude artifact](https://claude.ai/artifact/CrRQBoVwhvpgoJpTZpHeC2)): the design principles of the Pung view
   and of a module's own screens, for module authors.
+- **[Performance](https://rgeissen.github.io/push-hack-pung/performance.html)** ([as a Claude artifact](https://claude.ai/artifact/6vfimXTaiLxAfT8zc9nQzL)): the governor: what Pung costs a
+  Push's processor and battery, how emulators rest in silence, and the measurements behind it.
 
 In this repository: [docs/UX-GUIDELINES.md](docs/UX-GUIDELINES.md) (the rules behind the Design page),
 [docs/overrides.md](docs/overrides.md) (a module's own Push screens), [docs/PRESETS.md](docs/PRESETS.md)
-(sounds) and [docs/DESIGN.md](docs/DESIGN.md) (how Pung is built).
+(sounds), [docs/NATIVE-MODULES.md](docs/NATIVE-MODULES.md) (Pung-native modules), [docs/GOVERNOR.md](docs/GOVERNOR.md)
+(what devices cost) and [docs/DESIGN.md](docs/DESIGN.md) (how Pung is built).
 
 ## Pung devices in Live
 
-Every Schwung module is a device in Live, on Push Hack's Live device layer
+Every module, Schwung's or Pung's own, is a device in Live, on Push Hack's Live device layer
 ([`core/livedevice`](https://github.com/federico-pepe/ableton-push-hack/blob/main/docs/live-devices.md)):
 
 - **Push's browser** lists them in the User Library, under *Presets*: *Instruments/Pung* (Braids, OB-Xd, Dexed, Hera, ...), *Audio
