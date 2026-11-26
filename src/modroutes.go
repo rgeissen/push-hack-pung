@@ -37,6 +37,11 @@ func (mm *modMgr) routes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{"ok": true})
 	})
+	// every module with an update, queued (the Modules page's "Update all")
+	mux.HandleFunc("POST /api/catalog/update-all", func(w http.ResponseWriter, r *http.Request) {
+		queued, failed := mm.updateAll()
+		writeJSON(w, 200, map[string]any{"ok": len(failed) == 0, "queued": queued, "failed": failed})
+	})
 	mux.HandleFunc("POST /api/catalog/{id}/remove", func(w http.ResponseWriter, r *http.Request) {
 		if err := mm.remove(r.PathValue("id")); err != nil {
 			fail(w, 409, "%v", err)

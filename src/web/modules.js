@@ -115,6 +115,7 @@
     $("mod-foot").textContent = hidden ? `${hidden} Move tools are not listed: Pung runs instruments and effects.` : "";
     const badge = $("view-modules-badge");
     if (badge) { badge.textContent = counts.updates || ""; badge.hidden = !counts.updates; }
+    renderUpdateAll(all);
     if (m.open) renderSheet();
   }
 
@@ -127,6 +128,21 @@
     if (c.offline && c.have) s.innerHTML = `<span class="warn">Offline</span> · the catalog as read ${esc(when)} · ${esc(c.error || "")}`;
     else if (c.offline) s.innerHTML = `<span class="warn">The catalog cannot be read</span> · ${esc(c.error || "")}`;
     else s.textContent = `Catalog updated ${c.generated_at ? ago(new Date(c.generated_at)) : "?"}`;
+  }
+
+  // Update all: every module with an update, queued at once (each installs as
+  // its own Update does, one after another); while they install, how far
+  function renderUpdateAll(all) {
+    const b = $("mod-update-all");
+    if (!b) return;
+    const ups = all.filter((x) => x.status === "update");
+    const busy = (x) => x.job && !["done", "failed"].includes(x.job.state);
+    const going = ups.filter(busy).length, left = ups.length - going;
+    b.hidden = !ups.length || m.down;
+    if (!ups.length) return;
+    b.disabled = !left;
+    b.textContent = left ? `Update all (${left})` : `Updating ${going}…`;
+    b.title = left ? `Update the ${left} module${left === 1 ? "" : "s"} with a newer version in the catalog` : "";
   }
 
   function renderBanner(d) {
@@ -443,6 +459,21 @@
     if (!r.ok) PungToast(r.error || "It could not be installed.", true);
     load(false);
   }
+  async function updateAll() {
+    const ups = ((m.data && m.data.modules) || []).filter((x) => x.supported && x.status === "update" &&
+      !(x.job && !["done", "failed"].includes(x.job.state)));
+    if (!ups.length) return;
+    const size = ups.reduce((n, x) => n + (x.size || 0), 0);
+    const names = ups.slice(0, 6).map((x) => x.name).join(", ") + (ups.length > 6 ? ` and ${ups.length - 6} more` : "");
+    if (!(await PungConfirm(`Update ${ups.length} module${ups.length === 1 ? "" : "s"}${size ? ` (${bytes(size)})` : ""}: ${names}? ` +
+      "They install one after another; Live sees them once it restarts, which this page then offers.", "Update all"))) return;
+    $("mod-update-all").disabled = true;
+    const r = await api("/api/catalog/update-all", { method: "POST" });
+    const failed = Object.entries((r && r.failed) || {});
+    if (failed.length) PungToast(failed.map(([id, e]) => `${id}: ${e}`).join("; "), true);
+    else if (!r || r.error) PungToast((r && r.error) || "The updates could not be started.", true);
+    load(false);
+  }
   async function remove(x) {
     if (!(await PungConfirm(`Remove ${x.name}? Its files (ROMs, banks) are kept, and come back if you install it again.`, "Remove", true))) return;
     const r = await api(`/api/catalog/${encodeURIComponent(x.id)}/remove`, { method: "POST" });
@@ -521,6 +552,7 @@
       render();
     }));
     $("mod-refresh").onclick = () => load(true);
+    $("mod-update-all").onclick = updateAll;
     $("mod-sheet-close").onclick = () => $("mod-sheet").close();
     $("mod-sheet").addEventListener("close", () => (m.open = null));
     $("mod-sheet").addEventListener("click", (e) => { if (e.target === $("mod-sheet")) $("mod-sheet").close(); });

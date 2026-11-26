@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -241,5 +242,45 @@ func TestModuleLimitsOnRows(t *testing.T) {
 	}
 	if l := limitsOf("plaits"); l != nil {
 		t.Errorf("plaits has limits %+v, want none", l)
+	}
+}
+
+// Update all: every module with an update is queued, as its own Update
+// would be; one that is up to date, not installed, or not an instrument or
+// an effect is not; a second press queues nothing again (the first jobs are
+// on their way), and the queue holds more modules than any catalog has.
+func TestUpdateAll(t *testing.T) {
+	mods := t.TempDir()
+	put := func(id, version string) {
+		d := filepath.Join(mods, "sound_generators", id)
+		js := `{"id":"` + id + `","name":"` + id + `","version":"` + version + `","component_type":"sound_generator"}`
+		os.MkdirAll(d, 0o755)                                            //nolint:errcheck
+		os.WriteFile(filepath.Join(d, "module.json"), []byte(js), 0o644) //nolint:errcheck
+	}
+	put("old1", "1.0.0")
+	put("old2", "0.2.0")
+	put("same", "2.0.0")
+	h := &Host{dataDir: t.TempDir(), modulesDir: mods, settings: loadSettings(t.TempDir())}
+	mm := &modMgr{h: h, jobs: map[string]*modJob{}, queue: make(chan string, modQueueCap)}
+	mm.cat = &catalogDoc{Modules: []catalogEntry{
+		{ID: "old1", Name: "old1", Version: "1.0.1", ComponentType: "sound_generator"},
+		{ID: "old2", Name: "old2", Version: "0.3.0", ComponentType: "sound_generator"},
+		{ID: "same", Name: "same", Version: "2.0.0", ComponentType: "sound_generator"},
+		{ID: "new", Name: "new", Version: "1.0.0", ComponentType: "sound_generator"},
+		{ID: "tool", Name: "tool", Version: "9.0.0", ComponentType: "utility"},
+	}}
+	queued, failed := mm.updateAll()
+	sort.Strings(queued)
+	if strings.Join(queued, ",") != "old1,old2" || len(failed) != 0 {
+		t.Fatalf("queued %v, failed %v; want old1, old2", queued, failed)
+	}
+	if len(mm.queue) != 2 || mm.jobs["old1"].Action != "update" || mm.jobs["old2"].State != "queued" {
+		t.Fatalf("queue %d, jobs %+v %+v", len(mm.queue), mm.jobs["old1"], mm.jobs["old2"])
+	}
+	if again, _ := mm.updateAll(); len(again) != 0 || len(mm.queue) != 2 {
+		t.Fatalf("a second press queued %v (queue %d)", again, len(mm.queue))
+	}
+	if modQueueCap < 1000 {
+		t.Fatalf("the queue holds %d: a catalog has more modules", modQueueCap)
 	}
 }

@@ -183,7 +183,11 @@ type modMgr struct {
 }
 
 func newModMgr(h *Host) *modMgr {
-	mm := &modMgr{h: h, jobs: map[string]*modJob{}, queue: make(chan string, 64)}
+	// the queue never fills: a module is queued at most once until its job
+	// ends (enqueue), and enqueue sends with the lock held, which the worker
+	// needs to finish a job: a full queue would stop both ("Update all"
+	// queues every module with an update at once)
+	mm := &modMgr{h: h, jobs: map[string]*modJob{}, queue: make(chan string, modQueueCap)}
 	if raw, err := os.ReadFile(mm.path("catalog-cache.json")); err == nil {
 		var c struct {
 			Fetched time.Time  `json:"fetched"`
@@ -200,6 +204,9 @@ func newModMgr(h *Host) *modMgr {
 	go mm.worker()
 	return mm
 }
+
+// modQueueCap: more than any catalog holds modules (196 in 0.5.0)
+const modQueueCap = 4096
 
 func (mm *modMgr) path(p ...string) string {
 	return filepath.Join(append([]string{mm.h.dataDir}, p...)...)
@@ -694,6 +701,30 @@ func (mm *modMgr) enqueue(id string) error {
 	mm.jobs[id] = &modJob{ID: id, Action: action, State: "queued", Total: e.Size, Started: time.Now()}
 	mm.queue <- id
 	return nil
+}
+
+// updateAll: every module the page shows an update for queued, as each
+// one's own Update would queue it (the modules it needs first), the ones on
+// their way already left as they are: the page's "Update all". What could
+// not be queued comes back with why. Live sees the updates after Apply, as
+// it does one's.
+func (mm *modMgr) updateAll() (queued []string, failed map[string]string) {
+	failed = map[string]string{}
+	rows, _ := mm.view()["modules"].([]moduleRow)
+	for _, r := range rows {
+		if !r.Supported || r.Status != "update" {
+			continue
+		}
+		if j := r.Job; j != nil && j.State != "done" && j.State != "failed" {
+			continue
+		}
+		if err := mm.enqueue(r.ID); err != nil {
+			failed[r.ID] = err.Error()
+			continue
+		}
+		queued = append(queued, r.ID)
+	}
+	return queued, failed
 }
 
 // worker runs the jobs one at a time: each ends in a crash probe, and two
