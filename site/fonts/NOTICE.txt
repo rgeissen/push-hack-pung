@@ -1,0 +1,7 @@
+The fonts of pung.live, served from here (site/build.py, faces.css): the Latin and Latin Extended parts of
+each, as WOFF2. Each is licensed under the SIL Open Font License, Version 1.1 (OFL.txt in this folder; its
+text is the same for all three, each with its own copyright line):
+
+Archivo             Copyright 2020 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo)
+IBM Plex Mono       Copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex"
+Plus Jakarta Sans   Copyright 2020 The Plus Jakarta Sans Project Authors (https://github.com/tokotype/PlusJakartaSans)

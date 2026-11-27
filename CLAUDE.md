@@ -251,6 +251,10 @@ and a panel for every connected deployment: processor with its last minute, memo
 Pung against the newest, its modules, Pung's two switches). Vision, Manual, Design and Performance are built as
 before and linked in the footer.
 
+- **The fonts are the site's own** (`site/fonts/`: Archivo, IBM Plex Mono, Plus Jakarta Sans as WOFF2, Latin and
+  Latin Extended, each under the OFL; `faces.css` goes into every page's head): no page asks another host
+  for anything (a visitor's address sent to a font service is a legal risk for a site run from Germany).
+  Keep it so: no script, style, font or picture from another host.
 - **Stacks** (`stacks.src.html`, `site/stacks.js`; a fourth entry in the menu, between Modules and Deployments,
   once the site is launched): the visitor's stacks, kept in their browser (IndexedDB `pung`/`stacks`, a file
   `.pungstack` to carry one), taken from what a connected deployment plays and sent to one (`src/stacks.go`:

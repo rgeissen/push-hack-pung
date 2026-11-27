@@ -41,17 +41,15 @@ NAV = [("modules", "Modules"), ("deployments", "Deployments")]
 if LAUNCHED:  # stacks need a deployment to talk to: in front once the site connects to one
     NAV.insert(1, ("stacks", "Stacks"))
 BACKGROUND = [("vision", "Vision"), ("manual", "Manual"), ("design", "Design"), ("performance", "Performance")]
-FONTS = ("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900"
-         "&family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap")
+# the fonts, served from pung.live itself: no visitor's address goes to a font service (site/fonts)
+FACES = open(os.path.join(HERE, "fonts", "faces.css")).read()
 
 
 def head(title):
     return f"""<title>{html.escape(title)}</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="{FONTS}">
 <style>
+{FACES.replace("{BASE}", "" if OUT else "https://pung.live/")}
 {CSS}
 </style>
 """
@@ -351,6 +349,7 @@ if __name__ == "__main__":
                 sys.exit(f"{os.path.basename(path)} does not parse (node --check): nothing is built from it")
         if not node:
             print("node is not here: the pages' scripts were not checked for syntax")
+        shutil.copytree(os.path.join(HERE, "fonts"), os.path.join(OUT, "fonts"), dirs_exist_ok=True)
         # the front page's loops: Pung's own instruments' panels (scripts/hero-loops.sh)
         shutil.copytree(os.path.join(HERE, "hero"), os.path.join(OUT, "hero"), dirs_exist_ok=True)
         # the newest release, where the site and the Pung Installer read it
