@@ -758,13 +758,22 @@ func (mm *modMgr) worker() {
 
 // assetSource: where a module's package is read from: this Push's disk when
 // the same package came with Pung (modpack.go), else the catalog's address
-func (mm *modMgr) assetSource(e catalogEntry) string {
+func (mm *modMgr) assetSource(e catalogEntry) string { return mm.assetSources(e)[0] }
+
+// assetSources: the same, and then the catalog's own address where that is
+// another place: a package that should be on the disk and is not there (or
+// not whole) is fetched as if it had never come with Pung.
+func (mm *modMgr) assetSources(e catalogEntry) []string {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
+	served := strings.TrimSuffix(mm.cat.BaseURL, "/") + "/" + e.Asset
 	if p := mm.local[e.SHA256]; p != "" && e.SHA256 != "" {
-		return p
+		if strings.HasPrefix(served, "http://") || strings.HasPrefix(served, "https://") {
+			return []string{p, served}
+		}
+		return []string{p}
 	}
-	return strings.TrimSuffix(mm.cat.BaseURL, "/") + "/" + e.Asset
+	return []string{served}
 }
 
 func (mm *modMgr) install(id string) error {
@@ -776,19 +785,31 @@ func (mm *modMgr) install(id string) error {
 		return fmt.Errorf("it needs Pung %s or later: update Pung first", e.MinPung)
 	}
 	sub := installSubdirs[e.ComponentType]
-	src := mm.assetSource(e)
 
-	// download, checking size and checksum
-	mm.setJob(id, func(j *modJob) { j.State = "downloading" })
+	// download, checking size and checksum; from the disk first where the
+	// package came with Pung, and from the catalog's address if it is not
+	// there as it should be
 	os.MkdirAll(mm.path(".downloads"), 0o755) //nolint:errcheck
 	pkg := mm.path(".downloads", filepath.Base(e.Asset))
-	if err := mm.download(id, src, pkg, e.Size); err != nil {
-		return err
-	}
 	defer os.Remove(pkg)
-	mm.setJob(id, func(j *modJob) { j.State = "verifying" })
-	if sum, err := fileSHA256(pkg); err != nil || sum != e.SHA256 {
-		return fmt.Errorf("the download is damaged (checksum %s, the catalog says %s)", sum, e.SHA256)
+	var got error
+	for i, src := range mm.assetSources(e) {
+		if i > 0 {
+			log.Printf("modules: %s: its package is not on this device as it came with Pung (%v): fetching it from %s", id, got, src)
+		}
+		mm.setJob(id, func(j *modJob) { j.State, j.Done = "downloading", 0 })
+		if got = mm.download(id, src, pkg, e.Size); got != nil {
+			continue
+		}
+		mm.setJob(id, func(j *modJob) { j.State = "verifying" })
+		if sum, err := fileSHA256(pkg); err != nil || sum != e.SHA256 {
+			got = fmt.Errorf("the download is damaged (checksum %s, the catalog says %s)", sum, e.SHA256)
+			continue
+		}
+		break
+	}
+	if got != nil {
+		return got
 	}
 
 	// unpack beside, check it is what it says

@@ -222,6 +222,18 @@ back as of the previous restart. Then ask the user to save the Set.
    Test it with Chrome over CDP: `Browser.grantPermissions` with localNetwork in ONE call (it rejects the rest). `site/images.json` is one compact JSON line:
    keep it that way (`separators=(',',':')`).
 
+**Rehearse a release without publishing** (done 2026-11-27, before 0.6.0; it found five things the checks
+alone did not): a stand-in for the DiskStation (a container with sshd, rsync, `/volume2/web/pung` and
+`python3 -m http.server` on it, its ports published), the scripts pointed at it with `PUNG_LIVE_HOST=root@127.0.0.1`,
+`PUNG_LIVE_URL=http://<this Mac's address>:<port>` (an address a container reaches too) and
+`PUNG_LIVE_PORT="<port> -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i <key>"` (the port is
+put into the ssh command unquoted; `release-check.py` cannot take it so). `release.sh --publish` commits, tags
+and pushes: run it in a clone whose `origin` is a bare folder, `build` linked in and `pung`, `livedevice.so`,
+`restart-live.sh` copied. Then `publish-catalog.sh`, the Pung Installer (its Linux build in a container,
+`PUNG_INSTALL_JSON` naming a staged `install.json`) against a stand-in Push (the key for `root` and for
+`ableton`: Push Hack is installed as `ableton`), and Pung there with `PUNG_PACK_URL`: the same pack (kept its
+own), a newer one (taken), one changed after signing (refused).
+
 **pung.live** is the owner's DiskStation (DS412+, DSM 6.2, Web Station): one virtual host on
 `/volume2/web/pung` (pages at the root, `brand/`, `modules/`, `releases/`, `sources/`, `release.json`),
 Let's Encrypt for pung.live and www.pung.live, DNS at Hostinger (A record to the home's address; it
@@ -308,6 +320,8 @@ disk; offline it goes on with its own. `own_pack_only` in the settings never ask
 - **`min_pung`** (a module's `module.json`, or `scripts/catalog-policy.json`): the pack reaches older Pungs too.
   A module that uses something a Pung release added (a `g.*` call, a `live_mod` key Pung must know) names that
   release, or older Pungs install a module they cannot draw. Such a Pung keeps the version its own pack has.
+- A package Pung's own pack has by its checksum is read from the disk; if it is not there (or not whole) it
+  is fetched from the pack's address (`assetSources`; before 2026-11-27 the install failed).
 - A staging copy: `PUNG_PACK_URL` in Pung's environment (still must be signed). Tests never ask pung.live
   (`modpack_test.go` points `packURL` at nothing).
 - Publishing a pack also rewrites `pung.live/modules/catalog.json`: the site's Modules page and a Push read

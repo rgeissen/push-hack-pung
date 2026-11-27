@@ -94,6 +94,10 @@ func TestModulePack(t *testing.T) {
 	if src := mm.assetSource(ex); !strings.HasPrefix(src, "file://"+own) {
 		t.Errorf("x came with Pung, yet it is read from %s", src)
 	}
+	// and from pung.live if it is not on the disk as it should be
+	if all := mm.assetSources(ex); len(all) != 2 || all[1] != srv.URL+"/catalog/"+ex.Asset {
+		t.Errorf("x has no second place to come from: %v", all)
+	}
 	ey, _ := mm.entry("y")
 	if src := mm.assetSource(ey); src != srv.URL+"/catalog/"+ey.Asset {
 		t.Errorf("y is new, and is read from %s", src)

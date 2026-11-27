@@ -300,6 +300,14 @@ func api(w http.ResponseWriter, r *http.Request) {
 		if !busy() && st.signer != nil {
 			go func() {
 				if c, err := dial(st.addr(), "root", st.signer); err == nil {
+					// it answers again: what the last try said is no longer true (the page
+					// showed "ready" under the old error, 2026-11-27)
+					st.set(func() {
+						if st.Phase == "failed" {
+							st.Steps, st.Did = nil, nil
+						}
+						st.Error, st.ErrorWhy = "", ""
+					})
 					inspectNow(c)
 					c.Close()
 				}
