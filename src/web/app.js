@@ -882,6 +882,20 @@
   boot();
 })();
 
+// The logo in the bar is the way to the start of the page: its first section (Devices), at the top. As on
+// pung.live, where the bar's logo leads home (the owner, 2026-11-27).
+(function () {
+  const a = document.querySelector(".brand .home");
+  if (!a) return;
+  a.addEventListener("click", (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
+    e.preventDefault();
+    const first = document.querySelector('.views button[data-view="devices"]');
+    if (first && document.body.dataset.view !== "devices") first.click();
+    scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  });
+})();
+
 // Light and dark: the switch in the bar. The page follows the system until it is pressed; then the choice,
 // kept in this browser and set before the first paint (index.html). The same as on pung.live (site/build.py).
 (function () {

@@ -109,6 +109,14 @@ function PungRide(svg) {
     else document.addEventListener("visibilitychange", function once() { if (document.visibilityState === "visible") { document.removeEventListener("visibilitychange", once); start(); } });
   }
   svg.addEventListener("click", go);
+  // the bar's logo is the way home: on the front page itself that is the top of the page (the owner,
+  // 2026-11-27; the link alone loaded the page again and left it where it was scrolled to)
+  const home = document.querySelector(".topbar .mark");
+  if (home) home.addEventListener("click", (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;   // (a new tab or window: the link's)
+    e.preventDefault();
+    scrollTo({ top: 0, behavior: quiet.matches ? "auto" : "smooth" });
+  });
   // scrolling settles on a section's start, just under the bar, and each section has the screen to itself:
   // the stylesheet needs the bar's height (two rows on a phone) and the foot's (the last section leaves it room)
   const bar = document.querySelector(".topbar"), root = document.documentElement;
