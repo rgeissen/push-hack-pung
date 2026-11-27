@@ -8,7 +8,7 @@ import html, json, os, re, shutil, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IMG = json.load(open(os.path.join(HERE, "images.json")))
-CSS = open(os.path.join(HERE, "pung.css")).read()
+CSS = open(os.path.join(HERE, "pung.css")).read() + open(os.path.join(HERE, "footer.css")).read()
 LINKS = json.load(open(os.path.join(HERE, "links.json")))
 ROOT = os.path.dirname(HERE)
 # the launch (install.json, "launched"): until then the site says only what is
@@ -19,8 +19,10 @@ INSTALLER = LAUNCHED
 RELEASED = json.load(open(os.path.join(ROOT, "release.json")))["version"]
 OUT = None  # set by --pages: whole documents, relative links
 SITE = {"home": "./", "vision": "vision.html", "modules": "modules/", "stacks": "stacks.html", "deployments": "deployments.html", "devices": "devices.html", "push": "push.html", "install": "install.html", "manual": "manual.html", "design": "design.html",
-        "performance": "performance.html"}
+        "performance": "performance.html", "legal": "legal.html", "privacy": "privacy.html"}
 DESC = {
+    "legal": "Legal notice (Impressum) of pung.live.",
+    "privacy": "Privacy on pung.live: what the site and Pung do with data, and what they do not.",
     "stacks": "Stacks: the modules you play, in their order, each with its state and Pung's modulation over them. Take one from a Pung that runs on your Push, keep it, send it to another.",
     "deployments": "Deployments of Pung: install Pung on an Ableton Push 3 Standalone, connect it to pung.live, and see its processor, memory, storage and settings.",
     "devices": "Deployments of Pung.",
@@ -32,10 +34,10 @@ DESC = {
     "design": "The design principles of the Pung view on Push 3: screens, controls, envelopes, colours.",
     "performance": "How Pung spends a Push 3's processor and battery: emulators that rest in silence, measured costs, a view that draws only what changed.",
 }
-FILES = {"home": "index.html", "stacks": "stacks.html", "vision": "vision.html", "install": "install.html", "push": "push.html", "deployments": "deployments.html", "devices": "devices.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
+FILES = {"home": "index.html", "stacks": "stacks.html", "vision": "vision.html", "install": "install.html", "push": "push.html", "deployments": "deployments.html", "devices": "devices.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html", "legal": "legal.html", "privacy": "privacy.html"}
 
 PAGES = [("home", None), ("stacks", "Stacks"), ("deployments", "Deployments"), ("devices", None), ("push", None), ("vision", "Vision"), ("install", None), ("manual", "Manual"), ("design", "Design"),
-         ("performance", "Performance")]
+         ("performance", "Performance"), ("legal", None), ("privacy", None)]
 # in front: the hero page (the logo), the modules, your Push; everything else is in the footer
 NAV = [("modules", "Modules"), ("deployments", "Deployments")]
 if LAUNCHED:  # stacks need a deployment to talk to: in front once the site connects to one
@@ -83,18 +85,48 @@ def topbar(current):
 </div></header>"""
 
 
-def footer(current=""):
-    more = "".join(f'<a href="{LINKS[k]}"' + (' aria-current="page"' if k == current else "") + f'>{label}</a>' for k, label in BACKGROUND)
-    return """<footer class="band"><div class="wrap">
-<div class="links more">""" + more + """</div>
-<div class="links">
-<a href="https://github.com/rgeissen/push-hack-pung">Pung on GitHub</a>
-<a href="https://github.com/charlesvestal/schwung">Schwung</a>
-<a href="https://github.com/federico-pepe/ableton-push-hack">Push Hack</a>
+LEGAL = json.load(open(os.path.join(HERE, "legal.json")))
+FOOT = [("legal", "Legal notice"), ("privacy", "Privacy")]
+OPEN = [("Pung on GitHub", "https://github.com/rgeissen/push-hack-pung"), ("Schwung", "https://github.com/charlesvestal/schwung"),
+        ("Push Hack", "https://github.com/federico-pepe/ableton-push-hack"), ("gearmulator", "https://github.com/dsp56300/gearmulator")]
+
+
+def footer(current="", up="", img=False):
+    """the foot of every page (footer.css): who it is, where everything is (the three sections in
+    front, the pages in the background, the projects Pung stands on, the legal pages), and what
+    must be said. up: where the site's root is from the page (the Modules page: "../")."""
+    def href(key):
+        u = LINKS[key]
+        if u.startswith("http"):
+            return u
+        return (up or "./") if u == "./" else up + u
+
+    def links(items):
+        return "".join(f'<a href="{href(k)}"' + (' aria-current="page"' if k == current else "") + f'>{label}</a>' for k, label in items)
+    mark = (f'<img src="{up}brand/pung-logo.svg" alt="Pung" width="122" height="28">' if img else
+            themed(open(os.path.join(HERE, "brand", "pung-logo.svg")).read()).replace('id="ld"', 'id="sfl"').replace("url(#ld)", "url(#sfl)"))
+    version = json.load(open(os.path.join(ROOT, "hack.json")))["version"] if LAUNCHED else RELEASED
+    return f"""<footer class="sf">
+<div class="sf-in">
+<div class="sf-top">
+<div class="sf-brand">
+<a class="sf-logo" href="{href('home')}" aria-label="Pung, home">{mark}</a>
+<p class="sf-tag">Open music modules, at home on every device.</p>
+<a class="sf-get" href="{href('deployments')}#install">Get Pung on your Push →</a>
 </div>
-<p>Pung is a hack for Push Hack. It runs Schwung modules and modules of its own; Schwung and its modules are the work of Charles Vestal and the module authors, Pung's emulators are built on gearmulator, and every module keeps its own licence. Pung is not made, approved or supported by Ableton. Ableton, Push, Move and Live are trademarks of Ableton AG.</p>
+<nav class="sf-col" aria-label="Pung"><p class="sf-k">Pung</p>{links(NAV)}</nav>
+<nav class="sf-col" aria-label="Read"><p class="sf-k">Read</p>{links(BACKGROUND)}</nav>
+<nav class="sf-col" aria-label="Open source"><p class="sf-k">Open source</p>{"".join(f'<a href="{u}">{n}<i aria-hidden="true">↗</i></a>' for n, u in OPEN)}</nav>
+<nav class="sf-col" aria-label="Legal"><p class="sf-k">Legal</p>{links(FOOT)}</nav>
+</div>
+<div class="sf-fine">
+<p>Pung is a hack for Push Hack. It runs Schwung modules and modules of its own. Schwung and its modules are the work of Charles Vestal and the module authors; Pung's emulators are built on gearmulator. Every module keeps its own licence.</p>
+<p>Pung is not made, approved or supported by Ableton. Ableton, Push, Move and Live are trademarks of Ableton AG.</p>
 <p>Every Push screen on these pages is Pung's own drawing, captured from a Push 3 or rendered by the same code.</p>
-</div></footer>"""
+</div>
+<div class="sf-base"><span>Pung {version} · open source, MIT licence</span><span>pung.live</span></div>
+</div>
+</footer>"""
 
 
 def row(kind, n, lit=(), sel=None, hot=None):
@@ -198,6 +230,8 @@ def build(name):
     for flag, on in (("installer", INSTALLER), ("!installer", not INSTALLER), ("launched", LAUNCHED), ("!launched", not LAUNCHED)):
         src = re.sub(r"<!--if:%s-->(.*?)<!--endif-->" % re.escape(flag), (lambda m: m.group(1)) if on else "", src, flags=re.S)
     src = src.replace("{{TOPBAR}}", topbar(name)).replace("{{FOOTER}}", footer(name))
+    for k, v in LEGAL.items():  # the legal pages name the person who answers for the site (legal.json)
+        src = src.replace("{{LEGAL:%s}}" % k, html.escape(v) if v else '<mark>to be added</mark>')
     for key in LINKS:
         src = src.replace("{{LINK:%s}}" % key, LINKS[key])
     left = re.findall(r"\{\{[^}]*\}\}|\[\[[^\]]*\]\]", src)
@@ -312,6 +346,7 @@ def modules_page(out):
         page = re.sub(r"<!--if:%s-->(.*?)<!--endif-->" % re.escape(flag), (lambda m: m.group(1)) if on else "", page, flags=re.S)
     if LAUNCHED:
         page = page.replace('<body data-public="1"', '<body data-public="1" data-connect="1"')
+    page = page.replace("<!--FOOTER-->", footer("modules", up="../", img=True))
     open(os.path.join(d, "index.html"), "w").write(page)
     for f in ("app.css", "modules.js"):
         shutil.copy2(os.path.join(ROOT, "src", "web", f), os.path.join(d, f))
@@ -338,7 +373,7 @@ if __name__ == "__main__":
     if OUT and not args:
         # the front page's playing screen
         shutil.copy2(os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(OUT, "visuals.js"))
-        for f in ("hero.js", "pushlink.js", "pushlink.css", "deployments.js", "stacks.js"):
+        for f in ("hero.js", "pushlink.js", "pushlink.css", "footer.css", "deployments.js", "stacks.js"):
             shutil.copy2(os.path.join(HERE, f), os.path.join(OUT, f))
         # a script that does not parse leaves its page standing still, without a word (Your devices was
         # published so, 2026-11-27): no page is built with one

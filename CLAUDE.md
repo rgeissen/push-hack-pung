@@ -266,6 +266,12 @@ before and linked in the footer.
   `deployments.html#installer`. Pung reads the same file now and then (`src/newest.go`, `PUNG_RELEASE_URL` for
   a staging copy; never with `own_pack_only`) and answers `"newest"` in `/api/status`; its own page shows it
   beside the version. Preview it: a scratch build of the site with a later version in its `release.json`.
+- **The foot of every page** (`site/footer.css`, `footer()` in `build.py`; the Modules page has it too, with
+  its own stylesheet's colours): the logo and the line, four columns (the sections in front, the pages to
+  read, the projects Pung stands on, legal), the fine print set apart. **Legal notice and Privacy**
+  (`legal.src.html`, `privacy.src.html`) take the owner's details from `site/legal.json`; an empty field
+  shows as "to be added" on the page. The privacy page states what the site does: change it when the site
+  starts to do anything else (a cookie, a counter, a file from another host, an account).
 - **The fonts are the site's own** (`site/fonts/`: Archivo, IBM Plex Mono, Plus Jakarta Sans as WOFF2, Latin and
   Latin Extended, each under the OFL; `faces.css` goes into every page's head): no page asks another host
   for anything (a visitor's address sent to a font service is a legal risk for a site run from Germany).
