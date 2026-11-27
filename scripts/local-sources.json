@@ -77,12 +77,12 @@
  "move-everything-granny": {
   "path": "../pung-forks/move-everything-granny",
   "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
-  "github_repo": "rgeissen/move-everything-granny"
+  "github_repo": "rgeissen/schwung-granny"
  },
  "move-everything-mrhyde": {
   "path": "../pung-forks/move-everything-mrhyde",
   "why": "rgeissen's fork, branch pung-live-mod: live_mod, where the synth's own modulation has its controls now (Pung's live pictures); proposed upstream",
-  "github_repo": "rgeissen/move-everything-mrhyde"
+  "github_repo": "rgeissen/schwung-mrhyde"
  },
  "schwung-303": {
   "path": "../pung-forks/schwung-303",
