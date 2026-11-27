@@ -110,6 +110,12 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   works (2026-11-23). push-manager clears every light and has Push3 redraw with a Shift tap and a
   pad-mode toggle, which does not redraw Delete; push-manager cannot see Push3's lights to restore them.
   Tracks are deleted from Session or Mix (Delete + track), as in Push's own device view.
+- **Play a module once in Live without touching the Set's music**: `scripts/push-playtest.py` (run on the
+  Push) loads its rack onto an empty MIDI track through the Remote Script, plays a chord through Pung, reads
+  Live's meter (`meters get`: each track's left and right) and `live_mod`, and deletes the device again
+  (`device delete {"track","device"}`; Live names the track after what is on it and back). `track select`
+  takes `"track"`, not `"ref"`: with the wrong name it answers `bad_track` and a `browser load` after it goes
+  onto whatever track is selected (it replaced the owner's Dexed with a rack of the same state, 2026-11-27).
 - **Always give the surface back: `POST :7701/api/surface/leave {"app":"pung","to":"live"}`.** An empty
   body answers 409 and leaves the Push with Pung; then Live's "recover your work?" question can be
   stranded after a Live restart.
@@ -186,6 +192,9 @@ back as of the previous restart. Then ask the user to save the Set.
 2. **Build changed modules from the committed tree.** A package records the commit of the last change to
    `native/<id>` at BUILD time; built before the commit, the catalog links a source archive that lacks
    what ships (0.4.2 had to be republished for this). Check `source.commit` in `build/catalog/catalog.json`.
+   The module build notes the commit it built from (`build/push-modules/logs/<id>.commit`), and packaging
+   refuses a module whose source has moved on since: Vial once went out as built before its change, under
+   the commit after it (2026-11-27; a fork added to `local-sources.json` after the module was last built).
 3. A module whose package changed needs a new version, or a new revision with its reason in
    `scripts/module-revisions.json` (Pung's own modules may bump `module.json` instead). The built copy of
    `module.json` is what counts: rebuild after bumping.
