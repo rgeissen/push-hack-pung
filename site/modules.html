@@ -79,10 +79,9 @@ a.act { display: inline-flex; align-items: center; text-decoration: none; }
       <h1 id="mod-title">Modules</h1>
       <span class="grow"></span>
       <span class="mod-status" id="mod-status" aria-live="polite"></span>
-      <div data-push-chip="quiet" aria-live="polite"></div>
     </header>
 <!--if:launched-->
-    <p class="public-note">Every module in Pung's catalog, as Pung's own Modules page shows it. Connect your Push and install from here, in one press: each becomes a device in Live. Open a module to see its screens on the Push, what it needs and where its source is.</p>
+    <p class="public-note">Every module in Pung's catalog. Open one to see its screens on the Push, what it needs and where its source is. A module is installed where Pung runs, on that deployment's own Modules page, and becomes a device in Live there.</p>
 <!--endif-->
 <!--if:!launched-->
     <p class="public-note">Every module in Pung's catalog, as Pung's own Modules page shows it on the Push. Each one installs from there, in one press, and becomes a device in Live. Open a module to see its screens on the Push, what it needs and where its source is.</p>
@@ -106,8 +105,6 @@ a.act { display: inline-flex; align-items: center; text-decoration: none; }
         <button type="button" data-origin="schwung" aria-pressed="false">Schwung <span class="count" id="mod-count-schwung"></span></button>
       </div>
       <div class="seg" id="mod-shows" role="group" aria-label="Show">
-        <button type="button" data-show="installed" data-needs-push hidden aria-pressed="false">Installed <span class="count" id="mod-count-installed"></span></button>
-        <button type="button" data-show="updates" data-needs-push hidden aria-pressed="false">Updates <span class="count" id="mod-count-updates"></span></button>
         <button type="button" data-show="face" aria-pressed="false" title="Modules that open on a front panel of their own on the Push">Custom interface <span class="count" id="mod-count-face"></span></button>
       </div>
     </div>

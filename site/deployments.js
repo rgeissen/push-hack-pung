@@ -90,7 +90,7 @@
     const own = c.source === "pung" || (!c.source && String(c.url || "").startsWith("file:")); // a Pung before 0.6.0 names no source
     const pack = c.source === "pung.live" ? "pung.live's current pack" : own ? "the pack that came with its Pung" : "a catalog named on the deployment";
     out.push(`<div class="dv-tile" data-fill2><p class="dv-k">Modules</p><p class="dv-big">${inst}<span> installed</span></p>
-      <p class="dv-note">${ups ? `<b>${ups} update${ups === 1 ? "" : "s"} waiting.</b> ` : ""}From ${pack}${c.generated_at ? ", made " + ago(c.generated_at) : ""}. <a href="modules/">${ups ? "Update them" : "Install more"}</a>.</p></div>`);
+      <p class="dv-note">${ups ? `<b>${ups} update${ups === 1 ? "" : "s"} waiting.</b> ` : ""}From ${pack}${c.generated_at ? ", made " + ago(c.generated_at) : ""}. <a href="${esc(PP.baseOf(d))}/#modules">${ups ? "Update them" : "Install more"}</a> on its own page.</p></div>`);
     // the last row is full: the tile that has most to say takes what is left of four columns
     const units = out.length + (out[0] && out[0].includes("dv-tile wide") ? 1 : 0), left = (4 - units % 4) % 4;
     let html = out.join("");
@@ -109,16 +109,15 @@
   }
 
   function panel(d) {
-    const m = of(d), k = PP.KINDS[d.kind], use = PP.inUse() === d, many = PP.devices.length > 1;
+    const m = of(d), k = PP.KINDS[d.kind];
     const led = d.state === "on" ? "on" : d.state === "lost" ? "bad" : "";
     const where = d.sys && d.sys.addresses && d.sys.addresses.length ? d.sys.addresses.join(", ") + (d.sys.addresses.includes(d.addr) ? "" : " · " + d.addr) : d.addr;
     const name = m.renaming
       ? `<form class="dv-rename" data-dev="${d.id}"><input type="text" value="${esc(PP.nameOf(d))}" maxlength="40" aria-label="Its name"><button class="btn primary" type="submit">Save</button></form>`
       : `<h2>${esc(PP.nameOf(d))} <button type="button" class="dv-edit" data-rename="${d.id}" aria-label="Rename it" title="Rename it">✎</button></h2>`;
     const head = `<header class="dv-head"><i class="pl-led ${led}" aria-hidden="true"></i><div class="dv-title">${name}
-        <p class="dv-sub">${esc(k.label)} · ${esc(where)}${many && use ? ` · <b>modules install here</b>` : ""}</p></div>
+        <p class="dv-sub">${esc(k.label)} · ${esc(where)}</p></div>
       <div class="dv-acts">${d.state === "on" ? `<a class="btn" href="${esc(PP.baseOf(d))}/" target="pung-device" rel="noopener" title="On the deployment itself: play and edit the devices in your Set, their sounds and samples">Devices and sounds ↗</a>` : ""}
-        ${many && !use && d.state === "on" ? `<button type="button" class="btn" data-use="${d.id}">Install modules here</button>` : ""}
         ${d.state === "on" ? `<button type="button" class="btn" data-off="${d.id}">Disconnect</button>` : `<button type="button" class="btn primary" data-connect="${d.id}" ${d.state === "trying" ? "disabled" : ""}>${d.state === "trying" ? "Connecting…" : d.state === "link" ? "Try to connect" : "Connect"}</button>`}
         <button type="button" class="btn" data-remove="${d.id}" aria-label="Remove ${esc(PP.nameOf(d))} from this page">Remove</button></div></header>`;
     let body;
@@ -158,7 +157,6 @@
     const dev = (id) => PP.devices.find((x) => x.id === id);
     box.querySelectorAll("[data-connect]").forEach((b) => (b.onclick = () => { const d = dev(b.dataset.connect); if (d.state === "link" || d.err) PP.open(d); else PP.connectTo(d); }));
     box.querySelectorAll("[data-off]").forEach((b) => (b.onclick = () => PP.disconnect(dev(b.dataset.off))));
-    box.querySelectorAll("[data-use]").forEach((b) => (b.onclick = () => PP.select(dev(b.dataset.use))));
     box.querySelectorAll("[data-remove]").forEach((b) => (b.onclick = async () => {
       const d = dev(b.dataset.remove);
       if (await PP.confirm(`Remove ${PP.nameOf(d)} from this page? Nothing changes on the deployment itself; connect it again any time.`, "Remove", true)) { more.delete(d.id); PP.remove(d); }

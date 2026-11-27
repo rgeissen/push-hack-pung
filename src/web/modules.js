@@ -20,13 +20,16 @@
   const STATE = { queued: "Waiting", downloading: "Downloading", verifying: "Checking", unpacking: "Unpacking", testing: "Testing on the Push" };
   const ORIGIN = { pung: "Pung native", schwung: "Schwung" };
   const PUBLIC = document.body.dataset.public === "1";
-  // pung.live talks to a Push only once the Pung that answers it is released (site/install.json, launched)
+  // pung.live's Modules page is the catalog alone (the owner, 2026-11-27: nothing about one Pung install on
+  // pung.live outside Deployments). It asks no deployment anything; once the site is launched it knows the
+  // visitor's deployments by their names (their browser's list, site/pushlink.js) and links each module to
+  // its place on a deployment's own page, where it is installed.
   const CONNECT = PUBLIC && document.body.dataset.connect === "1";
   const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
   const m = { data: null, filter: "all", origin: "all", show: "all", q: "", open: null, timer: null, down: false, busy: {}, shots: {}, face: 0 };
 
   async function api(path, opts) {
-    const r = PUBLIC ? await pushFetch(path, opts) : await fetch(path, opts);
+    const r = await fetch(path, opts);
     const j = await r.json().catch(() => ({ ok: false, error: r.statusText }));
     if (!r.ok && j.ok !== false) j.ok = false;
     return j;
@@ -57,15 +60,9 @@
     let d;
     if (PUBLIC) {
       if (!m.site) { try { m.site = await (await fetch("catalog.json", { cache: "no-cache" })).json(); } catch (e) { m.site = null; } }
-      if (push.state === "on" || push.state === "lost") await pushRead();
-      d = m.data = merged();
+      d = m.data = m.site;
       if (d && m.wantOpen && d.modules.some((x) => x.id === m.wantOpen)) { const id = m.wantOpen; m.wantOpen = null; render(); openSheet(id); }
       render();
-      if (push.state === "on") {
-        const active = d.restarting || d.modules.some((x) => x.job && !["done", "failed"].includes(x.job.state)) ||
-          (d.apply && d.apply.state === "restarting-live");
-        schedule(active ? 700 : 5000);
-      } else if (push.state === "lost") schedule(m.applying ? 1500 : 8000);
       return;
     }
     try { d = await api("/api/catalog" + (refresh ? "?refresh=1" : "")); } catch (e) { d = null; }
@@ -121,12 +118,6 @@
     setText("mod-count-schwung", all.filter((x) => originOf(x) === "schwung").length);
     setText("mod-count-updates", counts.updates);
     if ($("mod-count-face")) $("mod-count-face").textContent = all.filter((x) => customOf(x)).length || "";
-    if (PUBLIC) {
-      const on = push.state === "on";
-      document.querySelectorAll("#mod-shows [data-needs-push]").forEach((b) => (b.hidden = !on));
-      if (!on && (m.show === "installed" || m.show === "updates")) m.show = "all";
-      renderPush();
-    }
     $("mod-search").placeholder = `Search ${all.length} modules`;
     const grid = $("mod-grid");
     if (!d) { grid.innerHTML = `<div class="empty">${PUBLIC && m.tried ? "The catalog could not be read." : "Reading the catalog…"}</div>`; return; }
@@ -187,7 +178,7 @@
     const ups = all.filter((x) => x.status === "update");
     const busy = (x) => x.job && !["done", "failed"].includes(x.job.state);
     const going = ups.filter(busy).length, left = ups.length - going;
-    b.hidden = !ups.length || m.down || (PUBLIC && push.state !== "on");
+    b.hidden = !ups.length || m.down;
     if (!ups.length) return;
     b.disabled = !left;
     b.textContent = left ? `Update all (${left})` : `Updating ${going}…`;
@@ -197,7 +188,7 @@
   function renderBanner(d) {
     const b = $("mod-banner");
     if (!b) return;
-    if (PUBLIC && push.state !== "on" && !m.applying) { b.hidden = true; return; }
+    if (PUBLIC) { b.hidden = true; return; }
     const ap = d && d.apply;
     if (m.down && !m.applying) { b.hidden = true; return; } // the page's own bar says Pung is not answering
     if (m.down || (d && d.restarting)) {
@@ -264,13 +255,17 @@
     return cost + rest + " Two emulators run at once, and only while the Push has room for both: another waits, silent, and starts by itself when there is.";
   }
 
-  function action(x) {
-    // on pung.live: what the connected Push has; not connected, Install asks to connect first
-    if (PUBLIC && !CONNECT) return `<a class="act" href="../deployments.html#install" title="Pung installs modules on the Push, from its own Modules page">Install on your Push</a>`;
+  // on pung.live a module is not installed, it is shown: the way to install it leads to this module on a
+  // deployment's own page (every one the visitor has, in a module's sheet; on a card the one, or the sheet)
+  const places = () => (CONNECT && PP ? PP.devices : []);
+  const there = (d, x) => `${PP.baseOf(d)}/#modules/${encodeURIComponent(x.id)}`;
+  function action(x, sheet) {
     if (PUBLIC) {
-      if (push.state === "link") return `<a class="act" href="${esc(pushBase())}/#modules/${encodeURIComponent(x.id)}" target="pung-push" rel="noopener" title="Opens this module on Pung's own page on your Push">Open on your Push ↗</a>`;
-      if (push.state !== "on") return `<button type="button" class="act" data-act="install" title="Connect your Push, and it installs there">Install</button>`;
-      if (x.push_missing) return `<a class="act" href="../manual.html#update" title="It comes with a newer Pung than your Push has: update Pung first">Needs a newer Pung</a>`;
+      const ds = places();
+      const link = (d) => `<a class="act" href="${esc(there(d, x))}" title="Opens ${esc(x.name)} on the own page of ${esc(PP.nameOf(d))}, where it is installed">Install on ${esc(PP.nameOf(d))}</a>`;
+      if (!ds.length) return `<a class="act" href="../deployments.html${CONNECT ? "" : "#install"}" title="Pung installs modules where it runs, from its own Modules page">Install on your Push</a>`;
+      if (ds.length === 1 || sheet) return ds.map(link).join("");
+      return `<span class="act">Install…</span>`; // (the card opens the sheet, which names each deployment)
     }
     const j = x.job;
     if (j && !["done", "failed"].includes(j.state)) {
@@ -377,9 +372,8 @@
       ${x.job && x.job.state === "failed" ? `<p class="err" role="alert">${esc(x.job.error)}</p>` : ""}
       <div class="sheet-actions">
         ${x.managed && !PUBLIC ? `<button type="button" class="danger" id="mod-remove">Remove</button>` : ""}
-        ${PUBLIC && push.state === "on" && x.installed ? `<a class="ghost" href="${esc(pushBase())}/#modules/${encodeURIComponent(x.id)}" target="pung-push" rel="noopener">Manage on your Push ↗</a>` : ""}
         <span class="grow"></span>
-        ${action(x)}
+        ${action(x, true)}
       </div>
       <p class="err" id="mod-sheet-msg" role="alert" hidden></p>`;
     $("mod-sheet").classList.toggle("wide", !!shotsOf(x));
@@ -454,23 +448,11 @@
 
   function assetsSection(x) {
     const st = x.asset_state || [];
-    if (PUBLIC && x.installed && st.length) {
-      // read here; added on the Push (a ROM is the player's own: it never passes through this site)
-      return `<section class="assets"><h3>Files it needs</h3>${st.map((a) => `
-        <div class="asset"><h4>${esc(a.label || a.path)}${a.optional ? ` <span class="sub">optional</span>` : ""}</h4>
-          ${a.description ? `<p>${esc(a.description)}</p>` : ""}
-          ${(a.files || []).length ? `<ul class="files">${a.files.map((f) => `
-            <li class="${f.ok ? "ok" : f.present ? "bad" : f.required ? "miss" : "opt"}"><span class="dot" aria-hidden="true"></span>
-            <span class="fname">${esc(f.label || f.filename)}</span>
-            <span class="fstate">${f.ok ? "present" : f.present ? esc(f.problem || "wrong file") : f.required ? "missing" : "optional"}</span></li>`).join("")}</ul>` : ""}
-        </div>`).join("")}
-        <p class="sub"><a href="${esc(pushBase())}/#modules/${encodeURIComponent(x.id)}" target="pung-push" rel="noopener">Add them on your Push ↗</a> on Pung's own page: a ROM goes from this computer to the Push, never through pung.live.</p></section>`;
-    }
     if (!x.installed) {
       const sp = specs(x).filter((a) => (a.files || []).some((f) => f.required) || a.description);
       if (!sp.length) return "";
       return `<section class="assets"><h3>Files it needs</h3>${sp.map((a) =>
-        `<p>${esc(a.description || a.label)}</p>`).join("")}<p class="sub">${PUBLIC ? "Add them on your Push, on Pung's Modules page, once the module is installed." : "Install it first; then add them here."} Pung never downloads them: they are yours to add.</p></section>`;
+        `<p>${esc(a.description || a.label)}</p>`).join("")}<p class="sub">${PUBLIC ? "Add them where the module is installed, on that deployment's own Modules page." : "Install it first; then add them here."} Pung never downloads them: they are yours to add.</p></section>`;
     }
     if (!st.length) return "";
     return `<section class="assets"><h3>Files it needs</h3>${st.map((a) => `
@@ -534,7 +516,6 @@
 
   // ---- actions ---------------------------------------------------------------------
   async function install(id) {
-    if (PUBLIC && push.state !== "on") { m.afterConnect = id; openConnect(); return; }
     const r = await api(`/api/catalog/${encodeURIComponent(id)}/install`, { method: "POST" });
     if (!r.ok) PungToast(r.error || "It could not be installed.", true);
     load(false);
@@ -561,7 +542,6 @@
     load(false);
   }
   async function apply() {
-    if (PUBLIC && !(await PungConfirm("Restart Live on your Push now? It reopens your Set as it is, unsaved changes included, with the new modules in its browser.", "Restart Live"))) return;
     const btn = $("mod-apply");
     if (btn) btn.disabled = true;
     const r = await api("/api/catalog/apply", { method: "POST" });
@@ -607,62 +587,13 @@
     return h;
   }
 
-  // ---- pung.live: the Pung on your Push (site/pushlink.js: one connection for the whole site) ----
+  // ---- pung.live: the visitor's deployments, by name (site/pushlink.js keeps the list in their browser) ----
   const PP = window.PungPush || null;
-  // the device in use (the visitor may have several: pushlink.js); read as it is now
-  const push = PP ? new Proxy({}, { get: (_, k) => PP.state[k], set: (_, k, v) => { PP.state[k] = v; return true; } }) : { state: "off", addr: "push.local", data: null };
-  const pushBase = () => (PP ? PP.base() : "");
-  const pushFetch = (path, opts) => PP.fetch(path, opts);
-  const openConnect = () => PP && PP.open();
-  async function pushRead() {
-    if (await PP.read()) { m.down = false; if (!push.data.restarting) m.applying = false; }
-    else m.down = !!m.applying;
-    push.restarting = !!m.applying;
-  }
-  // the site's catalog, and over it what the Push has: its install state, and
-  // the version its own catalog would install
-  function merged() {
-    const site = m.site;
-    if (!site) return null;
-    if (!push.data || (push.state !== "on" && !m.applying)) return site;
-    const by = new Map(push.data.modules.map((x) => [x.id, x]));
-    const rows = site.modules.map((x) => {
-      const p = by.get(x.id);
-      if (!p) return { ...x, push_missing: true };
-      return { ...x, status: p.status, installed: p.installed, version: p.version || x.version, job: p.job, managed: p.managed, needs_pung: p.needs_pung,
-        in_use: p.in_use, repacked: p.repacked, asset_state: p.asset_state, assets_missing: p.assets_missing, assets_ready: p.assets_ready };
-    });
-    return { ...site, modules: rows, pending: push.data.pending, apply: push.data.apply, restarting: push.data.restarting };
-  }
-  const renderPush = () => PP && PP.renderChips();
 
   // pung.live: one view; #<id> opens a module's sheet
   function bootPublic() {
-    if (PP) {
-      // the chip counts the modules this page lists
-      PP.setCounts(() => {
-        const l = push.data && m.data ? m.data.modules : [];
-        return { installed: l.filter((x) => x.installed).length, updates: l.filter((x) => x.status === "update").length };
-      });
-      PP.on(async (what, d) => {
-        if (what === "dialog-closed") { if (push.state !== "trying") m.afterConnect = null; return; }
-        if (d && d !== PP.state && what !== "removed") return; // another of the visitor's deployments: Deployments shows it
-        if (what === "selected") { await load(false); return; } // modules install on another device now
-        if (what === "connected") {
-          await load(false);
-          if (m.afterConnect) { // Install was pressed before the Push was connected: now
-            const id = m.afterConnect;
-            m.afterConnect = null;
-            const x = m.data.modules.find((r) => r.id === id);
-            if (x && !x.push_missing && x.status === "available") install(id);
-            else if (x) openSheet(id);
-          }
-          return;
-        }
-        if (what === "disconnected" || what === "removed" || push.state === "link" || push.state === "off") { m.data = merged(); render(); }
-        if (push.state === "lost") schedule(8000);
-      });
-    }
+    // a deployment joins or leaves the list (a visitor arrives from one's own page): the links follow
+    if (PP) PP.on((what) => { if (what === "connected" || what === "removed") { render(); if (m.open) openSheet(m.open); } });
     const want = () => { const id = decodeURIComponent(location.hash.slice(1)); if (!id) return;
       if (m.data && m.data.modules.some((x) => x.id === id)) openSheet(id); else m.wantOpen = id; };
     $("mod-search").oninput = (e) => { m.q = e.target.value; render(); };
@@ -687,11 +618,10 @@
     window.addEventListener("hashchange", want);   // (no Update all here: that is the deployment's own page's)
     want();
     loadShots();
-    renderPush();
     load(false).then(() => {
       m.tried = true; render();
-      // the Push it talked to before: again, without asking (the browser remembers the permission)
-      if (PP) PP.resume();
+      // a visitor sent here by a deployment's own page: that one joins the list; nothing else is asked
+      if (PP && CONNECT) PP.resume("arrival");
     });
   }
 

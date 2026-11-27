@@ -243,8 +243,9 @@ back as of the previous restart. Then ask the user to save the Set.
    `source.archive` answers. Releases up to 0.5.0 and their sources stay on GitHub's releases.
 7. The pages: `make publish-site` (not on a push any more). It also writes `modules/`: Pung's own Modules page
    (`src/web/modules.js` with `<body data-public>`) from the release's catalog and `build/screens`. Connected
-   to a visitor's Push (Local Network Access: the browser asks; Chrome/Edge 142+, Firefox 151+) it installs,
-   updates and restarts Live there; Pung lets only https://pung.live read those few calls (`src/sitecors.go`).
+   to a visitor's Push (Local Network Access: the browser asks; Chrome/Edge 142+, Firefox 151+) the site reads
+   how it stands (Deployments) and installs what a stack needs (Stacks); the Modules page itself asks
+   nothing. Pung lets only https://pung.live read those few calls (`src/sitecors.go`).
    Never send `targetAddressSpace: "local"` for a `.local` name or an IP literal: push.local also resolves to
    a global IPv6 address, which Chrome counts as public, and the request fails (Chrome 158, 2026-11-26).
    Test it with Chrome over CDP: `Browser.grantPermissions` with localNetwork in ONE call (it rejects the rest). `site/images.json` is one compact JSON line:
@@ -320,10 +321,16 @@ before and linked in the footer.
   push.local).
 - **One home for each thing** (the owner's word, 2026-11-27: an easy way between what the Push serves and what
   pung.live serves, and nothing shown twice unless it must be). On the Push's own page: playing and editing
-  the devices in the Set, sounds, samples, ROMs, removing a module. On pung.live: the deployment at a glance,
-  Pung's version and updates, the installer, the manual, every module with its pictures. On both, on purpose:
-  the Modules page (the Push must install offline; one script) and Pung's switches (offline on the Push, and in
-  its panel on pung.live). That dashboard is never rebuilt on the Push's page. **Stacks are
+  the devices in the Set, sounds, samples, ROMs, installing, updating and removing a module. On pung.live:
+  the deployment at a glance, Pung's version and updates, the installer, the manual, every module with its
+  pictures. On both, on purpose: Pung's switches (offline on the Push, and in its panel on pung.live).
+  **pung.live holds nothing about one Pung install outside its Deployments section** (the owner's word,
+  2026-11-27, of a deployment's box, counts and "Update all" in the Modules page's head). So pung.live's
+  Modules page is the catalog alone (`modules.js` in its public mode asks no deployment anything): a module
+  there says "Install on <deployment>" and leads to that module on the deployment's own page
+  (`#modules/<id>`), every deployment the visitor has in the module's sheet. What a deployment has
+  installed, its updates and the restart of Live are on its own page and counted in its panel on
+  Deployments. The Stacks page still talks to a deployment when the visitor takes or checks a stack. That dashboard is never rebuilt on the Push's page. **Stacks are
   managed on pung.live** (the owner's word): a deployment plays one and hands its state over, and its own page
   grows no stack library (`docs/STACKS.md`).
   **The hand-off**: the Push's page links to pung.live with `#add=<its own address>` (`siteLinks`, `app.js`;

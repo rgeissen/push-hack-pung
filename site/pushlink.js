@@ -217,7 +217,8 @@ window.PungPush = (function () {
   const cameFrom = arrived();
 
   // the devices it talked to before: again, without asking (the browser remembers the permission)
-  function resume() {
+  // resume("arrival"): only the one the visitor came from (a page that shows nothing of a deployment)
+  function resume(only) {
     if (!enabled) return;
     if (cameFrom) {
       const a = norm(cameFrom, "push");
@@ -225,6 +226,7 @@ window.PungPush = (function () {
       if (d) { inUse = d.id; save(); } // the one they came from is the one in use
       connect(a, false).then((ok) => { if (!ok) open(devices.find((x) => x.addr === a) || "add-failed"); });
     }
+    if (only === "arrival") return;
     devices.forEach((d) => {
       if (cameFrom && d.addr === norm(cameFrom, "push")) return; // being connected above
       if (d.link) { d.state = "link"; changed("state", d); }
@@ -259,13 +261,8 @@ window.PungPush = (function () {
     if (!enabled) return;
     document.querySelectorAll("[data-push-chip]").forEach((el) => {
       const d = cur(), a = esc(d.addr), n = esc(nameOf(d)), c = counts(d), more = devices.length > 1 ? ` <span class="n">${devices.indexOf(d) + 1}/${devices.length}</span>` : "";
-      // "quiet" (the Modules page; the owner, 2026-11-27: a deployment's numbers and its Update all belong on
-      // its own page, not in pung.live's head): nothing for a connected deployment; only the way to connect
-      // one, one that does not answer, and with several, which one modules install on
-      const quiet = el.dataset.pushChip === "quiet";
       let html;
       if (!devices.length && d.state !== "trying") html = `<button type="button" class="pl-btn primary" aria-haspopup="dialog">Connect your Push</button>`;
-      else if (d.state === "on" && quiet) html = devices.length > 1 ? `<button type="button" class="pl-chip on" aria-haspopup="dialog"><i class="pl-led on" aria-hidden="true"></i><span class="t">Installs on ${n}</span><span class="s">change</span></button>` : "";
       else if (d.state === "on") html = `<button type="button" class="pl-chip on${behind(d) ? " old" : ""}" aria-haspopup="dialog"><i class="pl-led on" aria-hidden="true"></i><span class="t">${n}${more}</span><span class="s">${d.version ? "Pung " + esc(d.version) + " · " : ""}${behind(d) ? `<b>${esc(behind(d))} is out</b>` : `${c.installed} installed${c.updates ? " · " + c.updates + " update" + (c.updates === 1 ? "" : "s") : ""}`}</span></button>`;
       else if (d.state === "trying") html = `<span class="pl-chip busy" role="status"><span class="pl-spin" aria-hidden="true"></span><span class="t">Connecting to ${a}…</span></span>`;
       else if (d.state === "lost") html = `<button type="button" class="pl-chip bad" aria-haspopup="dialog"><i class="pl-led bad" aria-hidden="true"></i><span class="t">${d.restarting ? "Pung is starting again…" : n + " is not answering"}${more}</span><span class="s">${a}${d.restarting ? "" : " · trying again"}</span></button>`;
@@ -323,19 +320,15 @@ window.PungPush = (function () {
     const openPung = `<a class="pl-btn" href="${esc(baseOf(d))}/#modules" target="pung-device" rel="noopener">Open Pung on it ↗</a>`;
     if (d.state === "on" && !adding) {
       const c = counts(d);
-      const others = devices.length > 1 ? `<div class="pl-pick"><p class="pl-kicker">Modules install on</p>${devices.map((x) =>
-        `<label><input type="radio" name="pl-use" value="${x.id}" ${x === cur() ? "checked" : ""}><span><b>${esc(nameOf(x))}</b> <span class="pl-sub">${esc(KINDS[x.kind].label)} · ${esc(x.addr)}${x.state === "on" ? "" : " · not connected"}</span></span></label>`).join("")}</div>` : "";
       body.innerHTML = `
         <p class="pl-kicker">Connected · ${esc(k.label)}</p>
         <h2 id="pl-title"><i class="pl-led on" aria-hidden="true"></i> ${esc(nameOf(d))}</h2>
         ${behind(d) ? `<div class="pl-old"><p><b>Pung ${esc(behind(d))} is out.</b> This one runs ${esc(d.version)}. The Pung Installer updates it; your modules, sounds and settings stay.</p><a class="pl-btn primary" href="${up}deployments.html#installer">Get the Pung Installer</a></div>` : ""}
         <dl class="pl-facts"><dt>Address</dt><dd>${a}</dd><dt>Pung</dt><dd>${esc(d.version || "—")}${behind(d) ? "" : newest && d.version ? " · the newest" : ""}</dd>
           <dt>Installed</dt><dd>${c.installed} module${c.installed === 1 ? "" : "s"}</dd><dt>Updates</dt><dd>${c.updates || "none"}</dd></dl>
-        ${others}
-        <p class="pl-sub">This site installs and updates modules on it and changes Pung's settings there, over your home network. A module's ROM and removing a module stay on Pung's own page.</p>
+        <p class="pl-sub">Over your home network this site reads how it stands, prepares it for a stack and changes Pung's two switches there. Modules are installed, updated and removed on its own page.</p>
         <div class="pl-acts"><button type="button" class="pl-btn ghost" id="pl-off">Disconnect</button><span class="pl-grow"></span><a class="pl-btn" href="${up}deployments.html">Deployments</a>${openPung}</div>`;
       document.getElementById("pl-off").onclick = () => disconnect(d);
-      body.querySelectorAll('input[name="pl-use"]').forEach((r) => (r.onchange = () => { const x = devices.find((y) => y.id === r.value); if (x) { select(x); dialogDev = x; renderDialog(); } }));
       return;
     }
     const busy = d.state === "trying";
