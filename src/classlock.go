@@ -135,7 +135,8 @@ func keepLayout(sc *sclass, live *livedevice.Class) *sclass {
 	c := *sc.Class
 	c.Params = append([]livedevice.Param(nil), live.Params...)
 	c.Banks = live.Banks
-	out := &sclass{Class: &c, module: sc.module, midiFX: sc.midiFX, inCh: sc.inCh, keyIdx: map[string]int{}}
+	out := &sclass{Class: &c, module: sc.module, midiFX: sc.midiFX, inCh: sc.inCh, keyIdx: map[string]int{},
+		contract: sc.contract, slots: sc.slots, legacy: sc.legacy}
 	for i, p := range c.Params {
 		var m *paramMeta
 		role, gate := "", 0

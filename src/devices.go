@@ -50,6 +50,14 @@ type sclass struct {
 	role    []string     // "midifx" (which MIDI effect), "outch" (MIDI out channel)
 	gateIdx []int
 	midiFX  []string // the selector's modules (index 0 = none)
+	// A device laid out by the Set contract (contract.go): its parameters at
+	// their registry numbers. slots: what each general MIDI-effect slot is
+	// for every MIDI generator installed here (by the generator's id).
+	contract bool
+	slots    map[string][]*slotTarget
+	// legacy: the device from before the contract, kept for the Sets saved
+	// with it: served to the host, offered nowhere (no browser entry)
+	legacy bool
 	// inCh: the channel Live's MIDI reaches the module on (0-15), or -1 to
 	// keep Live's channel. Live sends each note on its own channel (MPE
 	// style); a module listening on one channel (the Virus) heard nothing.
@@ -921,6 +929,17 @@ func (d *device) applyParam(idx int, norm float64) {
 	if g := d.c.gateIdx[idx]; g != 0 && g != d.midiFX {
 		return // belongs to a MIDI effect that is not loaded
 	}
+	if d.c.role[idx] == slotRole {
+		if t := d.slotTarget(idx); t != nil {
+			cur, _ := cGet(d.s.Index, t.key) // (the slot's lock is held here: cGet, as below)
+			v := t.meta.fromNormAs(norm, cur)
+			if pm := d.s.pm.Load(); pm != nil && pm.conf.Load().routed(t.key) {
+				v = pm.setRoot(t.key, v)
+			}
+			cSet(d.s.Index, t.key, v)
+		}
+		return
+	}
 	if m := d.c.meta[idx]; m != nil {
 		// the slot's lock is held here (rtloop.go): cGet, not s.Get, which
 		// takes it again and stood Pung still (2026-11-22)
@@ -943,6 +962,9 @@ func (d *device) switchMidiFX(want int) {
 	d.switchingFX.Store(true)
 	d.midiFX = want
 	id := d.c.midiFX[want]
+	if d.c.contract && d.c.slots[id] == nil {
+		id = "" // a step of the registry whose generator is not installed here: none plays, the choice stays
+	}
 	go func() {
 		defer d.switchingFX.Store(false)
 		d.s.Set("midi_fx1:module", id)
@@ -956,6 +978,23 @@ func (d *device) SetOutside(key, value string) {
 	d.s.Set(key, value)
 	d.repMu.Lock()
 	defer d.repMu.Unlock()
+	// a MIDI effect chosen on Pung's side: the device knows which one is in
+	// (the general slots are its parameters: contract.go), and Live's
+	// selector follows
+	if key == "midi_fx1:module" && d.c.Kind == livedevice.Instrument {
+		for i, id := range d.c.midiFX {
+			if id != value {
+				continue
+			}
+			d.midiFX = i
+			if idx, ok := d.c.keyIdx[key]; ok && idx < len(d.norms) && len(d.c.midiFX) > 1 {
+				n := float64(i) / float64(len(d.c.midiFX)-1)
+				d.norms[idx].Store(math.Float64bits(n))
+				d.reports[idx] = n
+			}
+			break
+		}
+	}
 	if idx, ok := d.c.keyIdx[key]; ok && idx < len(d.c.meta) && d.c.meta[idx] != nil {
 		norm := d.c.meta[idx].toNormValue(value)
 		d.norms[idx].Store(math.Float64bits(norm))
@@ -994,6 +1033,19 @@ func (d *device) reportValues(all bool) {
 		if idx >= len(d.c.Params) || idx >= len(d.norms) {
 			break
 		}
+		if idx < len(d.c.role) && d.c.role[idx] == slotRole {
+			// a general slot: the selected generator's parameter of that number
+			if t := d.slotTarget(idx); t != nil {
+				if v, ok := d.s.Get(t.key); ok {
+					n := t.meta.toNormValue(v)
+					if all || t.meta.fromNorm(n) != t.meta.fromNorm(math.Float64frombits(d.norms[idx].Load())) {
+						d.norms[idx].Store(math.Float64bits(n))
+						d.reports[idx] = n
+					}
+				}
+			}
+			continue
+		}
 		if m == nil || d.c.role[idx] != "" || d.c.gateIdx[idx] != 0 {
 			continue // selectors, and a switchable MIDI effect's (its key was reported)
 		}
@@ -1009,6 +1061,21 @@ func (d *device) reportValues(all bool) {
 			d.reports[idx] = n
 		}
 	}
+}
+
+// slotTarget: what the general slot at idx is now: the parameter of that
+// number of the MIDI generator that is selected (nil: none is, or it has no
+// such parameter). A contract device's only (contract.go).
+func (d *device) slotTarget(idx int) *slotTarget {
+	k := idx - contractSelector - 1
+	if !d.c.contract || k < 0 || k >= contractSlots || d.midiFX <= 0 || d.midiFX >= len(d.c.midiFX) {
+		return nil
+	}
+	ts := d.c.slots[d.c.midiFX[d.midiFX]]
+	if k >= len(ts) {
+		return nil
+	}
+	return ts[k]
 }
 
 // component: the chain component a device of this class edits.

@@ -207,3 +207,48 @@ func TestRegistryFitsItsDevices(t *testing.T) {
 		}
 	}
 }
+
+// A general slot is the parameter of that number of the MIDI generator that
+// is selected: none while none is, none for a step whose generator is not
+// installed here, and never for a device from before the contract.
+func TestSlotFollowsTheSelectedGenerator(t *testing.T) {
+	reg := &registry{Contract: 1, MidiFX: []string{"arp", "chords"}, Modules: map[string]map[string][]string{
+		"synth":  {livedevice.Instrument: {"cutoff"}},
+		"arp":    {livedevice.MIDI: {"rate", "gate", outChIdentity}},
+		"chords": {livedevice.MIDI: {"type", outChIdentity}},
+	}}
+	fx := map[string]*compMeta{"arp": pagesMeta("arp", []string{"rate", "gate"})} // chords is not installed here
+	cl, ok := contractClass(reg, "Synth", livedevice.Instrument, "", "synth", "Pung", pagesMeta("synth", []string{"cutoff"}), fx, map[string]string{"arp": "Arp"})
+	if !ok {
+		t.Fatal("no device")
+	}
+	d := &device{c: cl.sclass}
+	first := contractSelector + 1
+	if d.slotTarget(first) != nil {
+		t.Error("no generator is selected, yet slot 1 is something")
+	}
+	d.midiFX = 1 // the arpeggiator
+	if s := d.slotTarget(first); s == nil || s.key != "midi_fx1:rate" {
+		t.Errorf("slot 1 with the arpeggiator: %+v", s)
+	}
+	if s := d.slotTarget(first + 1); s == nil || s.key != "midi_fx1:gate" {
+		t.Errorf("slot 2 with the arpeggiator: %+v", s)
+	}
+	if d.slotTarget(first+2) != nil || d.slotTarget(first+contractSlots) != nil || d.slotTarget(0) != nil {
+		t.Error("a slot beyond the generator's parameters, or a position that is no slot, is something")
+	}
+	d.midiFX = 2 // chords: a step of the registry, not installed here
+	if d.slotTarget(first) != nil {
+		t.Error("a generator that is not installed here has slots")
+	}
+	old := &device{c: testSClass("0123456789abcdef0123456789abcdef", "synth:cutoff"), midiFX: 1}
+	if old.slotTarget(first) != nil {
+		t.Error("a device from before the contract has general slots")
+	}
+	// the devices that have browser entries: not the ones kept from before
+	kept := testSClass("fedcba9876543210fedcba9876543210", "synth:cutoff")
+	kept.legacy = true
+	if got := offered([]*sclass{cl.sclass, kept}); len(got) != 1 || got[0] != cl.sclass {
+		t.Errorf("offered: %d devices", len(got))
+	}
+}

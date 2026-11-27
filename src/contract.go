@@ -24,12 +24,16 @@ package main
 // they are other devices than the ones built before the contract, which stay
 // as they are for the Sets saved with them.
 //
-// This file only lays a device out. Nothing builds devices this way yet.
+// withContract (below) puts these devices beside the ones an installation
+// has from before.
 
 import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/federico-pepe/ableton-push-hack/core/livedevice"
@@ -79,7 +83,7 @@ type contractLayout struct {
 	*sclass
 	// slots: for each MIDI generator that is installed here, what each
 	// general slot is (nil: the generator has no parameter of that number
-	// here); an instrument's only
+	// here); an instrument's only (the same map as the class's)
 	slots map[string][]*slotTarget
 	// left: the module's parameters that are not Live's (the registry does
 	// not name them: they did not fit, or they are newer than the registry)
@@ -117,7 +121,7 @@ func contractClass(reg *registry, name, kind, category, module, folder string, c
 	}
 	c := &livedevice.Class{UID: livedevice.ClassUID(contractNamespace, kind, module), Name: name, Kind: kind,
 		Category: category, Ref: module, Folder: folder}
-	sc := &sclass{Class: c, module: module, keyIdx: map[string]int{}}
+	sc := &sclass{Class: c, module: module, keyIdx: map[string]int{}, contract: true}
 	out := &contractLayout{sclass: sc}
 	add := func(p livedevice.Param, m *paramMeta, role string) int {
 		c.Params = append(c.Params, p)
@@ -205,6 +209,7 @@ func contractClass(reg *registry, name, kind, category, module, folder string, c
 				Type: "float", Max: 1, Role: slotRole}, nil, slotRole)
 		}
 		out.slots = map[string][]*slotTarget{}
+		sc.slots = out.slots
 		for id, fm := range fx {
 			var own []string
 			for _, k := range reg.Modules[id][livedevice.MIDI] {
@@ -253,4 +258,99 @@ func contractClass(reg *registry, name, kind, category, module, folder string, c
 		}
 	}
 	return out, true
+}
+
+// legacySuffix: how a device from before the contract is named, on the
+// installations that keep it
+const legacySuffix = " (old)"
+
+// withContract: the devices this installation serves. For every module the
+// registry knows, its contract device. The device from before the contract
+// (built) stays beside it only where this installation had it already
+// (known: the classes as last written), for the Sets saved with it: under
+// another name, and offered nowhere. A module the registry does not know (one
+// installed by hand, a maker's build) keeps the device it has, in its local
+// order: its Sets do not travel yet.
+func (h *Host) withContract(built []*sclass, known []*livedevice.Class) []*sclass {
+	reg, err := builtinRegistry()
+	if err != nil {
+		log.Printf("devices: the registry: %v (devices as before the contract)", err)
+		return built
+	}
+	had := map[string]bool{}
+	for _, c := range known {
+		if c != nil {
+			had[c.UID] = true
+		}
+	}
+	meta := func(id string) (*compMeta, ModuleInfo, bool) {
+		m, ok := findModule(h.modulesDir, id)
+		if !ok {
+			return nil, m, false
+		}
+		cm, ok := h.probeMeta(m)
+		return cm, m, ok && cm != nil
+	}
+	// the MIDI generators installed here, for the instruments' general slots
+	fx, names := map[string]*compMeta{}, map[string]string{}
+	for _, sc := range built {
+		if sc.Kind == livedevice.MIDI {
+			if cm, m, ok := meta(sc.module); ok {
+				fx[sc.module], names[sc.module] = cm, m.Name // (the whole name, as the selector had it before)
+			}
+		}
+	}
+	var out []*sclass
+	made, kept, local := 0, 0, 0
+	for _, sc := range built {
+		cm, _, ok := meta(sc.module)
+		var cl *contractLayout
+		if ok {
+			var gens map[string]*compMeta
+			if sc.Kind == livedevice.Instrument {
+				gens = fx
+			}
+			cl, ok = contractClass(reg, sc.Name, sc.Kind, sc.Category, sc.module, sc.Folder, cm, gens, names)
+		}
+		if !ok {
+			out = append(out, sc)
+			local++
+			continue
+		}
+		cl.inCh = sc.inCh
+		out = append(out, cl.sclass)
+		made++
+		if had[sc.UID] {
+			sc.legacy = true
+			sc.Class.Name += legacySuffix
+			deviceNames[sc.Class.Name] = sc.module // (and its name as it was stays known: buildClasses)
+			out = append(out, sc)
+			kept++
+		}
+	}
+	log.Printf("devices: %d by the Set contract, %d from before it kept for their Sets, %d in a local order (not in the registry)", made, kept, local)
+	return out
+}
+
+// offered: the devices that have an entry in the host's browser (all but the
+// ones kept from before the contract)
+func offered(classes []*sclass) []*sclass {
+	var out []*sclass
+	for _, sc := range classes {
+		if !sc.legacy {
+			out = append(out, sc)
+		}
+	}
+	return out
+}
+
+// contractOn: whether this Pung builds the contract's devices. Until Live's
+// handling of them is measured (docs/SET-CONTRACT.md) only where it is asked
+// for: PUNG_SET_CONTRACT=1 in Pung's environment, or a file "set-contract" in
+// its data folder.
+func contractOn(dataDir string) bool {
+	if os.Getenv("PUNG_SET_CONTRACT") == "1" {
+		return true
+	}
+	return dataDir != "" && exists(filepath.Join(dataDir, "set-contract"))
 }

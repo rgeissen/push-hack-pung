@@ -171,8 +171,21 @@ In this order; each step is small and tested before the next.
    module lists its parameters; a parameter the registry does not name is not Live's; one the module no
    longer has leaves its place empty; every module of the shipped registry fits its kind of device and
    passes the plugin's own check. Nothing builds devices this way yet.
-3. The new devices beside the old: identity, the browser's entries, the saved sounds' entries, patches.
-4. The state by id.
+3. **Built, behind a switch (2026-11-27).** The new devices beside the old (`withContract`, `contract.go`):
+   a module the registry knows gets its contract device; the device from before stays where the
+   installation had it, named "… (old)", with no browser entry; a module the registry does not know keeps
+   its device in its local order. At run time a general slot sets and reports the selected generator's
+   parameter of its number, and a step of the selector whose generator is not installed plays none. A MIDI
+   generator chosen on Pung's side is now known to the device and to the host's selector (it was not). On
+   only where asked for (`PUNG_SET_CONTRACT=1`, or a file `set-contract` in Pung's data folder): the
+   devices in Live are as before until the measurements are made. Checked on a stand-in without Live: 15
+   devices by the contract and 15 kept from before; Dexed with 256 entries, the selector at 192 with 64
+   steps, 63 slots; a patch taken and loaded keeps its generator.
+   Still to do before it is on for everyone: what the browser's entries point to while a Live that has
+   not restarted knows only the old devices.
+4. **Holds for the new devices.** A contract device's state names its MIDI generator by the registry's
+   step, which is the same everywhere; a patch names it by id. States of the old devices keep their
+   machine's place, as their Sets do.
 5. The registry in the pack; the catalog build's guard.
 6. The four measurements.
 7. The test Phase 0 ends with: one Set with automation, opened on the same Push in two conditions (all MIDI

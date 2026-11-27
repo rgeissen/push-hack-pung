@@ -372,12 +372,16 @@ func (h *Host) stackClass(st *stackDoc) *sclass {
 	}
 	h.prov.mu.Lock()
 	defer h.prov.mu.Unlock()
+	var old *sclass
 	for _, c := range h.prov.classes {
 		if c.Kind == kind && c.module == lead.ID {
-			return c
+			if !c.legacy {
+				return c
+			}
+			old = c // (the device from before the contract: only if it is the only one)
 		}
 	}
-	return nil
+	return old
 }
 
 // stackWhere: where a stack's rack is found in Push's browser

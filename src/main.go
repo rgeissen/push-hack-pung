@@ -195,11 +195,18 @@ func main() {
 	sclasses := h.buildClasses()
 	h.fresh = sclasses // as built afresh, before this installation's own order (layouts.go)
 	// every parameter where its class last had it: a Set's automation stays on it (stablelayout.go)
-	sclasses = stableLayouts(sclasses, knownClasses(*data))
+	known := knownClasses(*data)
+	// the devices of the Set contract beside the ones from before (contract.go). Not on by itself yet:
+	// what Live does with them is measured on a Push first (docs/SET-CONTRACT.md).
+	if contractOn(*data) {
+		sclasses = h.withContract(sclasses, known)
+	}
+	sclasses = stableLayouts(sclasses, known)
 	// a class whose layout changed keeps the one a running Live has (classlock.go)
 	sclasses = classesForLive(sclasses, livedevice.ClassesPath(*vst3, "Pung"), filepath.Join(*data, "classes.live.json"),
 		exists(h.mods.path(restartLiveFlag)))
 	classes := coreClasses(sclasses)
+	shown := coreClasses(offered(sclasses)) // all but the devices kept from before the contract: these have browser entries
 	// The class file lives in the bundle (livedevice.ClassesPath): if the hack
 	// is removed, Sets that use its devices still open. hack.json's
 	// "live_devices" lets push-catalog remove the browser entries with it.
@@ -207,7 +214,7 @@ func main() {
 	// from Schwung, 2026-11-15, gave the classes new UIDs: devices.go.)
 	bcfg := livedevice.BundleConfig{Vendor: "Pung", URL: "https://pung.live", Socket: *socket}
 	if *presets != "" {
-		bcfg.Presets = livedevice.PresetFolders(*presets, "Pung", classes)
+		bcfg.Presets = livedevice.PresetFolders(*presets, "Pung", shown)
 	}
 	so, bcfg, _, err := livedevice.InstallBundle(*vst3, "Pung", filepath.Join(base, "livedevice.so"), bcfg)
 	if err != nil {
@@ -221,8 +228,8 @@ func main() {
 	if *presets != "" {
 		// WritePresets removes every rack in Pung's folders that is not a
 		// class's: one Live saved there is given back (sounds_racks.go)
-		giveBack := keepForeignRacks(*presets, classes)
-		n, err := livedevice.WritePresets(*presets, "Pung", classes)
+		giveBack := keepForeignRacks(*presets, shown)
+		n, err := livedevice.WritePresets(*presets, "Pung", shown)
 		giveBack()
 		if err != nil {
 			log.Printf("devices: browser entries: %v", err)
@@ -232,7 +239,7 @@ func main() {
 		// and their tags in Live's browser (abletontags.go); the catalog
 		// first, for a module the tag table does not name
 		h.mods.catalog(false)
-		if n, err := writeAbletonTags(*presets, "Pung", classes, h.tagsForClass, h.dataDir); err != nil {
+		if n, err := writeAbletonTags(*presets, "Pung", shown, h.tagsForClass, h.dataDir); err != nil {
 			log.Printf("devices: browser tags: %v", err)
 		} else if n > 0 {
 			log.Printf("devices: browser tags written in %d folders", n)
@@ -240,7 +247,7 @@ func main() {
 	}
 	// every user sound as a rack beside its module's (sounds_racks.go)
 	if *presets != "" {
-		h.sounds.racks = &soundRacks{presets: *presets, classes: sclasses}
+		h.sounds.racks = &soundRacks{presets: *presets, classes: offered(sclasses)}
 		go h.sounds.SyncAllRacks()
 	}
 	h.prov = newProvider(h, sclasses)

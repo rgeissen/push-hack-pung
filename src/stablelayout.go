@@ -199,6 +199,7 @@ func stableLayout(sc *sclass, prev *livedevice.Class) *sclass {
 	c := *sc.Class
 	c.Params = make([]livedevice.Param, n)
 	out := &sclass{Class: &c, module: sc.module, midiFX: sc.midiFX, inCh: sc.inCh, keyIdx: map[string]int{},
+		contract: sc.contract, slots: sc.slots, legacy: sc.legacy,
 		meta: make([]*paramMeta, n), role: make([]string, n), gateIdx: make([]int, n)}
 	for j := range c.Params {
 		c.Params[j] = livedevice.Param{Name: "", Type: livedevice.PadType} // a parameter gone, until filled
@@ -250,6 +251,10 @@ func stableLayouts(classes []*sclass, known []*livedevice.Class) []*sclass {
 	out := make([]*sclass, len(classes))
 	moved := 0
 	for i, sc := range classes {
+		if sc.contract {
+			out[i] = sc // its positions are the registry's, on every Pung (contract.go)
+			continue
+		}
 		out[i] = stableLayout(sc, prev[sc.UID])
 		if out[i] != sc && !sameLayout(out[i].Class, sc.Class) {
 			moved++
