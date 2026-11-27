@@ -5,14 +5,16 @@
   --sf-line: var(--line2, var(--line, #2e2b27)); --sf-acc: var(--amber, var(--pung-ink, #ffa451)); --sf-mono: var(--mono, ui-monospace, Menlo, monospace);
   --sf-display: var(--display, var(--sans, system-ui, sans-serif));
   border-top: 1px solid var(--sf-line); background: var(--sf-ground); color: var(--sf-muted); font-size: 0.92rem; line-height: 1.55; }
-.sf-in { box-sizing: border-box; max-width: calc(1160px + 2 * max(16px, env(safe-area-inset-left, 0px))); margin: 0 auto;
-  padding: 64px max(16px, env(safe-area-inset-right, 0px)) 32px max(16px, env(safe-area-inset-left, 0px)); display: grid; gap: 48px; }
+/* as wide as the page's content, and beginning where it begins (--sf-max, --sf-pad: a page may say its own) */
+.sf-in { box-sizing: border-box; max-width: calc(var(--sf-max, 1160px) + 2 * max(var(--sf-pad, 16px), env(safe-area-inset-left, 0px))); margin: 0 auto;
+  padding: 64px max(var(--sf-pad, 16px), env(safe-area-inset-right, 0px)) 32px max(var(--sf-pad, 16px), env(safe-area-inset-left, 0px)); display: grid; gap: 48px; }
 .sf p { margin: 0; }
 /* who it is, and where everything is */
 .sf-top { display: grid; grid-template-columns: minmax(260px, 1.6fr) repeat(4, minmax(0, 1fr)); gap: 40px 32px; align-items: start; }
 .sf-brand { display: grid; gap: 16px; justify-items: start; }
 .sf-logo { display: block; line-height: 0; }
 .sf-logo svg, .sf-logo img { height: 28px; width: auto; display: block; }
+.sf-logo svg { margin-left: -2.9px; } /* the drawing begins that far inside its box: its edge on the column's */
 .sf-tag { color: var(--sf-ink); font: 720 1.25rem/1.2 var(--sf-display); font-stretch: 112%; font-variation-settings: "wdth" 112; max-width: 22ch; text-wrap: balance; }
 .sf-get { color: var(--sf-acc); font-weight: 600; text-decoration: none; border-bottom: 1px solid transparent; }
 .sf-get:hover { border-bottom-color: currentColor; }

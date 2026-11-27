@@ -18,22 +18,50 @@
 <meta property="og:image" content="https://pung.live/brand/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="../footer.css">
 <link rel="stylesheet" href="../pushlink.css">
 <style>
 /* pung.live: Pung's own Modules page (src/web), without the app's rail: the site's bar on top */
 body[data-public] { display: block; }
-.site-bar { position: sticky; top: 0; z-index: 8; background: rgba(11, 12, 13, 0.92); backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--line); }
-.site-bar .in { max-width: 1480px; margin: 0 auto; padding: 12px clamp(16px, 3vw, 40px); display: flex; align-items: center;
+/* The page follows the visitor's light or dark setting, as the site's other pages do (pung.css): Pung's own
+   stylesheet is dark only (the page on a Push), so its colours are given again here. The accent is the
+   site's orange in both. The Push's screens stay as they are: they are pictures of a dark display. */
+:root { --amber: #ff8a1f; --slot: #ff8a1f; --inst: #ff8a1f; --bar: rgba(11, 12, 13, 0.92); }
+@media (prefers-color-scheme: light) {
+  :root { --ink: #eef0f1; --panel: #ffffff; --raise: #e9ecef; --raise2: #dde1e5; --line: #d3d8dd; --line2: #b9c0c7;
+    --fg: #15171a; --muted: #565d66; --faint: #7d858e;
+    --amber: #d6600a; --slot: #d6600a; --inst: #d6600a; --native: #c8381c; --steel: #4d6680;
+    --midi: #5b46c9; --afx: #12805c; --warn: #c2352a; --ok: #12805c; --mod: #08809f; --live: #08809f;
+    --bar: rgba(238, 240, 241, 0.92); color-scheme: light; }
+}
+/* what Pung's stylesheet writes in a fixed colour for a dark page */
+.btn.primary:hover, .primary:hover, .act.primary:hover { background: #ffa451; border-color: #ffa451; }
+@media (prefers-color-scheme: light) {
+  .btn[aria-pressed="true"], .seg button[aria-pressed="true"] { color: #fff; }
+  .seg button[aria-pressed="true"] .count { background: #fff; color: var(--fg); }
+  .mod .desc, .mod-sheet .desc { color: #3b424a; }
+  /* the words under a Push screen stand on its black: they keep the dark page's colours */
+  .face-main { --fg: #eceef0; --muted: #8b929b; --faint: #7d858e; color: var(--fg); }
+  .btn.primary:hover, .primary:hover, .act.primary:hover { background: #a84c05; border-color: #a84c05; color: #fff; }
+}
+/* the site's own typefaces (fonts.css, written by site/build.py), as on its other pages */
+:root { --sans: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; }
+.view-head h1 { font-family: "Archivo", "Helvetica Neue", Arial, sans-serif; font-weight: 800; font-stretch: 112%; font-variation-settings: "wdth" 112; font-size: 34px; letter-spacing: -0.012em; }
+/* the bar's content is as wide as the page's, and begins where it begins */
+.site-bar { position: sticky; top: 0; z-index: 8; background: var(--bar); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line); padding: 0 clamp(16px, 3vw, 40px); }
+.site-bar .in { max-width: 1320px; margin: 0 auto; padding: 12px 0; display: flex; align-items: center;
   gap: 12px 24px; flex-wrap: wrap; }
 .site-bar .home { display: block; line-height: 0; }
-.site-bar .home img { height: 22px; width: auto; }
+.site-bar .home img { height: 22px; width: auto; margin-left: -2.3px; /* (the drawing begins that far inside its box) */ }
+.sf { --sf-max: 1320px; --sf-pad: clamp(16px, 3vw, 40px); }
+.sf-logo img { margin-left: -2.9px; }
 .site-bar nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
 .site-bar nav a { font: 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
   text-decoration: none; padding: 8px 10px; border-radius: 4px; }
 .site-bar nav a:hover { color: var(--fg); background: var(--raise); }
-.site-bar nav a[aria-current="page"] { color: var(--fg); box-shadow: inset 0 -2px 0 #ff8a1f; border-radius: 0; }
+.site-bar nav a[aria-current="page"] { color: var(--fg); box-shadow: inset 0 -2px 0 var(--amber); border-radius: 0; }
 body[data-public] main { max-width: 1480px; margin: 0 auto; }
 a.act { display: inline-flex; align-items: center; text-decoration: none; }
 .public-note { color: var(--muted); max-width: 80ch; margin: 6px 0 18px; }
@@ -43,7 +71,7 @@ a.act { display: inline-flex; align-items: center; text-decoration: none; }
 <body data-public="1" data-view="modules" data-up="../">
 <a class="skip" href="#main">Skip to the content</a>
 <header class="site-bar"><div class="in">
-  <a class="home" href="../" aria-label="Pung, home"><img src="../brand/pung-logo.svg" alt="Pung" width="96" height="22"></a>
+  <a class="home" href="../" aria-label="Pung, home"><picture><source srcset="../brand/pung-logo-light.svg" media="(prefers-color-scheme: light)"><img src="../brand/pung-logo.svg" alt="Pung" width="96" height="22"></picture></a>
   <nav aria-label="Pung">
     <a href="./" aria-current="page">Modules</a>
 <!--if:launched-->

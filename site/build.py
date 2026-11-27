@@ -103,7 +103,8 @@ def footer(current="", up="", img=False):
 
     def links(items):
         return "".join(f'<a href="{href(k)}"' + (' aria-current="page"' if k == current else "") + f'>{label}</a>' for k, label in items)
-    mark = (f'<img src="{up}brand/pung-logo.svg" alt="Pung" width="122" height="28">' if img else
+    mark = (f'<picture><source srcset="{up}brand/pung-logo-light.svg" media="(prefers-color-scheme: light)">'
+            f'<img src="{up}brand/pung-logo.svg" alt="Pung" width="122" height="28"></picture>' if img else
             themed(open(os.path.join(HERE, "brand", "pung-logo.svg")).read()).replace('id="ld"', 'id="sfl"').replace("url(#ld)", "url(#sfl)"))
     version = json.load(open(os.path.join(ROOT, "hack.json")))["version"] if LAUNCHED else RELEASED
     return f"""<footer class="sf">
@@ -350,6 +351,7 @@ def modules_page(out):
     open(os.path.join(d, "index.html"), "w").write(page)
     for f in ("app.css", "modules.js"):
         shutil.copy2(os.path.join(ROOT, "src", "web", f), os.path.join(d, f))
+    open(os.path.join(d, "fonts.css"), "w").write(FACES.replace("{BASE}", "../"))  # the site's typefaces, from one folder up
     print("modules", len(rows), "modules,", len(json.load(open(os.path.join(screens, "index.json")))), "with screens")
 
 
