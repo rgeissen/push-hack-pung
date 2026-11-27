@@ -55,8 +55,8 @@
 
   // ---- the modules' names and pictures (the site's own catalog) --------------------------------
   let names = {}, shots = {};
-  fetch("modules/catalog.json").then((r) => (r.ok ? r.json() : null)).then((j) => { for (const m of (j && j.modules) || []) names[m.id] = m.name; draw(); }).catch(() => {});
-  fetch("modules/screens/index.json").then((r) => (r.ok ? r.json() : null)).then((j) => { shots = j || {}; draw(); }).catch(() => {});
+  fetch("modules/catalog.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((j) => { for (const m of (j && j.modules) || []) names[m.id] = m.name; draw(); }).catch(() => {});
+  fetch("modules/screens/index.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((j) => { shots = j || {}; draw(); }).catch(() => {});
   const nameOf = (m) => m.name || names[m.id] || m.id;
   const lead = (st) => st.modules.find((m) => m.role === "synth") || st.modules.find((m) => m.role === "midi_fx") || st.modules[0];
   function picture(st) {

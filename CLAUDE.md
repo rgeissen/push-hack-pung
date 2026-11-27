@@ -325,6 +325,12 @@ before and linked in the footer.
   127.0.0.1:8443 with any certificate, and run Chrome with
   `--host-resolver-rules="MAP pung.live:443 127.0.0.1:8443" --ignore-certificate-errors` (the origin must be
   https://pung.live for Pung to answer: `src/sitecors.go`).
+- **The server sends nothing about caching** (nginx on the DiskStation; its configuration is outside the
+  folder Pung may touch), so a browser keeps a file for a while by its own guess. `site/build.py` (`stamp`)
+  therefore names every page's scripts and stylesheets by their content (`modules.js?v=…`), the pages ask for
+  their data afresh (`cache: "no-cache"`: `catalog.json`, `screens/index.json`) and name each module picture
+  by the index it came with. Before, a visitor had the new page with the old script after a publish (the
+  owner saw no default pictures, 2026-11-27). A page's own HTML can still be an older copy until a reload.
 - pung.live may change `touch_card` and `own_pack_only` only (`siteSettings`): never `catalog_url`, which
   names an unsigned catalog.
 

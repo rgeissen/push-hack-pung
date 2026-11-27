@@ -39,18 +39,24 @@
   function loadShots() {
     if (shotsAsked) return;
     shotsAsked = true;
-    fetch(PUBLIC ? "screens/index.json" : "/screens/index.json").then((r) => (r.ok ? r.json() : {})).then((j) => { m.shots = j || {}; render(); }).catch(() => {});
+    // (asked for afresh each time, and each picture named by the index it came with: a browser that kept
+    // an older one would show the pictures of before, or none)
+    fetch(PUBLIC ? "screens/index.json" : "/screens/index.json", { cache: "no-cache" }).then((r) => {
+      shotsV = ((r.headers.get("etag") || r.headers.get("last-modified") || "").match(/[0-9a-z]+/gi) || []).join("").slice(-16);
+      return r.ok ? r.json() : {};
+    }).then((j) => { m.shots = j || {}; render(); }).catch(() => {});
   }
+  let shotsV = "";
   const shotsOf = (x) => m.shots[x.id];
   // a module with a front panel of its own ("custom interface"), against one Pung draws its own pages for
   const customOf = (x) => { const sh = shotsOf(x); return sh && sh.panel ? sh : null; };
-  const shotURL = (x, f) => `${PUBLIC ? "" : "/"}screens/${encodeURIComponent(x.id)}/${encodeURIComponent(f)}`;
+  const shotURL = (x, f) => `${PUBLIC ? "" : "/"}screens/${encodeURIComponent(x.id)}/${encodeURIComponent(f)}${shotsV ? "?v=" + shotsV : ""}`;
 
   async function load(refresh) {
     loadShots();
     let d;
     if (PUBLIC) {
-      if (!m.site) { try { m.site = await (await fetch("catalog.json")).json(); } catch (e) { m.site = null; } }
+      if (!m.site) { try { m.site = await (await fetch("catalog.json", { cache: "no-cache" })).json(); } catch (e) { m.site = null; } }
       if (push.state === "on" || push.state === "lost") await pushRead();
       d = m.data = merged();
       if (d && m.wantOpen && d.modules.some((x) => x.id === m.wantOpen)) { const id = m.wantOpen; m.wantOpen = null; render(); openSheet(id); }

@@ -324,6 +324,37 @@ def modules_data(cat, sources):
             "catalog": {"generated_at": doc.get("generated_at", ""), "taxonomy": doc.get("taxonomy", {}), "base_url": "", "pung": pung}}
 
 
+def stamp(out):
+    """Every page names its own scripts and stylesheets with their content's hash (modules.js?v=1a2b3c4d).
+    The server sends no word on caching, so a browser keeps a file for a while by its own guess: after a
+    publish a visitor had the new page with the old script (the new pictures did not show, 2026-11-27).
+    A changed file is now another address; one that did not change stays cached."""
+    import hashlib
+    n = 0
+    for folder, _, files in os.walk(out):
+        for f in files:
+            if not f.endswith(".html"):
+                continue
+            path = os.path.join(folder, f)
+            page = open(path).read()
+
+            def named(m):
+                ref = m.group(3)
+                if re.match(r"[a-z]+:|//|/", ref):
+                    return m.group(0)
+                target = os.path.normpath(os.path.join(folder, ref))
+                if not os.path.isfile(target):
+                    return m.group(0)
+                v = hashlib.sha256(open(target, "rb").read()).hexdigest()[:10]
+                return f'{m.group(1)}{m.group(2)}="{ref}?v={v}"'
+
+            new = re.sub(r'(<script\b[^>]*?\s|<link\b[^>]*?rel="stylesheet"[^>]*?\s)(src|href)="([^"?#]+\.(?:js|css))"', named, page)
+            if new != page:
+                open(path, "w").write(new)
+                n += 1
+    print("stamped", n, "pages' scripts and styles with their content")
+
+
 def modules_page(out):
     """pung.live/modules/: Pung's own Modules page (src/web/modules.js in its
     public mode, site/modules.html), the release's catalog as Pung's API
@@ -406,3 +437,4 @@ if __name__ == "__main__":
             print("download", sorted(os.listdir(dl)))
         else:
             print("download: none (scripts/build-installer.sh)")
+        stamp(OUT)
