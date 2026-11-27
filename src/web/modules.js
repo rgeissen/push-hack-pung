@@ -684,8 +684,7 @@
     $("mod-sheet-close").onclick = () => $("mod-sheet").close();
     $("mod-sheet").addEventListener("close", () => { m.open = null; if (location.hash) history.replaceState(null, "", location.pathname); });
     $("mod-sheet").addEventListener("click", (e) => { if (e.target === $("mod-sheet")) $("mod-sheet").close(); });
-    window.addEventListener("hashchange", want);
-    $("mod-update-all").onclick = updateAll;
+    window.addEventListener("hashchange", want);   // (no Update all here: that is the deployment's own page's)
     want();
     loadShots();
     renderPush();

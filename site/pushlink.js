@@ -259,8 +259,13 @@ window.PungPush = (function () {
     if (!enabled) return;
     document.querySelectorAll("[data-push-chip]").forEach((el) => {
       const d = cur(), a = esc(d.addr), n = esc(nameOf(d)), c = counts(d), more = devices.length > 1 ? ` <span class="n">${devices.indexOf(d) + 1}/${devices.length}</span>` : "";
+      // "quiet" (the Modules page; the owner, 2026-11-27: a deployment's numbers and its Update all belong on
+      // its own page, not in pung.live's head): nothing for a connected deployment; only the way to connect
+      // one, one that does not answer, and with several, which one modules install on
+      const quiet = el.dataset.pushChip === "quiet";
       let html;
       if (!devices.length && d.state !== "trying") html = `<button type="button" class="pl-btn primary" aria-haspopup="dialog">Connect your Push</button>`;
+      else if (d.state === "on" && quiet) html = devices.length > 1 ? `<button type="button" class="pl-chip on" aria-haspopup="dialog"><i class="pl-led on" aria-hidden="true"></i><span class="t">Installs on ${n}</span><span class="s">change</span></button>` : "";
       else if (d.state === "on") html = `<button type="button" class="pl-chip on${behind(d) ? " old" : ""}" aria-haspopup="dialog"><i class="pl-led on" aria-hidden="true"></i><span class="t">${n}${more}</span><span class="s">${d.version ? "Pung " + esc(d.version) + " · " : ""}${behind(d) ? `<b>${esc(behind(d))} is out</b>` : `${c.installed} installed${c.updates ? " · " + c.updates + " update" + (c.updates === 1 ? "" : "s") : ""}`}</span></button>`;
       else if (d.state === "trying") html = `<span class="pl-chip busy" role="status"><span class="pl-spin" aria-hidden="true"></span><span class="t">Connecting to ${a}…</span></span>`;
       else if (d.state === "lost") html = `<button type="button" class="pl-chip bad" aria-haspopup="dialog"><i class="pl-led bad" aria-hidden="true"></i><span class="t">${d.restarting ? "Pung is starting again…" : n + " is not answering"}${more}</span><span class="s">${a}${d.restarting ? "" : " · trying again"}</span></button>`;
