@@ -403,6 +403,7 @@ html:has(main.front) .sf { scroll-snap-align: end; }
   .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 22px; }
   .hero-grid .lockup.stacked { max-width: 520px; align-self: start; margin-top: calc(min(100cqw, 520px) * -0.0903); }
   .pitch { padding-left: 0; border-left: 0; }
+  .hero-bar .today, .hero-bar .cta { flex: 1 1 100%; }   /* (one under the other; the buttons wrap as they need) */
 }
 .sect .wrap { display: grid; gap: clamp(26px, 3.6vw, 44px); padding-block: clamp(56px, 8vw, 108px); width: 100%; box-sizing: border-box; }
 .sect .sec-head { gap: 10px; max-width: 66ch; }
