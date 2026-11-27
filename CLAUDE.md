@@ -393,7 +393,11 @@ before and linked in the footer.
   are in `app.css` itself now, so the public Modules page (which loads that stylesheet) adds only its bar's
   ground. The Push's screens, and every picture of one, stay dark in both. A colour in `app.css` that sits
   on the page's ground or text is `var(--ink)` / `var(--fg)` / `var(--panel)`, never `#000` or a fixed grey:
-  the selected row of the sound browser was unreadable in light for that. Look at it without a Push: the
+  the selected row of the sound browser was unreadable in light for that. The switch is a child of the rail,
+  not of the brand: beside the version where the rail stands at the left, at the bar's right end where the
+  rail lies across the top (up to 1200 px: a tablet), with the sections between logo and switch (they
+  scroll when a phone is too narrow for all four). Under the logo, as it first was, it made the bar twice
+  as tall on an iPad. Look at it without a Push: the
   scratch `layout/web-standin.sh` (the new build, three devices made without Live, port 7734).
 - **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch

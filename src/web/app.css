@@ -66,7 +66,7 @@ a { color: var(--amber); text-underline-offset: 3px; }
 .brand { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 12px; padding: 22px 20px 20px;
   border-bottom: 1px solid var(--line); }
 .brand .logo { grid-column: 1 / -1; height: 26px; width: auto; display: block; } /* the logo of pung.live (site/brand) */
-.brand .ver { grid-column: 1; margin-top: 8px; font: 11px var(--mono); color: var(--muted); letter-spacing: .08em; }
+.brand .ver { grid-column: 1 / -1; margin-top: 8px; font: 11px var(--mono); color: var(--muted); letter-spacing: .08em; }
 .brand .ver a { color: var(--amber); text-decoration: none; border-bottom: 1px solid currentColor; }
 .views { display: flex; flex-direction: column; padding: 12px 0; }
 .views button { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: none; border: 0;
@@ -692,5 +692,22 @@ svg .moddot { fill: #3cc8e6; stroke: var(--panel, #111); stroke-width: 1.5; }
 }
 :root[data-theme="light"] .theme-sw .sun { display: none; }
 :root[data-theme="light"] .theme-sw .moon { display: block; }
-.brand .theme-sw { grid-column: 2; grid-row: 2; justify-self: end; align-self: center; margin-top: 4px; }
-.brand .ver { grid-column: 1; }
+/* in the rail it stands at the right of the version's line; where the rail lies across the top (a tablet, a
+   phone) it stands at the bar's right end, as on pung.live, and never under the logo */
+.rail > .theme-sw { position: absolute; top: 46px; right: 18px; }
+@media (max-width: 1200px) {
+  .rail > .theme-sw { position: static; align-self: center; margin: 0 12px 0 8px; }
+  /* the logo and the switch keep their size; the sections between them take the rest and, on a phone, scroll */
+  .rail { overflow-x: visible; }
+  .rail .brand { flex: none; }
+  .rail .views { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .rail .views::-webkit-scrollbar { display: none; }
+  .rail .views button { flex: none; }
+}
+@media (max-width: 620px) {   /* a phone: a smaller logo and closer buttons, so all four sections show */
+  .rail .brand { padding: 10px 10px; }
+  .rail .brand .logo { height: 17px; }
+  .rail .views button { padding: 0 5px; font-size: 10.5px; letter-spacing: .03em; gap: 5px; }
+  .rail .views .count { min-width: 16px; padding: 1px 3px; }
+  .rail > .theme-sw { margin: 0 8px 0 2px; width: 28px; height: 28px; }
+}
