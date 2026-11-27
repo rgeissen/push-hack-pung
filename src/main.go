@@ -143,7 +143,7 @@ func main() {
 	h.sounds.routes(mux)
 	h.fileRoutes(mux)
 	h.sounds.libraryRoutes(mux)
-	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: withSiteCORS(mux), ReadHeaderTimeout: 5 * time.Second} // pung.live may talk to it (sitecors.go)
 	if ln == nil {
 		ln = listenWaiting(srv.Addr, 15*time.Second)
 	}
@@ -157,6 +157,19 @@ func main() {
 			log.Fatalf("http: %v", err)
 		}
 	}()
+	// pung.live looks for Pung on 7720: Push Hack Catalog gives a hack the
+	// first free port from 7711, so Pung answers there too (sitecors.go)
+	if cfg.Port != sitePort {
+		if sl, err := net.Listen("tcp", fmt.Sprintf(":%d", sitePort)); err != nil {
+			log.Printf("http: :%d is taken (%v): pung.live finds Pung at :%d only when told", sitePort, err, cfg.Port)
+		} else {
+			if rc, err := sl.(*net.TCPListener).SyscallConn(); err == nil {
+				rc.Control(func(fd uintptr) { cCloseInChildren(int(fd)) }) //nolint:errcheck
+			}
+			log.Printf("http on :%d too (pung.live)", sitePort)
+			go func() { _ = (&http.Server{Handler: srv.Handler, ReadHeaderTimeout: 5 * time.Second}).Serve(sl) }()
+		}
+	}
 
 	alsaseq.WaitForBootSettle()
 	if err := h.openPort(); err != nil {
