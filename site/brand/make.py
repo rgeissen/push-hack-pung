@@ -22,10 +22,14 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 DARK = {"o": "#ff8a1f", "cyan": "#4fcbe6", "ink": "#eeece7", "ground": "#0e0d0c", "tile": "#161513"}
 LIGHT = {"o": "#d6600a", "cyan": "#08809f", "ink": "#15171a", "ground": "#eef0f1", "tile": "#ffffff"}
 
-P = "M20 57 V8 H33 C49 8 49 34 33 34 H20"       # the P, one stroke (viewBox 0 0 64 64)
-RIDE = "M24 8 H33 C49 8 49 34 33 34 H24"        # the dot's way: the bowl
-REST = (42.0, 12.1)                             # on the shoulder (the bowl's curve at t = 0.25)
-REST_AT = 0.34                                  # the same place, as a fraction of RIDE's length
+# The bowl is as wide as the word's letters ask (the P of PUNG beside U, N and G):
+# 39 wide of 57.5 tall, where the first drawing had 33.5.
+P = "M20 57 V8 H36 C55.5 8 55.5 34 36 34 H20"   # the P, one stroke (viewBox 0 0 64 64)
+RIDE = "M24 8 H36 C55.5 8 55.5 34 36 34 H24"    # the dot's way: the bowl
+REST = (47.0, 12.1)                             # on the shoulder (the bowl's curve at t = 0.25)
+REST_AT = 0.345
+RIGHT = 54.9                                    # the bowl's right edge, stroke included
+VIEW = "3.3 0 64 64"                            # the mark alone, centred in its square                                 # the same place, as a fraction of RIDE's length
 
 
 def mark_parts(c, small=False, ride=False, ident="m", stroke=None):
@@ -48,7 +52,7 @@ def mark_parts(c, small=False, ride=False, ident="m", stroke=None):
     else:
         hole = f'<circle cx="{x}" cy="{y}" r="{gap}" fill="#000"/>'
         dotel = f'<circle cx="{x}" cy="{y}" r="{dot}" fill="{c["cyan"]}"/>'
-    return (f'<mask id="{ident}"><rect x="-8" y="-8" width="80" height="80" fill="#fff"/>{hole}</mask>'
+    return (f'<mask id="{ident}"><rect x="-8" y="-8" width="88" height="80" fill="#fff"/>{hole}</mask>'
             f'<path d="{P}" fill="none" stroke="{c["o"]}" stroke-width="{stroke}" stroke-linecap="round" '
             f'stroke-linejoin="round" mask="url(#{ident})"/>{dotel}')
 
@@ -101,7 +105,7 @@ def lockup(c, m, ident, ride=False):
     cap = m["cap"]
     s = cap / 57.5                        # the P runs y 3.75..61.25 of the mark's 64, stroke included
     mx, my = -15.75 * s, -3.75 * s        # the stem's left edge at 0, its top at the cap line
-    ux = (49.25 - 15.75) * s + m["p_rsb"] + m["track"]
+    ux = (RIGHT - 15.75) * s + m["p_rsb"] + m["track"]
     body = (f'<g transform="translate({mx:.1f} {my:.1f}) scale({s:.4f})">{mark_parts(c, ident=ident, ride=ride)}</g>'
             f'<path transform="translate({ux:.1f} 0)" d="{m["d"]}" fill="{c["ink"]}"/>')
     pad = cap * 0.04
@@ -128,17 +132,17 @@ def main(ttf):
     from PIL import Image
     w = lambda name, s: open(os.path.join(HERE, name), "w").write(s)
     # the mark, still: for dark grounds and for light ones; small for favicons
-    w("pung-mark.svg", svg(64, 64, mark_parts(DARK, ident="pm")))
-    w("pung-mark-light.svg", svg(64, 64, mark_parts(LIGHT, ident="pl")))
-    w("pung-mark-small.svg", svg(64, 64, mark_parts(DARK, small=True, ident="ps")))
+    w("pung-mark.svg", svg(64, 64, mark_parts(DARK, ident="pm"), view=VIEW))
+    w("pung-mark-light.svg", svg(64, 64, mark_parts(LIGHT, ident="pl"), view=VIEW))
+    w("pung-mark-small.svg", svg(64, 64, mark_parts(DARK, small=True, ident="ps"), view=VIEW))
     # the mark that rides once, then rests (the site's hero, a README)
-    w("pung-mark-ride.svg", svg(64, 64, mark_parts(DARK, ride=True, ident="pr")))
+    w("pung-mark-ride.svg", svg(64, 64, mark_parts(DARK, ride=True, ident="pr"), view=VIEW))
     # the favicon: the small mark, in the browser's own theme
     fav = (f'<style>.o{{stroke:{DARK["o"]}}}.c{{fill:{DARK["cyan"]}}}@media (prefers-color-scheme: light)'
            f'{{.o{{stroke:{LIGHT["o"]}}}.c{{fill:{LIGHT["cyan"]}}}}}</style>'
            + mark_parts(DARK, small=True, ident="f").replace('stroke="' + DARK["o"] + '"', 'class="o"')
            .replace('fill="' + DARK["cyan"] + '"', 'class="c"'))
-    w("favicon.svg", svg(64, 64, fav))
+    w("favicon.svg", svg(64, 64, fav, view=VIEW))
     # the logo: mark and word
     m = wordmark(ttf)
     w("pung-logo.svg", lockup(DARK, m, "ld"))
