@@ -290,10 +290,12 @@ before and linked in the footer.
   (`legal.src.html`, `privacy.src.html`) take the owner's details from `site/legal.json`; an empty field
   shows as "to be added" on the page. The privacy page states what the site does: change it when the site
   starts to do anything else (a cookie, a counter, a file from another host, an account).
-- **The fonts are the site's own** (`site/fonts/`: Archivo, IBM Plex Mono, Plus Jakarta Sans as WOFF2, Latin and
-  Latin Extended, each under the OFL; `faces.css` goes into every page's head): no page asks another host
-  for anything (a visitor's address sent to a font service is a legal risk for a site run from Germany).
-  Keep it so: no script, style, font or picture from another host.
+- **The typefaces are Pung's own** (`src/web/fonts/`: Archivo, IBM Plex Mono, Plus Jakarta Sans as WOFF2, Latin and
+  Latin Extended, each under the OFL; about 300 KB). They are built into Pung, which serves them to its own
+  page (`/fonts/faces.css`, linked from `index.html`), and `site/build.py` (`faces()`) puts the same rules
+  into every page of pung.live and copies the files there: one set, moved from `site/fonts/` on 2026-11-27.
+  No page asks another host for anything (a visitor's address sent to a font service is a legal risk for a
+  site run from Germany). Keep it so: no script, style, font or picture from another host.
 - **Stacks** (`stacks.src.html`, `site/stacks.js`; a fourth entry in the menu, between Modules and Deployments,
   once the site is launched): since 2026-11-27 a stack on that page is a Set's (`docs/PUNG-STACK.md`, Phase 1).
   The visitor's stacks are kept in their browser (IndexedDB `pung`/`stacks`, a file `.pungstack` to carry

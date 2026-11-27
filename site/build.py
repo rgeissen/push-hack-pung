@@ -43,8 +43,15 @@ NAV = [("modules", "Modules"), ("deployments", "Deployments")]
 if LAUNCHED:  # stacks need a deployment to talk to: in front once the site connects to one
     NAV.insert(1, ("stacks", "Stacks"))
 BACKGROUND = [("vision", "Vision"), ("manual", "Manual"), ("design", "Design"), ("performance", "Performance")]
-# the fonts, served from pung.live itself: no visitor's address goes to a font service (site/fonts)
-FACES = open(os.path.join(HERE, "fonts", "faces.css")).read()
+# the fonts, served from pung.live itself: no visitor's address goes to a font service. They are Pung's
+# (src/web/fonts: a Push serves the same files to its own page); here their rules go into each page
+FONTS = os.path.join(ROOT, "src", "web", "fonts")
+_FACES = open(os.path.join(FONTS, "faces.css")).read()
+
+
+def faces(base):
+    """the typefaces' rules for a page whose site root is at base ("", "../", or the site's address)"""
+    return _FACES.replace("url(", "url(" + base + "fonts/")
 
 
 def head(title):
@@ -52,7 +59,7 @@ def head(title):
 <meta name="claude:viewport-fit-sides" content="cover">
 {THEME_HEAD}
 <style>
-{FACES.replace("{BASE}", "" if OUT else "https://pung.live/")}
+{faces("" if OUT else "https://pung.live/")}
 {CSS}
 {THEME_CSS}
 </style>
@@ -479,7 +486,7 @@ def modules_page(out):
     open(os.path.join(d, "index.html"), "w").write(page)
     for f in ("app.css", "modules.js"):
         shutil.copy2(os.path.join(ROOT, "src", "web", f), os.path.join(d, f))
-    open(os.path.join(d, "fonts.css"), "w").write(FACES.replace("{BASE}", "../"))  # the site's typefaces, from one folder up
+    open(os.path.join(d, "fonts.css"), "w").write(faces("../"))  # the site's typefaces, from one folder up
     print("modules", len(rows), "modules,", len(json.load(open(os.path.join(screens, "index.json")))), "with screens")
 
 
@@ -514,7 +521,7 @@ if __name__ == "__main__":
                 sys.exit(f"{os.path.basename(path)} does not parse (node --check): nothing is built from it")
         if not node:
             print("node is not here: the pages' scripts were not checked for syntax")
-        shutil.copytree(os.path.join(HERE, "fonts"), os.path.join(OUT, "fonts"), dirs_exist_ok=True)
+        shutil.copytree(FONTS, os.path.join(OUT, "fonts"), dirs_exist_ok=True)
         # the front page's loops: Pung's own instruments' panels (scripts/hero-loops.sh)
         shutil.copytree(os.path.join(HERE, "hero"), os.path.join(OUT, "hero"), dirs_exist_ok=True)
         # the newest release, where the site and the Pung Installer read it

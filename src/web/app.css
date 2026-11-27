@@ -15,8 +15,10 @@
   --amber: #ff8a1f; --slot: #ff8a1f; --native: #ff4a2b; --steel: #8ea3ba;
   --midi: #a391ff; --inst: #ff8a1f; --afx: #33d1a4; --warn: #ff5a4e; --ok: #33d1a4;
   --mod: #3cc8e6; --live: #3cc8e6;
-  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  --sans: "Inter", "SF Pro Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* pung.live's typefaces (fonts/faces.css: served by the Push itself, nothing asked of another host) */
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --rail: 232px; --r: 2px;
   color-scheme: dark;
 }
@@ -94,7 +96,9 @@ main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 72px;
 .view { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 .view-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .view-head .kicker { flex-basis: 100%; }
-.view-head h1 { font-size: 26px; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; }
+.view-head h1 { font-size: 30px; font-weight: 800; letter-spacing: -.012em; line-height: 1.15; }
+/* the headings in the site's display face, at its width */
+.view-head h1, .unit-id h2, .sheet-head h2, .snd-head h2, .empty-state h2 { font-family: var(--display); font-stretch: 112%; font-variation-settings: "wdth" 112; }
 .lede { color: var(--muted); max-width: 80ch; }
 .mod-status { color: var(--muted); font: 11.5px var(--mono); letter-spacing: .04em; }
 .mod-status .warn { color: var(--amber); }
@@ -209,7 +213,7 @@ select { appearance: none; padding-right: 28px; max-width: 100%; text-overflow: 
 .unit-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 380px); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
 .unit-head > div { background: var(--panel); padding: 18px 22px; min-width: 0; }
 .unit-id { display: flex; flex-direction: column; gap: 6px; }
-.unit-id h2 { font-size: clamp(24px, 3vw, 34px); font-weight: 750; letter-spacing: -.015em; line-height: 1.1; overflow-wrap: anywhere; }
+.unit-id h2 { font-size: clamp(24px, 3vw, 34px); font-weight: 800; letter-spacing: -.015em; line-height: 1.1; overflow-wrap: anywhere; }
 .unit-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font: 11.5px var(--mono); color: var(--muted); letter-spacing: .04em; }
 .unit-sound { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 2px; }
 .sound-name { font-size: 18px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

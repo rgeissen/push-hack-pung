@@ -18,6 +18,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -205,6 +206,7 @@ func (h *Host) deviceFromPath(w http.ResponseWriter, r *http.Request) (*device, 
 }
 
 func (h *Host) webRoutes(mux *http.ServeMux) {
+	mime.AddExtensionType(".woff2", "font/woff2") //nolint:errcheck // (the page's typefaces: Go's own table does not know them)
 	sub, _ := fs.Sub(webFS, "web")
 	files := http.FileServer(http.FS(sub))
 	// The page's files are embedded, so they carry no date, and a browser

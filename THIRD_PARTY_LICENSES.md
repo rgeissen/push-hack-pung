@@ -15,6 +15,7 @@ copy of Pung: `scripts/deploy.sh` installs them on the Push beside the binary.
 | **pprof** (Google) | `pung` (through goja) | Apache-2.0 | `licenses/pprof-Apache-2.0.txt` |
 | **golang.org/x/text**, **golang.org/x/image** (The Go Authors) | `pung` | BSD-3-Clause | `licenses/golang-x-text-BSD-3.txt`, `licenses/golang-x-image-BSD-3.txt` |
 | **Go fonts** (Bigelow & Holmes, in golang.org/x/image) | `pung` (screen text) | BSD-3-Clause (as golang.org/x/image) | `licenses/go-fonts-README.txt` |
+| **Archivo**, **IBM Plex Mono**, **Plus Jakarta Sans** (typefaces) | `pung` (its own web page: `src/web/fonts`, WOFF2), and pung.live | SIL Open Font License 1.1 | `src/web/fonts/OFL.txt`, `src/web/fonts/NOTICE.txt` (served by Pung at `/fonts/OFL.txt`) |
 | **Tamzen** font | `pung` (screen text, embedded by Push Hack's `core/gfx/text`) | its own licence; the text is not in Push Hack yet (open item there) | |
 
 ## Schwung modules
