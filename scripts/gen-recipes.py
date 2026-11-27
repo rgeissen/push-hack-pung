@@ -483,6 +483,11 @@ def gen(m):
     # what the script copies into the module's folder besides the build output:
     # banks, presets, and renamed files (src/ui_overtake.js -> <id>/ui.js)
     idre = re.compile(r"(^|/)%s(/|$)" % re.escape(mid))
+    # a repository that builds several modules copies each one's files into its own folder (Maze: maze_seq,
+    # maze_seq_lite, maze-voice). Those of the others are not this module's: taken along, the last
+    # module.json won, and Maze Seq Lite went out with Maze Voice's (it could not be installed, 0.5.0).
+    others = [o for o in SIBLINGS.get(m["github_repo"], []) if o != mid]
+    otherre = re.compile(r"(^|/)(%s)(/|$)" % "|".join(re.escape(o) for o in others)) if others else None
     loops = {}  # a for loop's variable -> what it runs over (for f in banks/*.syx)
     for line in text.splitlines():
         for lm in re.finditer(r"\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^;]+?)\s*(?:;|$)", line):
@@ -539,6 +544,8 @@ def gen(m):
         m_ = idre.search(dest)
         if m_:
             rest = dest[m_.end():].lstrip("/")
+        elif otherre and otherre.search(dest):
+            continue  # into another module's folder
         elif "dist" in line:
             rest = ""
         else:
@@ -570,6 +577,9 @@ def gen(m):
 
 
 rows = []
+SIBLINGS = {}  # the modules each repository builds
+for m in json.load(open(catalog))["modules"]:
+    SIBLINGS.setdefault(m["github_repo"], []).append(m["id"])
 for m in json.load(open(catalog))["modules"]:
     try:
         r = gen(m)  # written even when a hand recipe wins: a hand recipe may build on it
