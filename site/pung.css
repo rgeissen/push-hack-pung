@@ -350,6 +350,9 @@ button.copy:hover { border-color: var(--pung); }
 .value { display: grid; gap: 8px; align-content: start; padding: 4px 0 0; border-top: 2px solid var(--pung); }
 .values.levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 860px) { .values.levels { grid-template-columns: minmax(0, 1fr); } }
+.today { margin: 0; font: 500 0.78rem/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.today span { color: var(--pung-ink); margin-right: 10px; }
+.today i { font-style: normal; margin: 0 6px; opacity: .6; }
 .levels-note { margin: 0; color: var(--muted); max-width: 78ch; }
 .value b { font: 760 1.2rem/1.2 var(--display); font-stretch: 112%; padding-top: 14px; }
 .value span { color: var(--muted); line-height: 1.55; }
