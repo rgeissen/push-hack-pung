@@ -418,7 +418,10 @@ before and linked in the footer.
 - **The place switcher** (`src/web/places.js`; the owner's word, 2026-11-27: one consistent way between the
   coordinator, pung.live, and a child, a deployment's own page, and back, with many children): one control
   that names where you are (pung.live, or the deployment with its state) and opens the list of pung.live and
-  every deployment; a press switches in the same tab, to the same section there (Modules to Modules). Its
+  every deployment; a press switches in the same tab, to where the visitor last was there (the owner,
+  2026-11-27: "remember the page and come back to it"): a deployment's page keeps its last section in its
+  browser (`pung.view`, `modules.js`) and opens it when a switch arrives (`?places=`), and pung.live's page
+  travels with the switch (`from` in that list) and is gone back to; without one, Deployments. Its
   seat: the right end of the bar beside the theme switch, on pung.live (`places()` in `build.py`, once
   launched) and on a deployment's page; under the logo where the rail stands at the left. One file for both:
   Pung has it built in, the site's build copies it; it brings its own styles in the page's colours.

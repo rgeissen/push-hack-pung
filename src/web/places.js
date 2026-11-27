@@ -1,7 +1,7 @@
 // places.js: the place switcher. One control, in the same place on pung.live and on every deployment's own
 // page: it names where you are (pung.live, or the deployment by its name with its state) and opens the list
 // of where you can go: pung.live, and every deployment this browser knows. One press switches, in the same
-// tab, to the same section there (Modules to Modules).
+// tab, to where the visitor last was there.
 //
 // The same file serves both: Pung has it built in (its own page: <div data-places="deployment">), and
 // pung.live's build copies it (site/build.py: <div data-places="site" data-here="<page>" data-up="<to the
@@ -53,20 +53,23 @@
   }
 
   // ---- the deployments this page knows --------------------------------------------------------------------
-  let kept = { list: [], self: "" };   // a deployment's page: what pung.live handed over
+  // a page of pung.live, as a switch names it: "" (the front page), "modules/", or "<name>.html"; nothing else
+  const sitePage = (v) => (typeof v === "string" && /^(modules\/|[a-z]+\.html)?$/.test(v) ? v : null);
+  let kept = { list: [], self: "", from: null };   // a deployment's page: what pung.live handed over, and its page then
   if (!onSite) {
     try { kept = JSON.parse(localStorage.getItem("pung.places") || "null") || kept; } catch (e) { /* none kept */ }
     const q = new URLSearchParams(location.search).get("places");
     if (q) {
       try {
         const got = dec(q);
-        kept = { list: clean(got.list), self: String(got.at || "").slice(0, 40) };
+        kept = { list: clean(got.list), self: String(got.at || "").slice(0, 40), from: sitePage(got.from) ?? sitePage(kept.from) };
         localStorage.setItem("pung.places", JSON.stringify(kept));
       } catch (e) { /* not a list: the page opens as it would without one */ }
       history.replaceState(null, "", location.pathname + location.hash);
     }
     kept.list = clean(kept.list);
-  }
+    kept.from = sitePage(kept.from);
+  } else if (!PP && /^#add=/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search); // (a page that connects nothing: the hand-off's mark goes)
   function deployments() {
     if (onSite) {
       if (PP) return PP.devices.map((d) => ({ id: d.id, name: PP.nameOf(d), kind: d.kind, addr: d.addr, state: d.state, version: d.version, behind: PP.behind(d) }));
@@ -96,12 +99,14 @@
     }
   }
 
-  // ---- where a switch lands: the same section there -------------------------------------------------------------
-  const view = () => (onSite ? box.dataset.here || "" : document.body.dataset.view || "devices");
+  // ---- where a switch lands: where the visitor last was there (the owner, 2026-11-27) -----------------------------
+  // A deployment's page keeps its own last section in its browser ("pung.view", modules.js) and opens it when a
+  // switch arrives. pung.live's page is carried along: named when the visitor leaves it ("from"), kept by the
+  // deployment's page, and gone back to. Without one (the deployment's page was opened by itself): Deployments.
+  const pageNow = () => (/\/modules\/(index\.html)?$/.test(location.pathname) ? "modules/" : (/([a-z]+\.html)$/.exec(location.pathname) || ["", ""])[1]);
   function toDeployment(d, all) {
-    const there = view() === "modules" ? "#modules" : "";
     const list = all.filter((x) => !x.site).map((x) => ({ id: x.id, name: x.name, kind: x.kind, addr: x.addr }));
-    return `${baseOf(d)}/?places=${enc({ v: 1, at: d.id, list })}${there}`;
+    return `${baseOf(d)}/?places=${enc({ v: 1, at: d.id, list, from: onSite ? pageNow() : kept.from })}`;
   }
   // this deployment's secure address, where it has a certificate: what pung.live is given, so that a browser
   // that refuses plain http from a secure page (Safari, every browser on an iPad) can still talk to it
@@ -126,7 +131,7 @@
   }).catch(() => { if (back) stays(); });
   function toSite() {
     const here = mine || (location.port && location.port !== "7720" ? location.hostname + ":" + location.port : location.hostname);
-    return `${SITE}${view() === "modules" ? "modules/" : "deployments.html"}#add=${encodeURIComponent(here)}`;
+    return `${SITE}${kept.from ?? "deployments.html"}#add=${encodeURIComponent(here)}`;
   }
 
   // ---- the control ----------------------------------------------------------------------------------------------

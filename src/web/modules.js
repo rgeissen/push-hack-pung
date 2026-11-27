@@ -570,6 +570,7 @@
     // un-hid what the devices view keeps hidden (the module picker, a sound
     // browser with no device) on every switch back
     document.body.dataset.view = view;
+    try { localStorage.setItem("pung.view", view); } catch (e) { /* remembered for this visit only */ }
     ["devices", "library", "modules", "setup"].forEach((v) => { const el = $(v + "-view"); if (el) el.hidden = v !== view; });
     if (view !== "devices" && window.PungDrawer) PungDrawer.close();
     document.title = { devices: "Pung", library: "Sounds · Pung", modules: "Modules · Pung", setup: "Setup · Pung" }[view] || "Pung";
@@ -656,6 +657,13 @@
     $("mod-sheet-close").onclick = () => $("mod-sheet").close();
     $("mod-sheet").addEventListener("close", () => (m.open = null));
     $("mod-sheet").addEventListener("click", (e) => { if (e.target === $("mod-sheet")) $("mod-sheet").close(); });
+    // a switch from pung.live or another deployment (places.js, "?places="): the section the visitor was last
+    // on here, not the first one (the owner, 2026-11-27)
+    if (new URLSearchParams(location.search).has("places") && !location.hash) {
+      let last = "";
+      try { last = localStorage.getItem("pung.view") || ""; } catch (e) { last = ""; }
+      if (["library", "modules", "setup"].includes(last)) history.replaceState(null, "", location.pathname + location.search + "#" + last);
+    }
     // #modules, or #modules/<id>: a module's sheet, to link to
     const h = route();
     // the updates badge, even while the Devices view is shown
