@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Pung Installer</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="bar">
+  <img src="pung-logo.svg" alt="Pung" class="logo" width="110" height="25">
+  <span class="what">Installer</span>
+  <span class="grow"></span>
+  <span class="ver" id="ver"></span>
+</header>
+
+<main class="frame">
+  <ol class="rail" id="rail" aria-label="Steps">
+    <li data-step="find"><b>1</b><span>Find your Push</span></li>
+    <li data-step="key"><b>2</b><span>Let this computer in</span></li>
+    <li data-step="ready"><b>3</b><span>Check</span></li>
+    <li data-step="install"><b>4</b><span>Install</span></li>
+  </ol>
+  <section class="panel" id="panel" aria-live="polite"></section>
+</main>
+
+<footer class="foot">
+  <span>Pung installs on Ableton Push 3 Standalone, with <a href="https://github.com/federico-pepe/ableton-push-hack" target="_blank" rel="noopener">Push Hack</a> under it. Not made, approved or supported by Ableton.</span>
+  <span class="grow"></span>
+  <a href="https://pung.live/manual.html#install" target="_blank" rel="noopener">Manual</a>
+  <a href="https://pung.live/" target="_blank" rel="noopener">pung.live</a>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
