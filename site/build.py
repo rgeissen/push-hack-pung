@@ -4,7 +4,7 @@
   build.py                 the page bodies beside this file (published as claude.ai artifacts)
   build.py --pages OUT     whole documents into OUT, linked to each other, for pung.live (scripts/publish-site.sh)
 """
-import html, json, os, re, shutil, sys
+import html, json, os, re, shutil, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IMG = json.load(open(os.path.join(HERE, "images.json")))
@@ -342,6 +342,15 @@ if __name__ == "__main__":
         shutil.copy2(os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(OUT, "visuals.js"))
         for f in ("hero.js", "pushlink.js", "pushlink.css", "deployments.js", "stacks.js"):
             shutil.copy2(os.path.join(HERE, f), os.path.join(OUT, f))
+        # a script that does not parse leaves its page standing still, without a word (Your devices was
+        # published so, 2026-11-27): no page is built with one
+        node = shutil.which("node")
+        for f in ("hero.js", "pushlink.js", "deployments.js", "stacks.js", os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(ROOT, "src", "web", "modules.js")):
+            path = f if os.path.isabs(f) else os.path.join(HERE, f)
+            if node and subprocess.run([node, "--check", path], capture_output=True).returncode != 0:
+                sys.exit(f"{os.path.basename(path)} does not parse (node --check): nothing is built from it")
+        if not node:
+            print("node is not here: the pages' scripts were not checked for syntax")
         # the front page's loops: Pung's own instruments' panels (scripts/hero-loops.sh)
         shutil.copytree(os.path.join(HERE, "hero"), os.path.join(OUT, "hero"), dirs_exist_ok=True)
         # the newest release, where the site and the Pung Installer read it
