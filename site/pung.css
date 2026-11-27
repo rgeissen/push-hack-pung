@@ -313,21 +313,25 @@ button.copy:hover { border-color: var(--pung); }
 .biglogo { line-height: 0; margin: 0; }
 .biglogo svg { display: block; width: 100%; height: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .hero.home .wrap { padding-top: clamp(4px, 1.2vw, 16px); }   /* (the room above the letters is the dot's: its hops) */
-/* The lockup: the logo with its tagline beside it, three lines between the logo's cap line and its baseline,
-   one drawing (biglogo() in build.py), so they keep their places at every size. It is the page's signature,
-   not its headline: no wider than 820 px, and the headline under it is the largest thing on the page (the
-   owner, 2026-11-27: the logo across the whole column was too dominant). Nothing in it may make the page
-   wider than the screen: it is clipped at its own edge. */
+/* The lockup: the logo with its tagline, "Open · Instrument · Platform", under it on one line as wide as
+   the logo (the dots in the logo's own cyan). It is the page's signature, not a banner: at most 520 px wide
+   (the owner, 2026-11-27: the logo across the whole column was too dominant). The line's size is the
+   lockup's width over the line's own (27.93 em in Archivo at this width and spacing), from the stylesheet
+   alone, so it follows a turned tablet at once. Nothing in the lockup may make the page wider than the
+   screen: it is clipped at its own edge. */
 .lockup { min-width: 0; max-width: 820px; overflow: hidden; overflow: clip; }
-.tagside text { font-family: var(--display); font-weight: 560; font-stretch: 112%; font-variation-settings: "wdth" 112; font-size: 230px; fill: var(--muted); }
-.tagside path { stroke: var(--line); stroke-width: 9; fill: none; }
-/* (a tagline under the logo, as wide as it: the column's width over the line's 29.24 em. Not on the page now;
-   kept for a lockup that stacks) */
-.lockup.stacked { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(8px, 1.6vw, 18px); container-type: inline-size; max-width: 520px; }
+.lockup.stacked { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(8px, 1.6vw, 16px); container-type: inline-size; max-width: 520px; }
 .lockup.stacked .tagside { display: none; }
 .tag { margin: 0; font-family: var(--display); font-weight: 560; font-stretch: 112%; font-variation-settings: "wdth" 112;
   white-space: nowrap; line-height: 1; letter-spacing: .34em; text-transform: uppercase; color: var(--muted);
-  font-size: min(calc((100vw - 32px) * 0.0342), 17.8px); font-size: 3.42cqw; }
+  font-size: min(calc((100vw - 32px) * 0.035805), 18.62px); font-size: 3.5805cqw; }
+.tag i { font-style: normal; color: var(--cyan); }
+/* (the tagline beside the logo, three words between its cap line and its baseline, in the logo's own drawing:
+   not on the page now; a lockup without .stacked whose drawing is 5090 wide shows it) */
+.tagside text { font-family: var(--display); font-weight: 560; font-stretch: 112%; font-variation-settings: "wdth" 112; font-size: 230px; fill: var(--muted); }
+.tagside path { stroke: var(--line); stroke-width: 9; fill: none; }
+/* the slogan under the lockup says what the platform is for; it is a line, not a banner */
+.hero.home h1.slogan { font-size: clamp(1.3rem, 2.5vw, 1.9rem); line-height: 1.15; max-width: none; letter-spacing: -0.008em; }
 .lead b { font-weight: 700; }
 
 /* the landing page */

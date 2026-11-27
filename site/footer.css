@@ -16,6 +16,7 @@
 .sf-logo svg, .sf-logo img { height: 28px; width: auto; display: block; }
 .sf-logo svg { margin-left: -1px; } /* the drawing begins that far inside its box: its edge on the column's */
 .sf-tag { color: var(--sf-ink); font: 720 1.25rem/1.2 var(--sf-display); font-stretch: 112%; font-variation-settings: "wdth" 112; max-width: 22ch; text-wrap: balance; }
+.sf-tag i { font-style: normal; color: var(--cyan, #4fcbe6); }
 .sf-get { color: var(--sf-acc); font-weight: 600; text-decoration: none; border-bottom: 1px solid transparent; }
 .sf-get:hover { border-bottom-color: currentColor; }
 .sf-col { display: grid; gap: 8px; align-content: start; justify-items: start; }

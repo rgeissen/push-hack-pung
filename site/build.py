@@ -89,8 +89,10 @@ def biglogo():
     # (Archivo's capitals are 0.686 em: at 230 units they are 158 tall), each as long as it is with 0.2 em of
     # spacing (textLength: the spacing holds in every browser and with any typeface that stands in)
     side = "".join(f'<text x="3107" y="{by}" textLength="{tl}" lengthAdjust="spacing">{t}</text>'
-                   for t, by, tl in (("THE OPEN", 158, 1550), ("INSTRUMENT", 422, 2019), ("PLATFORM", 686, 1684)))
-    return f"""<div class="biglogo"><svg viewBox="0 -250 5090 958" role="img" aria-label="Pung, the open instrument platform" data-rest="{x:.1f} {y:.1f}" data-twist>
+                   for t, by, tl in (("OPEN", 158, 823), ("INSTRUMENT", 422, 2019), ("PLATFORM", 686, 1684)))
+    # (the page has the tagline under the logo, .lockup.stacked: the drawing is then the logo alone, 2770 wide;
+    # beside it, the drawing is 5090 wide and the lines above show)
+    return f"""<div class="biglogo"><svg viewBox="0 -250 2770 958" role="img" aria-label="Pung" data-rest="{x:.1f} {y:.1f}" data-twist>
 <g class="tagside" aria-hidden="true"><path d="M2937 0V686"/>{side}</g>
 <mask id="blm" maskUnits="userSpaceOnUse" x="0" y="-250" width="2770" height="958"><rect x="0" y="-250" width="2770" height="958" fill="#fff"/><circle id="hole" cx="{x:.1f}" cy="{y:.1f}" r="{float(hole.group(3)) * k:.1f}" fill="#000"/></mask>
 <g mask="url(#blm)"><g transform="{g.group(1)}"><path d="{g.group(2)}" fill="none" style="stroke:var(--pung)" stroke-width="{g.group(3)}" stroke-linecap="round" stroke-linejoin="round"/><path id="pride" d="M24 8 H36 C55.5 8 55.5 34 36 34 H24" fill="none"/></g>
@@ -139,7 +141,7 @@ def footer(current="", up="", img=False):
 <div class="sf-top">
 <div class="sf-brand">
 <a class="sf-logo" href="{href('home')}" aria-label="Pung, home">{mark}</a>
-<p class="sf-tag">The open instrument platform.</p>
+<p class="sf-tag">Open <i>·</i> Instrument <i>·</i> Platform</p>
 <a class="sf-get" href="{href('deployments')}#install">Get Pung on your Push →</a>
 </div>
 <nav class="sf-col" aria-label="Pung"><p class="sf-k">Pung</p>{links(NAV)}</nav>

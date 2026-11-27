@@ -174,8 +174,8 @@ def main(ttf):
           f'display:flex;flex-direction:column;justify-content:space-between;font-family:A,Helvetica,Arial,sans-serif;'
           f'font-stretch:112%"><div>'
           + logo.replace("<svg ", '<svg style="display:block;width:992px;height:auto;margin-left:-13px" ', 1)
-          + f'<div style="color:#a39e94;font-size:32.2px;font-weight:560;line-height:1;letter-spacing:.34em;text-transform:uppercase;'
-          f'white-space:nowrap;margin-top:22px">The open instrument platform</div></div>'
+          + f'<div style="color:#a39e94;font-size:33.8px;font-weight:560;line-height:1;letter-spacing:.34em;text-transform:uppercase;'
+          f'white-space:nowrap;margin-top:22px">Open <span style="color:{DARK["cyan"]}">·</span> Instrument <span style="color:{DARK["cyan"]}">·</span> Platform</div></div>'
           f'<div style="color:{DARK["ink"]};font-size:46px;font-weight:800;line-height:1.08;letter-spacing:-0.012em">'
           f'Open music modules,<br>at home on every device.</div></div>')
     chrome_png(page(og, 1200, 630, DARK["ground"]), 1200, 630, os.path.join(HERE, "og-image.png"))
