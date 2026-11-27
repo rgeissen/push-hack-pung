@@ -40,17 +40,42 @@ chord-progression tool (`schwung-stacks`): the concept is written in lower case,
 
 A stack is a small JSON file; a picture of it (its front page) is drawn by the device, not stored.
 
+## Managed on pung.live
+
+Stacks are managed through the website (the owner's word, 2026-11-27): pung.live is a stack's home, a device
+is where it plays. That follows the site's rule of one home for each thing (CLAUDE.md, The site), and it is
+the part that becomes the service.
+
+- **The website**: the visitor's stacks, each with its modules, what it needs and where it is deployed;
+  making one (choosing modules from the Modules page, their order), naming, copying, deleting; sending one to
+  a device, of any kind; taking one from a device.
+- **A device**: plays a stack, and is where its sound is shaped (the modules' own screens, on the Push the
+  encoders). It hands its state to the website ("take from this device") and takes a stack from it ("send to
+  this device"). It keeps what it was sent, so it plays without the website and without the internet; it
+  does not manage a library of its own, and its page does not grow one.
+- **Between them**, as everything else on pung.live: the visitor's browser talks to the device over their
+  home network.
+
+So a device needs two calls and no more: give the stack a Pung device is playing (`GET`), and take one
+(`POST`: check it, install what is missing from the module pack, say what cannot be met, load it).
+
+## Where the stacks are kept
+
+- **First**: in the visitor's browser (as the device list is), with a file to download and drop for a
+  second browser or a backup. No account, nothing on pung.live.
+- **Then, the service**: an account, and the stacks kept on pung.live: on every browser and device,
+  versioned, shared. This, and sending to a device of another kind, is what is sold (the owner's plan); a
+  stack's format, and saving and loading one, stay open and free.
+
 ## Saving, moving, loading
 
-- **Save**, on a device: from a Pung device as it plays (its instrument, the MIDI effect in front of it,
-  the effects behind it) into Pung's data (`stacks/`), listed by `GET /api/stacks`.
-- **Move**, through pung.live: Your devices lists each device's stacks; "Send to…" reads it from one device
-  and gives it to another, in the visitor's browser over their home network (nothing kept on pung.live). A
-  file works too: download from one, drop on the other.
-- **Arrive**: the receiving Pung checks the stack against what it has: installs the modules it lacks from
-  the module pack (signed, `modpack.go`), names the firmware that is missing, refuses a module that needs a
-  newer Pung or a kind of device it does not run on, and says so before anything loads.
-- **Load**: the stack becomes playable where the device keeps its sounds.
+- **Take** (website, from a device): the stack a Pung device is playing: its instrument, the MIDI
+  generator in front of it, the effects behind it, their states, Pung's modulation.
+- **Send** (website, to a device): the receiving Pung checks the stack against what it has: installs the
+  modules it lacks from the module pack (signed, `modpack.go`), names the firmware that is missing, refuses a
+  module that needs a newer Pung or a kind of device it does not run on, and says so before anything loads.
+- **Play**: the stack is playable where the device keeps its sounds, and stays there.
+- **A file** works without the website's library: download a stack, drop it on the page elsewhere.
 
 ## What exists already
 

@@ -249,7 +249,9 @@ before and linked in the footer.
   the devices in the Set, sounds, samples, ROMs, removing a module. On pung.live: the device at a glance,
   Pung's version and updates, the installer, the manual, every module with its pictures. On both, on purpose:
   the Modules page (the Push must install offline; one script) and Pung's switches (offline on the Push, and in
-  the device's panel on pung.live). The device dashboard is never rebuilt on the Push's page.
+  the device's panel on pung.live). The device dashboard is never rebuilt on the Push's page. **Stacks are
+  managed on pung.live** (the owner's word): a device plays one and hands its state over, and its own page
+  grows no stack library (`docs/STACKS.md`).
   **The hand-off**: the Push's page links to pung.live with `#add=<its own address>` (`siteLinks`, `app.js`;
   shown only while the browser reaches pung.live), and `pushlink.js` (`arrived`) connects that device without
   the address typed again (a home-network name or address only); pung.live links back to the place on the
