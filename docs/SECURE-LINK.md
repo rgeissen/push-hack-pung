@@ -14,6 +14,29 @@ Deployments, no install from Modules, no Stacks (the owner's iPad, 2026-11-27).
 Secure to secure is allowed everywhere. So a deployment gets a name under a public domain and a certificate
 browsers trust, and answers there over https. Plex does the same for its home servers.
 
+## The rule: nothing for the one who installs Pung to do
+
+The owner's word, 2026-11-27: "it must be frictionless for the one that installs Pung". So:
+
+1. **No step after the installer.** Pung gets its name and its certificate by itself at its first start, and
+   renews it by itself. Nobody sets a DNS record, a token or a port.
+2. **Nothing typed.** pung.live finds the deployments on the visitor's own network: the service knows which
+   deployments reported from the same home connection as the visitor's browser, and offers them by name.
+3. **One confirmation, on the hardware.** The first time a browser wants to talk to a deployment, the
+   deployment asks on its own screen (a Push: a lit button). That is the pairing; no password, no code to
+   copy.
+4. **No router setting, no browser setting.** Where a router refuses a public name for a home address (a
+   Fritz!Box does by default), the link must still come about without the player opening the router: over
+   the deployment's public IPv6 address where that is not refused, and failing that over a direct link
+   between browser and deployment set up through pung.live (WebRTC, as local file-sharing pages use it:
+   it needs no name and no certificate). That fallback is built only if testers' routers ask for it.
+
+What the owner does once, for everybody, is not friction in this sense: the domain, the service.
+
+**Measured on the owner's network (2026-11-27):** a public name for a home IPv4 address
+(`192-168-178-55.sslip.io`) and one for the Push's own IPv6 address both resolve through the home's
+resolver. This network does not stand in the way.
+
 ## How it works
 
 1. **A name.** Each deployment has a random id and a name under a domain of Pung's:
