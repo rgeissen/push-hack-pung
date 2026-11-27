@@ -13,5 +13,8 @@ __pycache__/
 /site/manual.html
 /site/design.html
 /site/performance.html
+/site/devices.html
+/site/push.html
+/site/stacks.html
 /_site/
 /installer/dist/
