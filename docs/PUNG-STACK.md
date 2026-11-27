@@ -20,14 +20,21 @@ modules: the same instruments, effects and MIDI generators in every place a musi
 opens the same in each.** The modules stay free and open. What is sold is getting them, and a Set's whole
 stack, onto every machine without work.
 
+**Live is the first host, not the definition** (the owner's word, 2026-11-27: "we should also abstract the
+Pung stack from Ableton Live, as I could foresee other DAWs playing a role as host in future"). Everything
+below that says Set means a host's project; where a thing is Live's alone, it says so (Hosts, below).
+
 ## Words
 
 - **The Pung stack**: the whole thing: the modules, the host that runs them, the way they appear in a DAW, and
   the deployment that puts them on a machine. The counterpart of "the Reason Rack".
-- **A stack**: what one Live Set uses of it: every Pung device in the Set, on its track and in its place,
-  with its module, version and state, and what those need (firmware, samples, sounds). The MIDI and automation
-  made against those devices are Live's and travel in the Set; a stack makes sure they still land on the
-  right controls.
+- **A host**: the program a musician works in and Pung's modules appear in: Ableton Live today (on a Push,
+  later on a computer), other DAWs later. **A project**: what the host saves; in Live, a Set.
+- **A stack**: a container of modules, one for each project: every Pung module the project uses, with its
+  version and state and what those need (firmware, samples, sounds); and, where the host tells Pung, its
+  place there (in Live: the track and the position on it). The automation and the MIDI mappings made against
+  those modules are the host's and travel in its project; a stack makes sure they still land on the right
+  controls.
 - **A patch**: what one Pung device holds (an instrument with the MIDI effect in front of it, Pung's
   modulation). This is what the Stacks page built on 2026-11-27 takes and sends: it was called a stack then,
   and is not one in the owner's sense. Reason's word for the same thing is a patch, or a Combinator patch.
@@ -81,6 +88,25 @@ plan: every phase either establishes one or builds on them.
 5. **What lies outside the Set.** Modules, firmware, samples, saved sounds. *Does not hold:* nothing says what
    a Set needs, or brings it along. Firmware never travels: it is named, and must be the player's own.
 
+## Hosts
+
+What is Pung's and the same in every host, and what belongs to one host. The line is drawn now so that the
+groundwork is laid on the right side of it.
+
+| | The Pung stack (every host) | A host's own (Live today) |
+|---|---|---|
+| **A module** | Its id, versions, state, parameters and their numbers (the registry, `docs/SET-CONTRACT.md`) | How it shows in the host's browser (in Live: a rack and Live's tags) |
+| **A stack** | The modules a project uses, their versions and states, what they need | Where each module sits (Live: track and position), read through the host's own interface (Live: the Remote Script) |
+| **A parameter** | One number for good. The plugin gives it to the host as the parameter's id and as its position | Which of the two the host goes by (Live: the position) |
+| **A project** | Nothing: Pung never reads or writes a host's project | The file, its automation and mappings, and how it moves between machines (Live: Set transfer) |
+| **The shell** | One plugin interface over Pung (a module as a device; from Phase 4 a whole stack as one) | The plugin format and what the host allows (Live on a Push: VST3) |
+| **Preparing a machine** | Install what a stack needs; say what is missing | Building the tracks and devices in an empty project (possible in Live through its script; not in most hosts) |
+
+Three rules follow. Pung learns what a project uses from its own devices as they connect, in any host; a
+host's interface only adds where they sit. Nothing in a stack's file is Live's except one named part that
+another host leaves out. And the code keeps Live behind one seam (today: `src/live.go`, the racks and tags,
+core's plugin), which is also the seam the independence from Push Hack needs.
+
 ## The phases
 
 Sizes are orders of magnitude, not promises: **S** days, **M** weeks, **L** months, **XL** many months.
@@ -114,9 +140,10 @@ one-time conversion or a kept exception.
 Set as it was. A player sees what a Set uses and what it needs before anything is missing on stage.
 
 *What is built:*
-- **The stack of the open Set**: every Pung device with its track, its place in the chain, module, version,
-  state, and what it needs (Pung asks Live through the Remote Script which device is where; it has the rest).
-  pung.live shows it on Deployments and keeps it; a stack is a file.
+- **The stack of the open Set**: every Pung device with its module, version, state and what it needs (Pung
+  has these from its own devices, in any host), and its track and its place in the chain (asked of Live
+  through the Remote Script: the part of a stack that is Live's). pung.live shows it on Stacks and keeps it;
+  a stack is a file.
 - **Send a stack to a deployment**: it installs the modules that are missing from the pack, names the
   firmware that must be there, and brings the samples and saved sounds the states refer to (by content, to a
   place the receiving Pung maps: clause 3 and 5).
@@ -241,6 +268,8 @@ only when they say there is enough pull.
 2. The page built as "Stacks": out of the menu for the launch, or kept as "Patches"?
 3. macOS before Windows for the proof in Phase 2? (Recommended: yes; the owner's own machine.)
 4. Whether "the Pung stack" becomes the name on the site, and when.
+5. Which host after Live to keep in view while the groundwork is laid (it decides what the proof in Phase 4
+   is measured against).
 
 ## Sources
 

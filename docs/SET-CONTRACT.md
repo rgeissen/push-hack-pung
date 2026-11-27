@@ -12,6 +12,11 @@ in whatever order it came.
 
 It must also leave every Set that exists today exactly as it is.
 
+And it must not be Live's alone (the owner's word, 2026-11-27: other DAWs may host Pung later). So what is
+fixed is **a number for each parameter of a module, for good**. The plugin gives that number to a host twice:
+as the parameter's position, which is what Live goes by, and as the parameter's id, which is what most other
+hosts go by. A registry of numbers serves both; "position" below means that number.
+
 ## What was measured
 
 On the owner's Push, 2026-11-27 (`classes-known.json`, the module pack, the Sets on its disk):
@@ -156,6 +161,18 @@ In this order; each step is small and tested before the next.
 7. The test Phase 0 ends with: one Set with automation, opened on the same Push in two conditions (all MIDI
    generators installed; some removed and installed again in another order), the automation on the same
    controls both times. A second Push would be the better witness.
+
+## Not only Live
+
+- The registry and the layout are Pung's and say nothing of Live: they are how a module's controls are
+  numbered in any plugin format (a VST3 parameter id, an Audio Unit parameter address, a CLAP parameter id).
+- What is Live's in this design, and only that: that positions matter at all (a host that goes by ids would
+  forgive a reordering; the numbers are fixed anyway), the limit of 256 and what Live shows of it, and
+  Push's pages of eight.
+- The second namespace is named for the contract, not for a host, so a module is the same device in every
+  host that loads the plugin.
+- A stack records the registry's version it was saved with, so a later host can tell a project from before
+  the contract.
 
 ## Decisions for the owner
 

@@ -17,7 +17,8 @@ release, and native instruments built from gearmulator (`native/`).
 | Native modules (emulators): rules, measurements, each instrument's quirks | `docs/NATIVE-MODULES.md` |
 | Module builds for the Push | `docs/push-module-builds.md` |
 | What devices cost (processor, energy), `GET /api/governor` | `docs/GOVERNOR.md` |
-| Where Pung goes: the Pung stack, Set compatibility, the phases, what is sold | `docs/PUNG-STACK.md` |
+| Where Pung goes: the Pung stack, Set compatibility, hosts, the phases, what is sold | `docs/PUNG-STACK.md` |
+| One parameter order for every Pung (the groundwork's first piece; a design, not built) | `docs/SET-CONTRACT.md` |
 | Patches (what one Pung device holds, moved between deployments; built as "Stacks" on 2026-11-27) | `docs/STACKS.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
 | The public pages (manual, vision, design) | `site/README.md` |
@@ -330,7 +331,10 @@ before and linked in the footer.
   how they get onto a machine; what the Reason Rack is to Reason's devices. **A stack**: what one Live Set
   uses of it: all its Pung devices with their modules, versions and states, and what they need; the MIDI and
   automation against them travel in the Set (`docs/PUNG-STACK.md`). **A patch**: what one Pung device holds;
-  the page and the calls built on 2026-11-27 under the name "Stacks" are patches (`docs/STACKS.md`). Never
+  the page and the calls built on 2026-11-27 under the name "Stacks" are patches (`docs/STACKS.md`).
+  **A host** is the program Pung's modules appear in (Live today, other DAWs later) and **a project** what it
+  saves (in Live, a Set): a stack is one per project, and nothing in the stack's own design may be Live's
+  alone (the owner's word). Never
   "rack" for any of it: on a Push a rack is Ableton's, and Pung writes one per module ("Live rack"). Lower
   case, so it is not **Stacks**, the owner's chord tool.
 - **Deployment** (the owner's word, 2026-11-27, in place of "device"): a Pung that runs somewhere, a Push 3
