@@ -17,7 +17,8 @@ release, and native instruments built from gearmulator (`native/`).
 | Native modules (emulators): rules, measurements, each instrument's quirks | `docs/NATIVE-MODULES.md` |
 | Module builds for the Push | `docs/push-module-builds.md` |
 | What devices cost (processor, energy), `GET /api/governor` | `docs/GOVERNOR.md` |
-| Stacks (modules with their states, moved between deployments): the idea, the format, what is built, what is open | `docs/STACKS.md` |
+| Where Pung goes: the Pung stack, Set compatibility, the phases, what is sold | `docs/PUNG-STACK.md` |
+| Patches (what one Pung device holds, moved between deployments; built as "Stacks" on 2026-11-27) | `docs/STACKS.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
 | The public pages (manual, vision, design) | `site/README.md` |
 
@@ -324,10 +325,14 @@ before and linked in the footer.
 
 ## Words
 
-- **Module**: one instrument, audio effect or MIDI generator. **Stack** (the owner's word, 2026-11-27): the
-  modules in their order with the state of each and what is laid over them, the thing that travels between
-  deployments (`docs/STACKS.md`; a first version is built: one Pung device's worth). Never "rack" for it: on a Push a rack is Ableton's, and Pung
-  writes one per module ("Live rack"). Lower case, so it is not **Stacks**, the owner's chord tool.
+- **Module**: one instrument, audio effect or MIDI generator.
+- **The Pung stack** (the owner's ambition, 2026-11-27): the modules, the host, how they appear in a DAW and
+  how they get onto a machine; what the Reason Rack is to Reason's devices. **A stack**: what one Live Set
+  uses of it: all its Pung devices with their modules, versions and states, and what they need; the MIDI and
+  automation against them travel in the Set (`docs/PUNG-STACK.md`). **A patch**: what one Pung device holds;
+  the page and the calls built on 2026-11-27 under the name "Stacks" are patches (`docs/STACKS.md`). Never
+  "rack" for any of it: on a Push a rack is Ableton's, and Pung writes one per module ("Live rack"). Lower
+  case, so it is not **Stacks**, the owner's chord tool.
 - **Deployment** (the owner's word, 2026-11-27, in place of "device"): a Pung that runs somewhere, a Push 3
   today (`site/pushlink.js` `KINDS`); what Pung runs on is "hardware" or its kind. **Device** is Live's word
   and only that: what a module becomes on a track ("a device in Live", "Pung device"). The site's code and

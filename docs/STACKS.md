@@ -1,5 +1,11 @@
 # Stacks
 
+**Read `docs/PUNG-STACK.md` first.** On 2026-11-27 the owner said what a stack is: all Pung modules and
+settings of a Live Set, with the MIDI made against them; and what the Pung stack is to become (Reason's Rack,
+for open modules, in every place a musician works). What this document describes and what was built from it
+is the smaller thing: what ONE Pung device holds, which that plan calls a **patch**. The format and the calls
+below stay as they are until Phase 1 of that plan replaces or renames them.
+
 The word and the idea are settled (2026-11-27), and a first version is built: take a stack from a deployment,
 keep it on pung.live, send it to a deployment ("What is built", below). What is marked *open* is not decided.
 
