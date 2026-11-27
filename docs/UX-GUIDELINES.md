@@ -513,14 +513,14 @@ screen whose modulated controls stand still is not finished.
   panel), with the knob's own mark kept where the knob is.
 - Vivace answers it from its engine's modulation readouts (every route's destination, after each block);
   its wavetable position moves on every page that draws a table (`wave_pos`).
-- **Who answers it (2026-11-26).** Pung's five emulators (NATIVE-MODULES.md) and 44 Schwung modules,
+- **Who answers it (2026-11-26).** Pung's five emulators (NATIVE-MODULES.md) and 45 Schwung modules,
   from the forks in `scripts/local-sources.json`: 303, amino, aphex, bizar, braids, chimera,
   chiptune, chordism, clementine-xt, concat, crest, denis, dubstarmoonicon, essaim, fizzik, freak,
   frodhes, granny, hank, helm, hera, hush1, JE-8086 (each voice's cutoff from the H8S's ASIC writes),
   maze-voice, Mini-JV (each tone's TVF cutoff from the PCM chip, its slot's tone from the firmware's RAM),
   model-72, monksynth, mono-voice, moog, mrsample, noisemaker, nusaw, obxd, omega, Osirus (Filter 1 of the
   newest voice from a hook on the A/B/C DSP program, as OsTIrus's), plaits,
-  quark, signal, Surge, tablor, tenebrae, tinyhouse, tinyk, tinyscratch. Each reports what the synth's
+  quark, signal, Surge, tablor, tenebrae, tinyhouse, tinyk, tinyscratch, Vial. Each reports what the synth's
   own code computes (the newest sounding voice, the knob's units, its own clamps), and each build was
   checked against upstream: the same audio. Not done: quilt and strut (their licence forbids changes);
   the drum machines, players and samplers whose

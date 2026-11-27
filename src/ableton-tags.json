@@ -51,6 +51,7 @@
     "sfz":              ["Devices|Sampling"],
     "tablor":           ["Devices|Synthesizer|Wavetable"],
     "vivace":           ["Devices|Synthesizer|Wavetable"],
+    "vial":             ["Devices|Synthesizer|Wavetable"],
     "amino":           ["Devices|Synthesizer|Wavetable"],
     "bizar":           ["Devices|Synthesizer"],
     "chimera":         ["Devices|Synthesizer|Physical Modeling", "Devices|Vocal", "Sounds|Voice|Synth Voice"],

@@ -223,5 +223,10 @@
   "path": "../pung-forks/schwung-virus",
   "why": "rgeissen's fork, branch pung-live-mod: live_mod, each voice's Filter 1 cutoff from a hook on the A/B/C DSP program (src/dsp/virus_livemod.h); proposed upstream",
   "github_repo": "rgeissen/schwung-virus"
+ },
+ "schwung-vial": {
+  "path": "../pung-forks/schwung-vial",
+  "why": "rgeissen's fork, branch pung-live-mod: live_mod, every routed control from the engine's modulation readouts (as Vivace); proposed upstream",
+  "github_repo": "rgeissen/schwung-vial"
  }
 }
