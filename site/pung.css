@@ -336,8 +336,32 @@ button.copy:hover { border-color: var(--pung); }
 .btn:hover { border-color: var(--pung); color: var(--ink); }
 .btn.primary { background: var(--pung); border-color: var(--pung); color: #140b03; }
 .btn.primary:hover { background: var(--pung-ink); border-color: var(--pung-ink); color: #140b03; }
-.home-main .wrap { display: grid; gap: clamp(56px, 8vw, 96px); padding-block: 36px 96px; }
+/* The front page in sections. Each is a band across the page with a ground of its own, the same room above
+   and below, and the same head (what it is in a word, what it says in a line, one sentence under it), so
+   where one ends and the next begins is never a guess (the owner, 2026-11-27: "it's all over with no clear
+   separation"). In order: the hero, the stage (the Push's screen, dark in both themes as the hardware is),
+   the interface, the platform (on the surface colour), and the way in (a panel). */
+.front { display: block; }
+/* (the other pages with sections: Deployments, Stacks, the legal pages) */
+.home-main .wrap { display: grid; gap: clamp(44px, 6vw, 72px); padding-block: 36px 96px; }
 .home-sec { display: grid; gap: 22px; }
+.hero.home .wrap { padding-bottom: clamp(44px, 6.5vw, 84px); }
+.pitch { display: grid; gap: 22px; margin-top: clamp(6px, 1.6vw, 22px); }
+.sect .wrap { display: grid; gap: clamp(26px, 3.6vw, 44px); padding-block: clamp(56px, 8vw, 108px); width: 100%; box-sizing: border-box; }
+.sect .sec-head { gap: 10px; max-width: 66ch; }
+.sect .sec-head .eyebrow { color: var(--pung-ink); }
+.sec-intro { margin: 6px 0 0; color: var(--muted); font-size: clamp(1.02rem, 1.4vw, 1.14rem); line-height: 1.55; }
+.sect.alt { background: var(--surface); border-block: 1px solid var(--line); }
+.sect.alt .value { background: transparent; }
+/* on a tablet in portrait the points stand two abreast, not in one long column */
+@media (min-width: 600px) and (max-width: 860px) { .sect .values, .sect .values.levels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stage { --ground: #0e0d0c; --surface: #161513; --raise: #1f1d1a; --ink: #eeece7; --muted: #a39e94; --line: #2e2b27;
+  --pung: #ff8a1f; --pung-ink: #ffa451; --cyan: #4fcbe6; background: #0b0a09; color: var(--ink); border-block: 1px solid #232220; color-scheme: dark; }
+.stage .livefig { margin: 0; }
+.getit { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 22px 44px;
+  padding: clamp(24px, 3.6vw, 44px); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.getit .cta { margin: 0; }
+@media (max-width: 820px) { .getit { grid-template-columns: minmax(0, 1fr); } }
 .gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 30px 26px; }
 @media (max-width: 860px) { .gallery { grid-template-columns: minmax(0, 1fr); } }
 .ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
@@ -372,10 +396,8 @@ button.copy:hover { border-color: var(--pung); }
 .today { margin: 0; font: 500 0.78rem/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .today span { color: var(--pung-ink); margin-right: 10px; }
 .today i { font-style: normal; margin: 0 6px; opacity: .6; }
-.levels-note { margin: 0; color: var(--muted); max-width: 78ch; }
 .value b { font: 760 1.2rem/1.2 var(--display); font-stretch: 112%; padding-top: 14px; }
 .value span { color: var(--muted); line-height: 1.55; }
-.home-main .wrap { gap: clamp(44px, 6vw, 72px); }
 
 /* the front page's playing Push screen (hero.js): always dark, as the Push's own */
 .livescreen { background: #000; color: #eeece7; border-radius: 3px; overflow: hidden; display: grid;

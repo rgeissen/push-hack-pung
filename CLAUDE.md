@@ -329,6 +329,12 @@ before and linked in the footer.
   version that went both ways and dimmed the P's stroke beyond the dot. Built in `ride.js`, played where
   the logo carries `data-twist` (`biglogo()`); approved from a mockup and on the site since 2026-11-27.
   Show a change to the logo's motion as a mockup first (an Artifact page with the real script).
+- **The front page is in sections** (the owner's word, 2026-11-27: "it's all over with no clear separation"):
+  each a band across the page with its own ground, the same room above and below and the same head (a word
+  in orange, a heading, one sentence): the hero; the stage (`.stage`: the Push's screen, dark in both themes
+  as the hardware is); the interface; the platform (on the surface colour); the way in (a panel). A new
+  block on that page is a `section.band.sect` with a `.sec-head`, never loose content between two others.
+  `scratch mockup/from-site.py` turns a built `index.html` into one file for an Artifact mockup.
 - **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
   folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS
