@@ -85,7 +85,13 @@ def biglogo():
     k = float(re.search(r"scale\(([\d.]+)\)", g.group(1)).group(1))
     tx, ty = (float(v) for v in re.search(r"translate\((-?[\d.]+) (-?[\d.]+)\)", g.group(1)).groups())
     x, y = float(hole.group(1)) * k + tx, float(hole.group(2)) * k + ty   # the dot's place, in the logo's units
-    return f"""<div class="biglogo"><svg viewBox="0 -250 2770 958" role="img" aria-label="Pung" data-rest="{x:.1f} {y:.1f}" data-twist>
+    # the tagline beside the logo, in the logo's own units: three lines between its cap line and its baseline
+    # (Archivo's capitals are 0.686 em: at 230 units they are 158 tall), each as long as it is with 0.2 em of
+    # spacing (textLength: the spacing holds in every browser and with any typeface that stands in)
+    side = "".join(f'<text x="3107" y="{by}" textLength="{tl}" lengthAdjust="spacing">{t}</text>'
+                   for t, by, tl in (("THE OPEN", 158, 1550), ("INSTRUMENT", 422, 2019), ("PLATFORM", 686, 1684)))
+    return f"""<div class="biglogo"><svg viewBox="0 -250 5090 958" role="img" aria-label="Pung, the open instrument platform" data-rest="{x:.1f} {y:.1f}" data-twist>
+<g class="tagside" aria-hidden="true"><path d="M2937 0V686"/>{side}</g>
 <mask id="blm" maskUnits="userSpaceOnUse" x="0" y="-250" width="2770" height="958"><rect x="0" y="-250" width="2770" height="958" fill="#fff"/><circle id="hole" cx="{x:.1f}" cy="{y:.1f}" r="{float(hole.group(3)) * k:.1f}" fill="#000"/></mask>
 <g mask="url(#blm)"><g transform="{g.group(1)}"><path d="{g.group(2)}" fill="none" style="stroke:var(--pung)" stroke-width="{g.group(3)}" stroke-linecap="round" stroke-linejoin="round"/><path id="pride" d="M24 8 H36 C55.5 8 55.5 34 36 34 H24" fill="none"/></g>
 <path transform="{ung.group(1)}" d="{ung.group(2)}" style="fill:var(--ink)"/></g>

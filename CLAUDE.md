@@ -317,11 +317,13 @@ before and linked in the footer.
   so the gap travels with it). Once as the page opens, again on a press, never where motion is turned down
   or without the script (the logo then stands as drawn). The bar keeps its small logo, still, on that page
   too: hiding it while the large one was in view read as a logo gone missing (the owner, 2026-11-27). The small logo's offset is 0.8 px at 22 px high (27.4 of the drawing's 740.9 units).
-- **The tagline is "The open instrument platform"** (the owner's word, 2026-11-27; treatment B chosen from a
-  mockup after A had been live for an hour): spaced capitals under the logo, one line as wide as the logo
-  (`.tag`, sized in the stylesheet alone: the column's width over the line's 29.24 em; a script that sized
-  it left an iPad turned to portrait with a page as wide as landscape); it is the footer's line and the link preview's too. "Open music modules, at
-  home on every device." is the headline under it. Pung is spoken of as the platform (host, interface in two
+- **The tagline is "The open instrument platform"** (the owner's word, 2026-11-27). On the front page it
+  stands beside the logo in three lines between the logo's cap line and its baseline, one drawing with it
+  (`biglogo()`: `.tagside`, each line pinned with `textLength`), and the lockup is at most 820 px wide: the
+  page's signature, not its headline. The headline "Open music modules, at home on every device." is the
+  largest thing on the page. Tried and turned down by the owner the same day: the tagline as the headline
+  (A), and the logo across the whole column with the tagline under it (B: "too dominant"). It is the
+  footer's line and the link preview's too. Pung is spoken of as the platform (host, interface in two
   levels, modulation, governor, deployment), never as a collection of modules, and not as a Push add-on: the
   Push is where it is today (the "Today" line).
 - **The twist on the P** (the owner's idea, 2026-11-27): once landed the dot goes down the bowl and back up
