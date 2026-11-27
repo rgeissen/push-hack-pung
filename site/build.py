@@ -28,8 +28,8 @@ DESC = {
     "devices": "Deployments of Pung.",
     "push": "Deployments of Pung.",
     "install": "Install Pung on Ableton Push 3 Standalone: the Pung Installer for macOS, Windows and Linux, or through Push Hack's catalog.",
-    "home": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play: today 131 of them on Ableton Push 3 Standalone, each a device in Live with a screen made for it.",
-    "vision": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play, native on each: today 131 of them as devices in Live on Ableton Push 3 Standalone; next the desktop, more hardware, phones and tablets.",
+    "home": "Pung is an open stack of music modules: {{N:modules}} instruments, audio effects and MIDI generators that play inside your DAW like its own. Today on Ableton Push 3 Standalone, in Ableton Live.",
+    "vision": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play, native on each: today {{N:modules}} of them as devices in Live on Ableton Push 3 Standalone; next the desktop, more hardware, phones and tablets.",
     "manual": "The Pung manual: installing Pung on a Push 3 Standalone, the Pung view and its controls, sounds, modules.",
     "design": "The design principles of the Pung view on Push 3: screens, controls, envelopes, colours.",
     "performance": "How Pung spends a Push 3's processor and battery: emulators that rest in silence, measured costs, a view that draws only what changed.",
@@ -213,6 +213,34 @@ def figure_css():
     return "\n".join(l for l in css.splitlines() if l.startswith((".env", "svg .mod")))
 
 
+_counts = None
+
+
+def counts():
+    """{{N:modules}}, {{N:instruments}}, {{N:effects}}, {{N:midi}}, {{N:custom}} on a page or in its description:
+    counted from the catalog and the pictures the Modules page is built from, never typed (the pages said 131
+    when the catalog had 132, 2026-11-27)."""
+    global _counts
+    if _counts is None:
+        cat = next((p for p in (os.path.join(ROOT, "dist", "pung", "catalog", "catalog.json"),
+                                os.path.join(ROOT, "build", "catalog", "catalog.json")) if os.path.exists(p)), None)
+        if not cat:
+            sys.exit("a page names the number of modules: it needs the catalog (build-catalog.py, or make release)")
+        mods = modules_data(cat, GITHUB_SOURCES)["modules"]
+        kind = lambda k: sum(1 for m in mods if m.get("component_type") == k)
+        try:
+            shots = json.load(open(os.path.join(ROOT, "build", "screens", "index.json")))
+        except OSError:
+            sys.exit("a page names the number of custom interfaces: it needs the screens (make screens)")
+        _counts = {"modules": len(mods), "instruments": kind("sound_generator"), "effects": kind("audio_fx"), "midi": kind("midi_fx"),
+                   "custom": sum(1 for m in mods if (shots.get(m["id"]) or {}).get("panel"))}
+    return _counts
+
+
+def counted(text):
+    return re.sub(r"\{\{N:(\w+)\}\}", lambda m: str(counts()[m.group(1)]), text) if "{{N:" in text else text
+
+
 def build(name):
     src = open(os.path.join(HERE, name + ".src.html")).read()
     if name == "manual" and not LAUNCHED and OUT:
@@ -235,13 +263,14 @@ def build(name):
         src = src.replace("{{LEGAL:%s}}" % k, html.escape(v) if v else '<mark>to be added</mark>')
     for key in LINKS:
         src = src.replace("{{LINK:%s}}" % key, LINKS[key])
+    src = counted(src)
     left = re.findall(r"\{\{[^}]*\}\}|\[\[[^\]]*\]\]", src)
     if left:
         sys.exit(f"{name}: unresolved {left[:3]}")
     out = head(title) + src
     path = os.path.join(HERE, name + ".html")
     if OUT:
-        desc = DESC[name]
+        desc = counted(DESC[name])
         out = f"""<!doctype html>
 <html lang="en">
 <head>
