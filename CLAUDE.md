@@ -385,6 +385,15 @@ disk; offline it goes on with its own. `own_pack_only` in the settings never ask
   `// <pages>` markers in `push_ui.js` from gearmulator's `parameterDescriptions_*.json` and the LAYOUT at
   its top. Early pages must be full and repeat nothing: Live pads every page to 8 and keeps a limited list.
   `rawmap`: an enum whose options are not its raw values in order (XT effect types 0..7, 32..34).
+- **The Set contract** (`docs/SET-CONTRACT.md`; built behind a switch, not on by default): a parameter of a
+  module has one number for good, on every Pung and in every host: its place in `src/registry.json`. **The
+  registry only ever grows at its ends** (`scripts/registry.py add` from an export of `GET /api/layouts` on a
+  deployment that has the module, and for an emulator its firmware; `check`; the catalog build refuses
+  anything else and a published module without an entry). A new module, or a module's new parameter, needs
+  its entry before the release. `contract.go` lays a device out by it (an instrument: 192 entries of its
+  own, the selector at 192 with 64 fixed steps, 63 general slots for the selected MIDI generator) under an
+  identity of its own (`pung-set-1`); the devices from before stay for their Sets ("… (old)").
+  `PUNG_SET_CONTRACT=1` or a file `set-contract` in Pung's data turns it on.
 - **A parameter keeps its place in its class** (`stablelayout.go`): Live saves automation and mappings
   by position, so a class keeps the layout in `classes-known.json`; a new parameter goes after all the
   others (on an instrument beyond the 128 Live shows), one that is gone leaves a placeholder; in a full

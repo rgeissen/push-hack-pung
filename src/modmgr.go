@@ -158,6 +158,8 @@ type catalogDoc struct {
 	BaseURL        string          `json:"base_url"`
 	Modules        []catalogEntry  `json:"modules"`
 	Taxonomy       json.RawMessage `json:"taxonomy,omitempty"`
+	// Registry: the Set contract's registry as this pack carries it (contract.go)
+	Registry *registry `json:"registry,omitempty"`
 }
 
 type modJob struct {

@@ -186,7 +186,10 @@ In this order; each step is small and tested before the next.
 4. **Holds for the new devices.** A contract device's state names its MIDI generator by the registry's
    step, which is the same everywhere; a patch names it by id. States of the old devices keep their
    machine's place, as their Sets do.
-5. The registry in the pack; the catalog build's guard.
+5. **Done (2026-11-27).** The registry travels in `catalog.json`, so under the pack's signature. The
+   catalog build refuses a registry that is not the last one grown at its ends, and a published module
+   without an entry. Pung lays devices out by the registry it was built with, or by one a pack on its disk
+   carries that is the same grown at its ends (`currentRegistry`: read from the disk, never waited for).
 6. The four measurements.
 7. The test Phase 0 ends with: one Set with automation, opened on the same Push in two conditions (all MIDI
    generators installed; some removed and installed again in another order), the automation on the same

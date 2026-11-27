@@ -329,8 +329,11 @@ published, withheld, problems = [], [], []
 # an update (modmgr.go), so a package may only change when one of them does.
 REVS = {k: v for k, v in json.load(open(os.path.join(ROOT, "scripts", "module-revisions.json"))).items() if not k.startswith("_")}
 OLD_CAT = {}
+OLD_REGISTRY = None  # the registry the catalog that is there carries (the Set contract: docs/SET-CONTRACT.md)
 if os.path.exists(os.path.join(args.out, "catalog.json")):
-    OLD_CAT = {e["id"]: e for e in json.load(open(os.path.join(args.out, "catalog.json")))["modules"]}
+    _old = json.load(open(os.path.join(args.out, "catalog.json")))
+    OLD_CAT = {e["id"]: e for e in _old["modules"]}
+    OLD_REGISTRY = _old.get("registry")
 unrevised = []
 
 
@@ -491,8 +494,24 @@ if args.ids and os.path.exists(cat_path):
     for e in published:
         old[e["id"]] = e
     published = sorted(old.values(), key=lambda e: e["id"])
+# The registry of the Set contract travels in the pack, under its signature: a parameter's number for good.
+# It may only grow at its ends, and every module that is published has its entry: one without it would be a
+# device whose Sets do not travel (seed it from a deployment that has the module: scripts/registry.py add).
+import importlib.util
+_spec = importlib.util.spec_from_file_location("registry", os.path.join(ROOT, "scripts", "registry.py"))
+_registry = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_registry)
+REGISTRY = json.load(open(os.path.join(ROOT, "src", "registry.json")))
+_bad = _registry.check(OLD_REGISTRY, REGISTRY) if OLD_REGISTRY else []
+_none = sorted(e["id"] for e in published if e["id"] not in REGISTRY["modules"])
+if _none:
+    _bad.append("no entry for: " + " ".join(_none) + " (scripts/registry.py add src/registry.json <an export of GET /api/layouts> <id>)")
+if _bad:
+    print("\nThe registry (src/registry.json) is not one this pack may carry:\n  " + "\n  ".join(_bad), file=sys.stderr)
+    sys.exit(2)
 catalog = {
     "catalog_version": 1,
+    "registry": REGISTRY,
     "name": "Pung modules",
     "platform": index.get("platform", "push3-x86_64"),
     "glibc_max": index.get("glibc_max", "2.35"),

@@ -72,6 +72,84 @@ func builtinRegistry() (*registry, error) {
 	return &r, nil
 }
 
+// appends: whether b is a grown at its ends (every entry of a where it was).
+// A registry that is not is another contract: it is never taken.
+func (a *registry) appends(b *registry) bool {
+	if b == nil || a.Contract != b.Contract || len(b.MidiFX) < len(a.MidiFX) {
+		return false
+	}
+	for i, id := range a.MidiFX {
+		if b.MidiFX[i] != id {
+			return false
+		}
+	}
+	for mod, kinds := range a.Modules {
+		for kind, keys := range kinds {
+			now, ok := b.Modules[mod][kind]
+			if !ok || len(now) < len(keys) {
+				return false
+			}
+			for i, k := range keys {
+				if now[i] != k {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// size: how much a registry holds (to tell the further grown of two)
+func (r *registry) size() int {
+	n := len(r.MidiFX)
+	for _, kinds := range r.Modules {
+		for _, keys := range kinds {
+			n += 1 + len(keys)
+		}
+	}
+	return n
+}
+
+// currentRegistry: the registry this Pung lays devices out by: the one it was
+// built with, or one a pack on its disk carries that is the same grown at
+// its ends (a module or a parameter published since: the pack that came with
+// a later release, or pung.live's as last read and checked). Read from the
+// disk only: a start never waits for the network.
+func (h *Host) currentRegistry() (*registry, error) {
+	reg, err := builtinRegistry()
+	if err != nil {
+		return nil, err
+	}
+	var packs [][]byte
+	if u := bundledCatalog(); u != "" {
+		if raw, err := os.ReadFile(strings.TrimPrefix(u, "file://")); err == nil {
+			packs = append(packs, raw)
+		}
+	}
+	if h.mods != nil {
+		raw, e1 := os.ReadFile(h.mods.path("pack.json"))
+		sig, e2 := os.ReadFile(h.mods.path("pack.json.sig"))
+		if e1 == nil && e2 == nil && verifyPack(raw, sig) == nil {
+			packs = append(packs, raw)
+		}
+	}
+	for _, raw := range packs {
+		var doc struct {
+			Registry *registry `json:"registry"`
+		}
+		if json.Unmarshal(raw, &doc) != nil || doc.Registry == nil {
+			continue
+		}
+		switch {
+		case !reg.appends(doc.Registry):
+			log.Printf("devices: a pack's registry is not this Pung's grown at its ends: not taken")
+		case doc.Registry.size() > reg.size() && len(doc.Registry.MidiFX) <= contractSlots:
+			reg = doc.Registry
+		}
+	}
+	return reg, nil
+}
+
 // slotTarget: what a general slot is while a MIDI generator is selected
 type slotTarget struct {
 	key  string // the chain key ("midi_fx1:rate")
@@ -272,7 +350,7 @@ const legacySuffix = " (old)"
 // installed by hand, a maker's build) keeps the device it has, in its local
 // order: its Sets do not travel yet.
 func (h *Host) withContract(built []*sclass, known []*livedevice.Class) []*sclass {
-	reg, err := builtinRegistry()
+	reg, err := h.currentRegistry()
 	if err != nil {
 		log.Printf("devices: the registry: %v (devices as before the contract)", err)
 		return built

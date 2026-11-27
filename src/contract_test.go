@@ -252,3 +252,36 @@ func TestSlotFollowsTheSelectedGenerator(t *testing.T) {
 		t.Errorf("offered: %d devices", len(got))
 	}
 }
+
+// A pack's registry is taken when it is this Pung's own grown at its ends (a
+// module or a parameter published since), and never when anything in it
+// moved: that would be another contract.
+func TestRegistryFromAPack(t *testing.T) {
+	base := &registry{Contract: 1, MidiFX: []string{"arp"}, Modules: map[string]map[string][]string{
+		"synth": {livedevice.Instrument: {"cutoff", "reso"}}, "arp": {livedevice.MIDI: {"rate", outChIdentity}}}}
+	grown := &registry{Contract: 1, MidiFX: []string{"arp", "chords"}, Modules: map[string]map[string][]string{
+		"synth":  {livedevice.Instrument: {"cutoff", "reso", "drive"}},
+		"arp":    {livedevice.MIDI: {"rate", outChIdentity}},
+		"chords": {livedevice.MIDI: {"type", outChIdentity}}}}
+	if !base.appends(grown) || grown.size() <= base.size() {
+		t.Error("a registry with a new module and a new parameter at the end is this one grown")
+	}
+	if !base.appends(base) {
+		t.Error("a registry is itself grown by nothing")
+	}
+	for what, bad := range map[string]*registry{
+		"a parameter moved": {Contract: 1, MidiFX: []string{"arp"}, Modules: map[string]map[string][]string{
+			"synth": {livedevice.Instrument: {"reso", "cutoff"}}, "arp": {livedevice.MIDI: {"rate", outChIdentity}}}},
+		"a module gone": {Contract: 1, MidiFX: []string{"arp"}, Modules: map[string]map[string][]string{
+			"arp": {livedevice.MIDI: {"rate", outChIdentity}}}},
+		"the selector's order changed": {Contract: 1, MidiFX: []string{"chords", "arp"}, Modules: grown.Modules},
+		"another contract":             {Contract: 2, MidiFX: base.MidiFX, Modules: base.Modules},
+	} {
+		if base.appends(bad) {
+			t.Errorf("%s, and it counts as grown", what)
+		}
+	}
+	if grown.appends(base) {
+		t.Error("the smaller registry counts as the larger one grown")
+	}
+}
