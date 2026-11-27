@@ -348,6 +348,9 @@ button.copy:hover { border-color: var(--pung); }
 .values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 18px; }
 @media (max-width: 860px) { .values { grid-template-columns: minmax(0, 1fr); } }
 .value { display: grid; gap: 8px; align-content: start; padding: 4px 0 0; border-top: 2px solid var(--pung); }
+.values.levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 860px) { .values.levels { grid-template-columns: minmax(0, 1fr); } }
+.levels-note { margin: 0; color: var(--muted); max-width: 78ch; }
 .value b { font: 760 1.2rem/1.2 var(--display); font-stretch: 112%; padding-top: 14px; }
 .value span { color: var(--muted); line-height: 1.55; }
 .home-main .wrap { gap: clamp(44px, 6vw, 72px); }
