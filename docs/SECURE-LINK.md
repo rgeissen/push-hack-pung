@@ -83,6 +83,17 @@ record for the authority's challenge), or an API token for Hostinger's DNS so th
 certificate is then made on the Mac (the DNS challenge, by hand), copied to the Push
 (`/data/push-hack/data/pung/tls/`), and the iPad is tried.
 
+**Done 2026-11-27, as far as the Mac goes.** The test name is `push.d.pung.live` (an A record at Hostinger to
+the Push's home address, 192.168.0.134, and the challenge's text record; no AAAA record, so the test says
+something about IPv4). The certificate is Let's Encrypt's, made with acme.sh in Docker in its manual DNS
+mode (`--issue --dns`, the record set by the owner, then `--renew`); its key and acme.sh's account are in
+`~/.config/pung/acme-test/` on the owner's Mac, good until 2027-02-25, renewed by hand the same way (a new
+text record each time). On the Push Pung answers `https://push.d.pung.live:7721` with it, the certificate
+checks from the Mac, and a scratch build of the launched site served as https://pung.live in Chrome,
+opened with `#add=push.d.pung.live` and **without** the local-network permission, connects and reads
+catalog, status, system and settings over https. Still to see: the same from Safari on the iPad. When the
+Push's home address changes, the A record must follow by hand: that is what the service is for.
+
 ## What the service needs (after the proof)
 
 | Piece | What | Whose |
