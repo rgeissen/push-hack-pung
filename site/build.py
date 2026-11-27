@@ -87,7 +87,7 @@ def biglogo():
     x, y = float(hole.group(1)) * k + tx, float(hole.group(2)) * k + ty   # the dot's place, in the logo's units
     return f"""<div class="biglogo"><svg viewBox="0 -250 2770 958" role="img" aria-label="Pung" data-rest="{x:.1f} {y:.1f}">
 <mask id="blm" maskUnits="userSpaceOnUse" x="-200" y="-400" width="3200" height="1300"><rect x="-200" y="-400" width="3200" height="1300" fill="#fff"/><circle id="hole" cx="{x:.1f}" cy="{y:.1f}" r="{float(hole.group(3)) * k:.1f}" fill="#000"/></mask>
-<g mask="url(#blm)"><g transform="{g.group(1)}"><path id="pdim" d="{g.group(2)}" fill="none" style="stroke:var(--pung)" stroke-width="{g.group(3)}" stroke-linecap="round" stroke-linejoin="round"/><path id="pval" d="{g.group(2)}" fill="none" style="stroke:var(--pung)" stroke-width="{g.group(3)}" stroke-linecap="round" stroke-linejoin="round"/><path id="pride" d="M24 8 H36 C55.5 8 55.5 34 36 34 H24" fill="none"/></g>
+<g mask="url(#blm)"><g transform="{g.group(1)}"><path d="{g.group(2)}" fill="none" style="stroke:var(--pung)" stroke-width="{g.group(3)}" stroke-linecap="round" stroke-linejoin="round"/><path id="pride" d="M24 8 H36 C55.5 8 55.5 34 36 34 H24" fill="none"/></g>
 <path transform="{ung.group(1)}" d="{ung.group(2)}" style="fill:var(--ink)"/></g>
 <path id="way" fill="none" d=""/><circle id="dot" cx="{x:.1f}" cy="{y:.1f}" r="{float(dot.group(1)) * k:.1f}" style="fill:var(--cyan)"/>
 </svg></div>

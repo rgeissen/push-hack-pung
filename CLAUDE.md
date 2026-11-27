@@ -323,10 +323,11 @@ before and linked in the footer.
   home on every device." is the headline under it. Pung is spoken of as the platform (host, interface in two
   levels, modulation, governor, deployment), never as a collection of modules, and not as a Push add-on: the
   Push is where it is today (the "Today" line).
-- **The twist on the P** (the owner's idea, 2026-11-27): once landed the dot turns the P up, down and back
-  like an encoder, the P's stroke bright as far as the dot and dim beyond it (Pung's own dial). Built in
-  `ride.js`, played only where the logo carries `data-twist`: shown in a mockup, not on the site until the
-  owner says so (then `biglogo()` adds the attribute).
+- **The twist on the P** (the owner's idea, 2026-11-27): once landed the dot goes down the bowl and back up
+  to where it rests, as a hand turns an encoder and lets it come back. Only that: the owner turned down a
+  version that went both ways and dimmed the P's stroke beyond the dot. Built in `ride.js`, played only
+  where the logo carries `data-twist`: shown in a mockup, not on the site until the owner says so (then
+  `biglogo()` adds the attribute).
 - **The hero's views** (`site/hero.js`): PUNG CUSTOM, the front panels of Pung's five own instruments as loops
   (`site/hero/<id>.mp4` + `.png`), and PUNG DEFAULT, the live-drawn page; they take turns until a tab is pressed.
   `scripts/hero-loops.sh` records the loops from Pung's own renderer (`src/heroframes_test.go`: a chord, the

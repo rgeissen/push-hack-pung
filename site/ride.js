@@ -1,7 +1,7 @@
 // The big logo of the front page: the dot starts in the G, rides each letter and hops to the next, and
 // comes to rest in its place on the P's bowl (the logo's own idea: the dot that rides, site/brand/make.py).
-// There the P is a controller: the dot turns it up, down and back to where it rests, and the P's stroke
-// is the dial's arc (bright as far as the dot, dim beyond it, as Pung draws a knob's value).
+// There the P is a controller: the dot turns down the bowl and back up to where it rests, as a hand turns
+// an encoder and lets it come back (data-twist on the logo; without it the dot lands, gives and rests).
 // Without this script, or where motion is turned down, the logo stands as it is drawn: the dot at rest.
 function PungRide(svg) {
   const UX = 524.1, S = 11.9304, MX = -187.9, MY = -44.7;
@@ -44,28 +44,27 @@ function PungRide(svg) {
   }
   // (the twist is played where the logo asks for it, data-twist; without, the dot lands, gives and rests)
   const twist = svg.hasAttribute("data-twist");
-  const RUN = t, IN = 0.35, TWIST = twist ? 2.5 : 0.55, duration = IN + RUN + TWIST;
-  // on the P: the bowl is the dot's way (a fraction of it; it rests at REST_AT), the P's stroke the dial
-  const bowlWay = svg.querySelector("#pride"), value = svg.querySelector("#pval"), track = svg.querySelector("#pdim");
-  const LB = bowlWay.getTotalLength(), REST_AT = 0.345, BEFORE = 53;   // (the P's stroke up to where the bowl's way begins)
-  const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
-  // the twist, in seconds after the dot has landed: [when, where on the bowl]
-  const TURN = [[0, REST_AT], [0.2, 0.41], [0.42, REST_AT], [0.55, REST_AT]]   // it lands, and gives
-    .concat(twist ? [[1.0, 0.9], [1.18, 0.9],                                   // turned up
-                     [1.78, 0.1], [1.95, 0.1],                                  // turned down
-                     [2.45, REST_AT], [TWIST, REST_AT]] : []);                  // and back to where it rests
+  const RUN = t, IN = 0.35, TWIST = twist ? 1.55 : 0.55, duration = IN + RUN + TWIST;
+  // on the P: the bowl is the dot's way (a fraction of it; it rests at REST_AT)
+  const bowlWay = svg.querySelector("#pride");
+  const LB = bowlWay.getTotalLength(), REST_AT = 0.345;
+  const inOut = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+  const out = (u) => 1 - Math.pow(1 - u, 3);
+  // in seconds after the dot has landed: [when, where on the bowl, how it gets there]
+  const TURN = twist
+    ? [[0, REST_AT], [0.6, 0.9, out], [0.74, 0.9, inOut], [1.5, REST_AT, inOut], [TWIST, REST_AT, inOut]]   // down the bowl with what it landed with, and back up
+    : [[0, REST_AT], [0.2, 0.41, inOut], [0.42, REST_AT, inOut], [TWIST, REST_AT, inOut]];                  // it lands, and gives
   const turned = (s) => {
     for (let i = 1; i < TURN.length; i++) {
       if (s <= TURN[i][0]) {
-        const [t0, f0] = TURN[i - 1], [t1, f1] = TURN[i];
-        return f0 + (f1 - f0) * ease((s - t0) / Math.max(1e-9, t1 - t0));
+        const [t0, f0] = TURN[i - 1], [t1, f1, how] = TURN[i];
+        return f0 + (f1 - f0) * how((s - t0) / Math.max(1e-9, t1 - t0));
       }
     }
     return REST_AT;
   };
-  const ramp = (s, a, b) => Math.min(1, Math.max(0, (s - a) / (b - a)));
   function at(time) {
-    let x, y, r = 65.6, gap = 97.8, k = 1, dial = 0, f = REST_AT;
+    let x, y, r = 65.6, gap = 97.8, k = 1;
     if (time <= IN) {                                      // it comes to be, where it starts
       k = Math.max(0, time / IN); k = 1 - Math.pow(1 - k, 3);
       x = P[0].x; y = P[0].y;
@@ -76,23 +75,13 @@ function PungRide(svg) {
       const q = (tt - T[lo]) / Math.max(1e-9, T[hi] - T[lo]);
       x = P[lo].x + (P[hi].x - P[lo].x) * q; y = P[lo].y + (P[hi].y - P[lo].y) * q;
     } else if (time < duration) {
-      const s = time - IN - RUN;
-      f = turned(s);
-      dial = twist ? Math.min(ramp(s, 0.5, 0.68), 1 - ramp(s, 2.0, 2.45)) : 0;   // the arc shows while it is turned
-      const p = bowlWay.getPointAtLength(LB * f);
+      const p = bowlWay.getPointAtLength(LB * turned(time - IN - RUN));
       [x, y] = m(p.x, p.y);
     } else {
       [x, y] = REST;
     }
     dot.setAttribute("cx", x.toFixed(1)); dot.setAttribute("cy", y.toFixed(1)); dot.setAttribute("r", (r * k).toFixed(1));
     hole.setAttribute("cx", x.toFixed(1)); hole.setAttribute("cy", y.toFixed(1)); hole.setAttribute("r", (gap * k).toFixed(1));
-    if (dial > 0) {
-      value.setAttribute("stroke-dasharray", (BEFORE + LB * f).toFixed(2) + " 400");
-      track.setAttribute("opacity", (1 - 0.72 * dial).toFixed(3));
-    } else {
-      value.removeAttribute("stroke-dasharray");
-      track.setAttribute("opacity", "1");
-    }
   }
   let raf = 0;
   function play(from) {
