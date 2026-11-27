@@ -17,6 +17,7 @@ release, and native instruments built from gearmulator (`native/`).
 | Native modules (emulators): rules, measurements, each instrument's quirks | `docs/NATIVE-MODULES.md` |
 | Module builds for the Push | `docs/push-module-builds.md` |
 | What devices cost (processor, energy), `GET /api/governor` | `docs/GOVERNOR.md` |
+| Stacks (modules with their states, moved between devices): the idea, the format, what is open | `docs/STACKS.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
 | The public pages (manual, vision, design) | `site/README.md` |
 
@@ -273,6 +274,15 @@ before and linked in the footer.
   https://pung.live for Pung to answer: `src/sitecors.go`).
 - pung.live may change `touch_card` and `own_pack_only` only (`siteSettings`): never `catalog_url`, which
   names an unsigned catalog.
+
+## Words
+
+- **Module**: one instrument, audio effect or MIDI generator. **Stack** (the owner's word, 2026-11-27): the
+  modules in their order with the state of each and what is laid over them, the thing that travels between
+  devices (`docs/STACKS.md`; not built yet). Never "rack" for it: on a Push a rack is Ableton's, and Pung
+  writes one per module ("Live rack"). Lower case, so it is not **Stacks**, the owner's chord tool.
+- **Device**: a thing Pung runs on (a Push 3 today; `site/pushlink.js` `KINDS`). In Live, a "device" is
+  also what a module becomes on a track: say "a device in Live" or "Pung device" for that.
 
 ## The module pack
 
