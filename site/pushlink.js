@@ -122,7 +122,7 @@ window.PungPush = (function () {
       clearTimeout(t);
       return "old";
     } catch (_) { /* no answer at all */ }
-    return perm === "unknown" && !split(d).secure ? "browser" : "unreachable";   // (a secure name needs no permission of the browser's)
+    return perm === "unknown" && !split(d).secure ? "browser" : "unreachable";   // (a browser without the permission, Safari, lets a secure name through; Chrome asks for it all the same)
   }
   // connectTo: a device answers; one that is new joins the list
   async function connectTo(d, quiet) {

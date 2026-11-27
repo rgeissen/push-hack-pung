@@ -61,8 +61,13 @@ The two halves that do not depend on how a certificate comes to be:
   and names itself in `/api/status`: `"secure": {"name", "port", "until"}`. A certificate that has run out
   is not offered. `TestSecureLink`.
 - **pung.live** (`site/pushlink.js`): an address under one of the secure domains (`SECURE`, today
-  `d.pung.live`) is reached over https on 7721, needs no permission of the browser's, and is accepted when
-  a deployment's page hands it over (`#add=`).
+  `d.pung.live`) is reached over https on 7721 and is accepted when a deployment's page hands it over
+  (`#add=`). **Chrome still asks its local-network permission for it** (measured 2026-11-27, Chrome on the
+  Mac against the live site: without the permission the fetch fails with
+  `LocalNetworkAccessPermissionDenied`, with it the deployment connects): the permission goes by the
+  address a name resolves to, not by http or https. So on a computer nothing changes for Chrome, Edge and
+  Firefox (one "Allow", once); what the secure link adds is the browsers that have no such permission and
+  refuse plain http outright: Safari, and everything on an iPad or iPhone.
 - **The place switcher** (`src/web/places.js`): a deployment's page that has a certificate hands pung.live
   its secure name, not its plain address.
 
@@ -89,9 +94,11 @@ something about IPv4). The certificate is Let's Encrypt's, made with acme.sh in 
 mode (`--issue --dns`, the record set by the owner, then `--renew`); its key and acme.sh's account are in
 `~/.config/pung/acme-test/` on the owner's Mac, good until 2027-02-25, renewed by hand the same way (a new
 text record each time). On the Push Pung answers `https://push.d.pung.live:7721` with it, the certificate
-checks from the Mac, and a scratch build of the launched site served as https://pung.live in Chrome,
-opened with `#add=push.d.pung.live` and **without** the local-network permission, connects and reads
-catalog, status, system and settings over https. Still to see: the same from Safari on the iPad. When the
+checks from the Mac, and the live site (published that evening with the place switcher and the secure
+names) in Chrome, opened with `#add=push.d.pung.live` and the local-network permission granted, connects
+and reads catalog, status, system and settings over https. (A scratch build served from 127.0.0.1 under
+pung.live's name connected without the permission: a page that is itself on this machine is not asked,
+so that test says nothing about the permission.) Still to see: the same from Safari on the iPad. When the
 Push's home address changes, the A record must follow by hand: that is what the service is for.
 
 ## What the service needs (after the proof)
