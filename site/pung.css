@@ -73,6 +73,9 @@ strong { font-weight: 650; }
   position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--ground);
   border-bottom: 1px solid var(--line);
 }
+/* in the light theme the bar is white, on every page and on Pung's own page (the owner, 2026-11-27); dark, the ground */
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .topbar { background: #fff; } }
+:root[data-theme="light"] .topbar { background: #fff; }
 .topbar .wrap { display: flex; align-items: center; gap: 12px 24px; padding-block: 12px; flex-wrap: wrap; }
 .mark { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
 .mark i { width: 14px; height: 14px; background: var(--pung); border-radius: 2px; display: block; }
