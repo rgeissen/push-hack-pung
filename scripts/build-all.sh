@@ -18,6 +18,12 @@ one() {
     timeout "${RECIPE_TIMEOUT:-1800}" bash "$r" >"/logs/$id.log" 2>&1; rc=$?
     # executables: the Push's loader path (scripts/fix-interp.py)
     [ $rc -eq 0 ] && for d in /out/*/"$id"; do [ -d "$d" ] && python3 /s/fix-interp.py "$d" >>"/logs/$id.log"; done
+    # what it was built from: the source's commit now (package-push-modules.py names the commit it finds
+    # when it packages, which may be later: Vial went into a catalog built before its change and
+    # labelled with the commit after it, 2026-11-27)
+    local src; src=$(grep -o '/modsrc/[A-Za-z0-9._-]*' "$r" | head -1)
+    rm -f "/logs/$id.commit"
+    [ $rc -eq 0 ] && [ -n "$src" ] && git -c safe.directory='*' -C "$src" rev-parse HEAD >"/logs/$id.commit" 2>/dev/null
     local s=ok; [ $rc -eq 0 ] || s=FAILED
     printf '%s\t%s\t%s\n' "$id" "$s" "$(( $(date +%s) - t0 ))" | tee -a /logs/status.tsv
 }

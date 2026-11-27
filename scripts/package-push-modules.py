@@ -34,6 +34,7 @@ tree, logs, dist = os.path.join(out, "modules"), os.path.join(out, "logs"), os.p
 os.makedirs(dist, exist_ok=True)
 cat = {m["id"]: m for m in json.load(open(catalog))["modules"]}
 recipes = {r["id"]: r for r in json.load(open(os.environ.get("PUNG_RECIPES_INDEX") or os.path.join(os.path.dirname(__file__), "..", "build", "recipes", "index.json")))}
+stale = []  # modules whose build is older than their source
 status = {}
 for line in open(os.path.join(logs, "status.tsv")):
     p = line.rstrip("\n").split("\t")
@@ -168,6 +169,13 @@ for mid, m in sorted(cat.items()):
         mj = json.load(open(os.path.join(d, "module.json")))
     folder = r.get("repo") or m["github_repo"].split("/")[1]
     repo = os.path.join(modsrc, folder)
+    # built from the source as it is now? (build-all.sh notes the commit it built from)
+    try:
+        built_from = open(os.path.join(logs, mid + ".commit")).read().strip()
+    except OSError:
+        built_from = ""
+    if built_from and not m.get("native") and built_from != commit(repo):
+        stale.append(f"{mid}: built from {built_from[:12]}, its source is at {commit(repo)[:12]}")
     # the source's folder in modsrc keeps the catalog's name for the repository; a fork may have another
     # (Granny's and Mr Hyde's upstream was renamed, and the forks with it): the catalog build finds it by this
     fork = FORKS.get(m["github_repo"].split("/")[1])
@@ -191,6 +199,9 @@ for mid, m in sorted(cat.items()):
     })
     built.append(mid)
 
+if stale:
+    sys.exit("built before their source changed (the package would name a commit it does not hold): build them again\n  "
+             + "\n  ".join(stale))
 now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 json.dump({"catalog_version": 2, "platform": "push3-x86_64", "glibc_max": "2.35", "built_at": now,
            "modules": entries}, open(os.path.join(out, "index.json"), "w"), indent=1)
