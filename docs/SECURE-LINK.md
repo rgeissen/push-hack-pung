@@ -71,6 +71,17 @@ The two halves that do not depend on how a certificate comes to be:
 - **The place switcher** (`src/web/places.js`): a deployment's page that has a certificate hands pung.live
   its secure name, not its plain address.
 
+- **The way round without typing** (`handOver` in `pushlink.js`, `back` in `places.js`; 2026-11-27, after the
+  owner pressed Connect on the iPad with pung.live opened by itself and got the old refusal: pung.live knew
+  only `push.local`). A browser that lets no page reach the home network can still be *sent* there: on such
+  a refusal pung.live goes to the deployment's own page (`http://<address>:7720/?back=<its page>`), and that
+  page, where the deployment has a secure address, goes straight back to that page of pung.live with it
+  (`#add=<name>`); where it has none, it stays and says so. One press, nothing typed. Once per address and
+  visit; only pung.live's own pages are gone back to (a page name, never an address). Until the service
+  finds deployments by itself this is how pung.live learns a secure name. Tested in Safari's engine as an
+  iPad against a stand-in without a certificate (stays, with the notice), and in Chrome against the Push
+  (comes back to pung.live; a foreign return address is ignored).
+
 Not built: everything that makes a name and a certificate (below).
 
 ## The first step: prove it on the owner's iPad, by hand

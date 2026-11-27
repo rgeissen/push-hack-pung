@@ -418,7 +418,10 @@ before and linked in the footer.
   Safari has none, and every iPad browser is Safari. The way round is the secure link
   (`docs/SECURE-LINK.md`, the owner's choice): a deployment with a name under a public domain and a
   certificate answers over https on 7721 (`src/secure.go`: cert and key in `<data>/tls/`, `"secure"` in
-  `/api/status`); `pushlink.js` and `places.js` reach a name under `SECURE` that way. What makes names and
+  `/api/status`); `pushlink.js` and `places.js` reach a name under `SECURE` that way. pung.live learns
+  that name from the deployment's own page: handed over by the place switcher, or fetched by a round trip
+  when Connect is refused (`handOver`, `?back=`). Chrome asks its local-network permission for a secure
+  name too; a page served from this Mac is never asked, so test that against the live site. What makes names and
   certificates (a domain, DNS, an issuing service) is not built: first one certificate by hand, to see
   that the iPad and the home router (a Fritz!Box refuses public names for home addresses) go along.
 - **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it

@@ -146,8 +146,23 @@ window.PungPush = (function () {
       d.err = await why(d, e);
       d.state = quiet ? "lost" : "off";
       changed("state", d);
+      if (d.err === "browser" && !quiet) handOver(d);
       return false;
     }
+  }
+  // handOver: a browser that lets no page reach the home network (Safari, and so every browser on an iPad)
+  // can still be SENT to a deployment's own page, and that page sends it straight back with the deployment's
+  // secure address (places.js, "?back="), which such a browser does let this page talk to. Nothing typed.
+  // Once per address and visit: a deployment without a secure address keeps the visitor on its own page,
+  // and one that is not there at all leaves the browser's error, from which Back shows the dialog's reason.
+  function handOver(d) {
+    if (split(d).secure) return;
+    let asked = [];
+    try { asked = JSON.parse(sessionStorage.getItem("pung.asked") || "[]") || []; } catch (_) { asked = []; }
+    if (asked.includes(d.addr)) return;
+    try { sessionStorage.setItem("pung.asked", JSON.stringify(asked.concat(d.addr))); } catch (_) { return; }
+    const page = /\/modules\/(index\.html)?$/.test(location.pathname) ? "modules/" : (/([a-z]+\.html)$/.exec(location.pathname) || ["", ""])[1];
+    location.href = `${baseOf(d)}/?back=${page}`;
   }
   // connect(addr): the device at that address (one of the list, or a new one)
   function connect(addr, quiet, kind) {
@@ -292,7 +307,7 @@ window.PungPush = (function () {
     timeout: (a) => `No answer from <b>${a}</b> in 8 seconds. Is it switched on, on the same network as this computer, with Pung running? ${other(a)}`,
     unreachable: (a) => `No answer from <b>${a}</b>. Is it switched on, on the same network as this computer, with Pung running? ${other(a)}`,
     old: () => `It answers, but its Pung is older than 0.6.0, the first that talks to pung.live. <a href="${up}manual.html#update">Update Pung</a> and connect again. Until then, the buttons can open Pung's own page there.`,
-    browser: () => `This browser does not let a web page reach anything on your network. Chrome and Edge (142 and later) and Firefox (151 and later) do, once you allow it. Here, the buttons can open Pung's own page there instead.`,
+    browser: (a) => `This browser lets a web page talk to your home network only over a secure address, and pung.live got none for <b>${a}</b>: either nothing answers there, or its Pung has no secure address yet. Chrome, Edge and Firefox on a computer connect without one. Here, the buttons can open Pung's own page there instead.`,
   };
   function renderDialog() {
     const body = document.getElementById("pl-body");

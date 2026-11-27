@@ -106,10 +106,24 @@
   // this deployment's secure address, where it has a certificate: what pung.live is given, so that a browser
   // that refuses plain http from a secure page (Safari, every browser on an iPad) can still talk to it
   let mine = "";
+  // pung.live sent the visitor here for that address (pushlink.js, handOver: "?back=<its page>"): a browser that
+  // lets no page reach the home network can still be sent to a deployment's page and straight back. Only
+  // pung.live's own pages are gone back to; a deployment without a secure address says so and stays.
+  const back = !onSite && /^(modules\/|[a-z]+\.html)?$/.exec(new URLSearchParams(location.search).get("back") ?? "\n");
+  if (back) history.replaceState(null, "", location.pathname + location.hash);
+  function stays() {
+    const n = document.createElement("div");
+    n.className = "pls-stay"; n.setAttribute("role", "status");
+    n.innerHTML = `<p><b>pung.live cannot reach this deployment from this browser.</b> It has no secure address yet, and this browser lets a web page talk to a home network only over one. This is the deployment's own page; from a computer, Chrome, Edge and Firefox connect pung.live to it.</p><button type="button" aria-label="Close">×</button>`;
+    n.querySelector("button").onclick = () => n.remove();
+    document.body.appendChild(n);
+  }
   if (!onSite) fetch("/api/status").then((r) => r.json()).then((j) => {
     const sec = j && j.secure;
     if (sec && secure(sec.name)) mine = sec.name + (String(sec.port) === "7721" ? "" : ":" + sec.port);
-  }).catch(() => {});
+    if (back && mine) location.replace(`${SITE}${back[1] || ""}#add=${encodeURIComponent(mine)}`);
+    else if (back) stays();
+  }).catch(() => { if (back) stays(); });
   function toSite() {
     const here = mine || (location.port && location.port !== "7720" ? location.hostname + ":" + location.port : location.hostname);
     return `${SITE}${view() === "modules" ? "modules/" : "deployments.html"}#add=${encodeURIComponent(here)}`;
@@ -210,6 +224,11 @@
 .pls-menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; width: auto; }
 .pls-find { margin: 2px 6px 6px; display: block; width: calc(100% - 12px); box-sizing: border-box; height: 34px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--pls-ground); color: var(--pls-fg); padding: 0 10px; font: inherit; font-size: 14px; }
+.pls-stay { position: fixed; z-index: 90; left: 50%; bottom: 20px; transform: translateX(-50%); box-sizing: border-box; width: min(640px, calc(100vw - 24px)); display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 14px 14px 18px; border: 1px solid var(--amber, var(--pung)); border-radius: 12px; background: var(--panel, var(--surface)); color: var(--fg, var(--ink)); box-shadow: 0 24px 60px #0007;
+  font: 14px/1.5 var(--sans, var(--body, system-ui, sans-serif)); }
+.pls-stay p { margin: 0; }
+.pls-stay button { flex: none; width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
 `;
   document.head.appendChild(css);
   draw();
