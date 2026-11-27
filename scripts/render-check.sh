@@ -11,7 +11,12 @@
 #
 # Env: RENDER_SETTLE_MS (a synth silent while it takes a sound in),
 # RENDER_NOTES=36,38,42 (other notes than the chord: a drum machine's pads),
-# RENDER_WATCH=<key> (that key read four times a second while the chord plays).
+# RENDER_WATCH=<key> (that key read four times a second while the chord plays;
+# RENDER_WATCH_MS another interval), RENDER_LATE=<ms> (render that long, paced, before
+# the key=value arguments go in: a module that takes settings only once it has booted,
+# and the JE-8086, which crashes this check without it), RENDER_SEQ=ch:note,ch:note
+# (one held note after another in place of the chord, RENDER_SEQ_MS apart, the watched
+# key read after each).
 # key=@file sets the key to that file's contents (copied in: a state with spaces).
 # A module's own executables (OsTIrus's engine) are linked for the Push's
 # loader path (/lib/ld-linux-x86-64.so.2): the container gets it too.
@@ -33,6 +38,6 @@ for a in "$@"; do # key=@file: the file goes along, at /w/<name>
     ARGS+=("$a")
 done
 set -- "${ARGS[@]}"
-docker run --rm --platform linux/amd64 --shm-size=1g --network none ${PUNG_MC68K_LOG:+-e PUNG_MC68K_LOG=1} ${RENDER_SETTLE_MS:+-e RENDER_SETTLE_MS=$RENDER_SETTLE_MS} ${RENDER_NOTES:+-e RENDER_NOTES=$RENDER_NOTES} ${RENDER_WATCH:+-e RENDER_WATCH=$RENDER_WATCH} ${PUNG_SCAN_LOG:+-e PUNG_SCAN_LOG=1} -v "$PWD/scripts:/s:ro" -v "$(cd "$SCHWUNG" && pwd)/src:/schwung:ro" \
+docker run --rm --platform linux/amd64 --shm-size=1g --network none ${PUNG_MC68K_LOG:+-e PUNG_MC68K_LOG=1} ${RENDER_SETTLE_MS:+-e RENDER_SETTLE_MS=$RENDER_SETTLE_MS} ${RENDER_NOTES:+-e RENDER_NOTES=$RENDER_NOTES} ${RENDER_WATCH:+-e RENDER_WATCH=$RENDER_WATCH} ${RENDER_WATCH_MS:+-e RENDER_WATCH_MS=$RENDER_WATCH_MS} ${RENDER_LATE:+-e RENDER_LATE=$RENDER_LATE} ${RENDER_SEQ:+-e RENDER_SEQ=$RENDER_SEQ} ${RENDER_SEQ_MS:+-e RENDER_SEQ_MS=$RENDER_SEQ_MS} ${PUNG_SCAN_LOG:+-e PUNG_SCAN_LOG=1} -v "$PWD/scripts:/s:ro" -v "$(cd "$SCHWUNG" && pwd)/src:/schwung:ro" \
     -v "$WORK:/w" "$IMAGE" sh -c "ln -sf /lib64/ld-linux-x86-64.so.2 /lib/ld-linux-x86-64.so.2; gcc -O1 -I/schwung -o /tmp/rc /s/render-check.c -ldl -lm && /tmp/rc /w/$ID $*"
 cp "$WORK/render-check.wav" "build/push-modules/$ID-render-check.wav" 2>/dev/null && echo "kept: build/push-modules/$ID-render-check.wav"

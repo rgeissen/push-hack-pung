@@ -70,7 +70,9 @@ python3 scripts/build-catalog.py --base-url "" # the catalog -> build/catalog
 - **Hear a module without Live**: `scripts/render-check.sh <id> <assets dir> [secs] [key=val | '?key']`
   loads the shipping `dsp.so` as the chain host does, plays a chord and reports peak/RMS; `?key` reads a
   value before and after the chord. Env: `RENDER_SETTLE_MS` (a synth silent while it takes a sound in),
-  `PUNG_SCAN_LOG`, `PUNG_MC68K_LOG`. The args go through `sh -c $*`: a value with a space breaks (use a
+  `PUNG_SCAN_LOG`, `PUNG_MC68K_LOG`, `RENDER_WATCH=<key>` (read while the chord plays), `RENDER_LATE=<ms>`
+  (rendered, paced, before the settings go in). **JE-8086 (`jp8000`) needs `RENDER_LATE=9000`**: without it
+  the check itself crashes right after the boot, the old build as the new (2026-11-27). The args go through `sh -c $*`: a value with a space breaks (use a
   bank's number, not "Bank B"); in zsh quote `'?key'`.
 - Docker `go build` under amd64 emulation occasionally crashes at random: retry.
 - **core is upstream's** (`federico-pepe/ableton-push-hack`), at a commit on its `main`

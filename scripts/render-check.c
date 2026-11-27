@@ -106,6 +106,14 @@ int main(int argc, char **argv) {
     if (api->get_error) api->get_error(in, err, sizeof(err));
     printf("status: %s (%.1f s)%s%s\n", st, now_s() - t0, err[0] ? ", error: " : "", err);
     if (err[0]) return 1;
+    // RENDER_LATE=<ms>: render that long (paced) before the key=value arguments go in,
+    // for a module that takes its settings only once it has booted
+    if (getenv("RENDER_LATE")) {
+        static int16_t lb[256];
+        const int n = atoi(getenv("RENDER_LATE")) * 44100 / 128 / 1000;
+        for (int b = 0; b < n; b++) { api->render_block(in, lb, 128); usleep(2900); }
+        printf("late: %d ms rendered before the settings\n", atoi(getenv("RENDER_LATE")));
+    }
     for (int i = 3; i < argc; i++) {
         char kv[512];
         snprintf(kv, sizeof(kv), "%s", argv[i]);
@@ -164,6 +172,28 @@ int main(int argc, char **argv) {
     printf("notes:");
     for (int i = 0; i < nnotes; i++) printf(" %d", notes[i]);
     printf("\n");
+    // RENDER_SEQ=ch:note,ch:note,...: instead of the chord, one note after another (held), 
+    // RENDER_SEQ_MS apart (default 400), RENDER_WATCH read after each
+    const char *seq = getenv("RENDER_SEQ");
+    if (seq && *seq) {
+        const int gap = getenv("RENDER_SEQ_MS") ? atoi(getenv("RENDER_SEQ_MS")) : 400;
+        static int16_t sb[256];
+        for (const char *p = seq; *p;) {
+            int ch = 1, nt = 60;
+            if (sscanf(p, "%d:%d", &ch, &nt) != 2) break;
+            uint8_t on[3] = {(uint8_t)((nt < 0 ? 0x80 : 0x90) | ((ch - 1) & 15)), (uint8_t)(nt < 0 ? -nt : nt), (uint8_t)(nt < 0 ? 0 : 100)};
+            api->on_midi(in, on, 3, 0);
+            for (int b = 0; b < gap * 44100 / 128 / 1000; b++) { api->render_block(in, sb, 128); usleep(2900); }
+            const char *w = getenv("RENDER_WATCH");
+            static char wv[2048]; wv[0] = 0;
+            if (w) api->get_param(in, w, wv, sizeof(wv));
+            printf("seq ch%d note %d: %s\n", ch, nt, wv);
+            p = strchr(p, ',');
+            if (!p) break;
+            p++;
+        }
+        nnotes = 0;
+    }
     for (int i = 0; i < nnotes; i++) {
         uint8_t on[3] = {0x90, notes[i], 100};
         api->on_midi(in, on, 3, 0);
@@ -190,7 +220,9 @@ int main(int argc, char **argv) {
         // RENDER_WATCH=<key>: the key four times a second while the chord plays
         // (Vivace's wave_pos moving with an LFO)
         const char *watch = getenv("RENDER_WATCH");
-        if (watch && *watch && b % 86 == 0) {
+        static int every = 0;
+        if (!every) { const char *wm = getenv("RENDER_WATCH_MS"); every = wm ? (int)(atoi(wm) * 44.1 / 128 + 0.5) : 86; if (every < 1) every = 1; }
+        if (watch && *watch && b % every == 0) {
             static char wv[2048];
             wv[0] = 0;
             api->get_param(in, watch, wv, sizeof(wv));
