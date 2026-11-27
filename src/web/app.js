@@ -67,7 +67,10 @@
     state.missed = 0;
     $("offline").hidden = true; document.body.classList.remove("down");
     state.status = st;
-    $("rail-version").textContent = st.version ? "v" + st.version : "";
+    // a newer release (newest.go): said beside the version, with the way to the Pung Installer on pung.live
+    const rv = $("rail-version");
+    if (st.newest) rv.innerHTML = `v${esc(st.version)} · <a href="https://pung.live/deployments.html#installer" target="_blank" rel="noopener" title="Pung ${esc(st.newest)} is out. The Pung Installer updates this Push; your modules, sounds and settings stay.">${esc(st.newest)} is out ↗</a>`;
+    else rv.textContent = st.version ? "v" + st.version : "";
     let dv = { devices: [], selected: -1 };
     try { dv = await api("/api/pung-devices"); } catch (e) { /* an older Pung */ }
     state.devices = dv.devices || [];

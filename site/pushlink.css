@@ -33,6 +33,12 @@
 .pl-chip.busy { grid-template-columns: auto 1fr; } .pl-chip.busy .t { grid-column: 2; }
 .pl-chip.on { border-color: color-mix(in srgb, var(--pl-ok) 55%, var(--pl-line)); }
 .pl-chip.bad { border-color: color-mix(in srgb, var(--pl-bad) 55%, var(--pl-line)); }
+/* its Pung is not the newest: the chip says so, the dialog has the way to the installer */
+.pl-chip.old { border-color: var(--pl-acc); }
+.pl-chip.old .s b { color: var(--pl-acc); font-weight: 600; }
+.pl-old { display: grid; gap: 12px; justify-items: start; margin: 4px 0 16px; padding: 14px 16px; border: 1px solid var(--pl-acc); border-radius: var(--pl-r);
+  background: color-mix(in srgb, var(--pl-acc) 9%, var(--pl-ground)); }
+.pl-old p { margin: 0; }
 button.pl-chip { cursor: pointer; } button.pl-chip:hover { border-color: var(--pl-acc); }
 
 .pl-dialog { width: min(560px, calc(100vw - 32px)); margin: auto; padding: 28px 28px 24px; background: var(--pl-ground); color: var(--pl-ink);

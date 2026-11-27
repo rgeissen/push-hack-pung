@@ -209,6 +209,23 @@ window.PungPush = (function () {
     });
   }
 
+  // ---- is its Pung the newest? ----------------------------------------------------------------------
+  // The site names the newest release (release.json, as a release publishes it). A deployment that runs
+  // an older Pung says so wherever it shows: its chip, its dialog, its panel on Deployments, each with the
+  // way to the Pung Installer, which updates Pung (Pung does not update itself).
+  let newest = "";
+  // a < b, as versions (1.2.10 after 1.2.9)
+  function older(a, b) {
+    const pa = String(a).split(/[.-]/), pb = String(b).split(/[.-]/);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const x = parseInt(pa[i] || "0", 10), y = parseInt(pb[i] || "0", 10);
+      if (x !== y) return x < y;
+    }
+    return false;
+  }
+  const behind = (d) => (d && d.version && newest && older(d.version, newest) ? newest : "");
+  if (enabled) fetch(up + "release.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((j) => { newest = (j && j.version) || ""; changed("newest"); }).catch(() => {});
+
   // ---- the chip: where the device in use stands, in a page's head ---------------------------------
   // counts(): a page may say what to count (the Modules page: the modules it lists)
   let counts = (d) => {
@@ -221,7 +238,7 @@ window.PungPush = (function () {
       const d = cur(), a = esc(d.addr), n = esc(nameOf(d)), c = counts(d), more = devices.length > 1 ? ` <span class="n">${devices.indexOf(d) + 1}/${devices.length}</span>` : "";
       let html;
       if (!devices.length && d.state !== "trying") html = `<button type="button" class="pl-btn primary" aria-haspopup="dialog">Connect your Push</button>`;
-      else if (d.state === "on") html = `<button type="button" class="pl-chip on" aria-haspopup="dialog"><i class="pl-led on" aria-hidden="true"></i><span class="t">${n}${more}</span><span class="s">${d.version ? "Pung " + esc(d.version) + " · " : ""}${c.installed} installed${c.updates ? " · " + c.updates + " update" + (c.updates === 1 ? "" : "s") : ""}</span></button>`;
+      else if (d.state === "on") html = `<button type="button" class="pl-chip on${behind(d) ? " old" : ""}" aria-haspopup="dialog"><i class="pl-led on" aria-hidden="true"></i><span class="t">${n}${more}</span><span class="s">${d.version ? "Pung " + esc(d.version) + " · " : ""}${behind(d) ? `<b>${esc(behind(d))} is out</b>` : `${c.installed} installed${c.updates ? " · " + c.updates + " update" + (c.updates === 1 ? "" : "s") : ""}`}</span></button>`;
       else if (d.state === "trying") html = `<span class="pl-chip busy" role="status"><span class="pl-spin" aria-hidden="true"></span><span class="t">Connecting to ${a}…</span></span>`;
       else if (d.state === "lost") html = `<button type="button" class="pl-chip bad" aria-haspopup="dialog"><i class="pl-led bad" aria-hidden="true"></i><span class="t">${d.restarting ? "Pung is starting again…" : n + " is not answering"}${more}</span><span class="s">${a}${d.restarting ? "" : " · trying again"}</span></button>`;
       else if (d.state === "link") html = `<button type="button" class="pl-chip link" aria-haspopup="dialog"><span class="t">${n}: ${a}</span><span class="s">buttons open Pung there</span></button>`;
@@ -283,7 +300,8 @@ window.PungPush = (function () {
       body.innerHTML = `
         <p class="pl-kicker">Connected · ${esc(k.label)}</p>
         <h2 id="pl-title"><i class="pl-led on" aria-hidden="true"></i> ${esc(nameOf(d))}</h2>
-        <dl class="pl-facts"><dt>Address</dt><dd>${a}</dd><dt>Pung</dt><dd>${esc(d.version || "—")}</dd>
+        ${behind(d) ? `<div class="pl-old"><p><b>Pung ${esc(behind(d))} is out.</b> This one runs ${esc(d.version)}. The Pung Installer updates it; your modules, sounds and settings stay.</p><a class="pl-btn primary" href="${up}deployments.html#installer">Get the Pung Installer</a></div>` : ""}
+        <dl class="pl-facts"><dt>Address</dt><dd>${a}</dd><dt>Pung</dt><dd>${esc(d.version || "—")}${behind(d) ? "" : newest && d.version ? " · the newest" : ""}</dd>
           <dt>Installed</dt><dd>${c.installed} module${c.installed === 1 ? "" : "s"}</dd><dt>Updates</dt><dd>${c.updates || "none"}</dd></dl>
         ${others}
         <p class="pl-sub">This site installs and updates modules on it and changes Pung's settings there, over your home network. A module's ROM and removing a module stay on Pung's own page.</p>
@@ -369,7 +387,7 @@ window.PungPush = (function () {
     connect, disconnect, open, resume, toast, confirm,
     // every device
     get devices() { return devices.slice(); },
-    nameOf, baseOf, fetchOf, jsonOf, readOf, systemOf, connectTo, remove, select, rename, inUse: () => cur(),
+    nameOf, baseOf, fetchOf, jsonOf, readOf, systemOf, behind, newest: () => newest, connectTo, remove, select, rename, inUse: () => cur(),
     on: (f) => subs.push(f), changed, renderChips,
     setCounts: (f) => { counts = f; },
   };

@@ -260,6 +260,12 @@ and a panel for every connected deployment: processor with its last minute, memo
 Pung against the newest, its modules, Pung's two switches). Vision, Manual, Design and Performance are built as
 before and linked in the footer.
 
+- **A Pung that is not the newest says so, and names the Pung Installer** (the owner's word, 2026-11-27; Pung
+  does not update itself). The site names the newest release (`release.json`); `pushlink.js` (`behind`) marks
+  the chip on every page and its dialog, Deployments puts a notice first in the panel, each with the way to
+  `deployments.html#installer`. Pung reads the same file now and then (`src/newest.go`, `PUNG_RELEASE_URL` for
+  a staging copy; never with `own_pack_only`) and answers `"newest"` in `/api/status`; its own page shows it
+  beside the version. Preview it: a scratch build of the site with a later version in its `release.json`.
 - **The fonts are the site's own** (`site/fonts/`: Archivo, IBM Plex Mono, Plus Jakarta Sans as WOFF2, Latin and
   Latin Extended, each under the OFL; `faces.css` goes into every page's head): no page asks another host
   for anything (a visitor's address sent to a font service is a legal risk for a site run from Germany).

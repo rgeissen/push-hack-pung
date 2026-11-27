@@ -10,21 +10,12 @@
   const PP = window.PungPush, box = document.getElementById("dv");
   if (!PP || !PP.enabled || !box) return;
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  let newest = "";
-  fetch("release.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((j) => { newest = (j && j.version) || ""; render(); }).catch(() => {});
+  // the newest release, as the site names it (pushlink.js reads release.json for every page)
+  const newestNow = () => PP.newest();
   // per device, while the page is open: its settings, the processor's last minute, what is open
   const more = new Map();
   const of = (d) => { if (!more.has(d.id)) more.set(d.id, { settings: null, cpu: [], renaming: false, noSys: false }); return more.get(d.id); };
 
-  // a < b, as versions (1.2.10 after 1.2.9)
-  function older(a, b) {
-    const pa = String(a).split(/[.-]/), pb = String(b).split(/[.-]/);
-    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-      const x = parseInt(pa[i] || "0", 10), y = parseInt(pb[i] || "0", 10);
-      if (x !== y) return x < y;
-    }
-    return false;
-  }
   function ago(iso) {
     const s = (Date.now() - new Date(iso).getTime()) / 1000;
     if (isNaN(s)) return "";
@@ -89,9 +80,9 @@
         <p class="dv-note">${devs.length ? esc([...new Set(devs.map((x) => x.name || x.module))].slice(0, 6).join(", ")) + (emus.length ? `. ${emus.length} emulator${emus.length === 1 ? "" : "s"}: ${playing} playing, ${emus.length - playing} resting.` : ".") : "None loaded in Live right now."} ${devs.length ? `<a href="${esc(PP.baseOf(d))}/" target="pung-device" rel="noopener">Play and edit them on its own page ↗</a>` : ""}</p></div>`);
     }
     // Pung
-    const behind = newest && d.version && older(d.version, newest);
+    const newest = newestNow(), behind = !!PP.behind(d);
     out.push(`<div class="dv-tile"><p class="dv-k">Pung</p><p class="dv-big">${esc(d.version || "?")}</p>
-      <p class="dv-note">${behind ? `Pung ${esc(newest)} is out. <a href="#install">Update it</a> the way you installed it; modules, sounds and settings stay.` : newest ? "The newest Pung." : ""}${s && s.pung ? ` Running for ${span(s.pung.uptime_s)}.` : ""}${s && s.system && (s.system.name || s.system.version) ? ` ${esc(system(s.system))}.` : ""}</p></div>`);
+      <p class="dv-note">${behind ? `Not the newest: ${esc(newest)} is out.` : newest ? "The newest Pung." : ""}${s && s.pung ? ` Running for ${span(s.pung.uptime_s)}.` : ""}${s && s.system && (s.system.name || s.system.version) ? ` ${esc(system(s.system))}.` : ""}</p></div>`);
     // modules
     const ms = (d.data && d.data.modules.filter((x) => x.supported && x.in_catalog)) || [];
     const inst = ms.filter((x) => x.installed).length, ups = ms.filter((x) => x.status === "update").length;
@@ -132,7 +123,11 @@
         <button type="button" class="btn" data-remove="${d.id}" aria-label="Remove ${esc(PP.nameOf(d))} from this page">Remove</button></div></header>`;
     let body;
     if (d.state === "on") {
-      body = `<div class="dv-tiles">${tiles(d)}</div>
+      const out = PP.behind(d);
+      body = `${out ? `<div class="dv-update" role="status"><div><p><b>Pung ${esc(out)} is out.</b> This ${esc(k.short)} runs ${esc(d.version)}.</p>
+          <p class="dv-note">Run the Pung Installer again: it finds this ${esc(k.short)}, updates Pung in about half a minute, and keeps your modules, their firmware, your sounds and your settings. Push Hack Catalog on the ${esc(k.short)} updates it too.</p></div>
+          <a class="btn primary" href="#installer">Get the Pung Installer</a></div>` : ""}
+        <div class="dv-tiles">${tiles(d)}</div>
         ${m.noSys ? `<p class="dv-note dv-old">Its Pung is older than 0.6.0 and says less about what it runs on: <a href="#install">update Pung</a> for processor, memory, storage and battery here.</p>` : ""}
         ${settingsCard(d)}`;
     } else {
