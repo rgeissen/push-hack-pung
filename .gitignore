@@ -7,6 +7,8 @@ __pycache__/
 /livedevice.so
 /restart-live.sh
 /dist/
+/site/home.html
+/site/install.html
 /site/vision.html
 /site/manual.html
 /site/design.html
