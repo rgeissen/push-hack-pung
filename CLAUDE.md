@@ -240,9 +240,10 @@ footer. `site/pushlink.js` + `pushlink.css` are the one connection to a visitor'
   (`site/hero/<id>.mp4` + `.png`), and PUNG DEFAULT, the live-drawn page; they take turns until a tab is pressed.
   `scripts/hero-loops.sh` records the loops from Pung's own renderer (`src/heroframes_test.go`: a chord, the
   spectrum of a sound fed in, an LFO of the test's own on the cutoff and the keys in `heroMoves`), no Push needed.
-  The emulators are drawn at a neutral setting, never a sound of the player's firmware; Vivace with one of its
-  own factory sounds (`scripts/screens/hero-values/vivace.json`, read from a device without Live: its tables
-  come from the engine, and a panel without them says READING THE TABLE). Rerun it when a native panel changes.
+  The emulators play sounds of Pung's own, made up for the picture (`scripts/screens/hero-values/<id>.json`:
+  names like "Pung Aurora", Xenia's wavetable a user table computed there), never a sound of the player's
+  firmware; Vivace one of its own factory sounds (read from a device without Live: its tables come from the
+  engine, and a panel without them says READING THE TABLE). Rerun it when a native panel changes.
 - **`site/install.json` "launched"** gates what is not released: the installer downloads, "Connect your Push",
   the unreleased manual (until then the manual is the one of the last release, from git). Preview the launched
   site against a real Push without publishing: build with it true into a scratch folder, serve it over https on

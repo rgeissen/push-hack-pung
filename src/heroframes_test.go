@@ -30,10 +30,10 @@ import (
 // heroMoves: beside the first filter's cutoff, the controls the loop's own
 // LFO moves on each panel (a module's live_mod would name them)
 var heroMoves = map[string][]string{
-	"nodalred": {"resonance", "osc_mix", "lfo1_amount", "fm_amount"},
-	"xenia":    {"w1_start", "w2_start", "f1_reso"},
-	"vavra":    {"osc1_detune", "osc2_detune"},
-	"ostirus":  {"resonance", "osc_balance"},
+	"nodalred": {"resonance", "mix", "lfo1_amount", "fm", "pw"},
+	"xenia":    {"w1_start_w", "w2_start_w", "f1_resonance"},
+	"vavra":    {"o1_detune", "o2_detune", "f1_resonance"},
+	"ostirus":  {"filter1_resonance", "osc_balance", "cutoff2", "soft1"},
 	"vivace":   {"osc_1_wave_frame", "osc_2_wave_frame", "filter_1_resonance"},
 }
 
@@ -103,6 +103,23 @@ func TestHeroFrames(t *testing.T) {
 			continue
 		}
 		scr, keys := comp.pageScreen(0)
+		if dump := os.Getenv("PUNG_HERO_KEYS"); dump != "" { // what the panel reads, to make up a sound for it
+			type kv struct {
+				Key, Value, Type string
+				Min, Max         float64
+				Options          []string `json:",omitempty"`
+			}
+			var list []kv
+			for _, k := range keys {
+				e := kv{Key: k, Value: raw[k]}
+				if m := cm.Params[k]; m != nil {
+					e.Type, e.Min, e.Max, e.Options = m.Type, m.Min, m.Max, m.Options
+				}
+				list = append(list, e)
+			}
+			b, _ := json.MarshalIndent(list, "", " ")
+			os.WriteFile(filepath.Join(dump, id+".json"), b, 0o644) //nolint:errcheck
+		}
 		if scr == nil {
 			t.Errorf("%s: the panel draws no screen", id)
 			continue
