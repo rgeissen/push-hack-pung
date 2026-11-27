@@ -348,7 +348,7 @@ func (h *Host) setStackCheck(st *setStack) map[string]any {
 		return f
 	})
 	ready := true
-	var install []string
+	install := []string{} // (an empty list in the answer, not null)
 	for _, m := range mods {
 		ready = ready && m.State == "ready"
 		if m.State == "install" || m.State == "update" {
