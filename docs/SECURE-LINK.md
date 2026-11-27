@@ -109,7 +109,11 @@ checks from the Mac, and the live site (published that evening with the place sw
 names) in Chrome, opened with `#add=push.d.pung.live` and the local-network permission granted, connects
 and reads catalog, status, system and settings over https. (A scratch build served from 127.0.0.1 under
 pung.live's name connected without the permission: a page that is itself on this machine is not asked,
-so that test says nothing about the permission.) Still to see: the same from Safari on the iPad. When the
+so that test says nothing about the permission.) **And on the owner's iPad it works** (the same evening):
+once the Push's page had been opened at `https://push.d.pung.live:7721` and had handed its name over,
+pung.live talks to the Push there, where before it could not at all. The iPad, the certificate and the
+home router all go along; what was missing was only pung.live learning the name by itself (the way round
+without typing, above). When the
 Push's home address changes, the A record must follow by hand: that is what the service is for.
 
 ## What the service needs (after the proof)
