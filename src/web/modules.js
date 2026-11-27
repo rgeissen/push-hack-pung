@@ -258,7 +258,7 @@
 
   function action(x) {
     // on pung.live: what the connected Push has; not connected, Install asks to connect first
-    if (PUBLIC && !CONNECT) return `<a class="act" href="../install.html" title="Pung installs modules on the Push, from its own Modules page">Install on your Push</a>`;
+    if (PUBLIC && !CONNECT) return `<a class="act" href="../push.html#install" title="Pung installs modules on the Push, from its own Modules page">Install on your Push</a>`;
     if (PUBLIC) {
       if (push.state === "link") return `<a class="act" href="${esc(pushBase())}/#modules/${encodeURIComponent(x.id)}" target="pung-push" rel="noopener" title="Opens this module on Pung's own page on your Push">Open on your Push ↗</a>`;
       if (push.state !== "on") return `<button type="button" class="act" data-act="install" title="Connect your Push, and it installs there">Install</button>`;
@@ -593,59 +593,16 @@
     return h;
   }
 
-  // ---- pung.live: the Pung on your Push ------------------------------------------------
-  // state: off (not connected) | trying | on (this page talks to it) | lost (it
-  // did, and now does not answer) | link (this browser cannot: buttons open
-  // Pung's own page on the Push)
-  const PUSH_KEY = "pung.push";
-  const push = { addr: localStorage.getItem(PUSH_KEY) || "push.local", state: "off", data: null, version: "", err: "" };
-  // the address as typed: a name or an address, a port after it if not Pung's own 7720
-  function splitAddr(a) {
-    let m = /^\[([^\]]+)\](?::(\d+))?$/.exec(a) || (/^[^:]+:(\d+)$/.test(a) ? [a, a.replace(/:\d+$/, ""), a.split(":").pop()] : null);
-    return m ? { host: m[1], port: m[2] || "7720" } : { host: a, port: "7720" };
-  }
-  const pushBase = () => {
-    const { host, port } = splitAddr(push.addr);
-    return `http://${host.includes(":") ? "[" + host + "]" : host}:${port}`;
-  };
-  function normAddr(a) {
-    a = String(a || "").trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "").replace(/:7720$/, "");
-    return a || "push.local";
-  }
-  // how the browser is told the Push is on the home network: a .local name and
-  // a private address it knows by themselves (and then lets this https page
-  // reach the Push's http, once the visitor allows it). A plain name needs
-  // targetAddressSpace; given for push.local, it fails wherever the name also
-  // has a global IPv6 address, which the browser counts as public
-  // (Chrome 158, 2026-11-26).
-  function reach() {
-    const h = splitAddr(push.addr).host;
-    const known = /\.local$/i.test(h) || /^[\d.]+$/.test(h) || h.includes(":");
-    return known ? {} : { targetAddressSpace: "local" };
-  }
-  function pushFetch(path, opts) {
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
-    return fetch(pushBase() + path, { ...(opts || {}), ...reach(), mode: "cors", cache: "no-store", signal: ctl.signal })
-      .finally(() => clearTimeout(t));
-  }
-  async function pushJSON(path) {
-    const r = await pushFetch(path);
-    if (!r.ok) throw new Error("Pung answered " + r.status);
-    return r.json();
-  }
+  // ---- pung.live: the Pung on your Push (site/pushlink.js: one connection for the whole site) ----
+  const PP = window.PungPush || null;
+  const push = PP ? PP.state : { state: "off", addr: "push.local", data: null };
+  const pushBase = () => (PP ? PP.base() : "");
+  const pushFetch = (path, opts) => PP.fetch(path, opts);
+  const openConnect = () => PP && PP.open();
   async function pushRead() {
-    try {
-      const d = await pushJSON("/api/catalog");
-      if (!d || !d.modules) throw new Error("no catalog");
-      push.data = d;
-      push.state = "on";
-      m.down = false;
-      if (!d.restarting) m.applying = false;
-      if (!push.version) pushJSON("/api/status").then((st) => { push.version = st.version || ""; renderPush(); renderConnect(); }).catch(() => {});
-    } catch (e) {
-      if (push.state === "on") push.state = "lost";
-      m.down = !!m.applying;
-    }
+    if (await PP.read()) { m.down = false; if (!push.data.restarting) m.applying = false; }
+    else m.down = !!m.applying;
+    push.restarting = !!m.applying;
   }
   // the site's catalog, and over it what the Push has: its install state, and
   // the version its own catalog would install
@@ -662,181 +619,33 @@
     });
     return { ...site, modules: rows, pending: push.data.pending, apply: push.data.apply, restarting: push.data.restarting };
   }
-  // why it did not connect, as far as the browser tells
-  async function why(e) {
-    let perm = "";
-    for (const name of ["local-network", "local-network-access"]) { // Chrome 145 on: local-network (the other its earlier name)
-      try { perm = (await navigator.permissions.query({ name })).state; break; } catch (_) { perm = "unknown"; }
-    }
-    if (perm === "denied") return "denied";
-    if (e && e.name === "AbortError") return "timeout";
-    // it answers, but its Pung does not let pung.live read: one from before 0.6.0
-    try {
-      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 5000);
-      await fetch(pushBase() + "/api/status", { ...reach(), mode: "no-cors", cache: "no-store", signal: ctl.signal });
-      clearTimeout(t);
-      return "old";
-    } catch (_) { /* no answer at all */ }
-    if (perm === "unknown") return "browser";
-    return "unreachable";
-  }
-  async function connect(addr, quiet) {
-    push.addr = normAddr(addr);
-    push.state = "trying";
-    push.err = "";
-    renderPush(); renderConnect();
-    try {
-      const d = await pushJSON("/api/catalog");
-      if (!d || !d.modules) throw new Error("no catalog");
-      push.data = d;
-      push.state = "on";
-      localStorage.setItem(PUSH_KEY, push.addr);
-      localStorage.setItem(PUSH_KEY + ".on", "1");
-      localStorage.removeItem(PUSH_KEY + ".link");
-      try { push.version = (await pushJSON("/api/status")).version || ""; } catch (_) { /* the catalog is what counts */ }
-      if (!quiet) PungToast(`Connected to your Push${push.version ? ", Pung " + push.version : ""}.`);
-      if ($("push-dialog").open && !m.afterConnect) setTimeout(() => $("push-dialog").close(), 900);
-      else if ($("push-dialog").open) $("push-dialog").close();
-      await load(false);
-      if (m.afterConnect) {
-        const id = m.afterConnect;
-        m.afterConnect = null;
-        const x = m.data.modules.find((r) => r.id === id);
-        if (x && !x.push_missing && x.status === "available") install(id);
-        else if (x) openSheet(id);
-      }
-    } catch (e) {
-      push.err = await why(e);
-      push.state = quiet ? "lost" : "off";
-      renderPush(); renderConnect();
-      if (quiet) schedule(8000);
-    }
-  }
-  function disconnect() {
-    push.state = "off"; push.data = null; push.version = "";
-    localStorage.removeItem(PUSH_KEY + ".on");
-    localStorage.removeItem(PUSH_KEY + ".link");
-    $("push-dialog").close();
-    m.data = merged(); render();
-  }
-  function useLinks() {
-    push.addr = normAddr($("push-addr") ? $("push-addr").value : push.addr);
-    push.state = "link"; push.data = null;
-    localStorage.setItem(PUSH_KEY, push.addr);
-    localStorage.setItem(PUSH_KEY + ".link", "1");
-    localStorage.removeItem(PUSH_KEY + ".on");
-    $("push-dialog").close();
-    m.data = merged(); render();
-  }
-
-  // the chip in the page's head: where the Push stands
-  function renderPush() {
-    const el = $("push-link");
-    if (!el || !CONNECT) return;
-    const a = esc(push.addr);
-    // counted as the page lists them (the catalog's modules), as its filters count
-    const listed = push.data && m.data ? m.data.modules : [];
-    const inst = listed.filter((x) => x.installed).length, ups = listed.filter((x) => x.status === "update").length;
-    let html;
-    if (push.state === "on") html = `<button type="button" class="push-chip on" aria-haspopup="dialog"><i class="led on" aria-hidden="true"></i><span class="t">Your Push</span><span class="s">${push.version ? "Pung " + esc(push.version) + " · " : ""}${inst} installed${ups ? " · " + ups + " update" + (ups === 1 ? "" : "s") : ""}</span></button>`;
-    else if (push.state === "trying") html = `<span class="push-chip busy" role="status"><span class="spin" aria-hidden="true"></span><span class="t">Connecting to ${a}…</span></span>`;
-    else if (push.state === "lost") html = `<button type="button" class="push-chip bad" aria-haspopup="dialog"><i class="led bad" aria-hidden="true"></i><span class="t">${m.applying ? "Pung is starting again…" : "Your Push is not answering"}</span><span class="s">${a}${m.applying ? "" : " · trying again"}</span></button>`;
-    else if (push.state === "link") html = `<button type="button" class="push-chip link" aria-haspopup="dialog"><span class="t">Your Push: ${a}</span><span class="s">buttons open Pung there</span></button>`;
-    else html = `<button type="button" class="btn primary push-connect" aria-haspopup="dialog">Connect your Push</button>`;
-    if (el.dataset.sig === html) return;
-    el.dataset.sig = html;
-    el.innerHTML = html;
-    const b = el.querySelector("button");
-    if (b) b.onclick = () => openConnect();
-  }
-
-  function openConnect() {
-    renderConnect();
-    const dlg = $("push-dialog");
-    if (!dlg.open) dlg.showModal();
-    const f = $("push-addr");
-    if (f && push.state !== "on") { f.focus(); f.select(); }
-  }
-
-  const tryOther = (a) => (/\.local$/i.test(a) ? "Its IP address works too." : "Check the address, or try push.local.");
-  const WHY = {
-    denied: (a) => `Your browser blocks pung.live from your home network. Allow <b>Local network access</b> for pung.live in the site's settings (the icon left of the address), then connect again.`,
-    timeout: (a) => `No answer from <b>${a}</b> in 8 seconds. Is the Push on, on the same network as this computer, with Pung running? ${tryOther(a)}`,
-    unreachable: (a) => `No answer from <b>${a}</b>. Is the Push on, on the same network as this computer, with Pung running? ${tryOther(a)}`,
-    old: (a) => `Your Push answers, but its Pung is older than 0.6.0, the first that talks to pung.live. <a href="../manual.html#update">Update Pung</a> and connect again. Until then, the buttons can open Pung's own page on your Push.`,
-    browser: (a) => `This browser does not let a web page reach your Push. Chrome and Edge (142 and later) and Firefox (151 and later) do, once you allow it. Here, the buttons can open Pung's own page on your Push instead.`,
-  };
-  function renderConnect() {
-    const body = $("push-body");
-    if (!body) return;
-    const a = esc(push.addr);
-    const open = `<a class="btn" href="${esc(pushBase())}/#modules" target="pung-push" rel="noopener">Open Pung on your Push ↗</a>`;
-    if (push.state === "on") {
-      const mods = push.data ? push.data.modules : [], listed = m.data ? m.data.modules : [];
-      const inst = listed.filter((x) => x.installed).length, ups = listed.filter((x) => x.status === "update").length;
-      const missing = m.site ? m.site.modules.filter((x) => !mods.some((p) => p.id === x.id)).length : 0;
-      body.innerHTML = `
-        <p class="kicker">Connected</p>
-        <h2 id="push-title"><i class="led on" aria-hidden="true"></i> Your Push</h2>
-        <dl class="facts"><dt>Address</dt><dd>${a}</dd><dt>Pung</dt><dd>${esc(push.version || "—")}</dd>
-          <dt>Installed</dt><dd>${inst} module${inst === 1 ? "" : "s"}</dd><dt>Updates</dt><dd>${ups || "none"}</dd></dl>
-        ${missing ? `<p class="note">${missing} module${missing === 1 ? "" : "s"} on this page come${missing === 1 ? "s" : ""} with a newer Pung than your Push has. <a href="../manual.html#update">Update Pung</a> to get ${missing === 1 ? "it" : "them"}.</p>` : ""}
-        <p class="sub">This page installs and updates modules on your Push and restarts Live when new ones wait for it, as Pung's own page does. A module's ROM and removing a module stay on Pung's own page.</p>
-        <div class="push-acts"><button type="button" class="ghost" id="push-off">Disconnect</button><span class="grow"></span>${open}</div>`;
-      $("push-off").onclick = disconnect;
-      return;
-    }
-    const busy = push.state === "trying";
-    const err = push.err && !busy ? `<div class="push-err" role="alert"><p>${WHY[push.err](a)}</p>
-        <div class="push-acts">${open}${push.err === "browser" || push.err === "denied" || push.err === "old" ? `<button type="button" class="ghost" id="push-links">Use links instead</button>` : ""}</div></div>` : "";
-    body.innerHTML = `
-      <p class="kicker">pung.live and your Push</p>
-      <h2 id="push-title">Connect your Push</h2>
-      <p>Install modules from this page straight onto your Push. pung.live talks to Pung on your Push over your home network, the way Pung's own page does: nothing passes through the internet.</p>
-      <ol class="push-steps">
-        <li>Your Push is on, with Pung running, on the same network as this computer.</li>
-        <li>Press <b>Connect</b>. Your browser asks whether pung.live may reach devices on your local network: choose <b>Allow</b>.</li>
-      </ol>
-      <form id="push-form" class="push-form" novalidate>
-        <label for="push-addr">Your Push</label>
-        <div class="row"><input id="push-addr" type="text" inputmode="url" autocomplete="off" spellcheck="false" value="${a}" ${busy ? "disabled" : ""} aria-describedby="push-hint">
-        <button type="submit" class="btn primary" ${busy ? "disabled" : ""}>${busy ? `<span class="spin" aria-hidden="true"></span> Connecting…` : "Connect"}</button></div>
-        <p class="sub" id="push-hint">push.local finds it on most home networks; its IP address works too. Pung answers on port 7720; another port goes after a colon (push.local:7711).</p>
-      </form>
-      ${err}
-      ${push.state === "link" ? `<p class="sub">Now the buttons open Pung's own page on your Push. Connect to install from here.</p>` : ""}`;
-    $("push-form").onsubmit = (e) => { e.preventDefault(); connect($("push-addr").value); };
-    if ($("push-links")) $("push-links").onclick = useLinks;
-  }
-
-  // the page's own question and word, where Pung's app is not loaded
-  function publicHelpers() {
-    if (!window.PungToast) {
-      let tt = null;
-      window.PungToast = (text, bad) => {
-        const t = $("toast");
-        t.textContent = text; t.className = "toast" + (bad ? " bad" : ""); t.hidden = false;
-        clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), bad ? 7000 : 3500);
-      };
-    }
-    if (!window.PungConfirm) window.PungConfirm = (text, yes, danger) => new Promise((done) => {
-      const dlg = $("confirm"), ok = $("confirm-yes"), no = $("confirm-no");
-      $("confirm-text").textContent = text;
-      ok.textContent = yes || "OK";
-      ok.className = "btn " + (danger ? "danger" : "primary");
-      const end = (v) => { dlg.removeEventListener("close", onClose); ok.onclick = no.onclick = null; if (dlg.open) dlg.close(); done(v); };
-      const onClose = () => end(false);
-      dlg.addEventListener("close", onClose);
-      ok.onclick = () => end(true);
-      no.onclick = () => end(false);
-      dlg.showModal();
-      no.focus();
-    });
-  }
+  const renderPush = () => PP && PP.renderChips();
 
   // pung.live: one view; #<id> opens a module's sheet
   function bootPublic() {
-    publicHelpers();
+    if (PP) {
+      // the chip counts the modules this page lists
+      PP.setCounts(() => {
+        const l = push.data && m.data ? m.data.modules : [];
+        return { installed: l.filter((x) => x.installed).length, updates: l.filter((x) => x.status === "update").length };
+      });
+      PP.on(async (what) => {
+        if (what === "dialog-closed") { if (push.state !== "trying") m.afterConnect = null; return; }
+        if (what === "connected") {
+          await load(false);
+          if (m.afterConnect) { // Install was pressed before the Push was connected: now
+            const id = m.afterConnect;
+            m.afterConnect = null;
+            const x = m.data.modules.find((r) => r.id === id);
+            if (x && !x.push_missing && x.status === "available") install(id);
+            else if (x) openSheet(id);
+          }
+          return;
+        }
+        if (what === "disconnected" || push.state === "link" || push.state === "off") { m.data = merged(); render(); }
+        if (push.state === "lost") schedule(8000);
+      });
+    }
     const want = () => { const id = decodeURIComponent(location.hash.slice(1)); if (!id) return;
       if (m.data && m.data.modules.some((x) => x.id === id)) openSheet(id); else m.wantOpen = id; };
     $("mod-search").oninput = (e) => { m.q = e.target.value; render(); };
@@ -860,18 +669,13 @@
     $("mod-sheet").addEventListener("click", (e) => { if (e.target === $("mod-sheet")) $("mod-sheet").close(); });
     window.addEventListener("hashchange", want);
     $("mod-update-all").onclick = updateAll;
-    $("push-close").onclick = () => $("push-dialog").close();
-    $("push-dialog").addEventListener("click", (e) => { if (e.target === $("push-dialog")) $("push-dialog").close(); });
-    $("push-dialog").addEventListener("close", () => { if (push.state !== "trying") m.afterConnect = null; });
     want();
     loadShots();
     renderPush();
     load(false).then(() => {
       m.tried = true; render();
       // the Push it talked to before: again, without asking (the browser remembers the permission)
-      if (!CONNECT) return;
-      if (localStorage.getItem(PUSH_KEY + ".link")) { push.state = "link"; m.data = merged(); render(); }
-      else if (localStorage.getItem(PUSH_KEY + ".on")) connect(push.addr, true);
+      if (PP) PP.resume();
     });
   }
 

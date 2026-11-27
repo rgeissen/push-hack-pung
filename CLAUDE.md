@@ -226,6 +226,25 @@ changes rarely: when it does, pung.live is down until the record is changed). Sc
 from `PUNG_LIVE_HOST` (`scripts/pung-live-env.sh`) and touch nothing outside that folder: the share
 serves other sites.
 
+## The site (pung.live)
+
+Three sections in front, everything else in the footer (the owner's word, 2026-11-27): the hero page
+(`home.src.html`: the value, and a Push screen that plays: `site/hero.js` feeds a made-up sound to Pung's own
+pictures, `src/web/visuals.js`, so the page draws what the Push draws), **Modules** (`site/modules.html` with
+`src/web/modules.js` in its public mode) and **Your Push** (`push.src.html`, `site/yourpush.js`: install, connect,
+status, Pung's two switches). Vision, Manual, Design and Performance are built as before and linked in the
+footer. `site/pushlink.js` + `pushlink.css` are the one connection to a visitor's Push for every page (classes
+`pl-`, colours from whichever stylesheet the page has).
+
+- **`site/install.json` "launched"** gates what is not released: the installer downloads, "Connect your Push",
+  the unreleased manual (until then the manual is the one of the last release, from git). Preview the launched
+  site against a real Push without publishing: build with it true into a scratch folder, serve it over https on
+  127.0.0.1:8443 with any certificate, and run Chrome with
+  `--host-resolver-rules="MAP pung.live:443 127.0.0.1:8443" --ignore-certificate-errors` (the origin must be
+  https://pung.live for Pung to answer: `src/sitecors.go`).
+- pung.live may change `touch_card` and `own_pack_only` only (`siteSettings`): never `catalog_url`, which
+  names an unsigned catalog.
+
 ## The module pack
 
 A release carries its pack (`catalog/` beside the binary: every module, installed from the Push's disk), and

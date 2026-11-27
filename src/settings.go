@@ -79,6 +79,21 @@ func (h *Host) settingsRoutes(mux *http.ServeMux) {
 			fail(w, 400, "body must be a JSON object of settings")
 			return
 		}
+		// pung.live changes the switches only: where modules come from is
+		// decided on the Push's own page (a catalog named there is not signed)
+		if siteOrigins[r.Header.Get("Origin")] {
+			var got map[string]json.RawMessage
+			if json.Unmarshal(raw, &got) != nil {
+				fail(w, 400, "body must be a JSON object of settings")
+				return
+			}
+			for k := range got {
+				if !siteSettings[k] {
+					fail(w, 403, "%s is changed on Pung's own page", k)
+					return
+				}
+			}
+		}
 		s, err := h.settings.update(raw)
 		if err != nil {
 			fail(w, 400, "%v", err)

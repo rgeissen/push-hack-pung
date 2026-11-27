@@ -38,6 +38,9 @@ func TestSiteCORS(t *testing.T) {
 	if w := do("POST", "/api/catalog/jp8000/install", "https://pung.live", ""); w.Code != 200 || acao(w) == "" {
 		t.Errorf("install: %d %q", w.Code, acao(w))
 	}
+	if w := do("OPTIONS", "/api/settings", "https://pung.live", "POST"); w.Code != 204 {
+		t.Errorf("settings preflight: %d", w.Code)
+	}
 	// not for pung.live: no answer to read, no preflight
 	if w := do("OPTIONS", "/api/catalog/jp8000/remove", "https://pung.live", "POST"); w.Code != 403 {
 		t.Errorf("remove preflight: %d", w.Code)

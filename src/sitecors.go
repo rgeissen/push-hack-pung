@@ -3,7 +3,8 @@ package main
 // sitecors.go: pung.live's Modules page (site/modules.html) talks to the Pung
 // on the visitor's own Push, over their home network, the way Pung's own
 // Modules page does: it reads the catalog with what is installed, installs and
-// updates modules, and restarts Live once new ones wait for it. The browser
+// updates modules, and restarts Live once new ones wait for it; its Your Push
+// page reads and changes Pung's settings. The browser
 // asks the visitor first (Local Network Access, Chrome 142 and Firefox 151 on;
 // the page fetches with targetAddressSpace "local"), and lets the page read
 // Pung's answers only where Pung says pung.live may: here.
@@ -24,13 +25,18 @@ const sitePort = 7720
 // siteOrigins: where the Modules page is served from
 var siteOrigins = map[string]bool{"https://pung.live": true, "https://www.pung.live": true}
 
+// siteSettings: the settings pung.live may change (settings.go): switches,
+// never an address Pung reads modules from
+var siteSettings = map[string]bool{"touch_card": true, "own_pack_only": true}
+
 // siteCall: a call pung.live's Modules page may make
 func siteCall(method, path string) bool {
 	switch method {
 	case http.MethodGet:
-		return path == "/api/catalog" || path == "/api/status"
+		return path == "/api/catalog" || path == "/api/status" || path == "/api/settings"
 	case http.MethodPost:
-		if path == "/api/catalog/update-all" || path == "/api/catalog/apply" {
+		// the settings: Pung's own switches (Your Push on pung.live)
+		if path == "/api/catalog/update-all" || path == "/api/catalog/apply" || path == "/api/settings" {
 			return true
 		}
 		// /api/catalog/{id}/install

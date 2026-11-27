@@ -18,9 +18,10 @@ LAUNCHED = bool(json.load(open(os.path.join(HERE, "install.json"))).get("launche
 INSTALLER = LAUNCHED
 RELEASED = json.load(open(os.path.join(ROOT, "release.json")))["version"]
 OUT = None  # set by --pages: whole documents, relative links
-SITE = {"home": "./", "vision": "vision.html", "modules": "modules/", "install": "install.html", "manual": "manual.html", "design": "design.html",
+SITE = {"home": "./", "vision": "vision.html", "modules": "modules/", "push": "push.html", "install": "install.html", "manual": "manual.html", "design": "design.html",
         "performance": "performance.html"}
 DESC = {
+    "push": "Your Push and Pung: install Pung on an Ableton Push 3 Standalone, connect it to pung.live, and see and set how it runs.",
     "install": "Install Pung on Ableton Push 3 Standalone: the Pung Installer for macOS, Windows and Linux, or through Push Hack's catalog.",
     "home": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play: today 131 of them on Ableton Push 3 Standalone, each a device in Live with a screen made for it.",
     "vision": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play, native on each: today 131 of them as devices in Live on Ableton Push 3 Standalone; next the desktop, more hardware, phones and tablets.",
@@ -28,9 +29,13 @@ DESC = {
     "design": "The design principles of the Pung view on Push 3: screens, controls, envelopes, colours.",
     "performance": "How Pung spends a Push 3's processor and battery: emulators that rest in silence, measured costs, a view that draws only what changed.",
 }
-FILES = {"home": "index.html", "vision": "vision.html", "install": "install.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
+FILES = {"home": "index.html", "vision": "vision.html", "install": "install.html", "push": "push.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
 
-PAGES = [("home", None), ("vision", "Vision"), ("install", "Install"), ("manual", "Manual"), ("design", "Design"), ("performance", "Performance")]
+PAGES = [("home", None), ("push", "Your Push"), ("vision", "Vision"), ("install", None), ("manual", "Manual"), ("design", "Design"),
+         ("performance", "Performance")]
+# in front: the hero page (the logo), the modules, your Push; everything else is in the footer
+NAV = [("modules", "Modules"), ("push", "Your Push")]
+BACKGROUND = [("vision", "Vision"), ("manual", "Manual"), ("design", "Design"), ("performance", "Performance")]
 FONTS = ("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900"
          "&family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap")
 
@@ -66,26 +71,21 @@ def logo():
 
 def topbar(current):
     links = []
-    for key, label in PAGES:
-        if label is None:
-            continue
+    for key, label in NAV:
         cur = ' aria-current="page"' if key == current else ""
         links.append(f'<a href="{LINKS[key]}"{cur}>{label}</a>')
-        if key == "vision":
-            cur = ' aria-current="page"' if current == "modules" else ""
-            links.append(f'<a href="{LINKS["modules"]}"{cur}>Modules</a>')
-    links.append('<a href="https://github.com/rgeissen/push-hack-pung">GitHub</a>')
     return f"""<header class="band topbar"><div class="wrap">
 <a class="mark" href="{LINKS['home']}" aria-label="Pung, home">{logo()}</a>
-<nav aria-label="Pung pages">{''.join(links)}</nav>
+<nav aria-label="Pung">{''.join(links)}</nav>
 </div></header>"""
 
 
-def footer():
+def footer(current=""):
+    more = "".join(f'<a href="{LINKS[k]}"' + (' aria-current="page"' if k == current else "") + f'>{label}</a>' for k, label in BACKGROUND)
     return """<footer class="band"><div class="wrap">
+<div class="links more">""" + more + """</div>
 <div class="links">
 <a href="https://github.com/rgeissen/push-hack-pung">Pung on GitHub</a>
-<a href="INSTALL_LINK">Install</a>
 <a href="https://github.com/charlesvestal/schwung">Schwung</a>
 <a href="https://github.com/federico-pepe/ableton-push-hack">Push Hack</a>
 </div>
@@ -151,6 +151,32 @@ def screen(m):
 </figure>"""
 
 
+# [[livescreen img="…" title="…" alt="…"]]caption[[/livescreen]]: the Push,
+# its screen playing (hero.js, with Pung's own pictures: src/web/visuals.js);
+# the still picture stands in until the script runs, and where there is none
+LIVESCREEN = re.compile(r'\[\[livescreen (.*?)\]\](.*?)\[\[/livescreen\]\]', re.S)
+
+
+def livescreen(m):
+    a = dict(ATTR.findall(m.group(1)))
+    still = f'<img src="{IMG[a["img"]]}" alt="{html.escape(a["alt"])}" width="1920" height="320" decoding="async">'
+    return f"""<figure class="livefig">
+<div class="push">
+{row("enc", 8)}
+{row("btns", 8, lit={0}, sel=0)}
+<div class="livescreen" id="livescreen" role="img" aria-label="{html.escape(a["alt"])}">{still}</div>
+{row("btns", 8, lit={0, 1, 2, 3}, sel=0)}
+</div>
+<figcaption><b>{a["title"]}</b><span>{m.group(2).strip()}</span></figcaption>
+</figure>"""
+
+
+def figure_css():
+    """the pictures' own styles, from Pung's web page (src/web/app.css): one source"""
+    css = open(os.path.join(ROOT, "src", "web", "app.css")).read()
+    return "\n".join(l for l in css.splitlines() if l.startswith((".env", "svg .mod")))
+
+
 def build(name):
     src = open(os.path.join(HERE, name + ".src.html")).read()
     if name == "manual" and not LAUNCHED and OUT:
@@ -161,12 +187,14 @@ def build(name):
         src = git("show", at + ":site/manual.src.html")
     title = re.search(r"<!--title:(.*?)-->", src).group(1).strip()
     src = re.sub(r"<!--title:.*?-->\n?", "", src)
+    live = bool(LIVESCREEN.search(src))
+    src = LIVESCREEN.sub(livescreen, src)
     src = SCREEN.sub(screen, src)
     # <!--if:installer-->…<!--endif-->: only once the Pung Installer is offered
     # (install.json, installer.available); <!--if:!installer--> until then
     for flag, on in (("installer", INSTALLER), ("!installer", not INSTALLER), ("launched", LAUNCHED), ("!launched", not LAUNCHED)):
         src = re.sub(r"<!--if:%s-->(.*?)<!--endif-->" % re.escape(flag), (lambda m: m.group(1)) if on else "", src, flags=re.S)
-    src = src.replace("{{TOPBAR}}", topbar(name)).replace("{{FOOTER}}", footer().replace("INSTALL_LINK", LINKS["install"]))
+    src = src.replace("{{TOPBAR}}", topbar(name)).replace("{{FOOTER}}", footer(name))
     for key in LINKS:
         src = src.replace("{{LINK:%s}}" % key, LINKS[key])
     left = re.findall(r"\{\{[^}]*\}\}|\[\[[^\]]*\]\]", src)
@@ -196,9 +224,13 @@ def build(name):
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 {head(title)}<style>body {{ margin: 0; }}</style>
+{"<style>" + figure_css() + "</style>" if live else ""}
+{'<link rel="stylesheet" href="pushlink.css">' if name == "push" else ""}
 </head>
-<body>
+<body{' data-connect="1"' if LAUNCHED else ""}>
 {src}
+{'<script src="visuals.js"></script><script src="hero.js"></script>' if live else ""}
+{'<script src="pushlink.js"></script><script src="yourpush.js"></script>' if name == "push" else ""}
 </body>
 </html>
 """
@@ -300,6 +332,12 @@ if __name__ == "__main__":
     for n in args or [p for p, _ in PAGES]:
         build(n)
     if OUT and not args:
+        # the front page's playing screen
+        shutil.copy2(os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(OUT, "visuals.js"))
+        for f in ("hero.js", "pushlink.js", "pushlink.css", "yourpush.js"):
+            shutil.copy2(os.path.join(HERE, f), os.path.join(OUT, f))
+        # the newest release, where the site and the Pung Installer read it
+        shutil.copy2(os.path.join(ROOT, "release.json"), os.path.join(OUT, "release.json"))
         modules_page(OUT)
         # what the Pung Installer installs (installer/manifest.go), and the installer itself
         shutil.copy2(os.path.join(HERE, "install.json"), os.path.join(OUT, "install.json"))
