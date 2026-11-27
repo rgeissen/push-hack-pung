@@ -1,0 +1,15 @@
+{
+ "pung": {
+  "release": "https://pung.live/release.json",
+  "fallback": "https://raw.githubusercontent.com/rgeissen/push-hack-pung/main/release.json"
+ },
+ "push_hack": {
+  "ref": "v0.2.0-alpha",
+  "version": "0.2.0-alpha"
+ },
+ "installer": {
+  "version": "0.1.0",
+  "download": "https://pung.live/install.html"
+ },
+ "launched": false
+}

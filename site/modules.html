@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Modules · Pung</title>
+<meta name="description" content="Every module Pung brings to Ableton Push 3 Standalone: instruments, audio effects and MIDI generators, each a device in Live, with the screens they show on the Push.">
+<link rel="icon" href="../brand/favicon.ico" sizes="48x48">
+<link rel="icon" href="../brand/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../brand/apple-touch-icon.png">
+<meta name="theme-color" content="#0b0c0d">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pung">
+<meta property="og:title" content="Modules · Pung">
+<meta property="og:description" content="Every module Pung brings to Ableton Push 3 Standalone, with the screens they show on the Push.">
+<meta property="og:url" content="https://pung.live/modules/">
+<meta property="og:image" content="https://pung.live/brand/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="app.css">
+<style>
+/* pung.live: Pung's own Modules page (src/web), without the app's rail: the site's bar on top */
+body[data-public] { display: block; }
+.site-bar { position: sticky; top: 0; z-index: 8; background: rgba(11, 12, 13, 0.92); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line); }
+.site-bar .in { max-width: 1480px; margin: 0 auto; padding: 12px clamp(16px, 3vw, 40px); display: flex; align-items: center;
+  gap: 12px 24px; flex-wrap: wrap; }
+.site-bar .home { display: block; line-height: 0; }
+.site-bar .home img { height: 22px; width: auto; }
+.site-bar nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.site-bar nav a { font: 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  text-decoration: none; padding: 8px 10px; border-radius: 4px; }
+.site-bar nav a:hover { color: var(--fg); background: var(--raise); }
+.site-bar nav a[aria-current="page"] { color: var(--fg); box-shadow: inset 0 -2px 0 #ff8a1f; border-radius: 0; }
+body[data-public] main { max-width: 1480px; margin: 0 auto; }
+a.act { display: inline-flex; align-items: center; text-decoration: none; }
+.public-note { color: var(--muted); max-width: 80ch; margin: 6px 0 18px; }
+body[data-public] .toast { left: 24px; }
+
+/* your Push: the chip in the head, and its dialog */
+.push-link { display: flex; align-items: center; }
+.push-chip { display: inline-grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 10px; align-items: center;
+  min-height: 44px; padding: 6px 14px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--raise); color: var(--fg);
+  font: 13px/1.25 var(--sans); text-align: left; }
+.push-chip .led, .push-chip .spin { grid-row: span 2; }
+.push-chip .t { font-weight: 600; }
+.push-chip .s { grid-column: 2; font: 11px var(--mono); letter-spacing: .04em; color: var(--muted); }
+.push-chip.on { border-color: color-mix(in srgb, var(--ok) 55%, var(--line2)); }
+.push-chip.bad { border-color: color-mix(in srgb, var(--warn) 55%, var(--line2)); }
+button.push-chip:hover { border-color: var(--amber); }
+.push-connect { min-height: 44px; }
+.push-dialog { width: min(560px, calc(100vw - 32px)); margin: auto; padding: 28px 28px 24px; background: var(--panel); color: var(--fg);
+  border: 1px solid var(--line2); border-top: 3px solid var(--amber); border-radius: var(--r); }
+.push-dialog::backdrop { background: #000b; }
+.push-dialog .close { position: absolute; top: 12px; right: 12px; }
+.push-dialog h2 { font-size: 24px; margin: 4px 0 12px; display: flex; align-items: center; gap: 10px; }
+.push-dialog p { margin: 0 0 12px; line-height: 1.55; }
+.push-dialog .sub { color: var(--muted); font-size: 13px; }
+.push-steps { margin: 4px 0 18px; padding-left: 20px; display: grid; gap: 6px; line-height: 1.5; }
+.push-form label { display: block; font: 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.push-form .row { display: flex; gap: 8px; }
+.push-form input { flex: 1; min-height: 44px; padding: 0 12px; background: var(--ink); border: 1px solid var(--line2); border-radius: var(--r);
+  font: 15px var(--mono); }
+.push-form input:focus { border-color: var(--amber); outline: none; }
+.push-form .btn { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
+.push-form .sub { margin-top: 8px; }
+.push-err { margin-top: 16px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line2)); background: #1c1210; border-radius: var(--r); }
+.push-err p { margin: 0 0 12px; }
+.push-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.push-acts .btn, .push-acts .ghost { min-height: 40px; display: inline-flex; align-items: center; text-decoration: none; }
+.push-dialog .facts { margin: 4px 0 14px; }
+.push-dialog .note { padding: 10px 12px; border-left: 3px solid var(--amber); background: var(--raise); }
+</style>
+</head>
+<body data-public="1" data-view="modules">
+<a class="skip" href="#main">Skip to the content</a>
+<header class="site-bar"><div class="in">
+  <a class="home" href="../" aria-label="Pung, home"><img src="../brand/pung-logo.svg" alt="Pung" width="96" height="22"></a>
+  <nav aria-label="Pung pages">
+    <a href="../vision.html">Vision</a>
+    <a href="./" aria-current="page">Modules</a>
+    <a href="../install.html">Install</a>
+    <a href="../manual.html">Manual</a>
+    <a href="../design.html">Design</a>
+    <a href="../performance.html">Performance</a>
+    <a href="https://github.com/rgeissen/push-hack-pung">GitHub</a>
+  </nav>
+</div></header>
+
+<main id="main">
+  <section class="view modules" id="modules-view" aria-labelledby="mod-title">
+    <header class="view-head">
+      <p class="kicker">Pung / Modules</p>
+      <h1 id="mod-title">Modules</h1>
+      <span class="grow"></span>
+      <span class="mod-status" id="mod-status" aria-live="polite"></span>
+      <button type="button" class="btn primary" id="mod-update-all" hidden>Update all</button>
+      <div class="push-link" id="push-link" aria-live="polite"></div>
+    </header>
+<!--if:launched-->
+    <p class="public-note">Every module in Pung's catalog, as Pung's own Modules page shows it. Connect your Push and install from here, in one press: each becomes a device in Live. Open a module to see its screens on the Push, what it needs and where its source is.</p>
+<!--endif-->
+<!--if:!launched-->
+    <p class="public-note">Every module in Pung's catalog, as Pung's own Modules page shows it on the Push. Each one installs from there, in one press, and becomes a device in Live. Open a module to see its screens on the Push, what it needs and where its source is.</p>
+<!--endif-->
+    <div class="mod-banner" id="mod-banner" hidden aria-live="polite"></div>
+    <div class="origin-legend" aria-label="Where a module comes from">
+      <div><span class="origin pung">Pung native</span><p>Written for the Push alone. It may use all of the Push's processor and screen, and would not run on a Move.</p></div>
+      <div><span class="origin schwung">Schwung</span><p>Built from a Schwung module for Ableton Move. It follows its author's releases; Pung adds its screens and sound browser.</p></div>
+    </div>
+    <div class="toolbar">
+      <input type="search" id="mod-search" placeholder="Search modules" aria-label="Search modules" autocomplete="off">
+      <div class="seg" id="mod-types" role="group" aria-label="Kind">
+        <button type="button" data-type="all" aria-pressed="true">All kinds</button>
+        <button type="button" data-type="sound_generator" aria-pressed="false">Instruments</button>
+        <button type="button" data-type="audio_fx" aria-pressed="false">Audio effects</button>
+        <button type="button" data-type="midi_fx" aria-pressed="false">MIDI effects</button>
+      </div>
+      <div class="seg" id="mod-origins" role="group" aria-label="Origin">
+        <button type="button" data-origin="all" aria-pressed="true">Any origin</button>
+        <button type="button" data-origin="pung" aria-pressed="false">Pung native <span class="count" id="mod-count-pung"></span></button>
+        <button type="button" data-origin="schwung" aria-pressed="false">Schwung <span class="count" id="mod-count-schwung"></span></button>
+      </div>
+      <div class="seg" id="mod-shows" role="group" aria-label="Show">
+        <button type="button" data-show="installed" data-needs-push hidden aria-pressed="false">Installed <span class="count" id="mod-count-installed"></span></button>
+        <button type="button" data-show="updates" data-needs-push hidden aria-pressed="false">Updates <span class="count" id="mod-count-updates"></span></button>
+        <button type="button" data-show="face" aria-pressed="false" title="Modules that open on a front panel of their own on the Push">Custom interface <span class="count" id="mod-count-face"></span></button>
+      </div>
+    </div>
+    <div class="mod-grid" id="mod-grid" aria-live="polite"></div>
+    <p class="mod-foot" id="mod-foot"></p>
+  </section>
+</main>
+
+<dialog class="mod-sheet" id="mod-sheet" aria-labelledby="mod-sheet-title">
+  <button type="button" class="btn icon close" id="mod-sheet-close" aria-label="Close">✕</button>
+  <div id="mod-sheet-body"></div>
+</dialog>
+<dialog class="push-dialog" id="push-dialog" aria-labelledby="push-title">
+  <button type="button" class="btn icon close" id="push-close" aria-label="Close">✕</button>
+  <div id="push-body"></div>
+</dialog>
+<dialog class="confirm" id="confirm" aria-labelledby="confirm-text">
+  <p id="confirm-text"></p>
+  <div class="confirm-acts">
+    <button type="button" class="btn" id="confirm-no">Cancel</button>
+    <button type="button" class="btn primary" id="confirm-yes">OK</button>
+  </div>
+</dialog>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script src="modules.js"></script>
+</body>
+</html>

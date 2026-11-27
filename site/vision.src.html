@@ -1,23 +1,27 @@
-<!--title:Pung Vision and Architecture-->
+<!--title:Pung: music modules, at home on every device-->
 {{TOPBAR}}
 
 <section class="band hero"><div class="wrap">
-  <p class="eyebrow">Push 3 Standalone · Schwung modules and Pung's own · Devices in Live</p>
-  <h1>Move's modules, and more, at home in Live on Push.</h1>
-  <p class="lead">Pung runs the modules of <em>Schwung</em>, the module system of Ableton Move, on Push 3 Standalone, and beside them modules written for the Push alone: emulations of hardware synths that need more processor than a Move has. Every synth, audio effect and MIDI effect becomes a device in Live: you find it in Push's browser, play it with the pads, automate it and save it with your Set. On the Push screen, each module gets a view made for it.</p>
+  <p class="eyebrow">Instruments · Audio effects · MIDI generators · One module, every device</p>
+  <h1>Music modules, at home on every device.</h1>
+  <p class="lead">Pung brings music modules to the devices musicians play: instruments, audio effects and MIDI generators such as arpeggiators, chord generators and sequencers. It makes each one feel native there: found where the device keeps its sounds, played with its own controls, shown on a screen designed for it. A module is written once. Pung builds it for each device, keeps it up to date and shows it well. It starts on Ableton Push 3 Standalone, where 131 modules already run as devices in Live. The desktop comes next, then more hardware, then phones and tablets.</p>
   [[screen img="je_patch" title="JE-8086 on Pung" alt="The Push screen showing JE-8086's Patch screen: a JP-8000-style LCD reading PERF CHARIOTS, upper split, arp up and down, 74 BPM; pictures of both oscillators, the filter response, the amp envelope and LFO 1; and the eight encoders' names and values along the bottom." hot="0" up="0-1" upsel="0" lo="0-4" losel="1"]]The JE-8086 emulation of Roland's JP-8000, running as a Live device. Its Patch screen shows the synth's own LCD and the patch at a glance while the encoders play its macros. Captured from a Push 3.[[/screen]]
   <dl class="facts">
-    <div><dt>modules in a release, five of them Pung's own</dt><dd>131</dd></div>
-    <div><dt>one download, the catalog inside</dt><dd>151 MB</dd></div>
+    <div><dt>modules on Push 3 today, five of them Pung's own</dt><dd>131</dd></div>
+    <div><dt>modules that show their own modulation as it moves</dt><dd>50</dd></div>
     <div><dt>the longest Live waits for a module</dt><dd>½ block</dd></div>
     <div><dt>typical time to Pung's first frame</dt><dd>≈50 ms</dd></div>
   </dl>
 </div></section>
 
 <main class="band main"><div class="wrap">
-<nav class="toc" aria-label="On this page"><p>On this page</p><ol>
+<nav class="toc" aria-label="On this page"><p>The vision</p><ol>
   <li><a href="#idea">The idea</a></li>
   <li><a href="#principles">Principles</a></li>
+  <li><a href="#devices">Where Pung goes</a></li>
+  <li><a href="#makers">For module makers</a></li>
+  <li><a href="#open">Built on open work</a></li>
+</ol><p style="margin-top:22px">On Push 3 today</p><ol>
   <li><a href="#architecture">Architecture</a></li>
   <li><a href="#live">What Live gives a module</a></li>
   <li><a href="#view">The Pung view</a></li>
@@ -33,10 +37,10 @@
 <section id="idea">
   <div class="sec-head"><p class="eyebrow">01 · Vision</p><h2>The idea</h2></div>
   <div class="prose">
-    <p>On Move, Schwung has to bring its own signal graph, because Move's firmware has none to offer: four tracks, one chain each. On Push, the best signal graph on the device is already there. It is Live.</p>
-    <p>So Pung does not build a graph. It makes every Schwung module a <strong>Live device</strong> and runs the module itself in a <strong>separate process</strong>, so a module can never take Live down. Live does what it does best: tracks, racks, parallel chains, sends, sidechains, automation, clip envelopes, MPE, latency compensation and saving with the Set. Pung does the two things only it can do: run Move's modules faithfully, and show them well.</p>
-    <p>The result is an instrument library that grew up on a small box with one encoder per parameter, now playable on Push's eight encoders, its pads and its large screen, inside a full Live Set.</p>
-    <p>And it does not end with Move's modules. The same device layer runs <strong>Pung-native modules</strong>, written for the Push alone and for what its processor can do: Nodal Red 2X (Clavia Nord Lead 2X), OsTIrus (Access Virus TI), Vavra (Waldorf microQ), Xenia (Waldorf Microwave II/XT) and Vivace, a wavetable synth. They are devices in Live like every other, with front panels of their own on the Push screen.</p>
+    <p>Music software is made many times over. A synth written for one plugin format is ported to the next; one made for a piece of hardware stays on it. And on a device with a screen and a handful of knobs, most instruments get a list of parameters, not an interface.</p>
+    <p>Pung separates the two jobs. A <strong>module</strong> is an instrument, an audio effect or a MIDI generator: what it does to sound or to notes, its parameters and, where its maker wants, screens of its own, written once against one small contract. <strong>Pung</strong> does the rest, for each device: it builds the module for that processor, makes it a native citizen of the device's own software, draws it well on the device's screen, and brings new modules and updates to every player.</p>
+    <p>On Push 3 that means every module is a <strong>device in Live</strong>. You find it in Push's browser, play it with the pads, automate it and save it with your Set, while the module itself runs in a process of its own, so it can never take Live down. Pung does not build a studio around the modules. It uses the best one on the device.</p>
+    <p>On the Push today that is 131 modules: 77 instruments, 44 audio effects and 10 MIDI generators. They come from <em>Schwung</em>, the module system of Ableton Move, and from Pung itself: Nodal Red 2X (Clavia Nord Lead 2X), OsTIrus (Access Virus TI), Vavra (Waldorf microQ), Xenia (Waldorf Microwave II/XT) and Vivace, a wavetable synth, five instruments written for what the Push's processor can do.</p>
   </div>
 </section>
 
@@ -44,17 +48,55 @@
   <div class="sec-head"><p class="eyebrow">02 · Vision</p><h2>Principles</h2></div>
   <div class="prose">
     <ul>
-      <li><strong>Nothing new to learn.</strong> Modules are found in Push's browser, loaded like any device, played with the pads and edited with the encoders. Pung's screen and web page are extras, never a door you have to go through.</li>
-      <li><strong>A module can never take Live down.</strong> Modules run outside Live's process. Live waits at most half an audio block for a module; if the answer is late, that block is silent and Live carries on.</li>
-      <li><strong>One instrument, two surfaces.</strong> A module's interface is cut into compartments. One compartment is one screen on the Push and one section of the web page, with the same names in the same order.</li>
-      <li><strong>The default must be world class.</strong> Every module gets a designed view built from its own parameters, with no code from its author. A module draws its own screen only where that is substantially better and true to the instrument.</li>
-      <li><strong>Open and licensed.</strong> Every module is built from its own source, ships with its licence texts and build notes, and has the complete source of its build published beside it.</li>
+      <li><strong>Written once, at home everywhere.</strong> A module brings its engine, its parameters and its screens, whether it makes sound, shapes it or generates notes. Each device shows them in its own way and plays them with its own controls.</li>
+      <li><strong>The device's own ways first.</strong> Nothing new to learn: on Push, modules are found in Push's browser, played with the pads and edited with the encoders. Pung's screens and web page add to that; they never stand in the way.</li>
+      <li><strong>A module can never take its host down.</strong> Modules run outside Live's process. Live waits at most half an audio block for one; if the answer is late, that block is silent and Live carries on.</li>
+      <li><strong>The default must be world class.</strong> Every module gets a designed interface built from its own parameters, with no work from its maker, and its envelopes, filters and LFOs play as the sound moves. Nothing moves unless the sound moves. A maker draws screens of their own only where that is truly better.</li>
+      <li><strong>Open by default.</strong> Every module is built from its own source, ships with its licence texts and build notes, and has the complete source of its build published beside it. Firmware and ROMs are never part of it.</li>
+      <li><strong>Makers come first.</strong> A module carries its maker's name, follows their releases and keeps what they built intact. What Pung adds sits on top.</li>
     </ul>
   </div>
 </section>
 
+<section id="devices">
+  <div class="sec-head"><p class="eyebrow">03 · Vision</p><h2>Where Pung goes</h2></div>
+  <div class="prose">
+    <p>Pung starts on Push 3 because the best host is already on it, and its screen deserves better than a list of parameters. The contract between a module and Pung is not tied to the Push: each new device keeps the modules as they are, built again for it by the same pipeline that builds today's 131 for the Push.</p>
+  </div>
+  <div class="t"><table>
+    <thead><tr><th>Where</th><th>How a module appears</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td>Ableton Push 3 Standalone</td><td class="wrap1">A device in Live: Push's browser, the pads, automation, saved with the Set, and Pung's own screen on the Push.</td><td>Today, in testing</td></tr>
+      <tr><td>Desktop: macOS, Windows, Linux</td><td class="wrap1">A plugin in any music program, with the same modules and their screens in a window.</td><td>Next</td></tr>
+      <tr><td>More hardware</td><td class="wrap1">Instruments and boxes with a screen and knobs, drawn and played the way they are built.</td><td>Later</td></tr>
+      <tr><td>Phones and tablets</td><td class="wrap1">An app and a plugin, with the modules in a portable form that the app stores allow.</td><td>Later</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="makers">
+  <div class="sec-head"><p class="eyebrow">04 · Vision</p><h2>For module makers</h2></div>
+  <div class="prose">
+    <p>Pung's module contract builds on Schwung's, the module system of Ableton Move, and keeps it whole: every Schwung module runs on Pung unchanged, and Pung's own modules are written against the same contract (audio in and out in 128-frame blocks, MIDI in and out, parameters, its saved state, and a <code>module.json</code> that names it). Pung adds to it, and a module uses each addition only where it helps:</p>
+    <ul>
+      <li><strong>Screens of its own</strong> for the Push, in one small JavaScript file, drawn with Pung's pictures of envelopes, filters and LFOs, so they move with the sound (see the <a href="{{LINK:design}}">design principles</a>).</li>
+      <li><strong>Its live state:</strong> where the module's own modulation has each knob right now, so its screen shows that modulation as it moves.</li>
+      <li><strong>An engine in a process of its own</strong>, for the heavy ones: Pung's emulators run outside Pung, so even one that fails leaves every other device playing.</li>
+      <li><strong>Its sounds:</strong> presets travel between Move and Push.</li>
+    </ul>
+    <p>Pung builds the module from its source for each device, checks it, packages it with its licence and source, and brings it, and every update, to players through its catalog. Today that catalog is open source and free. Later it will carry paid modules too: a maker sets the price, and Pung builds, delivers and updates the module on every device it runs on.</p>
+  </div>
+</section>
+
+<section id="open">
+  <div class="sec-head"><p class="eyebrow">05 · Vision</p><h2>Built on open work</h2></div>
+  <div class="prose">
+    <p>Pung stands on two open projects. <a href="https://github.com/charlesvestal/schwung">Schwung</a>, by Charles Vestal, gives Ableton Move its modules and the plugin contract Pung builds on; most of Pung's modules are Schwung's, built from their makers' own source. <a href="https://github.com/federico-pepe/ableton-push-hack">Push Hack</a>, by Federico Pepe, opens Push 3 to community software; Pung is a hack for it, and its Live device layer is part of Push Hack, for any hack to use. Pung's emulators are built on gearmulator. Pung itself is open source, under the MIT licence.</p>
+  </div>
+</section>
+
 <section id="architecture">
-  <div class="sec-head"><p class="eyebrow">03 · Implementation</p><h2>Architecture</h2></div>
+  <div class="sec-head"><p class="eyebrow">06 · On Push 3</p><h2>Architecture</h2></div>
   <div class="diagram" role="img" aria-label="Live, on the left, holds a track with two Pung devices, each a small VST3 proxy. Each audio block crosses shared memory to the Pung process on the right, which runs one module instance per device and draws the Pung view and the web page. Below, push-manager hands the Push surface to Pung, push-display shows Pung's frames, and the PushHack Remote Script tells Pung what Live has selected.">
     <svg viewBox="0 0 980 430" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -129,7 +171,7 @@
 </section>
 
 <section id="live">
-  <div class="sec-head"><p class="eyebrow">04 · Implementation</p><h2>What Live gives a module</h2></div>
+  <div class="sec-head"><p class="eyebrow">07 · On Push 3</p><h2>What Live gives a module</h2></div>
   <div class="prose"><p>A Schwung module expects Move. On Push, every part of that contract is answered by Live, so a module runs unchanged.</p></div>
   <div class="t"><table>
     <thead><tr><th>The module expects</th><th>On Push, from Live</th></tr></thead>
@@ -146,7 +188,7 @@
 </section>
 
 <section id="view">
-  <div class="sec-head"><p class="eyebrow">05 · Implementation</p><h2>The Pung view</h2></div>
+  <div class="sec-head"><p class="eyebrow">08 · On Push 3</p><h2>The Pung view</h2></div>
   <div class="prose">
     <p>Push's own device view already edits every Pung device. The Pung view goes further. When you select a Pung device and Push shows its device view, push-manager hands the screen and the encoders to Pung, and Pung draws the device in its own way. Its controls are Push's own, measured on a Push: the devices on the upper buttons, the selected one's button opens it, its pages on the lower buttons, the jog wheel steps through them, and Mute or Delete with a device's button act on it. Device View shows Push's view of the same device, and pressed again brings Pung's back. The pads, transport and editing buttons stay with Live throughout.</p>
     <p>Three levels of interface exist on the Push, each further from Push's own look: <strong>Push native</strong> (always there), <strong>Pung default</strong> (designed from the module's parameters, for every module) and <strong>Pung custom</strong> (a module's own screens, where they earn their place). The <a href="{{LINK:design}}">design principles</a> describe them in detail.</p>
@@ -174,7 +216,7 @@
 </section>
 
 <section id="builds">
-  <div class="sec-head"><p class="eyebrow">06 · Implementation</p><h2>Builds and licences</h2></div>
+  <div class="sec-head"><p class="eyebrow">09 · On Push 3</p><h2>Builds and licences</h2></div>
   <div class="prose">
     <p>Move's modules are built for ARM; Push 3 is x86-64. Every module is built again from its own source. The recipe is read from the module's own build script, never run: only the compiler touches the source. Each build is checked as an x86-64 ELF against the Push's glibc 2.35, with its entry point, and the Push runs a real load test at install.</p>
     <ul>
@@ -187,7 +229,7 @@
 </section>
 
 <section id="pipeline">
-  <div class="sec-head"><p class="eyebrow">07 · Implementation</p><h2>Module pipeline</h2></div>
+  <div class="sec-head"><p class="eyebrow">10 · On Push 3</p><h2>Module pipeline</h2></div>
   <div class="prose">
     <p>Schwung's catalogue grows every week. Pung keeps up with it through an <strong>automatic conversion and serving pipeline</strong>, which is already built and running: a small service that does, unattended, what the previous section describes by hand.</p>
     <ul>
@@ -200,7 +242,7 @@
 </section>
 
 <section id="core">
-  <div class="sec-head"><p class="eyebrow">08 · Push Hack</p><h2>Push Hack core extensions</h2></div>
+  <div class="sec-head"><p class="eyebrow">11 · On Push 3</p><h2>Push Hack core extensions</h2></div>
   <div class="prose">
     <p>Pung is a hack for Push Hack, the framework that opens Push 3 to community software. Pung keeps its weight in its own repository: the engine, the Pung view, the module builds, the catalog and the pipeline all live there. What Pung asks of Push Hack is deliberately small, and shaped so that other hacks gain from it as much as Pung does.</p>
   </div>
@@ -238,7 +280,7 @@
 </section>
 
 <section id="measured">
-  <div class="sec-head"><p class="eyebrow">09 · Implementation</p><h2>Rules from measurements</h2></div>
+  <div class="sec-head"><p class="eyebrow">12 · On Push 3</p><h2>Rules from measurements</h2></div>
   <div class="prose">
     <p>Measured on a Push 3 with Live 13 beta. Each one shaped the design.</p>
     <ul>
@@ -256,7 +298,7 @@
 </section>
 
 <section id="status">
-  <div class="sec-head"><p class="eyebrow">10 · Status</p><h2>Status and next steps</h2></div>
+  <div class="sec-head"><p class="eyebrow">13 · On Push 3</p><h2>Status and next steps</h2></div>
   <div class="prose">
     <p>Pung is in its test phase. Each device's sound comes from a realtime thread of its own, so the rest of Pung (its view, its web page) cannot make Live miss a block, and one layer watches what everything costs: an emulated synth that nobody hears stops working until the next note (see <a href="{{LINK:performance}}">Performance</a>). A release brings 131 modules and the Pung view, with custom screens for JE-8086, Mini-JV, Dexed, Osirus, Nodal Red 2X, OsTIrus, Vavra and Xenia. Five modules are written for the Push alone. Four emulate a hardware synth: Nodal Red 2X (Clavia Nord Lead 2X), OsTIrus (Access Virus TI, TI2 and Snow), Vavra (Waldorf microQ) and Xenia (Waldorf Microwave II/XT), whose screens draw the synth's own wavetables; the fifth is Vivace, a wavetable synth. Every device can be modulated by Pung's own LFOs, the mod wheel and pressure, and a synth's own modulation is assigned and shown live on its screen. The default view draws envelopes, filters, LFOs and mixers for any module, and they play live as the sound moves, on the Push and on the web page; every envelope is one picture, each note a dot on its own clock, in the instrument's own times where Pung can know them; and the view's buttons, jog wheel and lights work as Push's own device view does. There is one sound browser for every module, built on Schwung's user presets, so sounds move between Move and Push. And there is one file browser for every module that plays samples: it reaches Live's User Library, Core Library and Packs on the Push itself, previews through the device, and shows each file's waveform. Also included: the web page, the Modules page and Live browser tags for every module. It is a testing release: expect rough edges, and tell us about them.</p>
     <ul>
@@ -265,6 +307,7 @@
       <li><strong>Next on the Push screen:</strong> more instruments telling their own live state, as Mini-JV does, and custom screens for the instruments that deserve them (Braids and OB-Xd first).</li>
       <li><strong>After the test phase:</strong> the served catalog from the module pipeline, so modules update as Schwung publishes them.</li>
       <li><strong>Next for installing:</strong> browsing and installing modules from the Push itself.</li>
+      <li><strong>Beyond the Push:</strong> Pung as a plugin on the desktop, the first device after the Push (see <a href="#devices">Where Pung goes</a>).</li>
     </ul>
     <p>Read the <a href="{{LINK:manual}}">manual</a> to install and use Pung, the <a href="{{LINK:design}}">design principles</a> to bring a module to it, and <a href="{{LINK:performance}}">Performance</a> for what it costs the Push.</p>
   </div>

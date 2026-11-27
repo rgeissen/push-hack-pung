@@ -2,25 +2,35 @@
 """Builds the four Pung pages: shared head and style, the Push figures, images inline, links between them.
 
   build.py                 the page bodies beside this file (published as claude.ai artifacts)
-  build.py --pages OUT     whole documents into OUT, linked to each other, for GitHub Pages
+  build.py --pages OUT     whole documents into OUT, linked to each other, for pung.live (scripts/publish-site.sh)
 """
-import html, json, os, re, sys
+import html, json, os, re, shutil, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IMG = json.load(open(os.path.join(HERE, "images.json")))
 CSS = open(os.path.join(HERE, "pung.css")).read()
 LINKS = json.load(open(os.path.join(HERE, "links.json")))
+ROOT = os.path.dirname(HERE)
+# the launch (install.json, "launched"): until then the site says only what is
+# released: no Pung Installer, no "Connect your Push", the manual and the
+# version of the last release (release.json)
+LAUNCHED = bool(json.load(open(os.path.join(HERE, "install.json"))).get("launched"))
+INSTALLER = LAUNCHED
+RELEASED = json.load(open(os.path.join(ROOT, "release.json")))["version"]
 OUT = None  # set by --pages: whole documents, relative links
-SITE = {"vision": "./", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
+SITE = {"home": "./", "vision": "vision.html", "modules": "modules/", "install": "install.html", "manual": "manual.html", "design": "design.html",
+        "performance": "performance.html"}
 DESC = {
-    "vision": "Pung runs Schwung modules, and modules written for the Push alone, on Ableton Push 3 Standalone, as devices in Live: what it is and how it works.",
+    "install": "Install Pung on Ableton Push 3 Standalone: the Pung Installer for macOS, Windows and Linux, or through Push Hack's catalog.",
+    "home": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play: today 131 of them on Ableton Push 3 Standalone, each a device in Live with a screen made for it.",
+    "vision": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play, native on each: today 131 of them as devices in Live on Ableton Push 3 Standalone; next the desktop, more hardware, phones and tablets.",
     "manual": "The Pung manual: installing Pung on a Push 3 Standalone, the Pung view and its controls, sounds, modules.",
     "design": "The design principles of the Pung view on Push 3: screens, controls, envelopes, colours.",
     "performance": "How Pung spends a Push 3's processor and battery: emulators that rest in silence, measured costs, a view that draws only what changed.",
 }
-FILES = {"vision": "index.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
+FILES = {"home": "index.html", "vision": "vision.html", "install": "install.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
 
-PAGES = [("vision", "Vision"), ("manual", "Manual"), ("design", "Design"), ("performance", "Performance")]
+PAGES = [("home", None), ("vision", "Vision"), ("install", "Install"), ("manual", "Manual"), ("design", "Design"), ("performance", "Performance")]
 FONTS = ("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900"
          "&family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap")
 
@@ -37,14 +47,36 @@ def head(title):
 """
 
 
+def themed(svg):
+    """a logo file in the page's own colours (pung.css): its dark-theme colours
+    become the theme's variables, so the light theme has its own"""
+    svg = re.sub(r'<svg [^>]*viewBox="([^"]+)"[^>]*>', r'<svg viewBox="\1" aria-hidden="true" focusable="false">', svg)
+    for hexv, var in (("#ff8a1f", "--pung"), ("#4fcbe6", "--cyan"), ("#eeece7", "--ink")):
+        svg = svg.replace(f'stroke="{hexv}"', f'style="stroke:var({var})"').replace(f'fill="{hexv}"', f'style="fill:var({var})"')
+    return svg.strip()
+
+
+def logo():
+    """the logo: the P's dot rides once as the page opens and rests (still
+    where motion is turned down)"""
+    ride = themed(open(os.path.join(HERE, "brand", "pung-logo-ride.svg")).read()).replace('id="lr"', 'id="tbr"').replace("url(#lr)", "url(#tbr)")
+    still = themed(open(os.path.join(HERE, "brand", "pung-logo.svg")).read()).replace('id="ld"', 'id="tbs"').replace("url(#ld)", "url(#tbs)")
+    return f'<span class="logo ride">{ride}</span><span class="logo still">{still}</span>'
+
+
 def topbar(current):
     links = []
     for key, label in PAGES:
+        if label is None:
+            continue
         cur = ' aria-current="page"' if key == current else ""
         links.append(f'<a href="{LINKS[key]}"{cur}>{label}</a>')
+        if key == "vision":
+            cur = ' aria-current="page"' if current == "modules" else ""
+            links.append(f'<a href="{LINKS["modules"]}"{cur}>Modules</a>')
     links.append('<a href="https://github.com/rgeissen/push-hack-pung">GitHub</a>')
     return f"""<header class="band topbar"><div class="wrap">
-<a class="mark" href="{LINKS['vision']}"><i></i><b>PUNG</b></a>
+<a class="mark" href="{LINKS['home']}" aria-label="Pung, home">{logo()}</a>
 <nav aria-label="Pung pages">{''.join(links)}</nav>
 </div></header>"""
 
@@ -121,11 +153,21 @@ def screen(m):
 
 def build(name):
     src = open(os.path.join(HERE, name + ".src.html")).read()
+    if name == "manual" and not LAUNCHED and OUT:
+        # the manual of the release people have, in today's frame
+        import subprocess
+        git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        at = git("log", "-1", "--format=%H", "--", "release.json").strip()  # the commit that released it
+        src = git("show", at + ":site/manual.src.html")
     title = re.search(r"<!--title:(.*?)-->", src).group(1).strip()
     src = re.sub(r"<!--title:.*?-->\n?", "", src)
     src = SCREEN.sub(screen, src)
+    # <!--if:installer-->…<!--endif-->: only once the Pung Installer is offered
+    # (install.json, installer.available); <!--if:!installer--> until then
+    for flag, on in (("installer", INSTALLER), ("!installer", not INSTALLER), ("launched", LAUNCHED), ("!launched", not LAUNCHED)):
+        src = re.sub(r"<!--if:%s-->(.*?)<!--endif-->" % re.escape(flag), (lambda m: m.group(1)) if on else "", src, flags=re.S)
     src = src.replace("{{TOPBAR}}", topbar(name)).replace("{{FOOTER}}", footer())
-    for key, _ in PAGES:
+    for key in LINKS:
         src = src.replace("{{LINK:%s}}" % key, LINKS[key])
     left = re.findall(r"\{\{[^}]*\}\}|\[\[[^\]]*\]\]", src)
     if left:
@@ -140,6 +182,19 @@ def build(name):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="{html.escape(desc[:200])}">
+<link rel="icon" href="brand/favicon.ico" sizes="48x48">
+<link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+<meta name="theme-color" content="#0e0d0c">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pung">
+<meta property="og:title" content="{html.escape(title)}">
+<meta property="og:description" content="{html.escape(desc[:200])}">
+<meta property="og:url" content="https://pung.live/{'' if FILES[name] == 'index.html' else FILES[name]}">
+<meta property="og:image" content="https://pung.live/brand/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 {head(title)}<style>body {{ margin: 0; }}</style>
 </head>
 <body>
@@ -152,13 +207,96 @@ def build(name):
     print(name, len(out) // 1024, "KB")
 
 
+INSTALLABLE = ("sound_generator", "audio_fx", "midi_fx")  # modmgr.go, installSubdirs
+
+
+def module_limits():
+    """limits.go's moduleLimits, as Pung's catalog API answers them"""
+    src = open(os.path.join(ROOT, "src", "limits.go")).read()
+    table = src[src.index("var moduleLimits"):]
+    table = table[:table.index("\n}")]
+    keys = {"One": "one", "Emulator": "emulator", "Rests": "rests", "HostRests": "host_rests", "Cost": "cost"}
+    out = {}
+    for mid, body in re.findall(r'"([\w-]+)":\s*\{([^}]*)\}', table):
+        d = {}
+        for k, v in re.findall(r"(\w+):\s*(\"[^\"]*\"|true|false|[\d.]+)", body):
+            d[keys[k]] = v.strip('"') if v.startswith('"') else (v == "true" if v in ("true", "false") else float(v))
+        out[mid] = d
+    return out
+
+
+def modules_page(out):
+    """pung.live/modules/: Pung's own Modules page (src/web/modules.js in its
+    public mode, site/modules.html), the release's catalog as Pung's API
+    answers it, and the pictures of each module's screens (make screens)"""
+    cat = next((p for p in (os.path.join(ROOT, "dist", "pung", "catalog", "catalog.json"),
+                            os.path.join(ROOT, "build", "catalog", "catalog.json")) if os.path.exists(p)), None)
+    screens = os.path.join(ROOT, "build", "screens")
+    if not cat or not os.path.exists(os.path.join(screens, "index.json")):
+        sys.exit("the Modules page needs the catalog (build-catalog.py, or make release) and the screens (make screens)")
+    doc = json.load(open(cat))
+    limits = module_limits()
+    sources = "https://github.com/rgeissen/push-hack-pung/releases/download/sources"
+    rows = []
+    for e in doc["modules"]:
+        if e.get("component_type") not in INSTALLABLE:
+            continue
+        r = {k: v for k, v in e.items() if k not in ("asset", "sha256")}
+        src = dict(r.get("source") or {})
+        if src.get("archive") and not re.match(r"https?://", src["archive"]):
+            src["archive"] = sources + "/" + os.path.basename(src["archive"])  # a catalog built here: its sources as published
+        r["source"] = src
+        r.update({"supported": True, "in_catalog": True, "status": "available", "installed": "", "managed": False})
+        if e["id"] in limits:
+            r["limits"] = limits[e["id"]]
+        rows.append(r)
+    rows.sort(key=lambda r: r["name"].lower())
+    pung = json.load(open(os.path.join(ROOT, "hack.json")))["version"] if LAUNCHED else RELEASED
+    data = {"ok": True, "apply": None, "pending": [], "restarting": False, "modules": rows,
+            "catalog": {"generated_at": doc.get("generated_at", ""), "taxonomy": doc.get("taxonomy", {}), "base_url": "", "pung": pung}}
+    d = os.path.join(out, "modules")
+    if os.path.exists(d):
+        shutil.rmtree(d)
+    shutil.copytree(screens, os.path.join(d, "screens"))
+    json.dump(data, open(os.path.join(d, "catalog.json"), "w"), separators=(",", ":"))
+    page = open(os.path.join(HERE, "modules.html")).read()
+    for flag, on in (("launched", LAUNCHED), ("!launched", not LAUNCHED)):
+        page = re.sub(r"<!--if:%s-->(.*?)<!--endif-->" % re.escape(flag), (lambda m: m.group(1)) if on else "", page, flags=re.S)
+    if LAUNCHED:
+        page = page.replace('<body data-public="1"', '<body data-public="1" data-connect="1"')
+    open(os.path.join(d, "index.html"), "w").write(page)
+    for f in ("app.css", "modules.js"):
+        shutil.copy2(os.path.join(ROOT, "src", "web", f), os.path.join(d, f))
+    print("modules", len(rows), "modules,", len(json.load(open(os.path.join(screens, "index.json")))), "with screens")
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args[:1] == ["--pages"]:
         OUT = args[1]
         os.makedirs(OUT, exist_ok=True)
         LINKS = SITE
-        open(os.path.join(OUT, ".nojekyll"), "w").close()
+        brand = os.path.join(OUT, "brand")
+        os.makedirs(brand, exist_ok=True)
+        for f in os.listdir(os.path.join(HERE, "brand")):
+            if not f.endswith(".py") and not f.startswith((".", "_")):
+                shutil.copy2(os.path.join(HERE, "brand", f), os.path.join(brand, f))
         args = args[2:]
     for n in args or [p for p, _ in PAGES]:
         build(n)
+    if OUT and not args:
+        modules_page(OUT)
+        # what the Pung Installer installs (installer/manifest.go), and the installer itself
+        shutil.copy2(os.path.join(HERE, "install.json"), os.path.join(OUT, "install.json"))
+        inst = os.path.join(ROOT, "build", "installer")
+        if not INSTALLER:
+            print("download: held back until the launch (install.json, launched)")
+        elif os.path.isdir(inst):
+            dl = os.path.join(OUT, "download")
+            os.makedirs(dl, exist_ok=True)
+            for f in os.listdir(inst):
+                if f.startswith("Pung-Installer-"):
+                    shutil.copy2(os.path.join(inst, f), os.path.join(dl, f))
+            print("download", sorted(os.listdir(dl)))
+        else:
+            print("download: none (scripts/build-installer.sh)")
