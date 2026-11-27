@@ -443,6 +443,12 @@ disk; offline it goes on with its own. `own_pack_only` in the settings never ask
   Push's `module-screen.json` into `scripts/screens/probes.json`, and a sound of its own as
   `scripts/screens/values/<id>.json`. Never an emulator's values or initial state: they are the player's
   firmware and factory sounds (its panel is drawn at rest, `neutralValues`).
+- **Every module has pictures on the Modules page** (2026-11-27): one without a front panel gets the first
+  four of the pages Pung draws for it (`index.json` `"default"`; "Custom interface" still means a panel of its
+  own). A new module needs its probe record and kind: `scripts/screens/add-probes.py <module-screen.json>
+  <export of /api/layouts>` from a deployment that has it (a stand-in with the pack installed will do; the
+  Multisampler's probe crashes there without samples, its record is the Push's). It never replaces a record
+  and never takes an emulator's.
 - **`push.theme`**: every instrument's screen file declares its look for Pung's default pages (ground,
   ink, knob style; `src/theme.go`), so a page turn never drops into Pung's grey.
 - **Segments** (`segments: [{id, label, rect, keys}]` on a front panel, `src/segments.go`): Pung draws

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -192,13 +193,23 @@ type galleryRig struct {
 	shot func(path string)
 }
 
+// galleryKinds, galleryNames: a module's kind and name where a test knows them (else an instrument named by its id)
+var galleryKinds, galleryNames = map[string]string{}, map[string]string{}
+
 func openGallery(t *testing.T, ovDir, id string, rec *probeRecord, vals map[string]string) *galleryRig {
 	liveAddr = "127.0.0.1:1" // no Remote Script here
 	name := strings.ToUpper(id[:1]) + id[1:]
 	root := t.TempDir()
-	dir := filepath.Join(root, "sound_generators", id)
+	kind, sub := "sound_generator", "sound_generators"
+	if k := galleryKinds[id]; k == "audio_fx" || k == "midi_fx" { // (the card pictures of every module: cardshots_test.go)
+		kind, sub = k, k
+	}
+	if n := galleryNames[id]; n != "" {
+		name = n
+	}
+	dir := filepath.Join(root, sub, id)
 	os.MkdirAll(dir, 0o755)
-	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"`+id+`","name":"`+name+`","component_type":"sound_generator"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"`+id+`","name":`+strconv.Quote(name)+`,"component_type":"`+kind+`"}`), 0o644)
 	deviceNames[name] = id
 	t.Cleanup(func() { delete(deviceNames, name) })
 	h := &Host{modulesDir: root, settings: loadSettings(t.TempDir())}
@@ -213,11 +224,14 @@ func openGallery(t *testing.T, ovDir, id string, rec *probeRecord, vals map[stri
 	}
 	cm.Initial = rec.Initial
 	set := u.ov.get(root, id)
-	if set == nil || set.failed != "" {
+	if set != nil && set.failed != "" {
 		t.Errorf("%s: its screens do not load: %+v", id, set)
 		return nil
 	}
-	cm = withCompartments(liveBanks(cm), set.compartments, set.unused)
+	cm = liveBanks(cm) // (as the view plans it: surface.go)
+	if set != nil && len(set.compartments) > 0 {
+		cm = withCompartments(cm, set.compartments, set.unused)
+	}
 	u.meta["live|"+id] = cm
 	s := u.live.state()
 	s.mu.Lock()

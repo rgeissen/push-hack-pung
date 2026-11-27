@@ -42,6 +42,8 @@
     fetch(PUBLIC ? "screens/index.json" : "/screens/index.json").then((r) => (r.ok ? r.json() : {})).then((j) => { m.shots = j || {}; render(); }).catch(() => {});
   }
   const shotsOf = (x) => m.shots[x.id];
+  // a module with a front panel of its own ("custom interface"), against one Pung draws its own pages for
+  const customOf = (x) => { const sh = shotsOf(x); return sh && sh.panel ? sh : null; };
   const shotURL = (x, f) => `${PUBLIC ? "" : "/"}screens/${encodeURIComponent(x.id)}/${encodeURIComponent(f)}`;
 
   async function load(refresh) {
@@ -88,7 +90,7 @@
     return all.filter((x) =>
       (m.filter === "all" || x.component_type === m.filter) &&
       (m.origin === "all" || originOf(x) === m.origin) &&
-      (m.show === "all" || (m.show === "installed" && x.installed) || (m.show === "updates" && x.status === "update") || (m.show === "face" && shotsOf(x))) &&
+      (m.show === "all" || (m.show === "installed" && x.installed) || (m.show === "updates" && x.status === "update") || (m.show === "face" && customOf(x))) &&
       (!q || [x.name, x.id, x.author, x.description, x.license && x.license.spdx].join(" ").toLowerCase().includes(q)));
   }
 
@@ -112,7 +114,7 @@
     setText("mod-count-pung", all.filter((x) => originOf(x) === "pung").length);
     setText("mod-count-schwung", all.filter((x) => originOf(x) === "schwung").length);
     setText("mod-count-updates", counts.updates);
-    if ($("mod-count-face")) $("mod-count-face").textContent = all.filter((x) => shotsOf(x)).length || "";
+    if ($("mod-count-face")) $("mod-count-face").textContent = all.filter((x) => customOf(x)).length || "";
     if (PUBLIC) {
       const on = push.state === "on";
       document.querySelectorAll("#mod-shows [data-needs-push]").forEach((b) => (b.hidden = !on));
@@ -231,7 +233,7 @@
 
   function badges(x) {
     const out = [];
-    if (shotsOf(x)) out.push(`<span class="tag iface" title="On the Push it opens on a front panel of its own, drawn in its own design language">Custom interface</span>`);
+    if (customOf(x)) out.push(`<span class="tag iface" title="On the Push it opens on a front panel of its own, drawn in its own design language">Custom interface</span>`);
     if (x.license && x.license.spdx) out.push(`<span class="tag" title="Licence: ${esc(x.license.from || "")}">${esc(shortLicence(x.license.spdx))}</span>`);
     if (x.license && x.license.noncommercial) out.push(`<span class="tag" title="May not be sold or used commercially">Non-commercial</span>`);
     if (needsFiles(x)) out.push(`<span class="tag need" title="${esc(needText(x))}">${x.installed && !x.assets_ready ? "ROM missing" : "Needs ROM"}</span>`);
@@ -293,8 +295,9 @@
     const tags = (x.tags || []).filter((g) => g !== "needs-assets").slice(0, 3);
     const sh = shotsOf(x);
     // its own interface on the Push, edge to edge: what it looks like is the first thing told
-    const face = sh ? `<figure class="face"><img src="${shotURL(x, sh.panel)}" alt="${esc(x.name)} on the Push: its front panel" width="960" height="160" loading="lazy" decoding="async"></figure>` : "";
-    return `<article class="mod ${t.cls}${originOf(x) === "pung" ? " native" : ""}${sh ? " has-face" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-label="${esc(x.name)}, ${esc(t.label)}, ${ORIGIN[originOf(x)]}${sh ? ", custom interface" : ""}">
+    const pic = sh && (sh.panel || sh.default);
+    const face = pic ? `<figure class="face"><img src="${shotURL(x, pic)}" alt="${esc(x.name)} on the Push: ${sh.panel ? "its front panel" : "its first page"}" width="960" height="160" loading="lazy" decoding="async"></figure>` : "";
+    return `<article class="mod ${t.cls}${originOf(x) === "pung" ? " native" : ""}${pic ? " has-face" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-label="${esc(x.name)}, ${esc(t.label)}, ${ORIGIN[originOf(x)]}${sh && sh.panel ? ", custom interface" : ""}">
       ${face}<div class="top"><h3>${esc(x.name)}</h3><span class="chips">${surfaceChip(x)}${originChip(x)}</span></div>
       <span class="badges"><span class="badge kind">${esc(t.label)}</span>${cat ? `<span class="badge cat">${esc(cat)}</span>` : ""}</span>
       <p class="desc" title="${esc(x.description || "")}">${esc(x.description || "")}</p>
@@ -388,6 +391,11 @@
   function faceList(x) {
     const sh = shotsOf(x);
     if (!sh) return [];
+    if (!sh.panel) {
+      // Pung's own pages for it: its controls, eight to a page
+      return (sh.pages || []).map((p, i) => ({ file: p.file, label: p.label || "Page " + (i + 1),
+        note: i ? "A page of its controls: turn to it with Page < > or the lower buttons." : "What the Push shows when the device opens: its first eight controls on the encoders, in Pung's own view." }));
+    }
     const l = [{ file: sh.panel, label: "Front panel", note: "What the Push shows when the device opens. The encoders play the row along its foot." }];
     if (sh.segments) l.push({ file: sh.segments, label: "Segment mode", note: "Nudge the jog wheel right: the panel's sections are named over the lower buttons, and the encoders play the one chosen. Nudge left to leave." });
     (sh.pages || []).forEach((p) => l.push({ file: p.file, label: p.label, note: "A page of its own: turn to it with Page < > or the lower buttons." }));

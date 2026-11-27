@@ -1,0 +1,542 @@
+{
+"303": {
+"Kind": "sound_generator",
+"Name": "303"
+},
+"4k-eq": {
+"Kind": "audio_fx",
+"Name": "4K EQ"
+},
+"6w6": {
+"Kind": "sound_generator",
+"Name": "6W6"
+},
+"8w8": {
+"Kind": "sound_generator",
+"Name": "8W8"
+},
+"9w9": {
+"Kind": "sound_generator",
+"Name": "9W9"
+},
+"airplay": {
+"Kind": "sound_generator",
+"Name": "AirPlay"
+},
+"ambiotica": {
+"Kind": "audio_fx",
+"Name": "Ambiotica"
+},
+"amino": {
+"Kind": "sound_generator",
+"Name": "Amino"
+},
+"aphex": {
+"Kind": "sound_generator",
+"Name": "Aphex"
+},
+"arp": {
+"Kind": "midi_fx",
+"Name": "Arpeggiator"
+},
+"beatbank": {
+"Kind": "midi_fx",
+"Name": "Beat Bank"
+},
+"belt": {
+"Kind": "audio_fx",
+"Name": "Belt"
+},
+"belt-in": {
+"Kind": "sound_generator",
+"Name": "Belt In"
+},
+"bizar": {
+"Kind": "sound_generator",
+"Name": "Bizar"
+},
+"bouba-kiki": {
+"Kind": "sound_generator",
+"Name": "Bouba-Kiki"
+},
+"braids": {
+"Kind": "sound_generator",
+"Name": "Braids"
+},
+"breakbeat": {
+"Kind": "sound_generator",
+"Name": "Breakbeat"
+},
+"busdriver": {
+"Kind": "audio_fx",
+"Name": "Bus Driver"
+},
+"capicola": {
+"Kind": "audio_fx",
+"Name": "Capicola"
+},
+"chimera": {
+"Kind": "sound_generator",
+"Name": "Schimera"
+},
+"chiptune": {
+"Kind": "sound_generator",
+"Name": "Chiptune"
+},
+"chonk": {
+"Kind": "sound_generator",
+"Name": "CHONK"
+},
+"chord": {
+"Kind": "midi_fx",
+"Name": "Chord"
+},
+"chordism": {
+"Kind": "sound_generator",
+"Name": "Chordism"
+},
+"chowtape": {
+"Kind": "audio_fx",
+"Name": "CHOWTape"
+},
+"clap": {
+"Kind": "audio_fx",
+"Name": "Airwindows"
+},
+"clementine-xt": {
+"Kind": "sound_generator",
+"Name": "Clementine-XT"
+},
+"cloudseed": {
+"Kind": "audio_fx",
+"Name": "CloudSeed"
+},
+"concat": {
+"Kind": "sound_generator",
+"Name": "Concat"
+},
+"crest": {
+"Kind": "sound_generator",
+"Name": "Crest"
+},
+"crest-fx": {
+"Kind": "audio_fx",
+"Name": "Crest FX"
+},
+"denis": {
+"Kind": "sound_generator",
+"Name": "Denis"
+},
+"dexed": {
+"Kind": "sound_generator",
+"Name": "Dexed"
+},
+"dissolver": {
+"Kind": "audio_fx",
+"Name": "Dissolver"
+},
+"dr32": {
+"Kind": "sound_generator",
+"Name": "DrumRack32"
+},
+"dragonfly-hall": {
+"Kind": "audio_fx",
+"Name": "Dragonfly Hall"
+},
+"dubstarmoonicon": {
+"Kind": "sound_generator",
+"Name": "DubStarMooniCon"
+},
+"ducker": {
+"Kind": "audio_fx",
+"Name": "Ducker"
+},
+"essaim": {
+"Kind": "sound_generator",
+"Name": "Essaim"
+},
+"eucalypso": {
+"Kind": "midi_fx",
+"Name": "Eucalypso"
+},
+"euclidrum": {
+"Kind": "midi_fx",
+"Name": "Euclidrum"
+},
+"filter": {
+"Kind": "audio_fx",
+"Name": "FILTER"
+},
+"fizzik": {
+"Kind": "sound_generator",
+"Name": "Fizzik"
+},
+"flukedrums": {
+"Kind": "sound_generator",
+"Name": "FlukeDrums"
+},
+"forge": {
+"Kind": "sound_generator",
+"Name": "Forge"
+},
+"fork": {
+"Kind": "midi_fx",
+"Name": "Fork"
+},
+"freak": {
+"Kind": "sound_generator",
+"Name": "MrHyde"
+},
+"freeverb": {
+"Kind": "audio_fx",
+"Name": "Freeverb"
+},
+"frodhes": {
+"Kind": "sound_generator",
+"Name": "Frodhes"
+},
+"gate": {
+"Kind": "audio_fx",
+"Name": "GATE"
+},
+"genera": {
+"Kind": "midi_fx",
+"Name": "Genera"
+},
+"granny": {
+"Kind": "sound_generator",
+"Name": "Granny"
+},
+"granular": {
+"Kind": "audio_fx",
+"Name": "Boris Granular"
+},
+"gresil": {
+"Kind": "audio_fx",
+"Name": "Gresil"
+},
+"groovebank": {
+"Kind": "midi_fx",
+"Name": "Groove Bank"
+},
+"hank": {
+"Kind": "sound_generator",
+"Name": "Hank"
+},
+"helm": {
+"Kind": "sound_generator",
+"Name": "Helm"
+},
+"hera": {
+"Kind": "sound_generator",
+"Name": "Hera"
+},
+"hush1": {
+"Kind": "sound_generator",
+"Name": "HUSH ONE"
+},
+"jp8000": {
+"Kind": "sound_generator",
+"Name": "JE-8086"
+},
+"junologue-chorus": {
+"Kind": "audio_fx",
+"Name": "Junologue Chorus"
+},
+"keydetect": {
+"Kind": "audio_fx",
+"Name": "Key Detect"
+},
+"krautdrums": {
+"Kind": "sound_generator",
+"Name": "KrautDrums"
+},
+"magneto": {
+"Kind": "audio_fx",
+"Name": "Magneto"
+},
+"maze-voice": {
+"Kind": "sound_generator",
+"Name": "Maze Voice"
+},
+"maze_seq_lite": {
+"Kind": "midi_fx",
+"Name": "Maze Lite"
+},
+"midi-player": {
+"Kind": "midi_fx",
+"Name": "MIDI Player"
+},
+"midiverb": {
+"Kind": "audio_fx",
+"Name": "Midiverb"
+},
+"minijv": {
+"Kind": "sound_generator",
+"Name": "Mini-JV"
+},
+"model-72": {
+"Kind": "sound_generator",
+"Name": "Model-72"
+},
+"monksynth": {
+"Kind": "sound_generator",
+"Name": "MonkSynth"
+},
+"mono-voice": {
+"Kind": "sound_generator",
+"Name": "Mono Voice"
+},
+"moog": {
+"Kind": "sound_generator",
+"Name": "RaffoSynth"
+},
+"mrdrums": {
+"Kind": "sound_generator",
+"Name": "MrDrums"
+},
+"mrsample": {
+"Kind": "sound_generator",
+"Name": "MrSample"
+},
+"munchi-delay": {
+"Kind": "audio_fx",
+"Name": "Munchi Delay"
+},
+"mverb": {
+"Kind": "audio_fx",
+"Name": "MVerb"
+},
+"nam": {
+"Kind": "audio_fx",
+"Name": "NAM"
+},
+"nodalred": {
+"Kind": "sound_generator",
+"Name": "Nodal Red 2X"
+},
+"noisemaker": {
+"Kind": "sound_generator",
+"Name": "Noisemaker"
+},
+"nusaw": {
+"Kind": "sound_generator",
+"Name": "NuSaw"
+},
+"obxd": {
+"Kind": "sound_generator",
+"Name": "OB-Xd"
+},
+"omega": {
+"Kind": "sound_generator",
+"Name": "Omega"
+},
+"osirus": {
+"Kind": "sound_generator",
+"Name": "Osirus"
+},
+"ostirus": {
+"Kind": "sound_generator",
+"Name": "OsTIrus"
+},
+"ottx": {
+"Kind": "audio_fx",
+"Name": "OTTx"
+},
+"palette": {
+"Kind": "audio_fx",
+"Name": "PALETTE"
+},
+"pixel-walkers": {
+"Kind": "midi_fx",
+"Name": "Pixel Walkers"
+},
+"plaits": {
+"Kind": "sound_generator",
+"Name": "Plaits"
+},
+"psxverb": {
+"Kind": "audio_fx",
+"Name": "PSX Verb"
+},
+"punchfx": {
+"Kind": "audio_fx",
+"Name": "Punch-In FX"
+},
+"pushnpull": {
+"Kind": "audio_fx",
+"Name": "PushNPull"
+},
+"quark": {
+"Kind": "sound_generator",
+"Name": "Quark"
+},
+"radiogarden": {
+"Kind": "sound_generator",
+"Name": "Radio Garden"
+},
+"rex": {
+"Kind": "sound_generator",
+"Name": "REX Player"
+},
+"rrverb10": {
+"Kind": "audio_fx",
+"Name": "RRVerb-10"
+},
+"ruminant": {
+"Kind": "audio_fx",
+"Name": "Ruminant"
+},
+"setbfree-organ": {
+"Kind": "sound_generator",
+"Name": "setBfree Tonewheel Organ"
+},
+"sf2": {
+"Kind": "sound_generator",
+"Name": "SF2 Player"
+},
+"sfz": {
+"Kind": "sound_generator",
+"Name": "Multisampler"
+},
+"shimmerwash": {
+"Kind": "audio_fx",
+"Name": "Shimwash"
+},
+"signal": {
+"Kind": "sound_generator",
+"Name": "Signal"
+},
+"simian": {
+"Kind": "sound_generator",
+"Name": "SIMIAN"
+},
+"smack": {
+"Kind": "audio_fx",
+"Name": "Smack"
+},
+"smack-in": {
+"Kind": "sound_generator",
+"Name": "Smack In"
+},
+"sophie": {
+"Kind": "sound_generator",
+"Name": "Sophie"
+},
+"spectra": {
+"Kind": "audio_fx",
+"Name": "Spectra"
+},
+"stereoid": {
+"Kind": "audio_fx",
+"Name": "Stereoid"
+},
+"streamrtsp": {
+"Kind": "sound_generator",
+"Name": "StreamRTSP"
+},
+"structor": {
+"Kind": "audio_fx",
+"Name": "Structor"
+},
+"superarp": {
+"Kind": "midi_fx",
+"Name": "Super Arp"
+},
+"superboom": {
+"Kind": "audio_fx",
+"Name": "Super Boom"
+},
+"surge": {
+"Kind": "sound_generator",
+"Name": "Surge XT"
+},
+"tablor": {
+"Kind": "sound_generator",
+"Name": "Tablor"
+},
+"tape-echo2": {
+"Kind": "audio_fx",
+"Name": "Tape Echo 2"
+},
+"tapedelay": {
+"Kind": "audio_fx",
+"Name": "TapeDelay"
+},
+"tapescam": {
+"Kind": "audio_fx",
+"Name": "TAPESCAM"
+},
+"tenebrae": {
+"Kind": "sound_generator",
+"Name": "Tenebrae"
+},
+"tinyhouse": {
+"Kind": "sound_generator",
+"Name": "TinyHouse"
+},
+"tinyk": {
+"Kind": "sound_generator",
+"Name": "TinyK"
+},
+"tinyscratch": {
+"Kind": "sound_generator",
+"Name": "TinyScratch"
+},
+"tinyvoice": {
+"Kind": "audio_fx",
+"Name": "TinyVoice"
+},
+"usefulity": {
+"Kind": "audio_fx",
+"Name": "Usefulity"
+},
+"vavra": {
+"Kind": "sound_generator",
+"Name": "Vavra"
+},
+"verglas": {
+"Kind": "audio_fx",
+"Name": "Verglas"
+},
+"vial": {
+"Kind": "sound_generator",
+"Name": "Vial"
+},
+"vivace": {
+"Kind": "sound_generator",
+"Name": "Vivace"
+},
+"vocoder": {
+"Kind": "audio_fx",
+"Name": "Vocoder"
+},
+"war_bells": {
+"Kind": "audio_fx",
+"Name": "War Bells"
+},
+"webstream": {
+"Kind": "sound_generator",
+"Name": "Webstream"
+},
+"weird-dreams": {
+"Kind": "sound_generator",
+"Name": "Weird Dreams"
+},
+"work": {
+"Kind": "audio_fx",
+"Name": "Work"
+},
+"work-in": {
+"Kind": "sound_generator",
+"Name": "Work In"
+},
+"wurl": {
+"Kind": "sound_generator",
+"Name": "Wurl"
+},
+"xenia": {
+"Kind": "sound_generator",
+"Name": "Xenia"
+}
+}

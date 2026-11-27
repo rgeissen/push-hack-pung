@@ -110,10 +110,17 @@ type cardShotPage struct {
 }
 
 type cardShotIndex struct {
-	Panel    string         `json:"panel"`
+	Panel    string         `json:"panel,omitempty"`
 	Segments string         `json:"segments,omitempty"`
 	Pages    []cardShotPage `json:"pages,omitempty"`
+	// Default: a module without a front panel of its own: the first of the
+	// pages Pung draws for it (Pages: the first few)
+	Default string `json:"default,omitempty"`
 }
+
+// cardShotDefaultPages: how many of a module's default pages are drawn (they
+// are alike: its controls, eight to a page)
+const cardShotDefaultPages = 4
 
 // TestCardShots draws them (make screens): PUNG_CARD_SHOTS=<out dir> gets
 // <id>/panel.png (the front panel's first page), <id>/segments.png (its
@@ -207,6 +214,61 @@ func TestCardShots(t *testing.T) {
 		index[id] = ix
 		t.Logf("%s: panel, %d pages%s", id, len(ix.Pages), map[bool]string{true: ", segments"}[ix.Segments != ""])
 	}
+	// and every other module, as Pung's own view shows it: its first pages
+	// (its controls, eight to a page, in the colours of its kind). From its
+	// probe record and the values a fresh instance has: its own defaults.
+	custom := map[string]bool{}
+	for _, id := range cardShotModules() {
+		custom[id] = true
+	}
+	kinds := map[string]struct{ Kind, Name string }{}
+	if raw, err := os.ReadFile(filepath.Join(cardShotDir, "kinds.json")); err == nil {
+		json.Unmarshal(raw, &kinds) //nolint:errcheck
+	}
+	var rest []string
+	for id := range probes {
+		if !custom[id] && !cardShotEmulators[id] {
+			rest = append(rest, id)
+		}
+	}
+	sort.Strings(rest)
+	empty, _ := filepath.Abs(t.TempDir())
+	for _, id := range rest {
+		v := probes[id]
+		if v.Probe == nil || v.Probe.Meta["chain_params"] == "" && v.Probe.Meta["ui_hierarchy"] == "" {
+			continue
+		}
+		galleryKinds[id], galleryNames[id] = kinds[id].Kind, kinds[id].Name
+		vals := map[string]string{}
+		for k, x := range v.Probe.Initial {
+			vals[k] = x
+		}
+		g := openGallery(t, empty, id, v.Probe, vals)
+		if g == nil || len(g.cm.Banks) == 0 {
+			continue
+		}
+		dir := filepath.Join(out, id)
+		os.MkdirAll(dir, 0o755)
+		ix := cardShotIndex{}
+		for b := 0; b < len(g.cm.Banks) && b < cardShotDefaultPages; b++ {
+			g.u.setBank(b)
+			g.put()
+			fn := fmt.Sprintf("p-%02d.png", b)
+			g.shot(filepath.Join(dir, fn))
+			if b == 0 {
+				ix.Default = fn
+			}
+			ix.Pages = append(ix.Pages, cardShotPage{File: fn, Label: g.cm.Banks[b].Name})
+		}
+		index[id] = ix
+	}
+	own := 0
+	for _, ix := range index {
+		if ix.Panel != "" {
+			own++
+		}
+	}
+	t.Logf("%d modules with a front panel of their own, %d with Pung's own pages", own, len(index)-own)
 	raw, _ := json.MarshalIndent(index, "", " ")
 	if err := os.WriteFile(filepath.Join(out, "index.json"), raw, 0o644); err != nil {
 		t.Fatal(err)
