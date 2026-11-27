@@ -54,6 +54,8 @@ body[data-public] { display: block; }
 .site-bar nav a[aria-current="page"] { color: var(--fg); box-shadow: inset 0 -2px 0 var(--amber); border-radius: 0; }
 body[data-public] main { max-width: 1480px; margin: 0 auto; }
 a.act { display: inline-flex; align-items: center; text-decoration: none; }
+/* a card of the catalog has no button (the way to install is in the module's sheet): its foot is one line */
+body[data-public] .mod footer { min-height: 0; }
 .public-note { color: var(--muted); max-width: 80ch; margin: 6px 0 18px; }
 
 </style>
