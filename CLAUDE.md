@@ -407,6 +407,14 @@ before and linked in the footer.
   scroll when a phone is too narrow for all four). Under the logo, as it first was, it made the bar twice
   as tall on an iPad. Look at it without a Push: the
   scratch `layout/web-standin.sh` (the new build, three devices made without Live, port 7734).
+- **Pung's own page has pung.live's bar, at every width** (the owner, 2026-11-27: one styleguide for both, and
+  "I much prefer the header row of pung.live"): `header.bar` in `index.html`, the rules in `app.css` copied
+  from the site's bar (logo 22 px, the sections in small capitals with a line under the one shown, the place
+  switcher, the theme switch; content as wide as the page's). The rail at the left is gone, and what the
+  notes above say about a rail no longer holds; its status lines and the Manual link are a foot under the
+  page (`footer.foot`). One row always: below 860 px the sections scroll sideways between logo and switches.
+  `--barh` (57 px) is the bar's height for what sticks under it (the compartments' tabs, the Modules banner).
+  A change to pung.live's bar is made in both places.
 - **The place switcher** (`src/web/places.js`; the owner's word, 2026-11-27: one consistent way between the
   coordinator, pung.live, and a child, a deployment's own page, and back, with many children): one control
   that names where you are (pung.live, or the deployment with its state) and opens the list of pung.live and
