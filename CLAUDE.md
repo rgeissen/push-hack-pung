@@ -385,6 +385,14 @@ before and linked in the footer.
   (`:root[data-theme="light"]`). A `<picture>` or an image that follows `prefers-color-scheme` cannot follow
   the switch: logos are drawn in the page in its own colours (`themed()`). The privacy page says the choice
   is stored.
+- **Pung's own page on the Push has the same switch and the same look** (2026-11-27; `src/web/app.css`,
+  `index.html`, `app.js`): light and dark with the switch beside the version in the rail, the choice kept in
+  that browser (`pung.theme`), and pung.live's orange in place of the amber it began with. The light colours
+  are in `app.css` itself now, so the public Modules page (which loads that stylesheet) adds only its bar's
+  ground. The Push's screens, and every picture of one, stay dark in both. A colour in `app.css` that sits
+  on the page's ground or text is `var(--ink)` / `var(--fg)` / `var(--panel)`, never `#000` or a fixed grey:
+  the selected row of the sound browser was unreadable in light for that. Look at it without a Push: the
+  scratch `layout/web-standin.sh` (the new build, three devices made without Live, port 7734).
 - **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
   folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS

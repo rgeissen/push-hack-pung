@@ -472,7 +472,7 @@ def modules_page(out):
     page = page.replace("<!--FOOTER-->", footer("modules", up="../", img=True))
     barlogo = themed(open(os.path.join(HERE, "brand", "pung-logo.svg")).read(), pung="var(--amber)", cyan="var(--mod)", ink="var(--fg)"
                      ).replace('id="ld"', 'id="mbl"').replace("url(#ld)", "url(#mbl)")
-    for mark, what in (("<!--THEME-HEAD-->", THEME_HEAD + "\n<style>\n" + THEME_CSS + "</style>"), ("<!--THEME-BUTTON-->", theme_button()), ("<!--BAR-LOGO-->", barlogo)):
+    for mark, what in (("<!--THEME-HEAD-->", THEME_HEAD), ("<!--THEME-BUTTON-->", theme_button().replace('class="theme-sw"', 'class="theme-sw" style="margin-left:6px"')), ("<!--BAR-LOGO-->", barlogo)):
         if mark not in page:
             sys.exit(f"modules.html: {mark} is missing")
         page = page.replace(mark, what)
