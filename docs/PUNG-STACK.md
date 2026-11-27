@@ -145,10 +145,16 @@ Set as it was. A player sees what a Set uses and what it needs before anything i
   through the Remote Script: the part of a stack that is Live's). pung.live shows it on Stacks and keeps it;
   a stack is a file. *Pung's side is built (2026-11-27):* `GET /api/stack` (`src/setstack.go`): one entry a
   device, each with its patch, its place in Live, and whether it is laid out by the Set contract
-  ("portable"). The page still shows one device at a time.
+  ("portable"). *The page is built (2026-11-27):* Stacks shows the open Set's stack on each connected
+  deployment, takes and keeps it (a card a Set, its devices track by track; a file `.pungstack`), and what
+  one device holds is a patch, under its own heading.
 - **Send a stack to a deployment**: it installs the modules that are missing from the pack, names the
   firmware that must be there, and brings the samples and saved sounds the states refer to (by content, to a
-  place the receiving Pung maps: clause 3 and 5).
+  place the receiving Pung maps: clause 3 and 5). *Built (2026-11-27), all but the samples and sounds:*
+  `POST /api/stack/check` says how each module the stack names stands on a deployment (ready, install,
+  update, restart, firmware, pung, unknown; `setStackCheck`), and the page's "Check a deployment" installs
+  from that deployment's own pack and restarts Live there on the visitor's word. Not built: samples and
+  saved sounds brought along, and the check on a real second Push.
 - **A placeholder for a module that is not there**: the device stays in the Set, silent, with its state kept
   whole and a line saying what to install; installed, it plays as saved. (Reason's "Missing Device".)
 - **A check of clause 4** in the release: each changed module loads the state its last released version

@@ -1,11 +1,14 @@
-// stacks.js: pung.live's Stacks page. A stack is what travels between
-// devices (docs/STACKS.md): the modules in their order, the state of each,
-// Pung's modulation over them. This page is where the visitor's stacks live:
-// taken from a device (GET /api/stacks/playing/{n}), kept in this browser
-// (IndexedDB "pung", store "stacks"; a file for another browser or a backup),
-// sent to a deployment (POST /api/stacks, src/stacks.go). A deployment (a Pung that runs somewhere:
-// "device" in this code; on the page that word is kept for what it means in Live) plays a stack
-// and keeps what it was sent; it has no library of its own.
+// stacks.js: pung.live's Stacks page. A stack is everything of Pung's in one project (in Live: a Set):
+// every Pung device with its module, version and sound, and what those need (docs/PUNG-STACK.md). This
+// page is where the visitor's stacks live: taken from a deployment (GET /api/stack, src/setstack.go), kept
+// in this browser (IndexedDB "pung", store "stacks"; a file for another browser or a backup), and held
+// against a deployment before the Set goes there (POST /api/stack/check): what it lacks is installed from
+// its module pack from here (POST /api/catalog/{id}/install) and Live restarted on the visitor's word.
+// The Set itself, with its notes and automation, travels as Ableton moves it; Pung never reads a Set file.
+//
+// What ONE Pung device holds is a patch (pung_stack 1: GET /api/stacks/playing/{n}, POST /api/stacks):
+// kept here too, under its own heading, and sent to a deployment as a preset in Push's browser.
+// (A deployment is "device" in this code; on the page that word is kept for what it means in Live.)
 (function () {
   "use strict";
   const PP = window.PungPush, box = document.getElementById("sk");
@@ -46,12 +49,31 @@
     for (let n = 2; ; n++) if (!taken.has((base + " " + n).toLowerCase())) return base + " " + n;
   }
   // is it a stack this page reads?
-  function check(st) {
+  const isSet = (st) => !!st && st.pung_stack === 2;
+  function checkPatch(st) {
     if (!st || st.pung_stack !== 1) return "It is not a stack this page reads.";
-    if (!Array.isArray(st.modules) || !st.modules.length) return "The stack holds no module.";
-    for (const m of st.modules) if (!m || !ROLE[m.role] || typeof m.id !== "string" || !/^[\w.-]+$/.test(m.id)) return "The stack names a module this page cannot read.";
+    if (!Array.isArray(st.modules) || !st.modules.length) return "It holds no module.";
+    for (const m of st.modules) if (!m || !ROLE[m.role] || typeof m.id !== "string" || !/^[\w.-]+$/.test(m.id)) return "It names a module this page cannot read.";
     return "";
   }
+  function check(st) {
+    if (!isSet(st)) return checkPatch(st);
+    if (!Array.isArray(st.modules)) return "The stack names no devices.";
+    for (const e of st.modules) { const bad = !e || checkPatch(e.patch); if (bad) return "The stack holds a device this page cannot read."; }
+    return "";
+  }
+  // a stack's devices by track, in the Set's order; those the host gave no place last
+  function byTrack(st) {
+    const out = new Map();
+    for (const e of st.modules) {
+      const k = e.live ? e.live.track_index : 1e9;
+      if (!out.has(k)) out.set(k, { name: e.live ? e.live.track : "", index: k, devices: [] });
+      out.get(k).devices.push(e);
+    }
+    return [...out.values()].sort((a, b) => a.index - b.index);
+  }
+  const KIND = { instrument: "Instrument", effect: "Effect", midi: "MIDI" };
+  const count = (n, one, many) => `${n} ${n === 1 ? one : many || one + "s"}`;
 
   // ---- the modules' names and pictures (the site's own catalog) --------------------------------
   let names = {}, shots = {};
@@ -67,12 +89,14 @@
 
   // ---- what the devices have: what plays, what they keep ----------------------------------------
   const at = new Map(); // device id -> {playing, kept, knows (its Pung knows stacks), at}
-  const of = (d) => { if (!at.has(d.id)) at.set(d.id, { playing: [], kept: [], knows: null }); return at.get(d.id); };
+  const of = (d) => { if (!at.has(d.id)) at.set(d.id, { playing: [], kept: [], knows: null, set: null, sets: null }); return at.get(d.id); };
   async function look(d) {
     const a = of(d);
     try {
       const r = await PP.jsonOf(d, "/api/stacks");
       a.playing = r.playing || []; a.kept = r.kept || []; a.knows = true;
+      // the stack of the Set that is open there (a Pung from before it answers 404: it knows patches only)
+      try { const q = await PP.jsonOf(d, "/api/stack"); a.set = q.stack || null; a.sets = true; } catch (e) { a.set = null; a.sets = false; }
     } catch (e) {
       // a Pung that answers its catalog but not this: older than stacks
       if (d.state === "on" && a.knows === null) a.knows = false;
@@ -121,7 +145,45 @@
     return `<ol class="sk-chain" aria-label="Its modules, in the order they play">${st.modules.map((m) =>
       `<li class="${m.role}"><span>${ROLE[m.role]}</span><b>${esc(nameOf(m))}</b>${m.version ? `<i>${esc(m.version)}</i>` : ""}</li>`).join("")}</ol>`;
   }
+  // a stack's devices, track by track
+  function rows(st, limit) {
+    const tracks = byTrack(st);
+    let n = 0;
+    const lines = [];
+    for (const t of tracks) for (const e of t.devices) {
+      const m = lead(e.patch);
+      lines.push(`<li class="${n >= limit ? "more" : ""}"><span class="sk-tr">${t.name ? esc(t.name) : "No track given"}</span>
+        <span class="sk-dv ${esc(e.device)}"><i>${KIND[e.device] || esc(e.device)}</i><b>${esc(nameOf(m))}</b>${m.version ? `<em>${esc(m.version)}</em>` : ""}</span>
+        <span class="sk-snd">${e.patch.sound ? esc(e.patch.sound) : ""}</span></li>`);
+      n++;
+    }
+    const rest = n - limit;
+    return `<ul class="sk-set${rest > 0 ? " cut" : ""}">${lines.join("")}</ul>${rest > 0 ? `<button type="button" class="sk-link sk-all">and ${count(rest, "more device")}</button>` : ""}`;
+  }
+  function sums(st) {
+    const tracks = byTrack(st).filter((t) => t.index < 1e9).length, n = st.modules.length;
+    return `${count(n, "Pung device")}${tracks ? ` on ${count(tracks, "track")}` : ""}`;
+  }
+  function setCard(rec) {
+    const st = rec.stack;
+    const title = renaming === rec.id
+      ? `<form class="dv-rename" data-id="${esc(rec.id)}"><input type="text" value="${esc(rec.name)}" maxlength="60" aria-label="The stack's name"><button class="btn primary" type="submit">Save</button></form>`
+      : `<h3>${esc(rec.name)} <button type="button" class="dv-edit" data-rename="${esc(rec.id)}" aria-label="Rename it" title="Rename it">✎</button></h3>`;
+    const old = st.modules.filter((e) => !e.portable).length;
+    return `<article class="sk-card sk-setcard${fresh === rec.id ? " fresh" : ""}" data-id="${esc(rec.id)}">
+      <div class="sk-body">
+        <header>${title}<p class="dv-sub">${rec.from ? `Taken from ${esc(rec.from.name)}` : "From a file"} · ${esc(when(rec.added))} · <b>${esc(sums(st))}</b></p></header>
+        ${st.modules.length ? rows(st, 8) : `<p class="dv-note">The Set held no Pung device when this was taken.</p>`}
+        ${needs(st)}
+        ${old ? `<p class="dv-note sk-bound"><b>Automation</b> ${old === st.modules.length ? "The Set's automation and MIDI mappings of these devices" : `For ${count(old, "of its devices", "of its devices")}, the Set's automation and MIDI mappings`} follow the order of modules on the Pung it was made on. A Pung that lays devices out by the Set contract lifts that.</p>` : ""}
+        <div class="dv-acts"><button type="button" class="btn primary" data-prep="${esc(rec.id)}">Check a deployment</button>
+          <button type="button" class="btn" data-file="${esc(rec.id)}">Download</button>
+          <button type="button" class="btn" data-copy="${esc(rec.id)}">Duplicate</button>
+          <button type="button" class="btn" data-del="${esc(rec.id)}">Delete</button></div>
+      </div></article>`;
+  }
   function card(rec) {
+    if (isSet(rec.stack)) return setCard(rec);
     const st = rec.stack, on = [];
     for (const d of online()) {
       const k = of(d).kept.find((x) => x.id === rec.id);
@@ -147,33 +209,47 @@
       </div></article>`;
   }
 
-  // what plays on each connected device: a stack to take
+  // what each connected deployment has open: its Set's stack to take, and its devices one by one (patches)
   function playing() {
     const ds = PP.devices;
-    if (!ds.length) return `<div class="dv-empty"><p>Connect a deployment to take what it plays, and to send a stack to it. pung.live talks to it over your home network; your stacks stay in this browser.</p><div data-push-chip></div></div>`;
+    if (!ds.length) return `<div class="dv-empty"><p>Connect a deployment to take the stack of the Set that is open on it, and to check it against a stack. pung.live talks to it over your home network; your stacks stay in this browser.</p><div data-push-chip></div></div>`;
     return ds.map((d) => {
       const a = of(d);
       let body;
       if (d.state !== "on") body = `<p class="dv-note">${d.state === "trying" ? "Looking for it…" : `Not connected. <a href="deployments.html">Deployments</a> has it.`}</p>`;
-      else if (a.knows === false) body = `<p class="dv-note">Its Pung does not know stacks yet. <a href="deployments.html#install">Update Pung</a> on it.</p>`;
-      else if (!a.playing.length) body = `<p class="dv-note">No Pung device in its Set right now. Load one there, shape its sound, and take it here.</p>`;
-      else body = `<ul class="sk-play">${a.playing.map((p) => `<li><span class="sk-what"><b>${esc(p.name)}</b>${p.sound ? ` <span>${esc(p.sound)}</span>` : ""}${p.midi_fx ? ` <i>${esc(names[p.midi_fx] || p.midi_fx)} in front</i>` : ""}</span>
-          <button type="button" class="btn" data-take="${p.n}" data-dev="${d.id}">Take as a stack</button></li>`).join("")}</ul>`;
-      return `<section class="sk-dev"><header><i class="pl-led ${d.state === "on" ? "on" : d.state === "lost" ? "bad" : ""}" aria-hidden="true"></i><h3>${esc(PP.nameOf(d))}</h3><p class="dv-sub">${esc(PP.KINDS[d.kind].label)} · playing now</p></header>${body}</section>`;
+      else if (a.knows === false) body = `<p class="dv-note">Its Pung does not know stacks yet. <a href="deployments.html#installer">Update Pung</a> on it.</p>`;
+      else {
+        const st = a.set;
+        const open = a.sets === false
+          ? `<p class="dv-note">Its Pung reads one device at a time, not yet a whole Set. <a href="deployments.html#installer">Update Pung</a> on it to take a Set's stack.</p>`
+          : !st ? `<p class="dv-note">Reading the open Set…</p>`
+          : !st.modules.length ? `<p class="dv-note">The Set that is open there holds no Pung device. Load one there, and its stack appears here.</p>`
+          : `<div class="sk-open"><p class="sk-openhead"><b>The open Set</b> <span>${esc(sums(st))}</span></p>${rows(st, 6)}${needs(st)}
+              <div class="dv-acts"><button type="button" class="btn primary" data-takeset data-dev="${d.id}">Take this Set's stack</button></div></div>`;
+        const one = a.playing.length ? `<details class="sk-one"><summary>One device on its own, as a patch</summary>
+            <ul class="sk-play">${a.playing.map((p) => `<li><span class="sk-what"><b>${esc(p.name)}</b>${p.sound ? ` <span>${esc(p.sound)}</span>` : ""}${p.midi_fx ? ` <i>${esc(names[p.midi_fx] || p.midi_fx)} in front</i>` : ""}</span>
+              <button type="button" class="btn" data-take="${p.n}" data-dev="${d.id}">Take as a patch</button></li>`).join("")}</ul></details>` : "";
+        body = open + one;
+      }
+      return `<section class="sk-dev"><header><i class="pl-led ${d.state === "on" ? "on" : d.state === "lost" ? "bad" : ""}" aria-hidden="true"></i><h3>${esc(PP.nameOf(d))}</h3><p class="dv-sub">${esc(PP.KINDS[d.kind].label)}</p></header>${body}</section>`;
     }).join("");
   }
 
   let sig = "";
   function draw() {
-    const cards = lib.length
-      ? `<div class="sk-grid">${lib.map(card).join("")}</div>`
-      : `<div class="dv-empty sk-first"><p><b>No stacks here yet.</b> A stack is a sound with everything it stands on: the modules in their order, each one's state, and Pung's modulation over them.</p>
-          <ol class="sk-steps"><li><b>Take</b> what a deployment plays, below.</li><li><b>Keep</b> it here, under a name of yours.</li><li><b>Send</b> it to a deployment: the same one later, or another.</li></ol></div>`;
+    const sets = lib.filter((x) => isSet(x.stack)), patches = lib.filter((x) => !isSet(x.stack));
+    const cards = sets.length
+      ? `<div class="sk-grid sets">${sets.map(card).join("")}</div>`
+      : `<div class="dv-empty sk-first"><p><b>No stacks here yet.</b> A stack is everything of Pung's in one Set: every Pung device, its module and version, its sound, and what they need.</p>
+          <ol class="sk-steps"><li><b>Take</b> the stack of the Set that is open on a deployment, below.</li><li><b>Keep</b> it here, under a name of yours.</li><li><b>Check</b> another deployment against it: what it lacks is installed from here, before the Set goes there.</li></ol></div>`;
     const html = `<section class="home-sec"><div class="sk-bar"><div class="sec-head"><p class="eyebrow">In this browser</p><h2>Your stacks</h2></div>
         <div class="dv-acts"><button type="button" class="btn" id="sk-open">Open a file</button><input type="file" id="sk-input" accept="${EXT},.json,application/json" multiple hidden></div></div>
         ${dbFail ? `<p class="dv-note sk-warn">This browser does not let the page keep anything (a private window?). Stacks you take stay until the page closes: download the ones you want.</p>` : ""}
         ${cards}</section>
-      <section class="home-sec"><div class="sec-head"><p class="eyebrow">On your deployments</p><h2>Playing now</h2></div><div class="sk-devs">${playing()}</div></section>`;
+      <section class="home-sec"><div class="sec-head"><p class="eyebrow">On your deployments</p><h2>Open now</h2></div><div class="sk-devs">${playing()}</div></section>
+      ${patches.length ? `<section class="home-sec"><div class="sec-head"><p class="eyebrow">One device each</p><h2>Your patches</h2></div>
+        <p class="dv-note sk-first">A patch is what one Pung device holds: its instrument, the MIDI effect in front, Pung's modulation. Sent to a deployment it is a preset in its browser.</p>
+        <div class="sk-grid">${patches.map(card).join("")}</div></section>` : ""}`;
     if (html === sig) { PP.renderChips(); return; }
     if (box.querySelector(".dv-rename input:focus")) return; // a name being typed is not redrawn under the hands
     sig = html;
@@ -182,6 +258,9 @@
     const rec = (id) => lib.find((x) => x.id === id), dev = (id) => PP.devices.find((x) => x.id === id);
     const on = (sel, f) => box.querySelectorAll(sel).forEach((b) => (b.onclick = () => f(b)));
     on("[data-take]", (b) => take(dev(b.dataset.dev), +b.dataset.take, b));
+    on("[data-takeset]", (b) => takeSet(dev(b.dataset.dev), b));
+    on("[data-prep]", (b) => prepare(rec(b.dataset.prep)));
+    on(".sk-all", (b) => { b.previousElementSibling.classList.remove("cut"); b.remove(); });
     on("[data-send]", (b) => send(rec(b.dataset.send)));
     on("[data-file]", (b) => download(rec(b.dataset.file)));
     on("[data-copy]", async (b) => { const r = rec(b.dataset.copy), c = { id: newId(), name: freeName(r.name), stack: JSON.parse(JSON.stringify(r.stack)), added: new Date().toISOString(), from: r.from };
@@ -235,6 +314,25 @@
       redraw();
     }
   }
+  async function takeSet(d, btn) {
+    btn.disabled = true; btn.innerHTML = `<i class="pl-spin"></i> Taking…`;
+    try {
+      const r = await PP.jsonOf(d, "/api/stack");
+      const bad = check(r.stack);
+      if (bad) throw new Error(bad);
+      const day = new Date().toLocaleDateString(undefined, { day: "numeric", month: "short" });
+      const rec = { id: newId(), name: freeName(`Set on ${PP.nameOf(d)}, ${day}`), stack: r.stack, added: new Date().toISOString(), from: { name: PP.nameOf(d), kind: d.kind } };
+      await put(rec);
+      fresh = renaming = rec.id; // a new stack wants its name: the Set's own
+      redraw();
+      const i = box.querySelector(".dv-rename input");
+      if (i) { i.focus(); i.select(); i.closest(".sk-card").scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }
+      PP.toast(`Taken from ${PP.nameOf(d)}. Give it the Set's name.`);
+    } catch (e) {
+      PP.toast(`${PP.nameOf(d)} did not hand it over: ${e.message}`, true);
+      redraw();
+    }
+  }
   function download(rec) {
     const st = Object.assign({}, rec.stack, { id: rec.id, name: rec.name });
     const a = document.createElement("a");
@@ -259,7 +357,7 @@
       }
     }
     redraw();
-    if (added) PP.toast(added === 1 ? `“${last}” is in your stacks.` : `${added} stacks are in your stacks.`);
+    if (added) PP.toast(added === 1 ? `“${last}” is here now.` : `${added} files are here now.`);
   }
   // a file dropped anywhere on the page
   addEventListener("dragover", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); document.body.classList.add("sk-drop"); } });
@@ -303,7 +401,7 @@
     if (!sd) return;
     const body = document.getElementById("sk-send-body"), r = sd.rec, ds = online();
     const m = lead(r.stack);
-    let h = `<p class="pl-kicker">Send a stack</p><h2 id="sk-send-title">${esc(r.name)}</h2>`;
+    let h = `<p class="pl-kicker">Send a patch</p><h2 id="sk-send-title">${esc(r.name)}</h2>`;
     if (sd.done) {
       const d = sd.dev, c = sd.done;
       h += c.loaded
@@ -370,6 +468,155 @@
     sd = { rec, dev: null, check: null, busy: false, onto: "", done: null, err: "" };
     if (!dlg.open) dlg.showModal();
     if (ds.length) ask(ds.includes(PP.inUse()) ? PP.inUse() : ds[0]); else drawSend();
+  }
+
+  // ---- check a deployment against a Set's stack, and make it ready ------------------------------------
+  // the dialog: which deployment, how each module the stack names stands there, and what this page can do
+  // about it: install what the module pack has, and (on the visitor's word) restart Live there
+  let pd = null; // {rec, dev, res, err, busy: "" | "install" | "restart", note}
+  function prepDialog() {
+    let dlg = document.getElementById("sk-prep");
+    if (!dlg) {
+      dlg = document.createElement("dialog");
+      dlg.id = "sk-prep"; dlg.className = "pl-dialog sk-prepdlg"; dlg.setAttribute("aria-labelledby", "sk-prep-title");
+      dlg.innerHTML = `<button type="button" class="pl-btn icon pl-close" aria-label="Close">✕</button><div id="sk-prep-body"></div>`;
+      document.body.appendChild(dlg);
+      dlg.querySelector(".pl-close").onclick = () => dlg.close();
+      dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+      dlg.addEventListener("close", () => { if (!dlg.open) pd = null; });
+    }
+    return dlg;
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const OLDER = "Its Pung reads one device at a time, not yet a whole Set: update Pung on it.";
+  async function askSet(d) {
+    pd.dev = d; pd.res = null; pd.err = ""; pd.note = "";
+    drawPrep();
+    await recheck();
+  }
+  async function recheck() {
+    const d = pd && pd.dev;
+    if (!d) return;
+    try {
+      const c = await postAny(d, "/api/stack/check", { stack: doc(pd.rec) });
+      if (!pd || pd.dev !== d) return;
+      if (c.ok === false) throw new Error(/not found/i.test(c.error || "") ? OLDER : c.error || "It refused the stack.");
+      pd.res = c; pd.err = "";
+    } catch (e) {
+      if (!pd || pd.dev !== d) return;
+      pd.res = null;
+      pd.err = e.message === "Failed to fetch" ? "It does not answer right now." : /answered 40[45]/.test(e.message) ? OLDER : e.message;
+    }
+    drawPrep();
+  }
+  // a module's line: how it stands there, in words
+  function stands(m, d) {
+    const own = `${PP.baseOf(d)}/#modules/${encodeURIComponent(m.module)}`;
+    return {
+      ready: `<span class="ok">Ready</span>${m.here ? ` <em>${esc(m.here)}</em>` : ""}`,
+      install: `<span class="todo">Not installed</span> <em>the module pack has it</em>`,
+      update: `<span class="todo">Older there</span> <em>${esc(m.here || "?")}; the stack was saved with ${esc(m.detail || m.wanted)}</em>`,
+      restart: `<span class="wait">Installed</span> <em>a device in Live once Live restarts there</em>`,
+      firmware: `<span class="yours">Needs its ${esc(m.detail || "firmware")}</span> <em>yours: <a href="${esc(own)}" target="_blank" rel="noopener">add it on the ${esc(PP.KINDS[d.kind].short)}'s own page</a></em>`,
+      pung: `<span class="yours">Needs Pung ${esc(m.detail)} or later</span> <em><a href="deployments.html#installer">update Pung there</a></em>`,
+      unknown: `<span class="bad">Not in any module pack</span> <em>it cannot be installed from here</em>`,
+    }[m.state] || esc(m.state);
+  }
+  function drawPrep() {
+    if (!pd) return;
+    const body = document.getElementById("sk-prep-body"), r = pd.rec, ds = online();
+    let h = `<p class="pl-kicker">Check a deployment</p><h2 id="sk-prep-title">${esc(r.name)}</h2><p class="pl-sub">${esc(sums(r.stack))}</p>`;
+    if (!ds.length) {
+      body.innerHTML = h + `<p>No deployment is connected. Connect the one the Set is going to, and check again.</p><div class="pl-acts end"><a class="pl-btn primary" href="deployments.html">Deployments</a></div>`;
+      return;
+    }
+    h += `<div class="pl-form"><label for="sk-on">On</label><select id="sk-on" ${pd.busy ? "disabled" : ""}>${ds.map((d) => `<option value="${d.id}" ${pd.dev === d ? "selected" : ""}>${esc(PP.nameOf(d))} · ${esc(PP.KINDS[d.kind].label)}</option>`).join("")}</select></div>`;
+    const c = pd.res, d = pd.dev;
+    if (pd.err) h += `<div class="pl-err">${esc(pd.err)}</div><div class="pl-acts end"><button type="button" class="pl-btn" id="sk-again">Ask again</button></div>`;
+    else if (!c) h += `<p class="pl-sub"><i class="pl-spin" style="display:inline-block;vertical-align:-3px"></i> Asking ${esc(PP.nameOf(d))} what it has…</p>`;
+    else {
+      const mods = c.modules || [], by = (st) => mods.filter((m) => m.state === st);
+      const todo = [...by("install"), ...by("update")], wait = by("restart"), yours = [...by("firmware"), ...by("pung")], bad = by("unknown");
+      h += c.ready
+        ? `<p class="sk-verdict ok"><i class="pl-led on" aria-hidden="true"></i><b>${esc(PP.nameOf(d))} has everything this stack needs.</b></p>
+           <p class="pl-sub">Bring the Set there as you move any Set, and open it: every Pung device comes up with its sound.</p>`
+        : `<p class="sk-verdict"><i class="pl-led bad" aria-hidden="true"></i><b>${esc(PP.nameOf(d))} is not ready for this stack yet.</b></p>`;
+      if (mods.length) h += `<ul class="sk-stands">${mods.map((m) => `<li class="${esc(m.state)}"><b>${esc(m.name)}</b><span>${stands(m, d)}</span></li>`).join("")}</ul>`;
+      if (c.pung) h += `<p class="dv-note"><b>Pung</b> The stack was made with a newer Pung: it asks for ${esc(c.pung)} or later there. <a href="deployments.html#installer">Update Pung on it.</a></p>`;
+      if (c.emulators) h += `<p class="dv-note"><b>Emulators</b> The Set has ${c.emulators.wanted.length} (${c.emulators.wanted.map((x) => esc(names[x] || x)).join(", ")}); a ${esc(PP.KINDS[d.kind].short)} plays ${c.emulators.at_once} at once. The others wait, silent, until one is removed.</p>`;
+      if (pd.note) h += `<p class="dv-note sk-step">${pd.note}</p>`;
+      const acts = [];
+      if (pd.busy === "install") acts.push(`<button type="button" class="pl-btn primary" disabled><i class="pl-spin"></i> Installing…</button>`);
+      else if (pd.busy === "restart") acts.push(`<button type="button" class="pl-btn primary" disabled><i class="pl-spin"></i> Live is restarting there…</button>`);
+      else if (todo.length) acts.push(`<button type="button" class="pl-btn primary" id="sk-inst">Install ${todo.length === 1 ? esc(todo[0].name) : "the " + todo.length + " modules"} there</button>`);
+      else if (wait.length) acts.push(`<button type="button" class="pl-btn primary" id="sk-restart">Restart Live there</button>`);
+      acts.unshift(`<button type="button" class="pl-btn" id="sk-close">${c.ready ? "Done" : "Close"}</button>`);
+      if (!c.ready && !todo.length && !wait.length && (yours.length || bad.length || c.pung)) h += `<p class="pl-sub">What is left is yours to bring: nothing more can be installed from here.</p>`;
+      h += `<div class="pl-acts end">${acts.join("")}</div>`;
+    }
+    body.innerHTML = h;
+    const $ = (id) => document.getElementById(id);
+    if ($("sk-on")) $("sk-on").onchange = () => askSet(PP.devices.find((x) => x.id === $("sk-on").value));
+    if ($("sk-again")) $("sk-again").onclick = () => askSet(pd.dev);
+    if ($("sk-close")) $("sk-close").onclick = () => prepDialog().close();
+    if ($("sk-inst")) $("sk-inst").onclick = install;
+    if ($("sk-restart")) $("sk-restart").onclick = restart;
+  }
+  // install what the stack names and the deployment lacks, from its own module pack
+  async function install() {
+    const d = pd.dev, want = (pd.res.modules || []).filter((m) => m.state === "install" || m.state === "update");
+    pd.busy = "install"; pd.note = ""; drawPrep();
+    const failed = [];
+    for (const m of want) {
+      try { await post(d, `/api/catalog/${encodeURIComponent(m.module)}/install`, {}); } catch (e) { failed.push(`${m.name}: ${e.message}`); }
+    }
+    // the installs run there, one after another: watched until none is under way (ten minutes at most)
+    const ids = new Set(want.map((m) => m.module));
+    for (let i = 0; i < 300 && pd && pd.dev === d; i++) {
+      await sleep(2000);
+      let cat;
+      try { cat = await PP.jsonOf(d, "/api/catalog"); } catch (e) { continue; }
+      const mine = (cat.modules || []).filter((x) => ids.has(x.id));
+      const busy = mine.filter((x) => x.job && !["done", "failed"].includes(x.job.state));
+      for (const x of mine) {
+        const n = names[x.id] || x.id;
+        if (x.job && x.job.state === "failed" && !failed.some((f) => f.startsWith(n + ":"))) failed.push(`${n}: ${x.job.error || "it failed"}`);
+      }
+      if (!busy.length) break;
+      pd.note = `Installing on ${esc(PP.nameOf(d))}: ${busy.map((x) => esc(names[x.id] || x.id)).join(", ")}…`; drawPrep();
+    }
+    if (!pd || pd.dev !== d) return;
+    pd.busy = "";
+    pd.note = failed.length ? `Not everything was installed: ${failed.map(esc).join("; ")}.` : "";
+    await recheck();
+  }
+  // Live takes a new module in when it starts: on the visitor's word alone, because it stops what plays there
+  async function restart() {
+    const d = pd.dev;
+    if (!(await PP.confirm(`Restart Live on ${PP.nameOf(d)} now? What plays there stops for about a minute. The open Set comes back as it is, with its unsaved changes.`, "Restart Live", true))) return;
+    if (!pd || pd.dev !== d) return;
+    pd.busy = "restart"; pd.note = ""; drawPrep();
+    try { await post(d, "/api/catalog/apply", {}); } catch (e) { pd.busy = ""; pd.note = `It did not restart: ${esc(e.message)}.`; drawPrep(); return; }
+    // it goes away and comes back: asked every few seconds until it answers again (four minutes at most)
+    let back = false;
+    for (let i = 0; i < 80 && pd && pd.dev === d; i++) {
+      await sleep(3000);
+      try {
+        const cat = await PP.jsonOf(d, "/api/catalog");
+        if (i > 3 && !cat.restarting) { back = true; break; }
+      } catch (e) { /* not back yet */ }
+    }
+    if (!pd || pd.dev !== d) return;
+    pd.busy = "";
+    pd.note = back ? "" : `${esc(PP.nameOf(d))} has not answered yet. Give it a moment, and ask again.`;
+    await recheck();
+    await look(d); redraw();
+  }
+  function prepare(rec) {
+    const ds = online(), dlg = prepDialog();
+    pd = { rec, dev: null, res: null, err: "", busy: "", note: "" };
+    if (!dlg.open) dlg.showModal();
+    if (ds.length) askSet(ds.includes(PP.inUse()) ? PP.inUse() : ds[0]); else drawPrep();
   }
 
   // ---- kept current while the page is open ---------------------------------------------------------

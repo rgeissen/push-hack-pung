@@ -44,7 +44,7 @@ func siteCall(method, path string) bool {
 		// the settings: Pung's own switches (Your Push on pung.live)
 		// and a stack sent to this device, or one it should keep no longer (Stacks on pung.live)
 		if path == "/api/catalog/update-all" || path == "/api/catalog/apply" || path == "/api/settings" ||
-			path == "/api/stacks" || path == "/api/stacks/remove" {
+			path == "/api/stacks" || path == "/api/stacks/remove" || path == "/api/stack/check" {
 			return true
 		}
 		// /api/catalog/{id}/install

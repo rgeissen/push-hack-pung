@@ -23,7 +23,7 @@ SITE = {"home": "./", "vision": "vision.html", "modules": "modules/", "stacks": 
 DESC = {
     "legal": "Legal notice (Impressum) of pung.live.",
     "privacy": "Privacy on pung.live: what the site and Pung do with data, and what they do not.",
-    "stacks": "Stacks: the modules you play, in their order, each with its state and Pung's modulation over them. Take one from a Pung that runs on your Push, keep it, send it to another.",
+    "stacks": "Stacks: everything of Pung's in one Set. Every Pung device with its module, version and sound, and what they need. Take it from one Push, and make another ready for the Set.",
     "deployments": "Deployments of Pung: install Pung on an Ableton Push 3 Standalone, connect it to pung.live, and see its processor, memory, storage and settings.",
     "devices": "Deployments of Pung.",
     "push": "Deployments of Pung.",

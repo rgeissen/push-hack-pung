@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -205,7 +206,194 @@ func (h *Host) setStackNow() (*setStack, error) {
 	return st, nil
 }
 
+// setCheckModule: how one module a project's stack names stands on this
+// deployment: "ready", or what must happen first.
+//
+//	install   it is in the module pack and not installed here
+//	update    it is installed, older than the stack was saved with (its
+//	          state may hold what the older module does not know)
+//	restart   it is installed; the host has not taken it in yet (Live: it
+//	          becomes a device when Live restarts)
+//	firmware  it needs files of the player's own that are not here
+//	pung      it needs a newer Pung than this one
+//	unknown   no module pack this deployment knows names it
+type setCheckModule struct {
+	Module string `json:"module"`
+	Name   string `json:"name"`
+	Wanted string `json:"wanted,omitempty"` // the version the stack was saved with
+	Here   string `json:"here,omitempty"`   // the version installed here
+	State  string `json:"state"`
+	Detail string `json:"detail,omitempty"`
+	Uses   int    `json:"uses"` // how many of the project's devices use it
+}
+
+// moduleFacts: what a deployment knows of a module
+type moduleFacts struct {
+	Name     string
+	Have     bool   // installed
+	Here     string // its version here
+	Known    bool   // a module pack names it
+	MinPung  string // the oldest Pung that runs it, where this one is older
+	Firmware []string
+	InHost   bool // the host has a device for it (asked only of a module that leads a device)
+}
+
+// setModuleState: the first thing in the way, in the order a player would
+// meet it.
+func setModuleState(wanted string, f moduleFacts, lead bool) (state, detail string) {
+	switch {
+	case !f.Have && f.Known && f.MinPung != "":
+		return "pung", f.MinPung
+	case !f.Have && f.Known:
+		return "install", ""
+	case !f.Have:
+		return "unknown", ""
+	case len(f.Firmware) > 0:
+		return "firmware", strings.Join(f.Firmware, ", ")
+	case wanted != "" && f.Here != "" && versionLess(f.Here, wanted):
+		return "update", wanted
+	case lead && !f.InHost:
+		return "restart", ""
+	}
+	return "ready", ""
+}
+
+// checkSet: every module the stack names, once, in the order the stack has
+// them, with how it stands here (facts: what this deployment knows of it).
+// A module several devices use is asked for in the newest version any of
+// them was saved with; one that leads any device must be in the host.
+func checkSet(st *setStack, facts func(id string) moduleFacts) []setCheckModule {
+	type want struct {
+		name, version string
+		lead          bool
+		uses          int
+	}
+	wants := map[string]*want{}
+	var order []string
+	for _, e := range st.Entries {
+		if e.Patch == nil {
+			continue
+		}
+		lead, _ := e.Patch.lead()
+		for _, m := range e.Patch.Modules {
+			w := wants[m.ID]
+			if w == nil {
+				w = &want{name: m.Name}
+				wants[m.ID] = w
+				order = append(order, m.ID)
+			}
+			if m.Version != "" && (w.version == "" || versionLess(w.version, m.Version)) {
+				w.version = m.Version
+			}
+			w.lead = w.lead || m.ID == lead.ID
+			w.uses++
+		}
+	}
+	out := make([]setCheckModule, 0, len(order))
+	for _, id := range order {
+		w, f := wants[id], facts(id)
+		c := setCheckModule{Module: id, Name: w.name, Wanted: w.version, Here: f.Here, Uses: w.uses}
+		if f.Name != "" {
+			c.Name = f.Name
+		}
+		if c.Name == "" {
+			c.Name = id
+		}
+		c.State, c.Detail = setModuleState(w.version, f, w.lead)
+		out = append(out, c)
+	}
+	return out
+}
+
+// setStackCheck: a project's stack against this deployment.
+func (h *Host) setStackCheck(st *setStack) map[string]any {
+	inst := map[string]installed{}
+	if h.mods != nil {
+		inst = h.mods.installed()
+	}
+	// the modules the host has a device for: a patch of each leading module is asked for its class
+	inHost := map[string]bool{}
+	var leads []string
+	for _, e := range st.Entries {
+		if e.Patch == nil {
+			continue
+		}
+		lead, _ := e.Patch.lead()
+		leads = append(leads, lead.ID)
+		if !inHost[lead.ID] && h.stackClass(e.Patch) != nil {
+			inHost[lead.ID] = true
+		}
+	}
+	mods := checkSet(st, func(id string) moduleFacts {
+		f := moduleFacts{InHost: inHost[id]}
+		if h.mods != nil {
+			if e, ok := h.mods.entry(id); ok {
+				f.Known, f.Name = true, e.Name
+				if pungTooOld(e) {
+					f.MinPung = e.MinPung
+				}
+			}
+		}
+		if i, ok := inst[id]; ok {
+			f.Have, f.Here = true, i.Version
+			if i.Name != "" {
+				f.Name = i.Name
+			}
+			for _, a := range assetStates(i.Dir) {
+				if !a.Optional && a.Missing > 0 {
+					f.Firmware = append(f.Firmware, a.Label)
+				}
+			}
+		}
+		return f
+	})
+	ready := true
+	var install []string
+	for _, m := range mods {
+		ready = ready && m.State == "ready"
+		if m.State == "install" || m.State == "update" {
+			install = append(install, m.Module)
+		}
+	}
+	out := map[string]any{"ok": true, "modules": mods, "install": install, "devices": len(st.Entries)}
+	// the Pung the stack as a whole asks for
+	if st.Needs != nil && st.Needs.Pung != "" && buildVersion != "dev" && versionLess(buildVersion, st.Needs.Pung) {
+		out["pung"] = st.Needs.Pung
+		ready = false
+	}
+	// its emulators against what plays at once here: more wait, silent, until one is removed (limits.go)
+	if emus := emulatorsRunning(leads); len(emus) > maxEmulators {
+		out["emulators"] = map[string]any{"wanted": emus, "at_once": maxEmulators}
+	}
+	out["ready"] = ready
+	return out
+}
+
 func (h *Host) setStackRoutes(mux *http.ServeMux) {
+	// POST /api/stack/check {"stack": …}: what this deployment lacks to play a project's stack. It changes
+	// nothing here: installing is the module pack's (POST /api/catalog/{id}/install), restarting the host
+	// the player's word (POST /api/catalog/apply).
+	mux.HandleFunc("POST /api/stack/check", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Stack *setStack `json:"stack"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<20)).Decode(&req); err != nil || req.Stack == nil {
+			fail(w, 400, "the request holds no stack")
+			return
+		}
+		if req.Stack.Format != setStackFormat {
+			fail(w, 400, "it is not the stack of a project (pung_stack %d): a patch goes to POST /api/stacks", req.Stack.Format)
+			return
+		}
+		for _, e := range req.Stack.Entries {
+			if e.Patch == nil || e.Patch.valid() != nil {
+				fail(w, 400, "the stack names a device this Pung cannot read")
+				return
+			}
+		}
+		writeJSON(w, 200, h.setStackCheck(req.Stack))
+	})
+
 	mux.HandleFunc("GET /api/stack", func(w http.ResponseWriter, r *http.Request) {
 		st, err := h.setStackNow()
 		if err != nil {

@@ -1,5 +1,9 @@
 # Stacks
 
+**Since 2026-11-27 the Stacks page is about a Set's stack** (`GET /api/stack`, `POST /api/stack/check`,
+`src/setstack.go`; `docs/PUNG-STACK.md`, Phase 1), and what this document describes is shown there as
+**patches**, under their own heading: taken with "One device on its own, as a patch", sent as before.
+
 **Read `docs/PUNG-STACK.md` first.** On 2026-11-27 the owner said what a stack is: all Pung modules and
 settings of a Live Set, with the MIDI made against them; and what the Pung stack is to become (Reason's Rack,
 for open modules, in every place a musician works). What this document describes and what was built from it

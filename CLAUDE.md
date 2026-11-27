@@ -283,11 +283,19 @@ before and linked in the footer.
   for anything (a visitor's address sent to a font service is a legal risk for a site run from Germany).
   Keep it so: no script, style, font or picture from another host.
 - **Stacks** (`stacks.src.html`, `site/stacks.js`; a fourth entry in the menu, between Modules and Deployments,
-  once the site is launched): the visitor's stacks, kept in their browser (IndexedDB `pung`/`stacks`, a file
-  `.pungstack` to carry one), taken from what a connected deployment plays and sent to one (`src/stacks.go`:
-  `GET /api/stacks`, `GET /api/stacks/playing/{n}`, `POST /api/stacks`, `POST /api/stacks/remove`). A stack a
-  Push takes is a rack in Push's browser, in "Pung Stacks" beside the sounds' racks. `pung.css` gives every
-  `article` a 64-pixel gap: a card that is an article sets its own.
+  once the site is launched): since 2026-11-27 a stack on that page is a Set's (`docs/PUNG-STACK.md`, Phase 1).
+  The visitor's stacks are kept in their browser (IndexedDB `pung`/`stacks`, a file `.pungstack` to carry
+  one). **Take**: the stack of the Set open on a connected deployment (`GET /api/stack`, `src/setstack.go`).
+  **Check a deployment**: `POST /api/stack/check` says how each module the stack names stands there (ready,
+  install, update, restart, firmware, pung, unknown); the page installs what is missing through that
+  deployment's own pack (`POST /api/catalog/{id}/install`) and restarts Live there only after the visitor
+  has confirmed (`/api/catalog/apply`). The Set itself moves as Ableton moves it: Pung never reads a Set
+  file. What ONE device holds is a **patch** (`pung_stack` 1, `src/stacks.go`: `GET /api/stacks`,
+  `GET /api/stacks/playing/{n}`, `POST /api/stacks`, `POST /api/stacks/remove`), on the same page under
+  "Your patches"; a patch a Push takes is a rack in Push's browser, in "Pung Stacks". Try the page without
+  a Push: the scratch `fix/mock.py` (the Push's catalog, a Set of seven devices, a check that moves on as
+  the page installs and restarts). `pung.css` gives every `article` a 64-pixel gap: a card that is an
+  article sets its own.
 - **Several deployments, several kinds** (the owner's word, 2026-11-27: the Push is the first hardware Pung
   runs on, more kinds will follow, and a visitor may own more than one of a kind). `site/pushlink.js` + `pushlink.css` hold the
   list for every page (in the visitor's browser: `pung.devices`, the one modules install on in `pung.device`;

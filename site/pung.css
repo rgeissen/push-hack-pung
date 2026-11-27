@@ -598,6 +598,42 @@ html:has(main.front) .sf { scroll-snap-align: end; }
 .sk-unmet { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 8px; }
 .sk-where { padding: 12px 14px; border: 1px solid var(--pl-line, var(--line)); border-radius: 6px; font: 500 0.86rem/1.5 var(--mono); overflow-wrap: anywhere; }
 .pl-dialog .pl-led { margin-right: 6px; }
+/* the stack of a Set: its devices track by track (a card in "Your stacks", and the open Set on a deployment) */
+.sk-grid.sets { grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); }
+.sk-set { list-style: none; margin: 0; padding: 0; display: grid; border-top: 1px solid var(--line); }
+.sk-set li { display: grid; grid-template-columns: minmax(0, 11ch) minmax(0, 1.4fr) minmax(0, 1fr); gap: 4px 14px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.sk-set.cut li.more { display: none; }
+.sk-tr { font: 500 0.74rem/1.4 var(--mono); letter-spacing: 0.04em; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sk-dv { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; }
+.sk-dv i { font: 500 0.62rem/1.5 var(--mono); font-style: normal; letter-spacing: 0.12em; text-transform: uppercase; color: var(--pung-ink); }
+.sk-dv.effect i { color: var(--ok); }
+.sk-dv.midi i { color: var(--cyan); }
+.sk-dv b { font-weight: 650; }
+.sk-dv em, .sk-stands em { font: 500 0.72rem var(--mono); font-style: normal; color: var(--muted); }
+.sk-snd { color: var(--muted); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) { .sk-set li { grid-template-columns: minmax(0, 1fr); gap: 1px; } }
+.sk-bound { padding-top: 2px; }
+.sk-open { display: grid; gap: 14px; }
+.sk-openhead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.sk-openhead b { font-weight: 650; font-size: 1.05rem; }
+.sk-openhead span { font: 500 0.78rem var(--mono); letter-spacing: 0.04em; color: var(--muted); }
+.sk-one { border-top: 1px solid var(--line); padding-top: 12px; }
+.sk-one summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+.sk-one summary:hover { color: var(--ink); }
+.sk-one[open] summary { margin-bottom: 6px; }
+/* a deployment held against a stack: every module the stack names, and how it stands there */
+.sk-prepdlg { width: min(640px, calc(100vw - 24px)); }
+.sk-verdict { display: flex; align-items: baseline; gap: 4px; margin: 14px 0 6px; }
+.sk-stands { list-style: none; margin: 12px 0; padding: 0; display: grid; border-top: 1px solid var(--pl-line, var(--line)); max-height: min(46vh, 420px); overflow-y: auto; }
+.sk-stands li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 2px 14px; align-items: baseline; padding: 8px 2px; border-bottom: 1px solid var(--pl-line, var(--line)); }
+.sk-stands b { font-weight: 650; }
+.sk-stands span span { font: 600 0.66rem/1.5 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; margin-right: 6px; }
+.sk-stands .ok { color: var(--ok); }
+.sk-stands .todo { color: var(--pung-ink); }
+.sk-stands .wait { color: var(--cyan); }
+.sk-stands .yours, .sk-stands .bad { color: var(--warn); }
+@media (max-width: 520px) { .sk-stands li { grid-template-columns: minmax(0, 1fr); } }
+.sk-step { margin: 0 0 4px; }
 body.sk-drop::after { content: "Drop the stack here"; position: fixed; inset: 16px; z-index: 70; display: grid; place-items: center; border: 2px dashed var(--pung); border-radius: 16px;
   background: color-mix(in srgb, var(--ground) 88%, transparent); color: var(--ink); font: 760 1.6rem var(--display); pointer-events: none; }
 

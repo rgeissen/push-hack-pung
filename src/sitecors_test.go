@@ -36,7 +36,7 @@ func TestSiteCORS(t *testing.T) {
 		t.Errorf("install preflight: %d %q", w.Code, acao(w))
 	}
 	// the Stacks page: what plays, the stack of one device, sending and removing one
-	for _, c := range [][2]string{{"GET", "/api/stacks"}, {"GET", "/api/stack"}, {"GET", "/api/stacks/playing/3"}, {"POST", "/api/stacks"}, {"POST", "/api/stacks/remove"}} {
+	for _, c := range [][2]string{{"GET", "/api/stacks"}, {"GET", "/api/stack"}, {"GET", "/api/stacks/playing/3"}, {"POST", "/api/stacks"}, {"POST", "/api/stacks/remove"}, {"POST", "/api/stack/check"}} {
 		if !siteCall(c[0], c[1]) {
 			t.Errorf("pung.live may not %s %s", c[0], c[1])
 		}
