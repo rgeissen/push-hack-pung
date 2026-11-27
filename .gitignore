@@ -16,5 +16,8 @@ __pycache__/
 /site/devices.html
 /site/push.html
 /site/stacks.html
+/site/deployments.html
+/site/legal.html
+/site/privacy.html
 /_site/
 /installer/dist/
