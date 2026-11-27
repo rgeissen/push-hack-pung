@@ -98,7 +98,11 @@ func installPung(root *client, rel release, done, total *atomic.Int64, say func(
 	say("Putting Pung in place")
 	// what the package carries replaces what was there; anything else in the
 	// folder (a module a user added, built-in modules' state) is kept
-	if _, err := root.run(fmt.Sprintf("mkdir -p %[1]s && cp -a %[2]s/pung/. %[1]s/ && rm -rf %[2]s", shellQuote(dir), shellQuote(tmp))); err != nil {
+	// A built-in module that the Modules page has since updated is a link into Pung's data (the
+	// newer one, modmgr.go): copying over it would write the package's older files through the link,
+	// into the module the player installed. Such a module is left as it is.
+	keep := fmt.Sprintf(`cd %[2]s/pung && for d in modules/*/*; do [ -d "$d" ] && [ -L %[1]s/"$d" ] && rm -rf "$d"; done; true`, shellQuote(dir), shellQuote(tmp))
+	if _, err := root.run(fmt.Sprintf("mkdir -p %[1]s && { %[3]s; } && cp -a %[2]s/pung/. %[1]s/ && rm -rf %[2]s", shellQuote(dir), shellQuote(tmp), keep)); err != nil {
 		return err
 	}
 	port := choosePort(root, hacks, prev)
