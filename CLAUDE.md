@@ -311,6 +311,12 @@ before and linked in the footer.
   numbers are what was used since the last request (nothing runs between requests), in percent of the whole
   machine. On the owner's Push: AbletonOS 4.2, no battery in `/sys/class/power_supply` while on power.
 
+- **The hero's logo** (`{{BIGLOGO}}`, `biglogo()` in `build.py`, `site/ride.js` put into the page right after
+  it; the owner's word, 2026-11-27): the logo as wide as the page, and its dot rides from the G through N
+  and U to its place on the P (a ball on a track: slower the higher it is; one mask over all four letters,
+  so the gap travels with it). Once as the page opens, again on a press, never where motion is turned down
+  or without the script (the logo then stands as drawn). The bar's small logo is hidden while the large one
+  is in view. The small logo's offset is 0.8 px at 22 px high (27.4 of the drawing's 740.9 units).
 - **The hero's views** (`site/hero.js`): PUNG CUSTOM, the front panels of Pung's five own instruments as loops
   (`site/hero/<id>.mp4` + `.png`), and PUNG DEFAULT, the live-drawn page; they take turns until a tab is pressed.
   `scripts/hero-loops.sh` records the loops from Pung's own renderer (`src/heroframes_test.go`: a chord, the

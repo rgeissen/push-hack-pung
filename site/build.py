@@ -74,13 +74,34 @@ def logo():
     return f'<span class="logo ride">{ride}</span><span class="logo still">{still}</span>'
 
 
+def biglogo():
+    """the front page's logo, large, for the dot to ride through (site/ride.js): the logo file's own
+    drawing with one mask over all four letters, so the gap travels with the dot; at rest it is the logo"""
+    src = open(os.path.join(HERE, "brand", "pung-logo.svg")).read()
+    g = re.search(r'<g transform="([^"]+)">.*?<path d="([^"]+)"[^>]*stroke-width="([\d.]+)"', src, re.S)
+    ung = re.search(r'<path transform="(translate\([\d.]+ 0\))" d="([^"]+)"', src)
+    hole = re.search(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="#000"/>', src)
+    dot = re.search(r'<circle cx="[\d.]+" cy="[\d.]+" r="([\d.]+)" fill="#4fcbe6"/>', src)
+    k = float(re.search(r"scale\(([\d.]+)\)", g.group(1)).group(1))
+    tx, ty = (float(v) for v in re.search(r"translate\((-?[\d.]+) (-?[\d.]+)\)", g.group(1)).groups())
+    x, y = float(hole.group(1)) * k + tx, float(hole.group(2)) * k + ty   # the dot's place, in the logo's units
+    return f"""<div class="biglogo"><svg viewBox="0 -250 2770 958" role="img" aria-label="Pung" data-rest="{x:.1f} {y:.1f}">
+<mask id="blm" maskUnits="userSpaceOnUse" x="-200" y="-400" width="3200" height="1300"><rect x="-200" y="-400" width="3200" height="1300" fill="#fff"/><circle id="hole" cx="{x:.1f}" cy="{y:.1f}" r="{float(hole.group(3)) * k:.1f}" fill="#000"/></mask>
+<g mask="url(#blm)"><g transform="{g.group(1)}"><path d="{g.group(2)}" fill="none" style="stroke:var(--pung)" stroke-width="{g.group(3)}" stroke-linecap="round" stroke-linejoin="round"/></g>
+<path transform="{ung.group(1)}" d="{ung.group(2)}" style="fill:var(--ink)"/></g>
+<path id="way" fill="none" d=""/><circle id="dot" cx="{x:.1f}" cy="{y:.1f}" r="{float(dot.group(1)) * k:.1f}" style="fill:var(--cyan)"/>
+</svg></div>
+<script>
+{open(os.path.join(HERE, "ride.js")).read()}</script>"""
+
+
 def topbar(current):
     links = []
     for key, label in NAV:
         cur = ' aria-current="page"' if key == current else ""
         links.append(f'<a href="{LINKS[key]}"{cur}>{label}</a>')
     return f"""<header class="band topbar"><div class="wrap">
-<a class="mark" href="{LINKS['home']}" aria-label="Pung, home">{logo()}</a>
+<a class="mark{' quiet' if current == 'home' else ''}" href="{LINKS['home']}" aria-label="Pung, home">{logo()}</a>
 <nav aria-label="Pung">{''.join(links)}</nav>
 </div></header>"""
 
@@ -258,6 +279,7 @@ def build(name):
     # (install.json, installer.available); <!--if:!installer--> until then
     for flag, on in (("installer", INSTALLER), ("!installer", not INSTALLER), ("launched", LAUNCHED), ("!launched", not LAUNCHED)):
         src = re.sub(r"<!--if:%s-->(.*?)<!--endif-->" % re.escape(flag), (lambda m: m.group(1)) if on else "", src, flags=re.S)
+    src = src.replace("{{BIGLOGO}}", biglogo()) if "{{BIGLOGO}}" in src else src
     src = src.replace("{{TOPBAR}}", topbar(name)).replace("{{FOOTER}}", footer(name))
     for k, v in LEGAL.items():  # the legal pages name the person who answers for the site (legal.json)
         src = src.replace("{{LEGAL:%s}}" % k, html.escape(v) if v else '<mark>to be added</mark>')
@@ -440,7 +462,7 @@ if __name__ == "__main__":
         # a script that does not parse leaves its page standing still, without a word (Your devices was
         # published so, 2026-11-27): no page is built with one
         node = shutil.which("node")
-        for f in ("hero.js", "pushlink.js", "deployments.js", "stacks.js", os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(ROOT, "src", "web", "modules.js")):
+        for f in ("hero.js", "ride.js", "pushlink.js", "deployments.js", "stacks.js", os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(ROOT, "src", "web", "modules.js")):
             path = f if os.path.isabs(f) else os.path.join(HERE, f)
             if node and subprocess.run([node, "--check", path], capture_output=True).returncode != 0:
                 sys.exit(f"{os.path.basename(path)} does not parse (node --check): nothing is built from it")

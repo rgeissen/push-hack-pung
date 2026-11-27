@@ -300,12 +300,24 @@ button.copy:hover { border-color: var(--pung); }
 
 /* the logo in the top bar: it rides once as a page opens, still where motion is turned down */
 .mark .logo { display: block; line-height: 0; }
-.mark .logo svg { height: 22px; width: auto; display: block; margin-left: -2.3px; /* the P begins that far inside the drawing's box: its edge on the page's */ }
+.mark .logo svg { height: 22px; width: auto; display: block; margin-left: -0.8px; /* the P begins that far inside the drawing's box at this height: its edge on the page's */ }
 .mark .logo.still { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .mark .logo.ride { display: none; }
   .mark .logo.still { display: block; }
 }
+
+/* the front page has the logo large, and its dot rides there (ride.js): the bar's stands still */
+.mark.quiet .logo.ride { display: none; }
+.mark.quiet .logo.still { display: block; }
+.biglogo { line-height: 0; margin: 0 0 clamp(4px, 1.4vw, 18px); }
+.biglogo svg { display: block; width: 100%; height: auto; overflow: visible; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.hero.home .wrap { padding-top: clamp(4px, 1.2vw, 16px); }   /* (the room above the letters is the dot's: its hops) */
+/* under the logo the line is the second thing said, not the first: on one line where there is room */
+.hero.home h1 { font-size: clamp(1.7rem, 3.5vw, 2.9rem); line-height: 1.06; max-width: none; }
+/* while the large logo is in view the bar does not repeat it (ride.js says when; without it the bar's stays) */
+.topbar .mark { transition: opacity .25s ease; }
+.topbar.over-logo .mark { opacity: 0; pointer-events: none; }
 
 /* the landing page */
 .cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 6px; }
