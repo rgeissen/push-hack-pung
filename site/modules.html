@@ -21,6 +21,7 @@
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="../footer.css">
 <link rel="stylesheet" href="../pushlink.css">
+<!--THEME-HEAD-->
 <style>
 /* pung.live: Pung's own Modules page (src/web), without the app's rail: the site's bar on top */
 body[data-public] { display: block; }
@@ -28,23 +29,35 @@ body[data-public] { display: block; }
    stylesheet is dark only (the page on a Push), so its colours are given again here. The accent is the
    site's orange in both. The Push's screens stay as they are: they are pictures of a dark display. */
 :root { --amber: #ff8a1f; --slot: #ff8a1f; --inst: #ff8a1f; --bar: rgba(11, 12, 13, 0.92); }
+/* light: the system's setting, unless the visitor chose dark with the switch; or the visitor's choice */
 @media (prefers-color-scheme: light) {
-  :root { --ink: #eef0f1; --panel: #ffffff; --raise: #e9ecef; --raise2: #dde1e5; --line: #d3d8dd; --line2: #b9c0c7;
+  :root:not([data-theme="dark"]) { --ink: #eef0f1; --panel: #ffffff; --raise: #e9ecef; --raise2: #dde1e5; --line: #d3d8dd; --line2: #b9c0c7;
     --fg: #15171a; --muted: #565d66; --faint: #7d858e;
     --amber: #d6600a; --slot: #d6600a; --inst: #d6600a; --native: #c8381c; --steel: #4d6680;
     --midi: #5b46c9; --afx: #12805c; --warn: #c2352a; --ok: #12805c; --mod: #08809f; --live: #08809f;
     --bar: rgba(238, 240, 241, 0.92); color-scheme: light; }
 }
+:root[data-theme="light"] { --ink: #eef0f1; --panel: #ffffff; --raise: #e9ecef; --raise2: #dde1e5; --line: #d3d8dd; --line2: #b9c0c7;
+    --fg: #15171a; --muted: #565d66; --faint: #7d858e;
+    --amber: #d6600a; --slot: #d6600a; --inst: #d6600a; --native: #c8381c; --steel: #4d6680;
+    --midi: #5b46c9; --afx: #12805c; --warn: #c2352a; --ok: #12805c; --mod: #08809f; --live: #08809f;
+    --bar: rgba(238, 240, 241, 0.92); color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 /* what Pung's stylesheet writes in a fixed colour for a dark page */
 .btn.primary:hover, .primary:hover, .act.primary:hover { background: #ffa451; border-color: #ffa451; }
+/* (on a light page; the words under a Push screen stand on its black and keep the dark page's colours) */
 @media (prefers-color-scheme: light) {
-  .btn[aria-pressed="true"], .seg button[aria-pressed="true"] { color: #fff; }
-  .seg button[aria-pressed="true"] .count { background: #fff; color: var(--fg); }
-  .mod .desc, .mod-sheet .desc { color: #3b424a; }
-  /* the words under a Push screen stand on its black: they keep the dark page's colours */
-  .face-main { --fg: #eceef0; --muted: #8b929b; --faint: #7d858e; color: var(--fg); }
-  .btn.primary:hover, .primary:hover, .act.primary:hover { background: #a84c05; border-color: #a84c05; color: #fff; }
+:root:not([data-theme="dark"]) .btn[aria-pressed="true"], :root:not([data-theme="dark"]) .seg button[aria-pressed="true"] { color: #fff; }
+:root:not([data-theme="dark"]) .seg button[aria-pressed="true"] .count { background: #fff; color: var(--fg); }
+:root:not([data-theme="dark"]) .mod .desc, :root:not([data-theme="dark"]) .mod-sheet .desc { color: #3b424a; }
+:root:not([data-theme="dark"]) .face-main { --fg: #eceef0; --muted: #8b929b; --faint: #7d858e; color: var(--fg); }
+:root:not([data-theme="dark"]) .btn.primary:hover, :root:not([data-theme="dark"]) .primary:hover, :root:not([data-theme="dark"]) .act.primary:hover { background: #a84c05; border-color: #a84c05; color: #fff; }
 }
+:root[data-theme="light"] .btn[aria-pressed="true"], :root[data-theme="light"] .seg button[aria-pressed="true"] { color: #fff; }
+:root[data-theme="light"] .seg button[aria-pressed="true"] .count { background: #fff; color: var(--fg); }
+:root[data-theme="light"] .mod .desc, :root[data-theme="light"] .mod-sheet .desc { color: #3b424a; }
+:root[data-theme="light"] .face-main { --fg: #eceef0; --muted: #8b929b; --faint: #7d858e; color: var(--fg); }
+:root[data-theme="light"] .btn.primary:hover, :root[data-theme="light"] .primary:hover, :root[data-theme="light"] .act.primary:hover { background: #a84c05; border-color: #a84c05; color: #fff; }
 /* the site's own typefaces (fonts.css, written by site/build.py), as on its other pages */
 :root { --sans: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; }
 .view-head h1 { font-family: "Archivo", "Helvetica Neue", Arial, sans-serif; font-weight: 800; font-stretch: 112%; font-variation-settings: "wdth" 112; font-size: 34px; letter-spacing: -0.012em; margin-left: -0.066em; /* the M begins that far inside its box: its stem on the page's edge */ }
@@ -54,14 +67,14 @@ body[data-public] { display: block; }
 .site-bar .in { max-width: 1320px; margin: 0 auto; padding: 12px 0; display: flex; align-items: center;
   gap: 12px 24px; flex-wrap: wrap; }
 .site-bar .home { display: block; line-height: 0; }
-.site-bar .home img { height: 22px; width: auto; margin-left: -0.8px; /* (the drawing begins that far inside its box, at this height) */ }
+.site-bar .home svg { height: 22px; width: auto; display: block; margin-left: -0.8px; /* (the drawing begins that far inside its box, at this height) */ }
 .sf { --sf-max: 1320px; --sf-pad: clamp(16px, 3vw, 40px); }
 /* the page's own margin is 12 pixels up to this width (app.css): the bar and the foot follow it */
 @media (max-width: 1200px) {
   .site-bar { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
   .sf { --sf-pad: 12px; }
 }
-.sf-logo img { margin-left: -1px; }
+
 .site-bar nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
 .site-bar nav a { font: 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
   text-decoration: none; padding: 8px 10px; border-radius: 4px; }
@@ -76,7 +89,7 @@ a.act { display: inline-flex; align-items: center; text-decoration: none; }
 <body data-public="1" data-view="modules" data-up="../">
 <a class="skip" href="#main">Skip to the content</a>
 <header class="site-bar"><div class="in">
-  <a class="home" href="../" aria-label="Pung, home"><picture><source srcset="../brand/pung-logo-light.svg" media="(prefers-color-scheme: light)"><img src="../brand/pung-logo.svg" alt="Pung" width="96" height="22"></picture></a>
+  <a class="home" href="../" aria-label="Pung, home"><!--BAR-LOGO--></a>
   <nav aria-label="Pung">
     <a href="./" aria-current="page">Modules</a>
 <!--if:launched-->
@@ -84,6 +97,7 @@ a.act { display: inline-flex; align-items: center; text-decoration: none; }
 <!--endif-->
     <a href="../deployments.html">Deployments</a>
   </nav>
+  <!--THEME-BUTTON-->
 </div></header>
 
 <main id="main">

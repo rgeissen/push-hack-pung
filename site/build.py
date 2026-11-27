@@ -50,19 +50,50 @@ FACES = open(os.path.join(HERE, "fonts", "faces.css")).read()
 def head(title):
     return f"""<title>{html.escape(title)}</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+{THEME_HEAD}
 <style>
 {FACES.replace("{BASE}", "" if OUT else "https://pung.live/")}
 {CSS}
+{THEME_CSS}
 </style>
 """
 
 
-def themed(svg):
+THEME_CSS = open(os.path.join(HERE, "theme.css")).read()
+# in the head of every page, before anything is painted: the theme the visitor chose, if they did
+THEME_HEAD = """<script>(function(){try{var t=localStorage.getItem("pung.theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})();</script>"""
+
+
+def theme_button():
+    """the switch in the bar: the sun on a dark page, the moon on a light one (theme.css); a press turns the
+    page and is remembered in the visitor's browser"""
+    return """<button class="theme-sw" type="button" aria-label="Switch between light and dark"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2z"/></svg></button><script>
+(function () {
+  var b = document.currentScript.previousElementSibling, r = document.documentElement, light = window.matchMedia("(prefers-color-scheme: light)");
+  var now = function () { return r.getAttribute("data-theme") || (light.matches ? "light" : "dark"); };
+  var say = function () {
+    var t = now();
+    b.setAttribute("aria-label", t === "light" ? "Switch to the dark theme" : "Switch to the light theme"); b.title = b.getAttribute("aria-label");
+    var m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", t === "light" ? "#eef0f1" : "#0e0d0c");
+  };
+  b.addEventListener("click", function () {
+    var t = now() === "light" ? "dark" : "light";
+    r.setAttribute("data-theme", t);
+    try { localStorage.setItem("pung.theme", t); } catch (e) {}
+    say();
+  });
+  if (light.addEventListener) light.addEventListener("change", say);
+  say();
+})();
+</script>"""
+
+
+def themed(svg, pung="var(--pung)", cyan="var(--cyan)", ink="var(--ink)"):
     """a logo file in the page's own colours (pung.css): its dark-theme colours
     become the theme's variables, so the light theme has its own"""
     svg = re.sub(r'<svg [^>]*viewBox="([^"]+)"[^>]*>', r'<svg viewBox="\1" aria-hidden="true" focusable="false">', svg)
-    for hexv, var in (("#ff8a1f", "--pung"), ("#4fcbe6", "--cyan"), ("#eeece7", "--ink")):
-        svg = svg.replace(f'stroke="{hexv}"', f'style="stroke:var({var})"').replace(f'fill="{hexv}"', f'style="fill:var({var})"')
+    for hexv, var in (("#ff8a1f", pung), ("#4fcbe6", cyan), ("#eeece7", ink)):
+        svg = svg.replace(f'stroke="{hexv}"', f'style="stroke:{var}"').replace(f'fill="{hexv}"', f'style="fill:{var}"')
     return svg.strip()
 
 
@@ -111,6 +142,7 @@ def topbar(current):
     return f"""<header class="band topbar"><div class="wrap">
 <a class="mark{' quiet' if current == 'home' else ''}" href="{LINKS['home']}" aria-label="Pung, home">{logo()}</a>
 <nav aria-label="Pung">{''.join(links)}</nav>
+{theme_button()}
 </div></header>"""
 
 
@@ -132,9 +164,9 @@ def footer(current="", up="", img=False):
 
     def links(items):
         return "".join(f'<a href="{href(k)}"' + (' aria-current="page"' if k == current else "") + f'>{label}</a>' for k, label in items)
-    mark = (f'<picture><source srcset="{up}brand/pung-logo-light.svg" media="(prefers-color-scheme: light)">'
-            f'<img src="{up}brand/pung-logo.svg" alt="Pung" width="122" height="28"></picture>' if img else
-            themed(open(os.path.join(HERE, "brand", "pung-logo.svg")).read()).replace('id="ld"', 'id="sfl"').replace("url(#ld)", "url(#sfl)"))
+    mark = themed(open(os.path.join(HERE, "brand", "pung-logo.svg")).read(),
+                  **({"pung": "var(--amber, #ff8a1f)", "cyan": "var(--mod, #4fcbe6)", "ink": "var(--sf-ink)"} if img else {})
+                  ).replace('id="ld"', 'id="sfl"').replace("url(#ld)", "url(#sfl)")
     version = json.load(open(os.path.join(ROOT, "hack.json")))["version"] if LAUNCHED else RELEASED
     return f"""<footer class="sf">
 <div class="sf-in">
@@ -438,6 +470,12 @@ def modules_page(out):
     if LAUNCHED:
         page = page.replace('<body data-public="1"', '<body data-public="1" data-connect="1"')
     page = page.replace("<!--FOOTER-->", footer("modules", up="../", img=True))
+    barlogo = themed(open(os.path.join(HERE, "brand", "pung-logo.svg")).read(), pung="var(--amber)", cyan="var(--mod)", ink="var(--fg)"
+                     ).replace('id="ld"', 'id="mbl"').replace("url(#ld)", "url(#mbl)")
+    for mark, what in (("<!--THEME-HEAD-->", THEME_HEAD + "\n<style>\n" + THEME_CSS + "</style>"), ("<!--THEME-BUTTON-->", theme_button()), ("<!--BAR-LOGO-->", barlogo)):
+        if mark not in page:
+            sys.exit(f"modules.html: {mark} is missing")
+        page = page.replace(mark, what)
     open(os.path.join(d, "index.html"), "w").write(page)
     for f in ("app.css", "modules.js"):
         shutil.copy2(os.path.join(ROOT, "src", "web", f), os.path.join(d, f))

@@ -356,6 +356,15 @@ before and linked in the footer.
   middle; the last leaves the foot its room so the two fill the last screen together (`--bar`, `--foot`
   from `ride.js`). Measured at 1180x700 (a tablet held wide, Safari's bars taken off): every section fits.
   A section that grows must still fit there, or it is cut where the page settles.
+- **The light and dark switch** (the owner's word, 2026-11-27; `site/theme.css`, `THEME_HEAD` and
+  `theme_button()` in `build.py`): a round button at the right end of every page's bar. A page follows the
+  visitor's system until it is pressed; then the choice, kept in their browser (`pung.theme`) and put on
+  `<html data-theme>` in the head before anything is painted. Every colour that differs between the themes
+  must therefore be written three ways, as `pung.css` and `modules.html` do: for the system's light setting
+  unless dark was chosen (`@media … :root:not([data-theme="dark"])`), and for a chosen light
+  (`:root[data-theme="light"]`). A `<picture>` or an image that follows `prefers-color-scheme` cannot follow
+  the switch: logos are drawn in the page in its own colours (`themed()`). The privacy page says the choice
+  is stored.
 - **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
   folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS
