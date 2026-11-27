@@ -347,6 +347,11 @@ before and linked in the footer.
   as the hardware is); the interface; the platform (on the surface colour); the way in (a panel). A new
   block on that page is a `section.band.sect` with a `.sec-head`, never loose content between two others.
   `scratch mockup/from-site.py` turns a built `index.html` into one file for an Artifact mockup.
+- **Scrolling the front page settles on a section's start** (the owner, 2026-11-27): `scroll-snap-type: y
+  mandatory` on that page alone (`html:has(main.front)`), each section a start, the foot the page's end (or
+  it could not be reached), the bar's real height as the room above (`ride.js`; two rows on a phone). A
+  section taller than the screen scrolls freely inside. A new section there needs nothing more; a new
+  block that is not a `.sect` would be skipped over.
 - **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
   folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS

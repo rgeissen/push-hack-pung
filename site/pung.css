@@ -354,6 +354,14 @@ button.copy:hover { border-color: var(--pung); }
 .home-main .wrap { display: grid; gap: clamp(44px, 6vw, 72px); padding-block: 36px 96px; }
 .home-sec { display: grid; gap: 22px; }
 .hero.home .wrap { padding-bottom: clamp(44px, 6.5vw, 84px); }
+/* Scrolling the front page comes to rest on a section's start (the owner, 2026-11-27): each section, and the
+   hero, is a place the page settles at, just under the bar (ride.js gives the bar's real height; 54 px until then); the foot settles on the page's end, so it can
+   be reached. A section taller than the screen (the six points on a phone) scrolls freely inside. */
+html:has(main.front) { scroll-snap-type: y mandatory; scroll-padding-top: calc(54px + env(safe-area-inset-top, 0px)); }
+.hero.home, .front > .sect { scroll-snap-align: start; }
+.hero.home { scroll-margin-top: 50vh; }   /* (the first one settles on the page's very top, whatever the bar's height) */
+html:has(main.front) .sf { scroll-snap-align: end; }
+
 /* The hero uses the page's width, on three lines every part keeps to: the left edge, a light rule between
    its two columns and the right edge. Above, the lockup (5 of 12), centred on the height of what stands
    beside it, and what Pung is (7 of 12); below, a bar across both: where Pung runs today on the left, the

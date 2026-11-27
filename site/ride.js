@@ -109,4 +109,11 @@ function PungRide(svg) {
     else document.addEventListener("visibilitychange", function once() { if (document.visibilityState === "visible") { document.removeEventListener("visibilitychange", once); start(); } });
   }
   svg.addEventListener("click", go);
+  // scrolling settles on a section's start, just under the bar: the bar's height, which is two rows on a phone
+  const bar = document.querySelector(".topbar");
+  if (bar) {
+    const under = () => { document.documentElement.style.scrollPaddingTop = Math.round(bar.getBoundingClientRect().height) + "px"; };
+    under(); addEventListener("resize", under);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(under);
+  }
 })();
