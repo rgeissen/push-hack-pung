@@ -37,6 +37,33 @@ var heroMoves = map[string][]string{
 	"vivace":   {"osc_1_wave_frame", "osc_2_wave_frame", "filter_1_resonance"},
 }
 
+// heroSweeps: a control the loop's LFO takes across most of its range, where the small swing of heroMoves
+// would hardly show: Vivace is the first panel a visitor sees, and both its wavetables are to be seen
+// travelling through their frames (the owner, 2026-11-27). Each is given as the middle and half the width of
+// its sweep (of the control's range), the seconds one turn takes (a whole part of the loop's four, so the
+// loop closes) and where in the turn it starts.
+type heroSweep struct{ mid, half, period, phase float64 }
+
+var heroSweeps = map[string]map[string]heroSweep{
+	"vivace": {
+		"osc_1_wave_frame": {0.50, 0.44, 4, -math.Pi / 2}, // from its first frame to its last and back, once a loop
+		"osc_2_wave_frame": {0.50, 0.40, 2, math.Pi / 2},  // twice a loop, the other way round
+	},
+}
+
+func (w heroSweep) at(tsec float64) float64 {
+	return w.mid + w.half*math.Sin(2*math.Pi*tsec/w.period+w.phase)
+}
+
+// heroReports: what a module's engine would say of itself while it plays, for a panel that reads that and not a
+// knob. Vivace's tables are drawn at "wave_pos" (where in its table each oscillator plays, 0..1; 2: off).
+var heroReports = map[string]func(tsec float64) map[string]string{
+	"vivace": func(tsec float64) map[string]string {
+		w := heroSweeps["vivace"]
+		return map[string]string{"wave_pos": fmt.Sprintf(`{"pos":[%.4f,%.4f,2]}`, w["osc_1_wave_frame"].at(tsec), w["osc_2_wave_frame"].at(tsec))}
+	},
+}
+
 func TestHeroFrames(t *testing.T) {
 	out := os.Getenv("PUNG_HERO_FRAMES")
 	if out == "" {
@@ -153,11 +180,19 @@ func TestHeroFrames(t *testing.T) {
 		os.RemoveAll(fdir)       //nolint:errcheck
 		os.MkdirAll(fdir, 0o755) //nolint:errcheck
 		render := func(lo liveOut, tsec float64) *image.NRGBA {
+			if say := heroReports[id]; say != nil {
+				for k, v := range say(tsec) {
+					raw[k] = v
+				}
+			}
 			vals := ovValuesOf(cm, keys, func(k string) (string, bool) { x, ok := raw[k]; return x, ok })
 			withMod(vals, cm, func(k string) (string, bool) {
 				for i, c := range cutoffs {
 					if c == k {
 						m := cm.Params[k]
+						if sw, ok := heroSweeps[id][k]; ok {
+							return fmt.Sprint(m.Min + sw.at(tsec)*(m.Max-m.Min)), true
+						}
 						// two turns a loop, each key a little behind the last
 						lfo := math.Sin(2*math.Pi*tsec/2.0 - 0.9*float64(i))
 						f := math.Max(0.05, math.Min(0.95, vals[k].Frac+0.2*lfo))
