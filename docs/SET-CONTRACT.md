@@ -165,8 +165,12 @@ In this order; each step is small and tested before the next.
    generator installed, and small modules came in another order); computed from the module alone they
    agree on 85, and the one that differs is Osirus, which names one more parameter where its firmware is.
    `registry.py check` refuses a registry that is not an append of the one before.
-2. The layout from the registry, with a test that the same registry gives the same layout whatever is
-   installed and in whatever order it came.
+2. **Done (2026-11-27).** The layout from the registry (`src/contract.go`, `contractClass`; the registry
+   is built into Pung, `registry.json`), with the tests that matter (`contract_test.go`): the same
+   registry gives the same positions whatever MIDI generators are installed and in whatever order the
+   module lists its parameters; a parameter the registry does not name is not Live's; one the module no
+   longer has leaves its place empty; every module of the shipped registry fits its kind of device and
+   passes the plugin's own check. Nothing builds devices this way yet.
 3. The new devices beside the old: identity, the browser's entries, the saved sounds' entries, patches.
 4. The state by id.
 5. The registry in the pack; the catalog build's guard.
