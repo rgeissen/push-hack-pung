@@ -574,6 +574,17 @@ disk; offline it goes on with its own. `own_pack_only` in the settings never ask
 
 ## Facts measured on a Push 3
 
+- **Live 13.0b25 shows a plugin's first 127 parameters beside "Device On"** (measured again 2026-11-27 on a
+  contract Dexed of 256 entries: Live logs "parameter count is 260", the Remote Script gets 128). Whatever
+  sits at position 127 or beyond is not Live's: not automated, not mapped, not on Push's own device view.
+  The Set contract's first layout put the MIDI FX selector at 192 and lost it for all 67 instruments (42
+  have it within reach before the contract): `docs/SET-CONTRACT.md`, "What the Push said". **The contract
+  stays off until its layout keeps the selector and slots below 127.**
+- **What the Remote Script deletes is not in Live's recovery history**: after a Live restart a device a test
+  loaded and deleted is back. And **a recovery that meets a device whose class is gone crashes Live**, which
+  then asks "While recovering your work, Live crashed again …": No is the lower button 7 (CC 26 to Push3's
+  input port, as `restart-live.sh` sends 27 for Yes), and Live opens a fresh Set. After a test that changes
+  the classes, clear the test tracks BEFORE switching back, and expect that question.
 - **Live 13 (13.0b25, on the Push since 2026-11-19) showed a plugin's parameters only up to 64** on
   2026-11-22: a class with 65 or more visible ones got "Device On" alone through the Remote Script (test
   classes of 60, 64, 65, 128, 129; the four hidden ones an instrument adds do not count), and so did

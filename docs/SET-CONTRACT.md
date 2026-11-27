@@ -152,6 +152,59 @@ Each needs Live restarted, in a throwaway Set, on the owner's word.
 4. Whether Live follows a parameter's name when the plugin changes it. If it does, the general slots can
    carry the selected generator's names. A gain, not a condition.
 
+## What the Push said (2026-11-27)
+
+Measured on the owner's Push (Live 13.0b25) in a throwaway Set, the contract switched on with the file
+`set-contract`, then off again and the installation's device table put back.
+
+1. **Twice the devices: no trouble.** 192 devices in the plugin (87 by the contract, 87 kept from before as
+   "… (old)", 18 in a local order) against 105. Live started as before (76 s for Pung and Live together,
+   56 s for Live alone earlier that day) and held 689 MB against 675 MB. A device recovered from before the
+   switch came back as its "(old)" device, as it must.
+2. **Positions 191 to 255 are out of Live's reach. This changes the design.** Live shows a plugin's first
+   127 parameters beside "Device On" (128 in all; it logs "parameter count is 260" and gives the Remote
+   Script 128). The selector at 192 and the 63 slots behind it are therefore not Live's: not automatable,
+   not mappable, not on Push's own device view. Before the contract, 42 of this Push's 67 instruments have
+   the selector within those 127 (every instrument with fewer than 127 entries of its own: Braids at 17,
+   Hera at 29, OB-Xd at 76) and up to 113 of the MIDI generators' parameters; with the contract as designed,
+   none has. **The contract must not be turned on by default with this layout.**
+3. **The 64-step selector:** not seen, for the same reason. To be looked at once it sits within reach.
+4. **Whether Live follows a changed name:** not measured. It needs a plugin that renames a parameter while
+   it runs, which core's plugin does not do yet.
+
+What the instruments of that Push have of their own (entries, with their pages' padding): 30 have at most
+64, 40 at most 96, 25 more than 127 (those are cut by Live today already).
+
+**The layout this asks for** (proposed, for the owner to decide): everything a player automates within
+Live's 127, and the rest behind it.
+
+| Positions | What | How many |
+|---|---|---|
+| 0 to 95 | The module's own parameters, first twelve pages | 96 |
+| 96 | The MIDI FX selector | 1 |
+| 97 to 126 | General MIDI-effect slots | 30 |
+| 127 to 255 | The module's own parameters, from the thirteenth page on | 129 |
+
+- All 67 instruments have the selector and thirty slots in Live (42 have the selector today).
+- 40 instruments keep every parameter of their own in Live; the 27 larger ones show their first 96 where
+  they show 127 today, and gain the selector and the slots for it.
+- Room for a module's own parameters stays 225 (the largest has 186).
+- Thirty slots cover a generator's first thirty parameters (Arp, Chord and most others whole; Stacks 56,
+  Eucalypso 82 and SuperArp 33 in part); the rest stay in Pung's view.
+- The registry is not touched: it numbers a module's parameters, and only the mapping from that number to
+  a position changes (0 to 95 as they are, 96 and above moved up by 31). The contract's identity
+  (`pung-set-1`) has not been on any Push by default, so no Set is bound to the first layout.
+
+Two things learned beside the measurements, both about testing on a Push:
+
+- **What the Remote Script deletes is not in Live's recovery history.** A device loaded and deleted through
+  the Remote Script comes back when Live recovers the Set (a Mini-JV from a play test in the morning stood
+  on its track again after the evening's restart).
+- **A recovery that meets a device whose class is gone crashes Live** ("While recovering your work, Live
+  crashed again"): the recovered Set held a contract Dexed, and the contract had been switched off. Answered
+  No (the button under it, CC 26; `restart-live.sh` leaves that question to a person), Live opened a fresh
+  Set. This is why such tests run in a throwaway Set.
+
 ## How it would be built
 
 In this order; each step is small and tested before the next.
@@ -190,7 +243,8 @@ In this order; each step is small and tested before the next.
    catalog build refuses a registry that is not the last one grown at its ends, and a published module
    without an entry. Pung lays devices out by the registry it was built with, or by one a pack on its disk
    carries that is the same grown at its ends (`currentRegistry`: read from the disk, never waited for).
-6. The four measurements.
+6. **Done (2026-11-27), with a result that changes step 2** ("What the Push said", above): the layout
+   must keep the selector and the slots within Live's first 127 positions. Measurements 3 and 4 remain.
 7. The test Phase 0 ends with: one Set with automation, opened on the same Push in two conditions (all MIDI
    generators installed; some removed and installed again in another order), the automation on the same
    controls both times. A second Push would be the better witness.
