@@ -1,0 +1,220 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
+	"math"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestHeroFrames records the front page's loops (site/hero.js): each of
+// Pung's own instruments' front panel while a chord plays, as the Push draws
+// it, frame by frame.
+//
+//	PUNG_HERO_FRAMES=<dir> [PUNG_HERO_ONLY=a,b] go test -run 'TestHeroFrames$' .
+//
+// writes <dir>/<id>/f-NNN.png (960x160, 20 a second) for scripts/hero-loops.sh
+// to make into the loops. The panels are drawn as the card pictures are
+// (cardshots_test.go): an emulator at a neutral setting Pung makes up, never
+// a sound of the player's firmware. What moves is real: the notes on the
+// envelopes, the spectrum of the sound fed in, and a cutoff that an LFO of
+// the test's own moves (as a module's live_mod would).
+// heroMoves: beside the first filter's cutoff, the controls the loop's own
+// LFO moves on each panel (a module's live_mod would name them)
+var heroMoves = map[string][]string{
+	"nodalred": {"resonance", "osc_mix", "lfo1_amount", "fm_amount"},
+	"xenia":    {"w1_start", "w2_start", "f1_reso"},
+	"vavra":    {"osc1_detune", "osc2_detune"},
+	"ostirus":  {"resonance", "osc_balance"},
+	"vivace":   {"osc_1_wave_frame", "osc_2_wave_frame", "filter_1_resonance"},
+}
+
+func TestHeroFrames(t *testing.T) {
+	out := os.Getenv("PUNG_HERO_FRAMES")
+	if out == "" {
+		t.Skip("PUNG_HERO_FRAMES not set")
+	}
+	const fps, seconds = 20, 4.0
+	probes := cardShotProbes(t)
+	screenMu.Lock()
+	screenResults = probes
+	screenMu.Unlock()
+	initFaces()
+	natDir, _ := filepath.Abs("../native")
+	ids := []string{"nodalred", "ostirus", "vavra", "xenia", "vivace"}
+	if only := os.Getenv("PUNG_HERO_ONLY"); only != "" {
+		ids = strings.Split(only, ",")
+	}
+	for _, id := range ids {
+		v := probes[id]
+		if v.Probe == nil {
+			t.Errorf("%s: no probe record (scripts/screens/probes.json)", id)
+			continue
+		}
+		raw := map[string]string{}
+		for k, x := range v.Probe.Initial {
+			raw[k] = x
+		}
+		if b, err := os.ReadFile(filepath.Join(cardShotDir, "values", id+".json")); err == nil {
+			json.Unmarshal(b, &raw) //nolint:errcheck
+		}
+		cm := buildMeta(id, func(k string) (string, bool) { s, ok := v.Probe.Meta[k]; return s, ok })
+		if cm == nil {
+			t.Errorf("%s: no metadata", id)
+			continue
+		}
+		if cardShotEmulators[id] {
+			for k, x := range neutralValues(cm) {
+				if _, ok := raw[k]; !ok {
+					raw[k] = x
+				}
+			}
+		}
+		// a sound for the picture, of the test's own: values the hero loop names (hero-values/<id>.json)
+		if b, err := os.ReadFile(filepath.Join(cardShotDir, "hero-values", id+".json")); err == nil {
+			json.Unmarshal(b, &raw) //nolint:errcheck
+		}
+		root := t.TempDir()
+		dir := filepath.Join(root, "sound_generators", id)
+		os.MkdirAll(dir, 0o755)                                                                                              //nolint:errcheck
+		os.WriteFile(filepath.Join(dir, "module.json"), []byte(`{"id":"`+id+`","component_type":"sound_generator"}`), 0o644) //nolint:errcheck
+		set := newOverrides(natDir).get(root, id)
+		if set == nil || set.failed != "" {
+			t.Errorf("%s: its screens do not load: %+v", id, set)
+			continue
+		}
+		var comp *ovCompartment
+		for _, c := range set.compartments {
+			if c.takeover {
+				comp = c
+				break
+			}
+		}
+		if comp == nil {
+			t.Errorf("%s: no front panel", id)
+			continue
+		}
+		scr, keys := comp.pageScreen(0)
+		if scr == nil {
+			t.Errorf("%s: the panel draws no screen", id)
+			continue
+		}
+		// the cutoffs an LFO of the test's own moves
+		var cutoffs []string
+		for _, k := range keys {
+			if m := cm.Params[k]; m != nil && m.Type != "enum" && m.Max > m.Min && strings.Contains(k, "cutoff") && !strings.Contains(k, "2") {
+				cutoffs = append(cutoffs, k)
+			}
+		}
+		// and what else an LFO of the test's own moves, so the panel shows what a sound's modulation looks like on it
+		for _, k := range heroMoves[id] {
+			if m := cm.Params[k]; m != nil && m.Type != "enum" && m.Max > m.Min {
+				cutoffs = append(cutoffs, k)
+			}
+		}
+		sort.Strings(cutoffs)
+		var labels []string
+		for _, p := range comp.pages {
+			labels = append(labels, p.label)
+		}
+		knobs := comp.keys
+		if len(comp.pages) > 0 {
+			knobs = comp.pages[0].keys
+		}
+		info := map[string]any{"$knobs": knobs, "$page": 0, "$pages": labels}
+		s := &Slot{}
+		ls := &liveSession{slot: s, pics: map[string]*livePic{}, subs: map[chan []byte]bool{}}
+		fdir := filepath.Join(out, id)
+		os.RemoveAll(fdir)       //nolint:errcheck
+		os.MkdirAll(fdir, 0o755) //nolint:errcheck
+		render := func(lo liveOut, tsec float64) *image.NRGBA {
+			vals := ovValuesOf(cm, keys, func(k string) (string, bool) { x, ok := raw[k]; return x, ok })
+			withMod(vals, cm, func(k string) (string, bool) {
+				for i, c := range cutoffs {
+					if c == k {
+						m := cm.Params[k]
+						// two turns a loop, each key a little behind the last
+						lfo := math.Sin(2*math.Pi*tsec/2.0 - 0.9*float64(i))
+						f := math.Max(0.05, math.Min(0.95, vals[k].Frac+0.2*lfo))
+						return fmt.Sprint(m.Min + f*(m.Max-m.Min)), true
+					}
+				}
+				return "", false
+			})
+			img := image.NewNRGBA(image.Rect(0, 0, scrW, scrH))
+			pl := placement{w: &ovWidget{keys: keys, draw: scr}, col: 0, span: 8, full: true, info: info, live: ls, liveOut: lo, liveKey: "hero/" + id}
+			if !set.render(img, pl, vals, "", slotColor(0)) {
+				t.Fatalf("%s: %s", id, set.failed)
+			}
+			flat := image.NewNRGBA(img.Bounds())
+			draw.Draw(flat, flat.Bounds(), image.Black, image.Point{}, draw.Src)
+			draw.Draw(flat, flat.Bounds(), img, img.Bounds().Min, draw.Over)
+			return flat
+		}
+		render(ls.frame(), 0) // registers its pictures with the sound's session
+		// a chord a moment in, held, let go: the loop ends as it began, at rest
+		type ev struct {
+			at   float64
+			note byte
+			on   bool
+		}
+		evs := []ev{{0.25, 57, true}, {0.36, 60, true}, {0.47, 64, true}, {2.05, 57, false}, {2.05, 60, false}, {2.05, 64, false}}
+		ei, ph, held := 0, 0.0, 0
+		level := 0.0
+		start := time.Now()
+		n := int(fps * seconds)
+		for f := 0; f < n; f++ {
+			due := start.Add(time.Duration(float64(f) / fps * float64(time.Second)))
+			time.Sleep(time.Until(due))
+			tsec := float64(f) / fps
+			for ei < len(evs) && evs[ei].at <= tsec {
+				e := evs[ei]
+				if e.on {
+					s.live.trackMidi([]byte{0x90, e.note, 104})
+					held++
+				} else {
+					s.live.trackMidi([]byte{0x80, e.note, 0})
+					held--
+				}
+				ei++
+			}
+			// the sound, as loud as the notes: up fast, away slowly
+			target := 0.0
+			if held > 0 {
+				target = 0.5
+			}
+			if target > level {
+				level += (target - level) * 0.6
+			} else {
+				level += (target - level) * 0.12
+			}
+			if level > 0.002 {
+				blk := block(float32(level), 220, moduleRate/fps, &ph)
+				ph2 := ph * 2.01
+				for i, x := range block(float32(level*0.5), 441, moduleRate/fps, &ph2) {
+					blk[i] += x
+				}
+				s.live.feedAudio(blk)
+			} else {
+				s.live.feedAudio(make([]float32, 2*moduleRate/fps))
+			}
+			ls.tick()
+			img := render(ls.frame(), tsec)
+			w, err := os.Create(filepath.Join(fdir, fmt.Sprintf("f-%03d.png", f)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			png.Encode(w, img) //nolint:errcheck
+			w.Close()
+		}
+		t.Logf("%s: %d frames, cutoffs %v", id, n, cutoffs)
+	}
+}

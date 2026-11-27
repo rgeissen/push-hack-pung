@@ -1,4 +1,10 @@
-// hero.js: the Push screen on pung.live's front page, playing. The pictures are
+// hero.js: the Push screen on pung.live's front page, playing. Two kinds of
+// view, as on the Push: PUNG CUSTOM, the front panels of Pung's own
+// instruments (loops recorded from Pung's renderer: scripts/hero-loops.sh),
+// and PUNG DEFAULT, the page every module gets, drawn here live. They take
+// turns until a tab is pressed; the Push's lower buttons are tabs too.
+//
+// The default page's pictures are
 // Pung's own (src/web/visuals.js, the code that draws them on Pung's web page,
 // the same geometry as on the Push): an envelope with every note a dot on it,
 // a filter with the sound behind it and its cutoff where the LFO has it, an
@@ -12,6 +18,7 @@
   const root = document.getElementById("livescreen");
   if (!root || !window.PungVisuals) return;
   const V = window.PungVisuals;
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   // one page of a synth, as a Push shows it: eight controls, one per encoder
   const KEYS = ["amp_attack", "amp_decay", "amp_sustain", "amp_release", "cutoff", "resonance", "lfo1_rate", "lfo1_shape"];
@@ -83,15 +90,77 @@
       if (on) m.style.left = (modCut * 100).toFixed(1) + "%";
     });
   }
+  // ---- the views: Pung's own instruments' front panels, and the default page ------------
+  const VIEWS = [
+    { id: "vivace", name: "Vivace", kind: "custom", cap: "Vivace, Pung's own wavetable synth: its tables in three dimensions, the filter and the envelope as a chord plays." },
+    { id: "nodalred", name: "Nodal Red 2X", kind: "custom", cap: "Nodal Red 2X, the Clavia Nord Lead 2X: its red panel, section by section, with the knobs a modulation moves marked in cyan." },
+    { id: "ostirus", name: "OsTIrus", kind: "custom", cap: "OsTIrus, the Access Virus TI: oscillators, both filters with the sound behind them, the effects." },
+    { id: "xenia", name: "Xenia", kind: "custom", cap: "Xenia, the Waldorf Microwave II/XT: its display, and the wavetable as a landscape of waves." },
+    { id: "vavra", name: "Vavra", kind: "custom", cap: "Vavra, the Waldorf microQ: its display and the edit matrix, a row under the encoders." },
+    { id: "default", name: "Pung default", kind: "default", cap: "The page every module gets, with no work from its maker: every note a dot on the envelope, the sound behind the filter, the cutoff where the LFO has it. Drag a handle." },
+  ];
+  const live = document.createElement("div");
+  live.className = "ls-live";
+  live.append(tiles, row);
+  const video = document.createElement("video");
+  video.className = "ls-video";
+  video.muted = true; video.loop = true; video.playsInline = true; video.preload = "none";
+  video.setAttribute("muted", ""); video.setAttribute("playsinline", "");
+  video.setAttribute("aria-hidden", "true");
   root.textContent = "";
-  root.append(tiles, row);
+  root.append(video, live);
   root.classList.add("on");
   cells();
+
+  const fig = root.closest("figure");
+  const capB = fig && fig.querySelector("figcaption b"), capS = fig && fig.querySelector("figcaption span");
+  const lower = fig ? fig.querySelectorAll(".push .row.btns")[1] : null;
+  const tabs = document.createElement("div");
+  tabs.className = "ls-tabs";
+  tabs.setAttribute("role", "tablist");
+  tabs.setAttribute("aria-label", "The view on the Push screen");
+  tabs.innerHTML = `<span class="g">Pung custom</span>` + VIEWS.map((v, i) =>
+    `${v.kind === "default" ? '<span class="g">or</span>' : ""}<button type="button" role="tab" data-i="${i}" aria-selected="false">${v.name}</button>`).join("");
+  if (fig) fig.insertBefore(tabs, fig.firstChild);
+  let view = -1, auto = true, turn = 0;
+  function show(i, byHand) {
+    if (byHand) { auto = false; clearTimeout(turn); }
+    if (i === view) return;
+    view = i;
+    const v = VIEWS[i];
+    root.dataset.view = v.kind;
+    tabs.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(+b.dataset.i === i)));
+    if (lower) [...lower.children].forEach((b, n) => { b.className = n === i ? "sel" : n < VIEWS.length ? "lit" : ""; });
+    if (capB) capB.textContent = v.kind === "default" ? "Pung default" : "Pung custom · " + v.name;
+    if (capS) capS.textContent = v.cap;
+    if (v.kind === "custom") {
+      video.poster = `hero/${v.id}.png`;
+      video.src = `hero/${v.id}.mp4`;
+      if (!still.matches) video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+    loop();
+    next();
+  }
+  // their turns: a panel for a loop and a half, the default page a little longer
+  function next() {
+    clearTimeout(turn);
+    if (!auto || still.matches) return;
+    turn = setTimeout(() => { if (seen && !document.hidden) show((view + 1) % VIEWS.length); else next(); }, VIEWS[view].kind === "default" ? 9000 : 6000);
+  }
+  tabs.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) show(+b.dataset.i, true); });
+  if (lower) [...lower.children].forEach((b, n) => {
+    if (n >= VIEWS.length) return;
+    b.setAttribute("role", "button"); b.tabIndex = 0; b.title = VIEWS[n].name; b.setAttribute("aria-label", VIEWS[n].name);
+    b.addEventListener("click", () => show(n, true));
+    b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); show(n, true); } });
+  });
 
   // ---- the sound: a chord every few seconds, an LFO on the cutoff ------------------------
   const CHORD_EVERY = 3.4, HELD = 1.5, STRUM = [0, 0.11, 0.23];
   let voices = [];        // {on, off (-1 held), vel}: times in seconds of the page's clock
-  let now = 0, next = 0.5, lfoPh = 0, trail = [];
+  let now = 0, nextChord = 0.5, lfoPh = 0, trail = [];
   const envGroup = groups.find((g) => !g.kind || g.kind === "env");
   const frac = (k) => (val[k] - meta[k].min) / (meta[k].max - meta[k].min);
   const shapeNow = () => V.envShapeOf(envGroup.keys, frac, () => 0, "");
@@ -101,9 +170,9 @@
   }
   function frame(dt) {
     now += dt;
-    if (now >= next) {
+    if (now >= nextChord) {
       STRUM.forEach((d, i) => voices.push({ on: now + d, off: now + d + HELD, vel: 0.7 + 0.1 * i }));
-      next = now + CHORD_EVERY;
+      nextChord = now + CHORD_EVERY;
     }
     const e = shapeNow(), tt = times(e);
     const vs = [];
@@ -148,8 +217,7 @@
     if (figs.env) figs.env.head.textContent = vs.length ? vs.length + (vs.length === 1 ? " note" : " notes") : "";
   }
 
-  // ---- when it runs: in view, the tab in front, motion allowed ---------------------------
-  const still = window.matchMedia("(prefers-reduced-motion: reduce)");
+  // ---- when it runs: its view shown, in view, the tab in front, motion allowed -----------
   let seen = true, raf = 0, last = 0;
   function tick(t) {
     raf = 0;
@@ -159,18 +227,21 @@
     loop();
   }
   function loop() {
-    const run = seen && !document.hidden && !still.matches;
+    const run = seen && !document.hidden && !still.matches && view >= 0 && VIEWS[view].kind === "default";
     if (run && !raf) raf = requestAnimationFrame(tick);
     if (!run) { last = 0; if (raf) { cancelAnimationFrame(raf); raf = 0; } }
   }
   if ("IntersectionObserver" in window) {
-    new IntersectionObserver((es) => { seen = es[0].isIntersecting; loop(); }, { threshold: 0.05 }).observe(root);
+    new IntersectionObserver((es) => {
+      seen = es[0].isIntersecting; loop();
+      if (view >= 0 && VIEWS[view].kind === "custom") { if (seen && !still.matches) video.play().catch(() => {}); else video.pause(); }
+    }, { threshold: 0.05 }).observe(root);
   }
   document.addEventListener("visibilitychange", loop);
   still.addEventListener("change", loop);
   if (still.matches) {
     // one moment of it, held: three notes on their way, the LFO a third through
-    now = 0; next = 0; frame(0.001); frame(0.45);
+    now = 0; nextChord = 0; frame(0.001); frame(0.45);
   }
-  loop();
+  show(0);
 })();

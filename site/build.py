@@ -159,7 +159,7 @@ LIVESCREEN = re.compile(r'\[\[livescreen (.*?)\]\](.*?)\[\[/livescreen\]\]', re.
 
 def livescreen(m):
     a = dict(ATTR.findall(m.group(1)))
-    still = f'<img src="{IMG[a["img"]]}" alt="{html.escape(a["alt"])}" width="1920" height="320" decoding="async">'
+    still = f'<img src="{a["src"] if "src" in a else IMG[a["img"]]}" alt="{html.escape(a["alt"])}" width="960" height="160" decoding="async">'
     return f"""<figure class="livefig">
 <div class="push">
 {row("enc", 8)}
@@ -336,6 +336,8 @@ if __name__ == "__main__":
         shutil.copy2(os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(OUT, "visuals.js"))
         for f in ("hero.js", "pushlink.js", "pushlink.css", "yourpush.js"):
             shutil.copy2(os.path.join(HERE, f), os.path.join(OUT, f))
+        # the front page's loops: Pung's own instruments' panels (scripts/hero-loops.sh)
+        shutil.copytree(os.path.join(HERE, "hero"), os.path.join(OUT, "hero"), dirs_exist_ok=True)
         # the newest release, where the site and the Pung Installer read it
         shutil.copy2(os.path.join(ROOT, "release.json"), os.path.join(OUT, "release.json"))
         modules_page(OUT)
