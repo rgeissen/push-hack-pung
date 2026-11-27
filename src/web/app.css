@@ -19,10 +19,10 @@
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --rail: 232px; --r: 2px;
+  --barh: 57px; --barbg: rgba(11, 12, 13, .92); --r: 2px;
   color-scheme: dark;
 }
-/* Light and dark. The page follows the visitor's system until they press the switch in the rail; then their
+/* Light and dark. The page follows the visitor's system until they press the switch in the bar; then their
    choice, kept in the browser ("pung.theme") and put on <html data-theme> before the page is painted
    (index.html). So the light colours are written twice: for a light system unless dark was chosen, and for
    a chosen light. The Push's own screens, and the pictures of them, stay dark: they show a dark display. */
@@ -32,19 +32,19 @@
   --fg: #15171a; --muted: #565d66; --faint: #7d858e;
   --amber: #d6600a; --slot: #d6600a; --inst: #d6600a; --native: #c8381c; --steel: #4d6680;
   --midi: #5b46c9; --afx: #12805c; --warn: #c2352a; --ok: #12805c; --mod: #08809f; --live: #08809f;
-  --amber-hi: #a84c05; --on-amber-hi: #fff; --dots: #0000000d; color-scheme: light; }
+  --amber-hi: #a84c05; --on-amber-hi: #fff; --dots: #0000000d; --barbg: rgba(238, 240, 241, .92); color-scheme: light; }
 }
 :root[data-theme="light"] { --ink: #eef0f1; --panel: #ffffff; --raise: #e9ecef; --raise2: #dde1e5; --line: #d3d8dd; --line2: #b9c0c7;
   --fg: #15171a; --muted: #565d66; --faint: #7d858e;
   --amber: #d6600a; --slot: #d6600a; --inst: #d6600a; --native: #c8381c; --steel: #4d6680;
   --midi: #5b46c9; --afx: #12805c; --warn: #c2352a; --ok: #12805c; --mod: #08809f; --live: #08809f;
-  --amber-hi: #a84c05; --on-amber-hi: #fff; --dots: #0000000d; color-scheme: light; }
+  --amber-hi: #a84c05; --on-amber-hi: #fff; --dots: #0000000d; --barbg: rgba(238, 240, 241, .92); color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 * { box-sizing: border-box; }
 html { background: var(--ink); }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body { margin: 0; min-height: 100vh; min-height: 100dvh; color: var(--fg); font: 14px/1.5 var(--sans); background: var(--ink);
-  display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); }
+  display: flex; flex-direction: column; }
 h1, h2, h3, h4, p, dl, ol, ul { margin: 0; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -60,26 +60,29 @@ a { color: var(--amber); text-underline-offset: 3px; }
 .views button, .health, .facts dt, .snd-row .num, .snd-row .st, .snd-row .tg { font-family: var(--mono); }
 .kicker { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 
-/* ---- the rail ---------------------------------------------------------------- */
-.rail { position: sticky; top: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--panel);
-  border-right: 1px solid var(--line); z-index: 6; }
-.brand { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 12px; padding: 22px 20px 20px;
-  border-bottom: 1px solid var(--line); }
-.brand .logo { grid-column: 1 / -1; height: 26px; width: auto; display: block; } /* the logo of pung.live (site/brand) */
-.brand .ver { grid-column: 1 / -1; margin-top: 8px; font: 11px var(--mono); color: var(--muted); letter-spacing: .08em; }
+/* ---- the bar: pung.live's (site/pung.css, the Modules page's .site-bar), so the two read as one place: the
+   logo at the left, the sections in small capitals with a line under the one shown, then the place switcher
+   and the theme switch at the right end. Its content is as wide as the page's and begins where it begins. ---- */
+.bar { position: sticky; top: 0; z-index: 12; background: var(--barbg); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line); padding: env(safe-area-inset-top) clamp(16px, 3vw, 40px) 0; }
+.bar .in { max-width: 1320px; margin: 0 auto; padding: 12px 0; min-height: 32px; display: flex; align-items: center; gap: 12px 24px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand .logo { height: 22px; width: auto; display: block; margin-left: -0.8px; } /* (the drawing begins that far inside its box, at this height) */
+.brand .ver { font: 11px var(--mono); color: var(--muted); letter-spacing: .08em; white-space: nowrap; }
 .brand .ver a { color: var(--amber); text-decoration: none; border-bottom: 1px solid currentColor; }
-.views { display: flex; flex-direction: column; padding: 12px 0; }
-.views button { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: none; border: 0;
-  border-left: 3px solid transparent; text-align: left; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-.views button .ix { color: var(--faint); }
-.views button .lb { flex: 1; }
+.views { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.views button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px; background: none; border: 0; border-radius: 4px;
+  font-size: 12px; line-height: 1; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); cursor: pointer; }
 .views button:hover { color: var(--fg); background: var(--raise); }
-.views button[aria-current="page"] { color: var(--fg); border-left-color: var(--amber); background: var(--raise); }
-.views button[aria-current="page"] .ix { color: var(--amber); }
+.views button[aria-current="page"] { color: var(--fg); box-shadow: inset 0 -2px 0 var(--amber); border-radius: 0; }
 .count { font: 600 11px var(--mono); min-width: 20px; padding: 1px 5px; text-align: center; background: var(--raise2); color: var(--fg); }
 .views .count { background: var(--amber); color: #000; }
-.rail-foot { margin-top: auto; padding: 16px 20px 18px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
-.health { font-size: 11px; letter-spacing: .06em; color: var(--muted); display: flex; flex-direction: column; gap: 5px; }
+.bar [data-places] { margin-left: 6px; }
+.bar .theme-sw { margin-left: 8px; }
+/* ---- the foot: how Pung stands, and the manual ---- */
+.foot { border-top: 1px solid var(--line); padding: 0 clamp(16px, 3vw, 40px); }
+.foot .in { max-width: 1320px; margin: 0 auto; padding: 16px 0 calc(20px + env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; }
+.health { font-size: 11px; letter-spacing: .06em; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 22px; }
 .health .row { display: flex; align-items: center; gap: 8px; text-transform: uppercase; }
 .led { width: 7px; height: 7px; flex: none; background: var(--faint); }
 .led.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
@@ -87,11 +90,10 @@ a { color: var(--amber); text-underline-offset: 3px; }
 .led.bad { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
 .rail-link { font: 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); text-decoration: none; }
 .rail-link:hover { color: var(--fg); }
-.rail-site { display: flex; flex-direction: column; gap: 10px; }
-.rail-k { font: 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+.rail-site { margin-left: auto; display: flex; gap: 18px; }
 
 /* ---- the page ---------------------------------------------------------------- */
-main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 72px;
+main { flex: 1 0 auto; min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 72px;
   background-image: radial-gradient(circle at 1px 1px, var(--dots) 1px, transparent 1.5px); background-size: 24px 24px; }
 .view { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 .view-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
@@ -150,7 +152,7 @@ select { appearance: none; padding-right: 28px; max-width: 100%; text-overflow: 
 .switch input:focus-visible + .track { outline: 2px solid var(--amber); outline-offset: 2px; }
 .switch.wide { text-transform: none; letter-spacing: 0; font: 14px var(--sans); color: var(--fg); }
 
-.toast { position: fixed; left: calc(var(--rail) + 24px); bottom: 24px; z-index: 40; max-width: min(560px, calc(100vw - 48px));
+.toast { position: fixed; left: 24px; bottom: 24px; z-index: 40; max-width: min(560px, calc(100vw - 48px));
   padding: 12px 16px; background: var(--raise2); border: 1px solid var(--line2); border-left: 3px solid var(--amber);
   font-size: 13.5px; box-shadow: 0 12px 40px #000a; }
 .toast.bad { border-left-color: var(--warn); }
@@ -225,7 +227,7 @@ select { appearance: none; padding-right: 28px; max-width: 100%; text-overflow: 
 .panel-tools { display: none; }
 
 /* compartments: one screen on the Push = one tab here */
-.compartments { position: sticky; top: 0; z-index: 4; display: flex; align-items: stretch; overflow-x: auto; scrollbar-width: thin;
+.compartments { position: sticky; top: var(--barh); z-index: 4; display: flex; align-items: stretch; overflow-x: auto; scrollbar-width: thin;
   background: var(--raise); border-bottom: 1px solid var(--line); }
 .compartments button { position: relative; display: inline-flex; align-items: center; gap: 8px; flex: none; min-height: 44px; padding: 0 16px;
   background: none; border: 0; border-right: 1px solid var(--line); font: 11.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
@@ -380,7 +382,7 @@ body.drawer-open .drawer { transform: none; visibility: visible; transition: tra
 .lib-sounds input.rename { flex: 1 1 auto; min-width: 0; }
 
 /* ---- 03 modules ---------------------------------------------------------------- */
-.mod-banner { position: sticky; top: 8px; z-index: 4; display: flex; gap: 14px; align-items: center; justify-content: space-between;
+.mod-banner { position: sticky; top: calc(var(--barh) + 8px); z-index: 4; display: flex; gap: 14px; align-items: center; justify-content: space-between;
   padding: 12px 16px; background: var(--raise2); border: 1px solid var(--amber); border-left-width: 3px; }
 .mod-banner .sub { color: var(--muted); font-size: 13px; }
 .mod-banner.ok { border-color: var(--ok); }
@@ -488,32 +490,14 @@ body.drawer-open .drawer { transform: none; visibility: visible; transition: tra
 .card { background: var(--panel); border: 1px solid var(--line); padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
 .card h2 { font-size: 18px; }
 
-/* ---- narrow: the rail becomes a bar -------------------------------------------- */
+/* ---- narrow ---------------------------------------------------------------------- */
 @media (max-width: 1200px) {
-  body { display: block; }
-  .rail { position: sticky; height: auto; flex-direction: row; align-items: stretch; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
-  .brand { padding: 10px 14px; border-bottom: 0; border-right: 1px solid var(--line); column-gap: 8px; }
-  .brand .mark { width: 22px; height: 22px; grid-row: auto; }
-  .brand .word { font-size: 15px; }
-  .brand .ver { display: none; }
-  .views { flex-direction: row; padding: 0; }
-  .views button { padding: 0 14px; border-left: 0; border-bottom: 3px solid transparent; }
-  .views button .ix { display: none; }
-  .views button[aria-current="page"] { border-bottom-color: var(--amber); }
-  .rail-foot { display: none; }
   main { padding: 18px 12px 56px; }
   .toast { left: 12px; right: 12px; bottom: 12px; }
-  .compartments { top: 45px; }
 }
 @media (max-width: 620px) {
   .seg { flex-wrap: wrap; }
   .seg button { flex: 1 1 auto; }
-}
-@media (max-width: 480px) {
-  .brand .word { display: none; }
-  .brand { padding: 10px 12px; }
-  .views { flex: 1; }
-  .views button { flex: 1; justify-content: center; padding: 0 6px; font-size: 11px; letter-spacing: .08em; }
 }
 
 /* ---- pictures (visuals.js): the same shapes the Push draws ---- */
@@ -648,7 +632,6 @@ body.down #devices-view .unit, body.down #devices-view .rack, body.down #no-devi
 
 @media (max-width: 760px) { .unit-head { grid-template-columns: 1fr; } }
 @media (max-width: 1200px) {
-  .rail { top: 0; z-index: 12; padding-top: env(safe-area-inset-top); }
   main { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
 }
 
@@ -692,38 +675,27 @@ svg .moddot { fill: #3cc8e6; stroke: var(--panel, #111); stroke-width: 1.5; }
 }
 :root[data-theme="light"] .theme-sw .sun { display: none; }
 :root[data-theme="light"] .theme-sw .moon { display: block; }
-/* ---- the place switcher (places.js): under the logo where the rail stands at the left, at the bar's right end
-   beside the theme switch where the rail lies across the top ----------------------------------------------- */
-.rail > [data-places] { order: 1; padding: 0 16px 12px; border-bottom: 1px solid var(--line); }
-.rail > [data-places] .pls-btn { width: 100%; max-width: none; }
-.rail > [data-places] .pls-car { margin-left: auto; }
-.rail > .brand { order: 0; border-bottom: 0; padding-bottom: 14px; }
-.rail > .views { order: 2; }
-.rail > .rail-foot { order: 3; }
+/* ---- the bar on a narrow window: one row still; the sections between logo and switches scroll sideways when
+   a phone is too narrow for all four (the bar stays in sight, so the compartments' own bar can sit under it) ---- */
 @media (max-width: 1200px) {
-  .rail > [data-places] { order: 3; padding: 0; border: 0; align-self: center; margin-left: 8px; }
-  .rail > [data-places] .pls-btn { width: auto; max-width: min(40vw, 220px); }
-  .rail > [data-places] .pls-car { margin-left: 0; }
-  .rail > .brand { padding-bottom: 10px; }
-  .rail > .theme-sw { order: 4; }
+  .bar, .foot { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
 }
-@media (max-width: 620px) { .rail > [data-places] .pls-btn { height: 28px; padding: 0 8px; font-size: 12.5px; max-width: 34vw; } .rail > [data-places] { margin-left: 4px; } }
-/* in the rail it stands at the right of the version's line; where the rail lies across the top (a tablet, a
-   phone) it stands at the bar's right end, as on pung.live, and never under the logo */
-.rail > .theme-sw { position: absolute; top: 46px; right: 18px; }
-@media (max-width: 1200px) {
-  .rail > .theme-sw { position: static; align-self: center; margin: 0 12px 0 8px; }
-  /* the logo and the switch keep their size; the sections between them take the rest and, on a phone, scroll */
-  .rail { overflow-x: visible; }
-  .rail .brand { flex: none; }
-  .rail .views { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .rail .views::-webkit-scrollbar { display: none; }
-  .rail .views button { flex: none; }
+@media (max-width: 860px) {
+  .bar .in { flex-wrap: nowrap; gap: 10px; }
+  .brand { flex: none; }
+  .brand .ver { display: none; }
+  .views { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; justify-content: flex-end; overflow-x: auto; scrollbar-width: none; }
+  .views::-webkit-scrollbar { display: none; }
+  .views button { flex: none; }
+  .bar [data-places], .bar .theme-sw { margin-left: 0; }
+  .bar [data-places] .pls-btn { max-width: min(34vw, 200px); }
 }
-@media (max-width: 620px) {   /* a phone: a smaller logo and closer buttons, so all four sections show */
-  .rail .brand { padding: 10px 10px; }
-  .rail .brand .logo { height: 17px; }
-  .rail .views button { padding: 0 5px; font-size: 10.5px; letter-spacing: .03em; gap: 5px; }
-  .rail .views .count { min-width: 16px; padding: 1px 3px; }
-  .rail > .theme-sw { margin: 0 8px 0 2px; width: 28px; height: 28px; }
+@media (max-width: 620px) {   /* a phone: a smaller logo and closer words, so all four sections show */
+  .brand .logo { height: 18px; }
+  .views { justify-content: flex-start; gap: 0; }
+  .views button { padding: 8px 6px; font-size: 10.5px; letter-spacing: .05em; gap: 5px; }
+  .views .count { min-width: 16px; padding: 1px 3px; }
+  .bar [data-places] .pls-btn { height: 28px; padding: 0 8px; font-size: 12.5px; }
+  .bar [data-places] .pls-name { display: none; }   /* (its dot and the arrow stay: the list names the place) */
+  .bar .theme-sw { width: 28px; height: 28px; }
 }

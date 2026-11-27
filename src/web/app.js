@@ -887,7 +887,7 @@
   boot();
 })();
 
-// Light and dark: the switch in the rail. The page follows the system until it is pressed; then the choice,
+// Light and dark: the switch in the bar. The page follows the system until it is pressed; then the choice,
 // kept in this browser and set before the first paint (index.html). The same as on pung.live (site/build.py).
 (function () {
   const b = document.getElementById("theme-sw"), r = document.documentElement, light = window.matchMedia("(prefers-color-scheme: light)");
