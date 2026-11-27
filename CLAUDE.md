@@ -327,6 +327,12 @@ before and linked in the footer.
   lines is built (`.tagside`) and not used. It is the footer's line and the link preview's too. Pung is
   spoken of as the platform (host, interface in two levels, modulation, governor, deployment), never as a
   collection of modules, and not as a Push add-on: the Push is where it is today (the "Today" line).
+- **The hero uses the page's width on three lines** (the owner, 2026-11-27, of a narrow column down the left:
+  "not satisfied how the screen estate is used and how everything is aligned"): the lockup on the left (5 of
+  12), what Pung is on the right (7 of 12) with the slogan's capitals on the logo's cap line (measured: the
+  same pixel row at 820, 1180 and 1440), and a bar across both with today's status on the left and the two
+  buttons on the right edge. One column from 760 px down. Every block ends on the left edge, the gutter or
+  the right edge: nothing with an edge of its own.
 - **Replacing a block of `pung.css` by its first and last line took the buttons' styles with it** (2026-11-27,
   caught in a picture before anything was published). After such an edit, read what the diff removes.
 - **The twist on the P** (the owner's idea, 2026-11-27): once landed the dot goes down the bowl and back up
