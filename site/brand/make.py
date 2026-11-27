@@ -174,7 +174,7 @@ def main(ttf):
           f'font-stretch:112%">'
           + logo.replace("<svg ", '<svg style="height:96px;width:auto" ', 1)
           + f'<div style="color:{DARK["ink"]};font-size:64px;font-weight:800;line-height:1.05;letter-spacing:-0.01em">'
-          f'Music modules,<br>at home on every device.</div>'
+          f'Open music modules,<br>at home on every device.</div>'
           f'<div style="color:#a39e94;font-size:26px">Instruments · audio effects · MIDI generators · pung.live</div></div>')
     chrome_png(page(og, 1200, 630, DARK["ground"]), 1200, 630, os.path.join(HERE, "og-image.png"))
     for f in sorted(os.listdir(HERE)):

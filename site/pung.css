@@ -98,6 +98,8 @@ h1, h2 {
   margin: 0;
 }
 h1 { font-weight: 800; font-size: clamp(2.3rem, 5.4vw, 4.4rem); line-height: 0.98; letter-spacing: -0.012em; max-width: 18ch; }
+/* the front page's headline: two lines where there is room ("Open music modules," / "at home on every device.") */
+h1.two { max-width: 25ch; }
 h2 { font-weight: 760; font-size: clamp(1.55rem, 2.6vw, 2.05rem); line-height: 1.1; letter-spacing: -0.005em; }
 h3 { font: 650 1.12rem/1.35 var(--body); margin: 0; text-wrap: balance; }
 .lead { font-size: clamp(1.1rem, 1.6vw, 1.28rem); line-height: 1.55; color: var(--ink); max-width: 62ch; margin: 0; }
@@ -291,11 +293,7 @@ button.copy:hover { border-color: var(--pung); }
 .diagram .arrow { fill: var(--pung); }
 .diagram .arrow.d { fill: var(--muted); }
 
-/* footer */
-footer { border-top: 1px solid var(--line); }
-footer .wrap { padding-block: 28px 44px; display: grid; gap: 10px; color: var(--muted); font-size: 0.88rem; }
-footer p { margin: 0; max-width: 90ch; }
-footer .links { display: flex; gap: 8px 18px; flex-wrap: wrap; }
+/* the footer: footer.css (it is the Modules page's too) */
 @media (max-width: 720px) {
   .anno .pin { width: 15px; height: 15px; font-size: 0.56rem; line-height: 15px; box-shadow: 0 0 0 1.5px #000; }
 }
@@ -503,9 +501,6 @@ footer .links { display: flex; gap: 8px 18px; flex-wrap: wrap; }
 body.sk-drop::after { content: "Drop the stack here"; position: fixed; inset: 16px; z-index: 70; display: grid; place-items: center; border: 2px dashed var(--pung); border-radius: 16px;
   background: color-mix(in srgb, var(--ground) 88%, transparent); color: var(--ink); font: 760 1.6rem var(--display); pointer-events: none; }
 
-/* the footer: the pages in the background (vision, manual, design, performance) first */
-footer .links.more a { font-weight: 600; }
-footer .links.more a[aria-current="page"] { color: var(--ink); text-decoration: none; }
 
 /* the hero's views: Pung custom (the instruments' front panels, loops) and Pung default (live) */
 .ls-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
