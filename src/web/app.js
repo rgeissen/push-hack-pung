@@ -824,10 +824,10 @@
     const here = location.port && location.port !== "7720" ? location.hostname + ":" + location.port : location.hostname;
     const add = "#add=" + encodeURIComponent(here);
     const set = (id, url) => { const el = $(id); if (el) el.href = url + add; };
-    set("site-device", "https://pung.live/devices.html");
+    set("site-device", "https://pung.live/deployments.html");
     set("site-modules", "https://pung.live/modules/");
     set("site-stacks", "https://pung.live/stacks.html");
-    set("setup-site-link", "https://pung.live/devices.html");
+    set("setup-site-link", "https://pung.live/deployments.html");
     const show = (on) => ["rail-site", "setup-site"].forEach((id) => { const el = $(id); if (el) el.hidden = !on; });
     const ask = () => fetch("https://pung.live/install.json", { mode: "no-cors", cache: "no-store" }).then(() => show(true), () => show(false));
     ask();

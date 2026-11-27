@@ -329,7 +329,7 @@ func (k *stackKeep) put(st *stackDoc) error {
 	// two stacks never share a name: their racks would be one file
 	for f, o := range k.list() {
 		if f != old && strings.EqualFold(o.Name, st.Name) {
-			return fmt.Errorf("this device keeps another stack named %q", o.Name)
+			return fmt.Errorf("this Pung keeps another stack named %q", o.Name)
 		}
 	}
 	raw, err := json.MarshalIndent(st, "", " ")
@@ -358,7 +358,7 @@ func (k *stackKeep) remove(id, name string) error {
 	defer k.mu.Unlock()
 	f := k.find(id, name)
 	if f == "" {
-		return errors.New("no such stack on this device")
+		return errors.New("no such stack here")
 	}
 	return os.Remove(f)
 }
@@ -574,7 +574,7 @@ func (h *Host) stackOf(d *device) (*stackDoc, error) {
 		st.Name = d.c.Name
 	}
 	host, _ := os.Hostname()
-	st.MadeOn = map[string]string{"kind": "push", "pung": buildVersion, "device": host}
+	st.MadeOn = map[string]string{"kind": "push", "pung": buildVersion, "name": host}
 	st.Taken = time.Now().UTC().Format(time.RFC3339)
 	needs := &stackNeeds{}
 	inst := map[string]installed{}
@@ -753,7 +753,7 @@ func stackWhy(u stackUnmet) string {
 	}
 	switch u.Why {
 	case "install":
-		return name + " is not installed on this device"
+		return name + " is not installed here"
 	case "restart":
 		return name + " is installed, and becomes a device in Live when Live restarts"
 	case "pung":

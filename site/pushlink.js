@@ -1,7 +1,11 @@
-// pushlink.js: pung.live and the visitor's own devices that run Pung. Today
-// that is an Ableton Push 3; the site is made for more kinds of device, and
-// for several of a kind (two Pushes). One list for every page: the Modules
-// page installs on the device in use, Your devices shows and configures each.
+// pushlink.js: pung.live and the visitor's deployments: each a Pung that runs
+// somewhere. Today that is on an Ableton Push 3; the site is made for more kinds
+// of hardware, and for several of a kind (two Pushes). One list for every page: the
+// Modules page installs on the one in use, Your deployments shows and configures each.
+//
+// The word: the pages say "deployment" (the owner's, 2026-11-27: "device" is Live's word
+// for what a module becomes on a track). This code still says device, and the list's
+// keys in the browser (pung.devices, pung.device) stay as they are.
 //
 // A device is reached over the visitor's home network, never through the
 // internet: an https page may talk to a device's http there once the visitor
@@ -260,10 +264,10 @@ window.PungPush = (function () {
   const other = (a) => (/\.local$/i.test(a) ? "Its IP address works too." : "Check the address, or try push.local.");
   const WHY = {
     denied: () => `Your browser blocks pung.live from your home network. Allow <b>Local network access</b> for pung.live in the site's settings (the icon left of the address), then connect again.`,
-    timeout: (a) => `No answer from <b>${a}</b> in 8 seconds. Is the device on, on the same network as this computer, with Pung running? ${other(a)}`,
-    unreachable: (a) => `No answer from <b>${a}</b>. Is the device on, on the same network as this computer, with Pung running? ${other(a)}`,
-    old: () => `It answers, but its Pung is older than 0.6.0, the first that talks to pung.live. <a href="${up}manual.html#update">Update Pung</a> and connect again. Until then, the buttons can open Pung's own page on the device.`,
-    browser: () => `This browser does not let a web page reach a device on your network. Chrome and Edge (142 and later) and Firefox (151 and later) do, once you allow it. Here, the buttons can open Pung's own page on the device instead.`,
+    timeout: (a) => `No answer from <b>${a}</b> in 8 seconds. Is it switched on, on the same network as this computer, with Pung running? ${other(a)}`,
+    unreachable: (a) => `No answer from <b>${a}</b>. Is it switched on, on the same network as this computer, with Pung running? ${other(a)}`,
+    old: () => `It answers, but its Pung is older than 0.6.0, the first that talks to pung.live. <a href="${up}manual.html#update">Update Pung</a> and connect again. Until then, the buttons can open Pung's own page there.`,
+    browser: () => `This browser does not let a web page reach anything on your network. Chrome and Edge (142 and later) and Firefox (151 and later) do, once you allow it. Here, the buttons can open Pung's own page there instead.`,
   };
   function renderDialog() {
     const body = document.getElementById("pl-body");
@@ -283,7 +287,7 @@ window.PungPush = (function () {
           <dt>Installed</dt><dd>${c.installed} module${c.installed === 1 ? "" : "s"}</dd><dt>Updates</dt><dd>${c.updates || "none"}</dd></dl>
         ${others}
         <p class="pl-sub">This site installs and updates modules on it and changes Pung's settings there, over your home network. A module's ROM and removing a module stay on Pung's own page.</p>
-        <div class="pl-acts"><button type="button" class="pl-btn ghost" id="pl-off">Disconnect</button><span class="pl-grow"></span><a class="pl-btn" href="${up}devices.html">Your devices</a>${openPung}</div>`;
+        <div class="pl-acts"><button type="button" class="pl-btn ghost" id="pl-off">Disconnect</button><span class="pl-grow"></span><a class="pl-btn" href="${up}deployments.html">Your deployments</a>${openPung}</div>`;
       document.getElementById("pl-off").onclick = () => disconnect(d);
       body.querySelectorAll('input[name="pl-use"]').forEach((r) => (r.onchange = () => { const x = devices.find((y) => y.id === r.value); if (x) { select(x); dialogDev = x; renderDialog(); } }));
       return;
@@ -293,15 +297,15 @@ window.PungPush = (function () {
         <div class="pl-acts">${openPung}${["browser", "denied", "old"].includes(d.err) ? `<button type="button" class="pl-btn ghost" id="pl-links">Use links instead</button>` : ""}</div></div>` : "";
     const kinds = Object.keys(KINDS);
     body.innerHTML = `
-      <p class="pl-kicker">pung.live and your devices</p>
-      <h2 id="pl-title">${adding && devices.length ? "Add a device" : "Connect your " + esc(k.short)}</h2>
-      <p>pung.live talks to Pung on your device over your home network, the way Pung's own page does: nothing passes through the internet.</p>
+      <p class="pl-kicker">pung.live and your deployments</p>
+      <h2 id="pl-title">${adding && devices.length ? "Add a deployment" : "Connect your " + esc(k.short)}</h2>
+      <p>pung.live talks to your Pung over your home network, the way Pung's own page does: nothing passes through the internet.</p>
       <ol class="pl-steps">
         <li>It is on, with Pung running, on the same network as this computer.</li>
         <li>Press <b>Connect</b>. Your browser asks whether pung.live may reach devices on your local network: choose <b>Allow</b>.</li>
       </ol>
       <form id="pl-form" class="pl-form" novalidate>
-        ${kinds.length > 1 ? `<label for="pl-kind">Device</label><select id="pl-kind">${kinds.map((x) => `<option value="${x}" ${x === d.kind ? "selected" : ""}>${esc(KINDS[x].label)}</option>`).join("")}</select>` : ""}
+        ${kinds.length > 1 ? `<label for="pl-kind">Runs on</label><select id="pl-kind">${kinds.map((x) => `<option value="${x}" ${x === d.kind ? "selected" : ""}>${esc(KINDS[x].label)}</option>`).join("")}</select>` : ""}
         <label for="pl-addr">${esc(k.label)}</label>
         <div class="pl-row"><input id="pl-addr" type="text" inputmode="url" autocomplete="off" spellcheck="false" value="${a}" ${busy ? "disabled" : ""} aria-describedby="pl-hint">
         <button type="submit" class="pl-btn primary" ${busy ? "disabled" : ""}>${busy ? `<span class="pl-spin" aria-hidden="true"></span> Connecting…` : "Connect"}</button></div>
@@ -309,7 +313,7 @@ window.PungPush = (function () {
       </form>
       ${err}
       ${d.state === "link" ? `<p class="pl-sub">Now the buttons open Pung's own page on it. Connect to do it from here.</p>` : ""}
-      <p class="pl-sub">No Pung on it yet? <a href="${up}devices.html#install">Install it</a>.</p>`;
+      <p class="pl-sub">No Pung on it yet? <a href="${up}deployments.html#install">Install it</a>.</p>`;
     document.getElementById("pl-form").onsubmit = (e) => {
       e.preventDefault();
       const kind = document.getElementById("pl-kind") ? document.getElementById("pl-kind").value : d.kind;

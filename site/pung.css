@@ -388,7 +388,7 @@ footer .links { display: flex; gap: 8px 18px; flex-wrap: wrap; }
   .livefig .push .row { display: none; }
 }
 
-/* Your devices: every device that runs the visitor's Pung, a panel each (devices.js) */
+/* Your deployments: every Pung of the visitor's, a panel each (deployments.js) */
 .anchor { height: 0; scroll-margin-top: 90px; }
 .dv { display: grid; gap: 22px; }
 .dv-empty { display: grid; gap: 16px; padding: 28px; border: 1px dashed var(--line); border-radius: 12px; background: var(--surface); max-width: 76ch; }

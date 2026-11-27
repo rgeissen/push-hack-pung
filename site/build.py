@@ -18,12 +18,13 @@ LAUNCHED = bool(json.load(open(os.path.join(HERE, "install.json"))).get("launche
 INSTALLER = LAUNCHED
 RELEASED = json.load(open(os.path.join(ROOT, "release.json")))["version"]
 OUT = None  # set by --pages: whole documents, relative links
-SITE = {"home": "./", "vision": "vision.html", "modules": "modules/", "stacks": "stacks.html", "devices": "devices.html", "push": "push.html", "install": "install.html", "manual": "manual.html", "design": "design.html",
+SITE = {"home": "./", "vision": "vision.html", "modules": "modules/", "stacks": "stacks.html", "deployments": "deployments.html", "devices": "devices.html", "push": "push.html", "install": "install.html", "manual": "manual.html", "design": "design.html",
         "performance": "performance.html"}
 DESC = {
-    "stacks": "Stacks: the modules you play, in their order, each with its state and Pung's modulation over them. Take one from a device, keep it, send it to another.",
-    "devices": "Your devices and Pung: install Pung on an Ableton Push 3 Standalone, connect it to pung.live, and see its processor, memory, storage and settings.",
-    "push": "Your devices and Pung.",
+    "stacks": "Stacks: the modules you play, in their order, each with its state and Pung's modulation over them. Take one from a Pung that runs on your Push, keep it, send it to another.",
+    "deployments": "Your deployments of Pung: install Pung on an Ableton Push 3 Standalone, connect it to pung.live, and see its processor, memory, storage and settings.",
+    "devices": "Your deployments of Pung.",
+    "push": "Your deployments of Pung.",
     "install": "Install Pung on Ableton Push 3 Standalone: the Pung Installer for macOS, Windows and Linux, or through Push Hack's catalog.",
     "home": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play: today 131 of them on Ableton Push 3 Standalone, each a device in Live with a screen made for it.",
     "vision": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play, native on each: today 131 of them as devices in Live on Ableton Push 3 Standalone; next the desktop, more hardware, phones and tablets.",
@@ -31,13 +32,13 @@ DESC = {
     "design": "The design principles of the Pung view on Push 3: screens, controls, envelopes, colours.",
     "performance": "How Pung spends a Push 3's processor and battery: emulators that rest in silence, measured costs, a view that draws only what changed.",
 }
-FILES = {"home": "index.html", "stacks": "stacks.html", "vision": "vision.html", "install": "install.html", "push": "push.html", "devices": "devices.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
+FILES = {"home": "index.html", "stacks": "stacks.html", "vision": "vision.html", "install": "install.html", "push": "push.html", "deployments": "deployments.html", "devices": "devices.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
 
-PAGES = [("home", None), ("stacks", "Stacks"), ("devices", "Your devices"), ("push", None), ("vision", "Vision"), ("install", None), ("manual", "Manual"), ("design", "Design"),
+PAGES = [("home", None), ("stacks", "Stacks"), ("deployments", "Your deployments"), ("devices", None), ("push", None), ("vision", "Vision"), ("install", None), ("manual", "Manual"), ("design", "Design"),
          ("performance", "Performance")]
 # in front: the hero page (the logo), the modules, your Push; everything else is in the footer
-NAV = [("modules", "Modules"), ("devices", "Your devices")]
-if LAUNCHED:  # stacks need a device to talk to: in front once the site connects to one
+NAV = [("modules", "Modules"), ("deployments", "Your deployments")]
+if LAUNCHED:  # stacks need a deployment to talk to: in front once the site connects to one
     NAV.insert(1, ("stacks", "Stacks"))
 BACKGROUND = [("vision", "Vision"), ("manual", "Manual"), ("design", "Design"), ("performance", "Performance")]
 FONTS = ("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900"
@@ -229,12 +230,12 @@ def build(name):
 <meta name="twitter:card" content="summary_large_image">
 {head(title)}<style>body {{ margin: 0; }}</style>
 {"<style>" + figure_css() + "</style>" if live else ""}
-{'<link rel="stylesheet" href="pushlink.css">' if name in ("devices", "stacks") else ""}
+{'<link rel="stylesheet" href="pushlink.css">' if name in ("deployments", "stacks") else ""}
 </head>
 <body{' data-connect="1"' if LAUNCHED else ""}>
 {src}
 {'<script src="visuals.js"></script><script src="hero.js"></script>' if live else ""}
-{'<script src="pushlink.js"></script><script src="devices.js"></script>' if name == "devices" else ""}
+{'<script src="pushlink.js"></script><script src="deployments.js"></script>' if name == "deployments" else ""}
 {'<script src="pushlink.js"></script><script src="stacks.js"></script>' if name == "stacks" and LAUNCHED else ""}
 </body>
 </html>
@@ -339,7 +340,7 @@ if __name__ == "__main__":
     if OUT and not args:
         # the front page's playing screen
         shutil.copy2(os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(OUT, "visuals.js"))
-        for f in ("hero.js", "pushlink.js", "pushlink.css", "devices.js", "stacks.js"):
+        for f in ("hero.js", "pushlink.js", "pushlink.css", "deployments.js", "stacks.js"):
             shutil.copy2(os.path.join(HERE, f), os.path.join(OUT, f))
         # the front page's loops: Pung's own instruments' panels (scripts/hero-loops.sh)
         shutil.copytree(os.path.join(HERE, "hero"), os.path.join(OUT, "hero"), dirs_exist_ok=True)

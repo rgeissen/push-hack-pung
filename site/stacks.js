@@ -3,7 +3,8 @@
 // Pung's modulation over them. This page is where the visitor's stacks live:
 // taken from a device (GET /api/stacks/playing/{n}), kept in this browser
 // (IndexedDB "pung", store "stacks"; a file for another browser or a backup),
-// sent to a device (POST /api/stacks, src/stacks.go). A device plays a stack
+// sent to a deployment (POST /api/stacks, src/stacks.go). A deployment (a Pung that runs somewhere:
+// "device" in this code; on the page that word is kept for what it means in Live) plays a stack
 // and keeps what it was sent; it has no library of its own.
 (function () {
   "use strict";
@@ -107,10 +108,10 @@
     return {
       install: `<b>${n}</b> is not installed there. <a href="modules/#${encodeURIComponent(u.module)}">Install it on the Modules page</a>, restart Live there, and the stack is ready.`,
       restart: `<b>${n}</b> is installed there and becomes a device in Live when Live restarts: <a href="modules/">restart Live from the Modules page</a>.`,
-      pung: `${u.module ? `<b>${n}</b> needs` : "The stack needs"} Pung ${esc(u.detail)} or later on that device.`,
-      firmware: `<b>${n}</b> needs its ${esc(u.detail || "firmware")} there: yours, added on the device's own Modules page.`,
-      unknown: `No module pack names <b>${esc(u.module)}</b>: that device cannot install it.`,
-      shape: esc(u.detail || "That device cannot hold this stack as one device."),
+      pung: `${u.module ? `<b>${n}</b> needs` : "The stack needs"} Pung ${esc(u.detail)} or later there.`,
+      firmware: `<b>${n}</b> needs its ${esc(u.detail || "firmware")} there: yours, added on its own Modules page.`,
+      unknown: `No module pack names <b>${esc(u.module)}</b>: it cannot be installed there.`,
+      shape: esc(u.detail || "It cannot hold this stack as one device."),
     }[u.why] || esc(u.detail || u.why);
   };
 
@@ -139,7 +140,7 @@
         <header>${title}<p class="dv-sub">${rec.from ? `Taken from ${esc(rec.from.name)}` : "From a file"} · ${esc(when(rec.added))}${st.sound && st.sound !== rec.name ? ` · was “${esc(st.sound)}”` : ""}</p></header>
         ${chain(st)}${over(st)}${needs(st)}
         ${on.length ? `<ul class="sk-on">${on.join("")}</ul>` : ""}
-        <div class="dv-acts"><button type="button" class="btn primary" data-send="${esc(rec.id)}">Send to a device</button>
+        <div class="dv-acts"><button type="button" class="btn primary" data-send="${esc(rec.id)}">Send to a deployment</button>
           <button type="button" class="btn" data-file="${esc(rec.id)}">Download</button>
           <button type="button" class="btn" data-copy="${esc(rec.id)}">Duplicate</button>
           <button type="button" class="btn" data-del="${esc(rec.id)}">Delete</button></div>
@@ -149,13 +150,13 @@
   // what plays on each connected device: a stack to take
   function playing() {
     const ds = PP.devices;
-    if (!ds.length) return `<div class="dv-empty"><p>Connect a device to take what it plays, and to send a stack to it. pung.live talks to it over your home network; your stacks stay in this browser.</p><div data-push-chip></div></div>`;
+    if (!ds.length) return `<div class="dv-empty"><p>Connect a deployment to take what it plays, and to send a stack to it. pung.live talks to it over your home network; your stacks stay in this browser.</p><div data-push-chip></div></div>`;
     return ds.map((d) => {
       const a = of(d);
       let body;
-      if (d.state !== "on") body = `<p class="dv-note">${d.state === "trying" ? "Looking for it…" : `Not connected. <a href="devices.html">Your devices</a> has it.`}</p>`;
-      else if (a.knows === false) body = `<p class="dv-note">Its Pung does not know stacks yet. <a href="devices.html#install">Update Pung</a> on it.</p>`;
-      else if (!a.playing.length) body = `<p class="dv-note">No Pung device in its Set right now. Load one on the device, shape its sound, and take it here.</p>`;
+      if (d.state !== "on") body = `<p class="dv-note">${d.state === "trying" ? "Looking for it…" : `Not connected. <a href="deployments.html">Your deployments</a> has it.`}</p>`;
+      else if (a.knows === false) body = `<p class="dv-note">Its Pung does not know stacks yet. <a href="deployments.html#install">Update Pung</a> on it.</p>`;
+      else if (!a.playing.length) body = `<p class="dv-note">No Pung device in its Set right now. Load one there, shape its sound, and take it here.</p>`;
       else body = `<ul class="sk-play">${a.playing.map((p) => `<li><span class="sk-what"><b>${esc(p.name)}</b>${p.sound ? ` <span>${esc(p.sound)}</span>` : ""}${p.midi_fx ? ` <i>${esc(names[p.midi_fx] || p.midi_fx)} in front</i>` : ""}</span>
           <button type="button" class="btn" data-take="${p.n}" data-dev="${d.id}">Take as a stack</button></li>`).join("")}</ul>`;
       return `<section class="sk-dev"><header><i class="pl-led ${d.state === "on" ? "on" : d.state === "lost" ? "bad" : ""}" aria-hidden="true"></i><h3>${esc(PP.nameOf(d))}</h3><p class="dv-sub">${esc(PP.KINDS[d.kind].label)} · playing now</p></header>${body}</section>`;
@@ -167,12 +168,12 @@
     const cards = lib.length
       ? `<div class="sk-grid">${lib.map(card).join("")}</div>`
       : `<div class="dv-empty sk-first"><p><b>No stacks here yet.</b> A stack is a sound with everything it stands on: the modules in their order, each one's state, and Pung's modulation over them.</p>
-          <ol class="sk-steps"><li><b>Take</b> what a device plays, below.</li><li><b>Keep</b> it here, under a name of yours.</li><li><b>Send</b> it to a device: the same one later, or another.</li></ol></div>`;
+          <ol class="sk-steps"><li><b>Take</b> what a deployment plays, below.</li><li><b>Keep</b> it here, under a name of yours.</li><li><b>Send</b> it to a deployment: the same one later, or another.</li></ol></div>`;
     const html = `<section class="home-sec"><div class="sk-bar"><div class="sec-head"><p class="eyebrow">In this browser</p><h2>Your stacks</h2></div>
         <div class="dv-acts"><button type="button" class="btn" id="sk-open">Open a file</button><input type="file" id="sk-input" accept="${EXT},.json,application/json" multiple hidden></div></div>
         ${dbFail ? `<p class="dv-note sk-warn">This browser does not let the page keep anything (a private window?). Stacks you take stay until the page closes: download the ones you want.</p>` : ""}
         ${cards}</section>
-      <section class="home-sec"><div class="sec-head"><p class="eyebrow">On your devices</p><h2>Playing now</h2></div><div class="sk-devs">${playing()}</div></section>`;
+      <section class="home-sec"><div class="sec-head"><p class="eyebrow">On your deployments</p><h2>Playing now</h2></div><div class="sk-devs">${playing()}</div></section>`;
     if (html === sig) { PP.renderChips(); return; }
     if (box.querySelector(".dv-rename input:focus")) return; // a name being typed is not redrawn under the hands
     sig = html;
@@ -190,7 +191,7 @@
       if (await PP.confirm(`Delete “${r.name}” from this browser?${kept.length ? ` ${kept.join(" and ")} keep${kept.length === 1 ? "s" : ""} the copy sent there.` : ""} A stack you have not downloaded is gone.`, "Delete", true)) { await drop(r); redraw(); } });
     on("[data-rename]", (b) => { renaming = b.dataset.rename; redraw(); const i = box.querySelector(".dv-rename input"); if (i) { i.focus(); i.select(); } });
     on("[data-unkeep]", async (b) => { const d = dev(b.dataset.dev), r = rec(b.dataset.unkeep);
-      if (!(await PP.confirm(`Remove “${r.name}” from ${PP.nameOf(d)}? It leaves that device's browser; a device in its Set that plays it goes on playing. The stack stays here.`, "Remove", true))) return;
+      if (!(await PP.confirm(`Remove “${r.name}” from ${PP.nameOf(d)}? It leaves the browser there; a device in its Set that plays it goes on playing. The stack stays here.`, "Remove", true))) return;
       try { await post(d, "/api/stacks/remove", { id: r.id }); PP.toast(`${PP.nameOf(d)} no longer keeps “${r.name}”.`); } catch (e) { PP.toast(e.message, true); }
       await look(d); redraw(); });
     box.querySelectorAll(".dv-rename").forEach((f) => (f.onsubmit = async (e) => { e.preventDefault(); const r = rec(f.dataset.id); renaming = "";
@@ -213,7 +214,7 @@
     const r = await PP.fetchOf(d, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     let j = null;
     try { j = await r.json(); } catch (e) { /* not Pung's answer */ }
-    if (!j) throw new Error("The device answered " + r.status + ".");
+    if (!j) throw new Error("It answered " + r.status + ".");
     return j;
   }
   async function take(d, n, btn) {
@@ -308,8 +309,8 @@
       h += c.loaded
         ? `<p><b>${esc(PP.nameOf(d))} plays it now.</b> It is also kept there: in its browser under ${esc((c.where || "").replace(/ › [^›]*$/, ""))}.</p>`
         : c.ready
-          ? `<p><b>${esc(PP.nameOf(d))} keeps it.</b> On the device, open its browser and load it from</p><p class="sk-where">${esc(c.where || "")}</p><p class="pl-sub">It comes as ${esc(nameOf(m))} with the whole stack in it, on any track, as often as you like, without this page.</p>`
-          : `<p><b>${esc(PP.nameOf(d))} keeps it, and waits.</b></p><ul class="sk-unmet">${(c.unmet || []).map((u) => `<li>${why(u)}</li>`).join("")}</ul><p class="pl-sub">Once that is met, the stack appears in the device's browser by itself.</p>`;
+          ? `<p><b>${esc(PP.nameOf(d))} keeps it.</b> On the ${esc(PP.KINDS[d.kind].short)}, open its browser and load it from</p><p class="sk-where">${esc(c.where || "")}</p><p class="pl-sub">It comes as ${esc(nameOf(m))} with the whole stack in it, on any track, as often as you like, without this page.</p>`
+          : `<p><b>${esc(PP.nameOf(d))} keeps it, and waits.</b></p><ul class="sk-unmet">${(c.unmet || []).map((u) => `<li>${why(u)}</li>`).join("")}</ul><p class="pl-sub">Once that is met, the stack appears in its browser by itself.</p>`;
       if (c.load_error) h += `<div class="pl-err">It could not load it into the device that plays: ${esc(c.load_error)}</div>`;
       h += `<div class="pl-acts end"><button type="button" class="pl-btn primary" id="sk-ok">Done</button></div>`;
       body.innerHTML = h;
@@ -317,7 +318,7 @@
       return;
     }
     if (!ds.length) {
-      h += `<p>No device is connected. Connect one and send again.</p><div class="pl-acts end"><a class="pl-btn primary" href="devices.html">Your devices</a></div>`;
+      h += `<p>No deployment is connected. Connect one and send again.</p><div class="pl-acts end"><a class="pl-btn primary" href="deployments.html">Your deployments</a></div>`;
       body.innerHTML = h;
       return;
     }
@@ -331,12 +332,12 @@
         const here = of(sd.dev).playing.filter((p) => p.module === m.id);
         h += `<p><i class="pl-led on" aria-hidden="true"></i> It has everything the stack needs.</p>
           <div class="pl-pick" role="radiogroup" aria-label="Where it goes">
-            <label><input type="radio" name="sk-onto" value="" ${sd.onto === "" ? "checked" : ""}><span><b>Keep it on the device</b><br><span class="pl-sub">It appears in the device's own browser; load it there on any track.</span></span></label>
+            <label><input type="radio" name="sk-onto" value="" ${sd.onto === "" ? "checked" : ""}><span><b>Keep it on the ${esc(PP.KINDS[sd.dev.kind].short)}</b><br><span class="pl-sub">It appears in its own browser; load it from there on any track.</span></span></label>
             ${here.map((p) => `<label><input type="radio" name="sk-onto" value="${p.n}" ${sd.onto === String(p.n) ? "checked" : ""}><span><b>And play it now on ${esc(p.name)}${p.sound ? ` (“${esc(p.sound)}”)` : ""}</b><br><span class="pl-sub">It replaces what that device in the Set plays. Take that first if you want to keep it.</span></span></label>`).join("")}
           </div>`;
       } else {
         h += `<p><i class="pl-led bad" aria-hidden="true"></i> ${hard ? "It cannot play this stack:" : "It lacks something the stack needs:"}</p><ul class="sk-unmet">${c.unmet.map((u) => `<li>${why(u)}</li>`).join("")}</ul>`;
-        if (!hard) h += `<p class="pl-sub">You can send it now: the device keeps it, and it appears in its browser once this is met.</p>`;
+        if (!hard) h += `<p class="pl-sub">You can send it now: it is kept there, and appears in the browser once this is met.</p>`;
       }
       h += `<div class="pl-acts end"><button type="button" class="pl-btn" id="sk-no">Cancel</button>${hard ? "" : `<button type="button" class="pl-btn primary" id="sk-go" ${sd.busy ? "disabled" : ""}>${sd.busy ? `<i class="pl-spin"></i> Sending…` : c.ready ? "Send" : "Send anyway"}</button>`}</div>`;
     }

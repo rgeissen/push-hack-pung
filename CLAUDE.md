@@ -17,7 +17,7 @@ release, and native instruments built from gearmulator (`native/`).
 | Native modules (emulators): rules, measurements, each instrument's quirks | `docs/NATIVE-MODULES.md` |
 | Module builds for the Push | `docs/push-module-builds.md` |
 | What devices cost (processor, energy), `GET /api/governor` | `docs/GOVERNOR.md` |
-| Stacks (modules with their states, moved between devices): the idea, the format, what is built, what is open | `docs/STACKS.md` |
+| Stacks (modules with their states, moved between deployments): the idea, the format, what is built, what is open | `docs/STACKS.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
 | The public pages (manual, vision, design) | `site/README.md` |
 
@@ -246,37 +246,37 @@ serves other sites.
 Three sections in front, everything else in the footer (the owner's word, 2026-11-27): the hero page
 (`home.src.html`: the value, and a Push screen that plays: `site/hero.js` feeds a made-up sound to Pung's own
 pictures, `src/web/visuals.js`, so the page draws what the Push draws), **Modules** (`site/modules.html` with
-`src/web/modules.js` in its public mode) and **Your devices** (`devices.src.html`, `site/devices.js`: install,
-and a panel for every connected device: processor with its last minute, memory, storage, battery, what plays,
+`src/web/modules.js` in its public mode) and **Your deployments** (`deployments.src.html`, `site/deployments.js`; `devices.html` goes on to it: install,
+and a panel for every connected deployment: processor with its last minute, memory, storage, battery, what plays,
 Pung against the newest, its modules, Pung's two switches). Vision, Manual, Design and Performance are built as
 before and linked in the footer.
 
-- **Stacks** (`stacks.src.html`, `site/stacks.js`; a fourth entry in the menu, between Modules and Your devices,
+- **Stacks** (`stacks.src.html`, `site/stacks.js`; a fourth entry in the menu, between Modules and Your deployments,
   once the site is launched): the visitor's stacks, kept in their browser (IndexedDB `pung`/`stacks`, a file
-  `.pungstack` to carry one), taken from what a connected device plays and sent to a device (`src/stacks.go`:
+  `.pungstack` to carry one), taken from what a connected deployment plays and sent to one (`src/stacks.go`:
   `GET /api/stacks`, `GET /api/stacks/playing/{n}`, `POST /api/stacks`, `POST /api/stacks/remove`). A stack a
   Push takes is a rack in Push's browser, in "Pung Stacks" beside the sounds' racks. `pung.css` gives every
   `article` a 64-pixel gap: a card that is an article sets its own.
-- **Several devices, several kinds** (the owner's word, 2026-11-27: the Push is the first device, more kinds
-  will follow, and a visitor may own more than one of a kind). `site/pushlink.js` + `pushlink.css` hold the
+- **Several deployments, several kinds** (the owner's word, 2026-11-27: the Push is the first hardware Pung
+  runs on, more kinds will follow, and a visitor may own more than one of a kind). `site/pushlink.js` + `pushlink.css` hold the
   list for every page (in the visitor's browser: `pung.devices`, the one modules install on in `pung.device`;
   classes `pl-`, colours from whichever stylesheet the page has). A kind is an entry in its `KINDS` (label,
-  default address, port, hint) and a `"kind"` in what the device answers; nothing else on the site names the
-  Push where it means "a device". A second device of a kind is added by its IP address (both answer to
+  default address, port, hint) and a `"kind"` in what it answers; nothing else on the site names the
+  Push where it means "a deployment". A second one of a kind is added by its IP address (both answer to
   push.local).
 - **One home for each thing** (the owner's word, 2026-11-27: an easy way between what the Push serves and what
   pung.live serves, and nothing shown twice unless it must be). On the Push's own page: playing and editing
-  the devices in the Set, sounds, samples, ROMs, removing a module. On pung.live: the device at a glance,
+  the devices in the Set, sounds, samples, ROMs, removing a module. On pung.live: the deployment at a glance,
   Pung's version and updates, the installer, the manual, every module with its pictures. On both, on purpose:
   the Modules page (the Push must install offline; one script) and Pung's switches (offline on the Push, and in
-  the device's panel on pung.live). The device dashboard is never rebuilt on the Push's page. **Stacks are
-  managed on pung.live** (the owner's word): a device plays one and hands its state over, and its own page
+  its panel on pung.live). That dashboard is never rebuilt on the Push's page. **Stacks are
+  managed on pung.live** (the owner's word): a deployment plays one and hands its state over, and its own page
   grows no stack library (`docs/STACKS.md`).
   **The hand-off**: the Push's page links to pung.live with `#add=<its own address>` (`siteLinks`, `app.js`;
-  shown only while the browser reaches pung.live), and `pushlink.js` (`arrived`) connects that device without
-  the address typed again (a home-network name or address only); pung.live links back to the place on the
-  device's page (its start for devices and sounds, `#setup`, `#modules/<id>`).
-- **`GET /api/system`** (`src/system.go`): the device at a glance for that page and Pung's own. The processor's
+  shown only while the browser reaches pung.live), and `pushlink.js` (`arrived`) connects that deployment without
+  the address typed again (a home-network name or address only); pung.live links back to the place on
+  Pung's own page there (its start for devices and sounds, `#setup`, `#modules/<id>`).
+- **`GET /api/system`** (`src/system.go`): the deployment at a glance for that page and Pung's own. The processor's
   numbers are what was used since the last request (nothing runs between requests), in percent of the whole
   machine. On the owner's Push: AbletonOS 4.2, no battery in `/sys/class/power_supply` while on power.
 
@@ -301,10 +301,14 @@ before and linked in the footer.
 
 - **Module**: one instrument, audio effect or MIDI generator. **Stack** (the owner's word, 2026-11-27): the
   modules in their order with the state of each and what is laid over them, the thing that travels between
-  devices (`docs/STACKS.md`; a first version is built: one Pung device's worth). Never "rack" for it: on a Push a rack is Ableton's, and Pung
+  deployments (`docs/STACKS.md`; a first version is built: one Pung device's worth). Never "rack" for it: on a Push a rack is Ableton's, and Pung
   writes one per module ("Live rack"). Lower case, so it is not **Stacks**, the owner's chord tool.
-- **Device**: a thing Pung runs on (a Push 3 today; `site/pushlink.js` `KINDS`). In Live, a "device" is
-  also what a module becomes on a track: say "a device in Live" or "Pung device" for that.
+- **Deployment** (the owner's word, 2026-11-27, in place of "device"): a Pung that runs somewhere, a Push 3
+  today (`site/pushlink.js` `KINDS`); what Pung runs on is "hardware" or its kind. **Device** is Live's word
+  and only that: what a module becomes on a track ("a device in Live", "Pung device"). The site's code and
+  the browser's keys still say device (`PungPush.devices`, `pung.devices`); the pages, the manual and the docs
+  never do for a deployment. Left as they were, for the owner to decide: the front page's headline ("at home
+  on every device") and the Vision's "every device musicians play".
 
 ## The module pack
 

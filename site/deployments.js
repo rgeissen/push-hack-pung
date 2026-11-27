@@ -1,4 +1,5 @@
-// devices.js: pung.live's Your devices page. Every device the visitor has
+// deployments.js: pung.live's Your deployments page. Every deployment (a Pung that runs somewhere:
+// "device" in the code, a word kept for what it means in Live on the pages) the visitor has
 // connected (pushlink.js: the list lives in their browser), each a panel:
 // the device itself (processor with its last minute, memory, storage,
 // battery: GET /api/system, src/system.go), what plays on it, its Pung against
@@ -85,7 +86,7 @@
       const devs = s.devices || [], emus = devs.filter((x) => x.emulator);
       const playing = emus.filter((x) => !x.resting).length;
       out.push(`<div class="dv-tile" data-fill><p class="dv-k">In your Set</p><p class="dv-big">${devs.length}<span> Pung device${devs.length === 1 ? "" : "s"}</span></p>
-        <p class="dv-note">${devs.length ? esc([...new Set(devs.map((x) => x.name || x.module))].slice(0, 6).join(", ")) + (emus.length ? `. ${emus.length} emulator${emus.length === 1 ? "" : "s"}: ${playing} playing, ${emus.length - playing} resting.` : ".") : "None loaded in Live right now."} ${devs.length ? `<a href="${esc(PP.baseOf(d))}/" target="pung-device" rel="noopener">Play and edit them on the device ↗</a>` : ""}</p></div>`);
+        <p class="dv-note">${devs.length ? esc([...new Set(devs.map((x) => x.name || x.module))].slice(0, 6).join(", ")) + (emus.length ? `. ${emus.length} emulator${emus.length === 1 ? "" : "s"}: ${playing} playing, ${emus.length - playing} resting.` : ".") : "None loaded in Live right now."} ${devs.length ? `<a href="${esc(PP.baseOf(d))}/" target="pung-device" rel="noopener">Play and edit them on its own page ↗</a>` : ""}</p></div>`);
     }
     // Pung
     const behind = newest && d.version && older(d.version, newest);
@@ -96,7 +97,7 @@
     const inst = ms.filter((x) => x.installed).length, ups = ms.filter((x) => x.status === "update").length;
     const c = (d.data && d.data.catalog) || {};
     const own = c.source === "pung" || (!c.source && String(c.url || "").startsWith("file:")); // a Pung before 0.6.0 names no source
-    const pack = c.source === "pung.live" ? "pung.live's current pack" : own ? "the pack that came with its Pung" : "a catalog named on the device";
+    const pack = c.source === "pung.live" ? "pung.live's current pack" : own ? "the pack that came with its Pung" : "a catalog named on the deployment";
     out.push(`<div class="dv-tile" data-fill2><p class="dv-k">Modules</p><p class="dv-big">${inst}<span> installed</span></p>
       <p class="dv-note">${ups ? `<b>${ups} update${ups === 1 ? "" : "s"} waiting.</b> ` : ""}From ${pack}${c.generated_at ? ", made " + ago(c.generated_at) : ""}. <a href="modules/">${ups ? "Update them" : "Install more"}</a>.</p></div>`);
     // the last row is full: the tile that has most to say takes what is left of four columns
@@ -125,21 +126,21 @@
       : `<h2>${esc(PP.nameOf(d))} <button type="button" class="dv-edit" data-rename="${d.id}" aria-label="Rename it" title="Rename it">✎</button></h2>`;
     const head = `<header class="dv-head"><i class="pl-led ${led}" aria-hidden="true"></i><div class="dv-title">${name}
         <p class="dv-sub">${esc(k.label)} · ${esc(where)}${many && use ? ` · <b>modules install here</b>` : ""}</p></div>
-      <div class="dv-acts">${d.state === "on" ? `<a class="btn" href="${esc(PP.baseOf(d))}/" target="pung-device" rel="noopener" title="On the device itself: play and edit the devices in your Set, their sounds and samples">Devices and sounds ↗</a>` : ""}
+      <div class="dv-acts">${d.state === "on" ? `<a class="btn" href="${esc(PP.baseOf(d))}/" target="pung-device" rel="noopener" title="On the deployment itself: play and edit the devices in your Set, their sounds and samples">Devices and sounds ↗</a>` : ""}
         ${many && !use && d.state === "on" ? `<button type="button" class="btn" data-use="${d.id}">Install modules here</button>` : ""}
         ${d.state === "on" ? `<button type="button" class="btn" data-off="${d.id}">Disconnect</button>` : `<button type="button" class="btn primary" data-connect="${d.id}" ${d.state === "trying" ? "disabled" : ""}>${d.state === "trying" ? "Connecting…" : d.state === "link" ? "Try to connect" : "Connect"}</button>`}
         <button type="button" class="btn" data-remove="${d.id}" aria-label="Remove ${esc(PP.nameOf(d))} from this page">Remove</button></div></header>`;
     let body;
     if (d.state === "on") {
       body = `<div class="dv-tiles">${tiles(d)}</div>
-        ${m.noSys ? `<p class="dv-note dv-old">Its Pung is older than 0.6.0 and says less about the device: <a href="#install">update Pung</a> for processor, memory, storage and battery here.</p>` : ""}
+        ${m.noSys ? `<p class="dv-note dv-old">Its Pung is older than 0.6.0 and says less about what it runs on: <a href="#install">update Pung</a> for processor, memory, storage and battery here.</p>` : ""}
         ${settingsCard(d)}`;
     } else {
       const words = {
         off: "Not connected. Connect to see it here.",
         trying: "Looking for it…",
         lost: "It does not answer right now: off, asleep, or off this network. This page keeps trying.",
-        link: "This browser cannot reach it from a web page. Its buttons open Pung's own page on the device, where everything on this page is too.",
+        link: "This browser cannot reach it from a web page. Its buttons open Pung's own page there, where everything on this page is too.",
       };
       body = `<p class="dv-note dv-quiet">${words[d.state] || words.off}${d.state === "link" ? ` <a href="${esc(PP.baseOf(d))}/#setup" target="pung-device" rel="noopener">Open Pung on it ↗</a>` : ""}</p>`;
     }
@@ -150,8 +151,8 @@
   function render() {
     const ds = PP.devices;
     const html = ds.length
-      ? ds.map(panel).join("") + `<div class="dv-add"><button type="button" class="btn" id="dv-add">Add another device</button><span class="dv-note">Another Push, or, when Pung runs on more, another kind of device.</span></div>`
-      : `<div class="dv-empty"><p>Connect your Push to see it here: its processor, memory and storage, what plays, its Pung and its settings. pung.live talks to it over your home network; nothing passes through the internet, and the list of your devices stays in this browser.</p>
+      ? ds.map(panel).join("") + `<div class="dv-add"><button type="button" class="btn" id="dv-add">Add another deployment</button><span class="dv-note">Another Push, or, when Pung runs on more, another kind of hardware.</span></div>`
+      : `<div class="dv-empty"><p>Connect your Push to see it here: its processor, memory and storage, what plays, its Pung and its settings. pung.live talks to it over your home network; nothing passes through the internet, and the list of your deployments stays in this browser.</p>
           <div data-push-chip></div></div>`;
     if (html === sig) { PP.renderChips(); return; }
     // a name being typed is not redrawn under the hands
@@ -165,11 +166,13 @@
     box.querySelectorAll("[data-use]").forEach((b) => (b.onclick = () => PP.select(dev(b.dataset.use))));
     box.querySelectorAll("[data-remove]").forEach((b) => (b.onclick = async () => {
       const d = dev(b.dataset.remove);
-      if (await PP.confirm(`Remove ${PP.nameOf(d)} from this page? Nothing changes on the device; connect it again any time.`, "Remove", true)) { more.delete(d.id); PP.remove(d); }
+      if (await PP.confirm(`Remove ${PP.nameOf(d)} from this page? Nothing changes on the deployment itself; connect it again any time.`, "Remove", true)) { more.delete(d.id); PP.remove(d); }
     }));
     box.querySelectorAll("[data-rename]").forEach((b) => (b.onclick = () => { of(dev(b.dataset.rename)).renaming = true; sig = ""; render(); const i = box.querySelector(".dv-rename input"); if (i) { i.focus(); i.select(); } }));
     box.querySelectorAll(".dv-rename").forEach((f) => (f.onsubmit = (e) => { e.preventDefault(); const d = dev(f.dataset.dev); of(d).renaming = false; sig = "";
-      f.querySelector("input").blur(); // Enter leaves the field focused, and a focused field is not redrawn PP.rename(d, f.querySelector("input").value); }));
+      const name = f.querySelector("input").value;
+      f.querySelector("input").blur(); // Enter leaves the field focused, and a focused field is not redrawn
+      PP.rename(d, name); }));
     box.querySelectorAll("input[data-key]").forEach((i) => (i.onchange = () => setSwitch(dev(i.dataset.dev), i.dataset.key, i.checked, i.checked ? i.dataset.on : i.dataset.off)));
     const add = document.getElementById("dv-add");
     if (add) add.onclick = () => PP.open("add");
@@ -186,7 +189,7 @@
       PP.toast(said);
       if (key === "own_pack_only") PP.readOf(d).then(render);
     } catch (e) {
-      PP.toast("The setting could not be saved: the device did not answer.", true);
+      PP.toast("The setting could not be saved: it did not answer.", true);
     }
     sig = "";
     render();

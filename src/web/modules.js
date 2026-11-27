@@ -258,7 +258,7 @@
 
   function action(x) {
     // on pung.live: what the connected Push has; not connected, Install asks to connect first
-    if (PUBLIC && !CONNECT) return `<a class="act" href="../devices.html#install" title="Pung installs modules on the Push, from its own Modules page">Install on your Push</a>`;
+    if (PUBLIC && !CONNECT) return `<a class="act" href="../deployments.html#install" title="Pung installs modules on the Push, from its own Modules page">Install on your Push</a>`;
     if (PUBLIC) {
       if (push.state === "link") return `<a class="act" href="${esc(pushBase())}/#modules/${encodeURIComponent(x.id)}" target="pung-push" rel="noopener" title="Opens this module on Pung's own page on your Push">Open on your Push ↗</a>`;
       if (push.state !== "on") return `<button type="button" class="act" data-act="install" title="Connect your Push, and it installs there">Install</button>`;
@@ -632,7 +632,7 @@
       });
       PP.on(async (what, d) => {
         if (what === "dialog-closed") { if (push.state !== "trying") m.afterConnect = null; return; }
-        if (d && d !== PP.state && what !== "removed") return; // another of the visitor's devices: Your devices shows it
+        if (d && d !== PP.state && what !== "removed") return; // another of the visitor's deployments: Your deployments shows it
         if (what === "selected") { await load(false); return; } // modules install on another device now
         if (what === "connected") {
           await load(false);
