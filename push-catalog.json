@@ -4,7 +4,7 @@
     {
       "id": "pung",
       "name": "Pung",
-      "description": "Schwung modules (Ableton Move's module ecosystem) on Push 3 as devices in Live, with their own view on the Push screen.",
+      "description": "The open instrument platform: open instruments, audio effects and MIDI generators on Push 3 as devices in Live, each with a designed interface on the Push screen.",
       "author": "rgeissen",
       "homepage": "https://github.com/rgeissen/push-hack-pung",
       "github_repo": "rgeissen/push-hack-pung",
