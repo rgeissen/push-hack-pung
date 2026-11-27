@@ -3,11 +3,11 @@
 
 <section class="band hero"><div class="wrap">
   <p class="eyebrow">Pung 0.6.0 · Manual</p>
-  <h1>Play Schwung modules, and Pung's own, on Push 3.</h1>
-  <p class="lead">How to install Pung, find its devices in Push's browser, play and edit them on the Push screen, and add more modules. Everything here works from the Push, with an optional web page beside it.</p>
+  <h1>The Pung manual</h1>
+  <p class="lead">Pung is an open instrument platform: it runs music modules inside your music program as devices of its own, and gives each one a designed interface on the hardware under your hands. Today it runs on Ableton Push 3 Standalone, in Ableton Live. This manual covers that: installing Pung, finding its devices in Push's browser, playing and editing them on the Push's screen, adding modules, and getting another Push ready for a Set.</p>
   <dl class="facts">
     <div><dt>modules ready to install</dt><dd>{{N:modules}}</dd></div>
-    <div><dt>views on the Push</dt><dd>3</dd></div>
+    <div><dt>with an interface of their own</dt><dd>{{N:custom}}</dd></div>
     <div><dt>encoders, as on every Push device</dt><dd>8</dd></div>
     <div><dt>Live restart to add modules</dt><dd>1</dd></div>
   </dl>
@@ -15,6 +15,7 @@
 
 <main class="band main"><div class="wrap">
 <nav class="toc" aria-label="On this page"><p>On this page</p><ol>
+  <li><a href="#what">What Pung is</a></li>
   <li><a href="#need">What you need</a></li>
   <li><a href="#install">Install</a></li>
   <li><a href="#update">Updating</a></li>
@@ -29,7 +30,7 @@
   <li><a href="#push">Pung and Push's own view</a></li>
   <li><a href="#midi">MIDI effects</a></li>
   <li><a href="#web">The web page</a></li>
-  <li><a href="#stacks">Stacks</a></li>
+  <li><a href="#stacks">Stacks and patches</a></li>
   <li><a href="#modules">Adding modules</a></li>
   <li><a href="#trouble">When something is wrong</a></li>
   <li><a href="#remove">Removing Pung</a></li>
@@ -37,8 +38,23 @@
 
 <article>
 
+<section id="what">
+  <div class="sec-head"><p class="eyebrow">Before you start</p><h2>What Pung is</h2></div>
+  <div class="prose">
+    <p>Pung is not a collection of instruments. It is what carries them: it runs each one inside your music program, draws its interface, lays its own modulation over it, watches what it costs, and keeps it up to date. The words this manual uses:</p>
+    <ul>
+      <li><strong>Module</strong>: one instrument, one audio effect or one MIDI generator. Most come from Schwung, the module system of Ableton Move; five are Pung's own.</li>
+      <li><strong>Host</strong>: the music program Pung's modules appear in. Today that is Ableton Live, where every module becomes a <strong>device</strong>: found in the browser, played, automated and saved with your Set like Live's own.</li>
+      <li><strong>Deployment</strong>: a Pung that runs somewhere. Today that is a Push 3 in Standalone mode; this manual says "your Push" where it means yours.</li>
+      <li><strong>Pung default</strong> and <strong>Pung custom</strong>: the two levels of interface. Every module gets Pung default, pages designed from its own controls. Some have a front panel of their own, Pung custom.</li>
+      <li><strong>Stack</strong>: everything of Pung's in one Set: its Pung devices with their modules, versions and sounds, and what they need. A <strong>patch</strong> is what one device holds.</li>
+    </ul>
+    <p>Where Pung goes from here is on the <a href="{{LINK:vision}}">vision page</a>. Everything below is Pung on a Push 3.</p>
+  </div>
+</section>
+
 <section id="need">
-  <div class="sec-head"><p class="eyebrow">Before you start</p><h2>What you need</h2></div>
+  <div class="sec-head"><p class="eyebrow">On a Push 3</p><h2>What you need</h2></div>
   <div class="prose">
     <ul>
       <li><strong>A Push 3 Standalone with Push Hack</strong>: push-manager, push-display and push-catalog, version 0.2.0-alpha or newer. That release brings the Live device extensions Pung is built on.</li>
@@ -53,7 +69,7 @@
 </section>
 
 <section id="install">
-  <div class="sec-head"><p class="eyebrow">Setup</p><h2>Install</h2></div>
+  <div class="sec-head"><p class="eyebrow">On a Push 3</p><h2>Install</h2></div>
   <!--if:installer--><div class="prose"><p>The <a href="{{LINK:install}}">Pung Installer</a> for macOS, Windows and Linux does everything from your computer, Push Hack included. Where Push Hack already runs, Pung is also in Push Hack Catalog: install it there like any other hack.</p></div><!--endif--><!--if:!installer--><div class="prose"><p>Pung is in Push Hack Catalog. Install it there like any other hack.</p></div><!--endif-->
   <ol class="steps">
     <li><div><p>Open Push Hack Catalog in a browser on your computer or phone.</p>
@@ -65,7 +81,7 @@
 </section>
 
 <section id="update">
-  <div class="sec-head"><p class="eyebrow">Setup</p><h2>Updating</h2></div>
+  <div class="sec-head"><p class="eyebrow">On a Push 3</p><h2>Updating</h2></div>
   <div class="prose"><p>An update has two parts: Pung itself, then the modules you installed. Nothing is copied by hand.</p>
   <p>You are told when there is a newer Pung: Pung's own web page says so beside its version, and so does pung.live once your Push is connected there (in the chip at the top of each page, and on <a href="https://pung.live/deployments.html">Deployments</a>). Each note leads to the Pung Installer.</p></div>
   <ol class="steps">
@@ -225,7 +241,7 @@
 <section id="pages">
   <div class="sec-head"><p class="eyebrow">On the Push</p><h2>Pages and screens</h2></div>
   <div class="prose">
-    <p>A module's pages come from the module itself: its own sections and their names, in its order. Every parameter is on a page, and each device remembers the page you left it on.</p>
+    <p><strong>Pung default</strong> is what every module gets. Its pages come from the module itself: its own sections and their names, in its order. Every parameter is on a page, and each device remembers the page you left it on.</p>
     <p>Where a page holds something Pung recognises, it draws it as a picture over the encoders that set it, with each encoder's name and value below. Touch an encoder and its part of the picture lights up.</p>
     <ul>
       <li><strong>An envelope</strong>: its stages as one shape, whatever the module calls them (attack, decay, sustain and release; or a JV's T1 to T4, a DX7's R1 to R4).</li>
@@ -236,7 +252,7 @@
   </div>
   [[screen img="je_amp" title="An envelope, drawn" alt="JE-8086's Amp page: the amp level dial, and the attack, decay, sustain and release stages drawn as one filled envelope over encoders 2 to 5, with their names and values below." up="0" upsel="0" lo="0-4" losel="1"]]JE-8086's Amp page. A Push 3 capture; its envelope is drawn by Pung's current code with the capture's values.[[/screen]]
   <div class="prose">
-    <p>Some modules draw screens of their own where a picture says more than knobs: the Virus's filter routing, a JV-880's four tones, a DX7's algorithm. They follow the same rules: the encoders keep their meaning, and the names and values stay in view.</p>
+    <p><strong>Pung custom</strong> is a screen of the module's own, where a picture says more than knobs: the Virus's filter routing, a JV-880's four tones, a DX7's algorithm, or a whole front panel in the instrument's own look. {{N:custom}} modules have one. They follow the same rules as Pung default: the encoders keep their meaning, and the names and values stay in view.</p>
   </div>
   [[screen img="osi_filters" title="Osirus: the filters as a signal path" alt="Osirus's Filters screen: the oscillators run through filter 1, a saturation stage and filter 2 to the amp, with both filter responses drawn on the right; the six encoders' names and values below." up="0" upsel="0" lo="0-4" losel="0"]]Filter 1, the saturation stage and filter 2 in the order the sound passes them, which filter the encoders edit, and both responses. Captured from a Push 3.[[/screen]]
   [[screen img="minijv_macros" title="Mini-JV: the patch at a glance" alt="Mini-JV's Macros screen: a JV-880-style LCD reading #001 A.PIANO 1 with tones 1 and 2 on; four tone cards with their waves, levels, pans and envelopes; the eight macro encoders below." up="0" upsel="0" lo="0-4" losel="4"]]A full-screen view: the JV-880's display and its four tones, while the encoders play the patch's macros. Rendered by Pung's own code from a Push 3's device.[[/screen]]
@@ -412,16 +428,21 @@
 </section>
 
 <section id="stacks">
-  <div class="sec-head"><p class="eyebrow">From one Pung to another</p><h2>Stacks</h2></div>
+  <div class="sec-head"><p class="eyebrow">From one Pung to another</p><h2>Stacks and patches</h2></div>
   <div class="prose">
-    <p>A <strong>stack</strong> is a sound with everything it stands on: the modules in the order they play, the state of each, and Pung's own modulation over them. It names its modules and never carries them, nor firmware. Stacks are kept and managed on <a href="https://pung.live/stacks.html">pung.live's Stacks page</a>, in your browser; a device plays them.</p>
+    <p>A <strong>stack</strong> is everything of Pung's in one Set: every Pung device in it, with its module and version, its sound, and what those need. It names modules and never carries them, nor firmware. Stacks are kept on <a href="https://pung.live/stacks.html">pung.live's Stacks page</a>, in your own browser. Use one to get another Push ready before a Set goes there.</p>
+  </div>
+  <ol class="steps">
+    <li><div><p><strong>Take the stack.</strong> With the Set open, connect your Push on the Stacks page. Under <em>Open now</em> it lists the Set's Pung devices, track by track; <em>Take this Set's stack</em> keeps it in your stacks. Give it the Set's name.</p></div></li>
+    <li><div><p><strong>Check the other Push.</strong> Connect it, and choose <em>Check a deployment</em> on the stack's card. The page lists every module the stack names and how it stands there: ready, not installed, older than the stack was saved with, or installed and waiting for Live to restart. One button installs what is missing from that Push's own module pack; Live restarts there only when you confirm it. Firmware an emulator needs is yours to add, on that Push's own page.</p></div></li>
+    <li><div><p><strong>Move the Set</strong> as you move any Set, and open it there. Every Pung device comes up with its sound.</p></div></li>
+  </ol>
+  <div class="prose">
     <ul>
-      <li><strong>Take</strong>: connect your Push on that page. Under <em>Playing now</em> it lists every Pung device in your Set; <em>Take as a stack</em> copies what that device holds (its instrument, the MIDI effect in front of it, Pung's modulation) into your stacks, under a name of yours.</li>
-      <li><strong>Send</strong>: <em>Send to a deployment</em> asks the Push what it has first, and says what is missing: a module to install, a restart of Live that brings a new module in, firmware that must be yours. A stack that is sent appears in Push's own browser under <em>User Library › Presets › Instruments › Pung › Pung Stacks</em> and loads there like any preset, on any track, without the page and without the internet. You can also have it played at once on a Pung device of the same instrument in your Set; it replaces what that device plays.</li>
-      <li><strong>Keep</strong>: your stacks live in the browser you took them with. <em>Download</em> writes one as a small file (<code>.pungstack</code>) for a backup or another browser; <em>Open a file</em>, or dropping the file on the page, brings it back.</li>
-      <li><strong>Remove</strong>: a stack's card says which of your deployments keeps it (a deployment is a Pung that runs somewhere: your Push); <em>Remove it there</em> takes it out of the browser there. A device in a Set that plays it goes on playing.</li>
+      <li><strong>What does not travel yet.</strong> Samples a device plays, and sounds you saved outside the Set, are not brought along. Automation and MIDI mappings of Pung devices follow the order of modules on the Push the Set was made on; a later Pung gives every control one place for good.</li>
+      <li><strong>Keeping stacks.</strong> They live in the browser you took them with. <em>Download</em> writes one as a small file (<code>.pungstack</code>) for a backup or another browser; <em>Open a file</em>, or dropping the file on the page, brings it back.</li>
+      <li><strong>A patch</strong> is what one Pung device holds: its instrument, the MIDI effect in front of it, Pung's modulation. On the same page, <em>One device on its own, as a patch</em> takes one, and <em>Send to a deployment</em> puts it into Push's own browser under <em>User Library › Presets › Instruments › Pung › Pung Stacks</em>, where it loads like any preset, without the page and without the internet.</li>
     </ul>
-    <p>On a Push a stack is what one Pung device holds. Effects behind an instrument are devices of their own in Live and are not yet part of one stack.</p>
   </div>
 </section>
 

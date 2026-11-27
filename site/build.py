@@ -30,7 +30,7 @@ DESC = {
     "install": "Install Pung on Ableton Push 3 Standalone: the Pung Installer for macOS, Windows and Linux, or through Push Hack's catalog.",
     "home": "Pung is the open instrument platform: it hosts {{N:modules}} open instruments, effects and MIDI generators inside your DAW, with interfaces built for your hardware. Today on Ableton Push 3 Standalone.",
     "vision": "The vision for Pung, an open platform for instruments: music modules inside your music program, a designed interface on your hardware, and projects that play the same wherever Pung runs.",
-    "manual": "The Pung manual: installing Pung on a Push 3 Standalone, the Pung view and its controls, sounds, modules.",
+    "manual": "The Pung manual: what Pung is, installing it on a Push 3 Standalone, the Pung view and its controls, sounds, modules, and getting another Push ready for a Set.",
     "design": "The design principles of the Pung view on Push 3: screens, controls, envelopes, colours.",
     "performance": "How Pung spends a Push 3's processor and battery: emulators that rest in silence, measured costs, a view that draws only what changed.",
 }
