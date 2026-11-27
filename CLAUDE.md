@@ -20,6 +20,7 @@ release, and native instruments built from gearmulator (`native/`).
 | Where Pung goes: the Pung stack, Set compatibility, hosts, the phases, what is sold | `docs/PUNG-STACK.md` |
 | One parameter order for every Pung (the groundwork's first piece; a design, not built) | `docs/SET-CONTRACT.md` |
 | Patches (what one Pung device holds, moved between deployments; built as "Stacks" on 2026-11-27) | `docs/STACKS.md` |
+| pung.live and a deployment over https (so it works in Safari and on an iPad): half built, a plan for the rest | `docs/SECURE-LINK.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
 | The public pages (manual, vision, design) | `site/README.md` |
 
@@ -412,6 +413,14 @@ before and linked in the footer.
   addresses. Back goes through the old hand-off (`#add=<address>`, `pushlink.js` `arrived`). The rail's
   links to pung.live are gone but the Manual's. Try it without a Push: `layout/web-standin.sh` and a scratch
   build of the launched site, with `pung.devices` put into the browser's storage.
+- **On an iPad pung.live cannot talk to a deployment** (the owner's, 2026-11-27): a secure page may fetch
+  plain http on the home network only with the browser's permission (Chrome, Edge, Firefox on a computer);
+  Safari has none, and every iPad browser is Safari. The way round is the secure link
+  (`docs/SECURE-LINK.md`, the owner's choice): a deployment with a name under a public domain and a
+  certificate answers over https on 7721 (`src/secure.go`: cert and key in `<data>/tls/`, `"secure"` in
+  `/api/status`); `pushlink.js` and `places.js` reach a name under `SECURE` that way. What makes names and
+  certificates (a domain, DNS, an issuing service) is not built: first one certificate by hand, to see
+  that the iPad and the home router (a Fritz!Box refuses public names for home addresses) go along.
 - **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
   folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS

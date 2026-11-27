@@ -53,13 +53,21 @@ window.PungPush = (function () {
   const changed = (what, d) => { renderChips(); renderDialog(); subs.forEach((f) => { try { f(what || "state", d); } catch (e) { /* a page's own */ } }); };
 
   // ---- reaching a device ----------------------------------------------------------------------
+  // A deployment with a certificate has a name under one of these domains and answers there over https
+  // (Pung's secure.go, docs/SECURE-LINK.md): a secure page may talk to it in every browser, Safari and so
+  // every browser on an iPad included, where plain http on the home network is refused.
+  const SECURE = ["d.pung.live"];
+  const secure = (host) => SECURE.some((s) => String(host).toLowerCase().endsWith("." + s));
   // the address as typed: a name or an address, a port after it if not Pung's own
   function split(d) {
     const a = d.addr, port = KINDS[d.kind].port;
     const m = /^\[([^\]]+)\](?::(\d+))?$/.exec(a) || (/^[^:]+:(\d+)$/.test(a) ? [a, a.replace(/:\d+$/, ""), a.split(":").pop()] : null);
-    return m ? { host: m[1], port: m[2] || port } : { host: a, port };
+    const r = m ? { host: m[1], port: m[2] || "" } : { host: a, port: "" };
+    r.secure = secure(r.host);
+    r.port = r.port || (r.secure ? String(+port + 1) : port);   // (https beside the plain port: 7721)
+    return r;
   }
-  const baseOf = (d) => { const { host, port } = split(d); return `http://${host.includes(":") ? "[" + host + "]" : host}:${port}`; };
+  const baseOf = (d) => { const { host, port, secure: tls } = split(d); return `${tls ? "https" : "http"}://${host.includes(":") ? "[" + host + "]" : host}:${port}`; };
   function norm(a, kind) {
     a = String(a || "").trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "").replace(new RegExp(":" + KINDS[kind].port + "$"), "");
     return a || KINDS[kind].addr;
@@ -69,8 +77,8 @@ window.PungPush = (function () {
   // targetAddressSpace; given for push.local it fails wherever the name also
   // has a global IPv6 address, which the browser counts as public (Chrome 158).
   function reach(d) {
-    const h = split(d).host;
-    return /\.local$/i.test(h) || /^[\d.]+$/.test(h) || h.includes(":") ? {} : { targetAddressSpace: "local" };
+    const { host: h, secure: tls } = split(d);
+    return tls || /\.local$/i.test(h) || /^[\d.]+$/.test(h) || h.includes(":") ? {} : { targetAddressSpace: "local" };
   }
   function fetchOf(d, path, opts) {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
@@ -114,7 +122,7 @@ window.PungPush = (function () {
       clearTimeout(t);
       return "old";
     } catch (_) { /* no answer at all */ }
-    return perm === "unknown" ? "browser" : "unreachable";
+    return perm === "unknown" && !split(d).secure ? "browser" : "unreachable";   // (a secure name needs no permission of the browser's)
   }
   // connectTo: a device answers; one that is new joins the list
   async function connectTo(d, quiet) {
@@ -189,7 +197,7 @@ window.PungPush = (function () {
     if (!/^(\[[0-9a-f:]+\]|[a-z0-9.-]+)(:\d{2,5})?$/i.test(a) || a.length > 80) return "";
     const host = a.replace(/:\d+$/, "");
     const home = /^\[/.test(host) || /\.local$/i.test(host) || /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || !host.includes(".");
-    return home ? a : "";
+    return home || secure(host) ? a : "";   // (or a deployment's own secure name)
   }
   const cameFrom = arrived();
 

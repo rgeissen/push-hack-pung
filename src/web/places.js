@@ -24,18 +24,21 @@
   const PP = window.PungPush || null;
 
   // ---- addresses ---------------------------------------------------------------------------------------
+  // a deployment with a certificate has a name under one of these and answers there over https (secure.go)
+  const SECURE = ["d.pung.live"];
+  const secure = (host) => SECURE.some((s) => String(host).toLowerCase().endsWith("." + s));
   // a name or an address on a home network, with or without a port: what a deployment's address may be
   function home(a) {
     a = String(a || "");
     if (!/^(\[[0-9a-f:]+\]|[a-z0-9.-]+)(:\d{2,5})?$/i.test(a) || a.length > 80) return false;
     const host = a.replace(/:\d+$/, "");
-    return /^\[/.test(host) || /\.local$/i.test(host) || /^(10\.|192\.168\.|169\.254\.|127\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || !host.includes(".");
+    return /^\[/.test(host) || /\.local$/i.test(host) || /^(10\.|192\.168\.|169\.254\.|127\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || !host.includes(".") || secure(host);
   }
   function baseOf(d) {
     const a = d.addr, port = (KINDS[d.kind] || KINDS.push).port;
     const m = /^\[([^\]]+)\](?::(\d+))?$/.exec(a) || (/^[^:]+:(\d+)$/.test(a) ? [a, a.replace(/:\d+$/, ""), a.split(":").pop()] : null);
-    const host = m ? m[1] : a, p = m ? m[2] || port : port;
-    return `http://${host.includes(":") ? "[" + host + "]" : host}:${p}`;
+    const host = m ? m[1] : a, tls = secure(host), p = (m && m[2]) || (tls ? String(+port + 1) : port);
+    return `${tls ? "https" : "http"}://${host.includes(":") ? "[" + host + "]" : host}:${p}`;
   }
   const enc = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const dec = (s) => JSON.parse(decodeURIComponent(escape(atob(String(s).replace(/-/g, "+").replace(/_/g, "/")))));
@@ -100,8 +103,15 @@
     const list = all.filter((x) => !x.site).map((x) => ({ id: x.id, name: x.name, kind: x.kind, addr: x.addr }));
     return `${baseOf(d)}/?places=${enc({ v: 1, at: d.id, list })}${there}`;
   }
+  // this deployment's secure address, where it has a certificate: what pung.live is given, so that a browser
+  // that refuses plain http from a secure page (Safari, every browser on an iPad) can still talk to it
+  let mine = "";
+  if (!onSite) fetch("/api/status").then((r) => r.json()).then((j) => {
+    const sec = j && j.secure;
+    if (sec && secure(sec.name)) mine = sec.name + (String(sec.port) === "7721" ? "" : ":" + sec.port);
+  }).catch(() => {});
   function toSite() {
-    const here = location.port && location.port !== "7720" ? location.hostname + ":" + location.port : location.hostname;
+    const here = mine || (location.port && location.port !== "7720" ? location.hostname + ":" + location.port : location.hostname);
     return `${SITE}${view() === "modules" ? "modules/" : "deployments.html"}#add=${encodeURIComponent(here)}`;
   }
 

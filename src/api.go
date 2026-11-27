@@ -80,7 +80,8 @@ func (h *Host) routes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{
 			"ok": true, "version": buildVersion, "slots": slots,
-			"newest": h.newestPung(), // a newer release, if pung.live names one (newest.go)
+			"newest": h.newestPung(),    // a newer release, if pung.live names one (newest.go)
+			"secure": h.secure.status(), // its https address, where it has a certificate (secure.go)
 			"engine": map[string]any{"period": period, "rate": rate, "periods": p,
 				"avg_us": avg, "worst_us": h.stats.worstUS.Load(), "budget_us": h.stats.budgetUS.Load(),
 				"overruns": h.stats.overruns.Load()},

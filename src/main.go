@@ -161,6 +161,14 @@ func main() {
 			log.Fatalf("http: %v", err)
 		}
 	}()
+	// the same over https, where this deployment has a certificate (secure.go)
+	if h.secure = newSecureLink(*data, cfg.Port); h.secure != nil {
+		h.secure.serve(srv.Handler, func(l net.Listener) {
+			if rc, err := l.(*net.TCPListener).SyscallConn(); err == nil {
+				rc.Control(func(fd uintptr) { cCloseInChildren(int(fd)) }) //nolint:errcheck
+			}
+		})
+	}
 	// pung.live looks for Pung on 7720: Push Hack Catalog gives a hack the
 	// first free port from 7711, so Pung answers there too (sitecors.go)
 	if cfg.Port != sitePort {

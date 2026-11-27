@@ -64,6 +64,7 @@ type Host struct {
 	surf       atomic.Pointer[surface] // the Push view, once it exists (governor.go)
 	modulesDir string
 	dataDir    string
+	secure     *secureLink // https, where this deployment has a certificate (secure.go)
 	busSocket  string
 
 	mu     sync.Mutex
