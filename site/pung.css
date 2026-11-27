@@ -313,10 +313,13 @@ button.copy:hover { border-color: var(--pung); }
 .biglogo { line-height: 0; margin: 0; }
 .biglogo svg { display: block; width: 100%; height: auto; overflow: visible; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .hero.home .wrap { padding-top: clamp(4px, 1.2vw, 16px); }   /* (the room above the letters is the dot's: its hops) */
-/* the tagline is the logo's: one line, as wide as the logo (ride.js sizes it to the column once the
-   typeface is there; until then, and without the script, close to it by the column's own width) */
+/* the tagline is the logo's: one line of spaced capitals, as wide as the logo (ride.js sizes it to the
+   column once the typeface is there; until then, and without the script, close to it by the column's width) */
 .lockup { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(10px, 2.2vw, 30px); min-width: 0; container-type: inline-size; }
-.hero.home h1.tag { margin: 0; max-width: none; white-space: nowrap; line-height: 1; letter-spacing: -0.012em; font-size: 6.2vw; font-size: 6.55cqw; }
+.tag { margin: 0 -0.34em 0 0; font-family: var(--display); font-weight: 560; font-stretch: 112%; font-variation-settings: "wdth" 112;
+  white-space: nowrap; line-height: 1; letter-spacing: .34em; text-transform: uppercase; color: var(--muted); font-size: 2.9vw; font-size: 3.05cqw; }
+/* under the logo and its tagline the line is the second thing said: smaller than on the other pages */
+.hero.home h1 { font-size: clamp(1.7rem, 3.5vw, 2.9rem); line-height: 1.06; }
 .lead b { font-weight: 700; }
 /* while the large logo is in view the bar does not repeat it (ride.js says when; without it the bar's stays) */
 .topbar .mark { transition: opacity .25s ease; }

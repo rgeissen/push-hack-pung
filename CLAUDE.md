@@ -317,12 +317,16 @@ before and linked in the footer.
   so the gap travels with it). Once as the page opens, again on a press, never where motion is turned down
   or without the script (the logo then stands as drawn). The bar's small logo is hidden while the large one
   is in view. The small logo's offset is 0.8 px at 22 px high (27.4 of the drawing's 740.9 units).
-- **The tagline is "The open instrument platform"** (the owner's word, 2026-11-27; chosen from a mockup): on
-  the front page it is the headline, one line as wide as the logo (`h1.tag`, sized by `ride.js`), and it is
-  the footer's line and the link preview's. "Open music modules, at home on every device." opens the
-  paragraph under it. Pung is spoken of as the platform (host, interface in two levels, modulation,
-  governor, deployment), never as a collection of modules, and not as a Push add-on: the Push is where it
-  is today (the "Today" line).
+- **The tagline is "The open instrument platform"** (the owner's word, 2026-11-27; treatment B chosen from a
+  mockup after A had been live for an hour): spaced capitals under the logo, one line as wide as the logo
+  (`.tag`, sized by `ride.js`); it is the footer's line and the link preview's too. "Open music modules, at
+  home on every device." is the headline under it. Pung is spoken of as the platform (host, interface in two
+  levels, modulation, governor, deployment), never as a collection of modules, and not as a Push add-on: the
+  Push is where it is today (the "Today" line).
+- **The twist on the P** (the owner's idea, 2026-11-27): once landed the dot turns the P up, down and back
+  like an encoder, the P's stroke bright as far as the dot and dim beyond it (Pung's own dial). Built in
+  `ride.js`, played only where the logo carries `data-twist`: shown in a mockup, not on the site until the
+  owner says so (then `biglogo()` adds the attribute).
 - **The hero's views** (`site/hero.js`): PUNG CUSTOM, the front panels of Pung's five own instruments as loops
   (`site/hero/<id>.mp4` + `.png`), and PUNG DEFAULT, the live-drawn page; they take turns until a tab is pressed.
   `scripts/hero-loops.sh` records the loops from Pung's own renderer (`src/heroframes_test.go`: a chord, the

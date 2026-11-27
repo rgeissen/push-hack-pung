@@ -1,5 +1,7 @@
 // The big logo of the front page: the dot starts in the G, rides each letter and hops to the next, and
 // comes to rest in its place on the P's bowl (the logo's own idea: the dot that rides, site/brand/make.py).
+// There the P is a controller: the dot turns it up, down and back to where it rests, and the P's stroke
+// is the dial's arc (bright as far as the dot, dim beyond it, as Pung draws a knob's value).
 // Without this script, or where motion is turned down, the logo stands as it is drawn: the dot at rest.
 function PungRide(svg) {
   const UX = 524.1, S = 11.9304, MX = -187.9, MY = -44.7;
@@ -40,15 +42,30 @@ function PungRide(svg) {
     }
     T[i] = t;
   }
-  const RUN = t, IN = 0.35, SETTLE = 0.7, duration = IN + RUN + SETTLE;
-  // the bowl, for the dot to settle on: a little way on, back, and still
-  const bowl = (u) => {                                    // the bowl's curve near its shoulder (0.25 = rest)
-    const a = m(36, 8), b = m(55.5, 8), c = m(55.5, 34), e = m(36, 34), w = 1 - u;
-    return [w * w * w * a[0] + 3 * w * w * u * b[0] + 3 * w * u * u * c[0] + u * u * u * e[0],
-            w * w * w * a[1] + 3 * w * w * u * b[1] + 3 * w * u * u * c[1] + u * u * u * e[1]];
+  // (the twist is played where the logo asks for it, data-twist; without, the dot lands, gives and rests)
+  const twist = svg.hasAttribute("data-twist");
+  const RUN = t, IN = 0.35, TWIST = twist ? 2.5 : 0.55, duration = IN + RUN + TWIST;
+  // on the P: the bowl is the dot's way (a fraction of it; it rests at REST_AT), the P's stroke the dial
+  const bowlWay = svg.querySelector("#pride"), value = svg.querySelector("#pval"), track = svg.querySelector("#pdim");
+  const LB = bowlWay.getTotalLength(), REST_AT = 0.345, BEFORE = 53;   // (the P's stroke up to where the bowl's way begins)
+  const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+  // the twist, in seconds after the dot has landed: [when, where on the bowl]
+  const TURN = [[0, REST_AT], [0.2, 0.41], [0.42, REST_AT], [0.55, REST_AT]]   // it lands, and gives
+    .concat(twist ? [[1.0, 0.9], [1.18, 0.9],                                   // turned up
+                     [1.78, 0.1], [1.95, 0.1],                                  // turned down
+                     [2.45, REST_AT], [TWIST, REST_AT]] : []);                  // and back to where it rests
+  const turned = (s) => {
+    for (let i = 1; i < TURN.length; i++) {
+      if (s <= TURN[i][0]) {
+        const [t0, f0] = TURN[i - 1], [t1, f1] = TURN[i];
+        return f0 + (f1 - f0) * ease((s - t0) / Math.max(1e-9, t1 - t0));
+      }
+    }
+    return REST_AT;
   };
+  const ramp = (s, a, b) => Math.min(1, Math.max(0, (s - a) / (b - a)));
   function at(time) {
-    let x, y, r = 65.6, gap = 97.8, k = 1;
+    let x, y, r = 65.6, gap = 97.8, k = 1, dial = 0, f = REST_AT;
     if (time <= IN) {                                      // it comes to be, where it starts
       k = Math.max(0, time / IN); k = 1 - Math.pow(1 - k, 3);
       x = P[0].x; y = P[0].y;
@@ -56,25 +73,35 @@ function PungRide(svg) {
       const tt = time - IN;
       let lo = 0, hi = N;
       while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (T[mid] <= tt) lo = mid; else hi = mid; }
-      const f = (tt - T[lo]) / Math.max(1e-9, T[hi] - T[lo]);
-      x = P[lo].x + (P[hi].x - P[lo].x) * f; y = P[lo].y + (P[hi].y - P[lo].y) * f;
+      const q = (tt - T[lo]) / Math.max(1e-9, T[hi] - T[lo]);
+      x = P[lo].x + (P[hi].x - P[lo].x) * q; y = P[lo].y + (P[hi].y - P[lo].y) * q;
+    } else if (time < duration) {
+      const s = time - IN - RUN;
+      f = turned(s);
+      dial = twist ? Math.min(ramp(s, 0.5, 0.68), 1 - ramp(s, 2.0, 2.45)) : 0;   // the arc shows while it is turned
+      const p = bowlWay.getPointAtLength(LB * f);
+      [x, y] = m(p.x, p.y);
     } else {
-      const u = Math.min(1, (time - IN - RUN) / SETTLE);
-      const swing = 0.16 * Math.exp(-4.2 * u) * Math.sin(u * Math.PI * 2.5);
-      [x, y] = bowl(0.25 + swing);
-      if (u >= 1) [x, y] = REST;
+      [x, y] = REST;
     }
     dot.setAttribute("cx", x.toFixed(1)); dot.setAttribute("cy", y.toFixed(1)); dot.setAttribute("r", (r * k).toFixed(1));
     hole.setAttribute("cx", x.toFixed(1)); hole.setAttribute("cy", y.toFixed(1)); hole.setAttribute("r", (gap * k).toFixed(1));
+    if (dial > 0) {
+      value.setAttribute("stroke-dasharray", (BEFORE + LB * f).toFixed(2) + " 400");
+      track.setAttribute("opacity", (1 - 0.72 * dial).toFixed(3));
+    } else {
+      value.removeAttribute("stroke-dasharray");
+      track.setAttribute("opacity", "1");
+    }
   }
   let raf = 0;
-  function play() {
+  function play(from) {
     cancelAnimationFrame(raf);
-    const t0 = performance.now();
+    const t0 = performance.now() - (from || 0) * 1000;
     const step = (now) => { const s = (now - t0) / 1000; at(Math.min(s, duration)); if (s < duration) raf = requestAnimationFrame(step); };
     raf = requestAnimationFrame(step);
   }
-  return { at, play, duration, run: RUN };
+  return { at, play, duration, landing: IN + RUN };
 }
 
 (function () {
@@ -83,6 +110,7 @@ function PungRide(svg) {
   const quiet = window.matchMedia("(prefers-reduced-motion: reduce)");
   const ride = PungRide(svg);
   const go = () => { if (!quiet.matches) ride.play(); };
+  svg.pungRide = ride;
   // once as the page opens (when it is seen), and again on a press. This script stands right after the
   // logo in the page, so the dot is taken off the P before the logo is first painted.
   if (!quiet.matches) {
@@ -97,7 +125,7 @@ function PungRide(svg) {
     const box = el.parentElement.clientWidth, s = el.firstElementChild;
     if (!box || !s) return;
     el.style.fontSize = "100px";
-    const w = s.getBoundingClientRect().width;
+    const w = s.getBoundingClientRect().width - (parseFloat(el.dataset.fit) || 0) * 100;   // (less the spacing after its last letter)
     el.style.fontSize = w ? (100 * box / w).toFixed(2) + "px" : "";
   });
   addEventListener("resize", fit);
