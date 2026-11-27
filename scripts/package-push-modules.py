@@ -166,7 +166,11 @@ for mid, m in sorted(cat.items()):
     mj = {}
     if os.path.exists(os.path.join(d, "module.json")):
         mj = json.load(open(os.path.join(d, "module.json")))
-    repo = os.path.join(modsrc, r.get("repo") or m["github_repo"].split("/")[1])
+    folder = r.get("repo") or m["github_repo"].split("/")[1]
+    repo = os.path.join(modsrc, folder)
+    # the source's folder in modsrc keeps the catalog's name for the repository; a fork may have another
+    # (Granny's and Mr Hyde's upstream was renamed, and the forks with it): the catalog build finds it by this
+    fork = FORKS.get(m["github_repo"].split("/")[1])
     entries.append({
         "id": mid, "name": mj.get("name") or m.get("name"), "version": mj.get("version", ""),
         "component_type": m["component_type"], "install_subdir": sub,
@@ -175,7 +179,9 @@ for mid, m in sorted(cat.items()):
         # a Pung-native module is built from this repository (native/<id>)
         "source": ({"github_repo": m["github_repo"], "commit": native_commit(mid), "modsrc": m["modsrc"], "native": True}
                    if m.get("native") else
-                   {"github_repo": FORKS.get(m["github_repo"].split("/")[1], m["github_repo"]), "commit": commit(repo)}),
+                   {"github_repo": fork, "commit": commit(repo), "modsrc": folder}
+                   if fork and fork.split("/")[1] != folder else
+                   {"github_repo": fork or m["github_repo"], "commit": commit(repo)}),
         "requires": m.get("requires", ""), "requires_modules": m.get("requires_modules", []),
     })
     built.append(mid)
