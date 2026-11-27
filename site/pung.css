@@ -181,6 +181,9 @@ figure { margin: 0; display: grid; gap: 10px; min-width: 0; }
 }
 figcaption { display: grid; gap: 3px; max-width: 76ch; font-size: 0.92rem; color: var(--muted); line-height: 1.5; }
 figcaption b { font: 600 0.74rem/1.3 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); }
+/* the line under the front page's screen is one row (the owner, 2026-11-27): as wide as the screen, and each
+   view's words short enough for it (site/hero.js) */
+.livefig figcaption { max-width: none; }
 .fig-pair { display: grid; gap: 22px; }
 
 /* an annotated screen: numbered marks over the image, a legend below */

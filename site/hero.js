@@ -91,13 +91,14 @@
     });
   }
   // ---- the views: Pung's own instruments' front panels, and the default page ------------
+  // (each caption one row under the screen, from a tablet held upright on: about a hundred letters at most)
   const VIEWS = [
-    { id: "vivace", name: "Vivace", kind: "custom", cap: "Vivace, Pung's own wavetable synth: its tables in three dimensions, the filter and the envelope as a chord plays." },
-    { id: "nodalred", name: "Nodal Red 2X", kind: "custom", cap: "Nodal Red 2X, the Clavia Nord Lead 2X: its red panel, section by section, with the knobs a modulation moves marked in cyan." },
+    { id: "vivace", name: "Vivace", kind: "custom", cap: "Vivace, Pung's own wavetable synth: its tables in motion, the filter and the envelope as a chord plays." },
+    { id: "nodalred", name: "Nodal Red 2X", kind: "custom", cap: "Nodal Red 2X, the Clavia Nord Lead 2X: its red panel, with every knob a modulation moves marked in cyan." },
     { id: "ostirus", name: "OsTIrus", kind: "custom", cap: "OsTIrus, the Access Virus TI: oscillators, both filters with the sound behind them, the effects." },
     { id: "xenia", name: "Xenia", kind: "custom", cap: "Xenia, the Waldorf Microwave II/XT: its display, and the wavetable as a landscape of waves." },
     { id: "vavra", name: "Vavra", kind: "custom", cap: "Vavra, the Waldorf microQ: its display and the edit matrix, a row under the encoders." },
-    { id: "default", name: "Pung default", kind: "default", cap: "The page every module gets, with no work from its maker: every note a dot on the envelope, the sound behind the filter, the cutoff where the LFO has it. Drag a handle." },
+    { id: "default", name: "Pung default", kind: "default", cap: "The page every module gets: each note a dot on the envelope, the sound behind the filter. Drag a handle." },
   ];
   const live = document.createElement("div");
   live.className = "ls-live";
