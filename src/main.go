@@ -142,6 +142,7 @@ func main() {
 	h.systemRoutes(mux)
 	h.stackRoutes(mux)
 	h.layoutRoutes(mux)
+	h.setStackRoutes(mux)
 	h.mods.routes(mux)
 	h.sounds.routes(mux)
 	h.fileRoutes(mux)

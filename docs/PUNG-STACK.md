@@ -143,7 +143,9 @@ Set as it was. A player sees what a Set uses and what it needs before anything i
 - **The stack of the open Set**: every Pung device with its module, version, state and what it needs (Pung
   has these from its own devices, in any host), and its track and its place in the chain (asked of Live
   through the Remote Script: the part of a stack that is Live's). pung.live shows it on Stacks and keeps it;
-  a stack is a file.
+  a stack is a file. *Pung's side is built (2026-11-27):* `GET /api/stack` (`src/setstack.go`): one entry a
+  device, each with its patch, its place in Live, and whether it is laid out by the Set contract
+  ("portable"). The page still shows one device at a time.
 - **Send a stack to a deployment**: it installs the modules that are missing from the pack, names the
   firmware that must be there, and brings the samples and saved sounds the states refer to (by content, to a
   place the receiving Pung maps: clause 3 and 5).

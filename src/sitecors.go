@@ -34,7 +34,7 @@ var siteSettings = map[string]bool{"touch_card": true, "own_pack_only": true}
 func siteCall(method, path string) bool {
 	switch method {
 	case http.MethodGet:
-		if path == "/api/catalog" || path == "/api/status" || path == "/api/settings" || path == "/api/system" || path == "/api/stacks" {
+		if path == "/api/catalog" || path == "/api/status" || path == "/api/settings" || path == "/api/system" || path == "/api/stacks" || path == "/api/stack" {
 			return true
 		}
 		// /api/stacks/playing/{n}: the stack a Pung device is playing (stacks.go)
