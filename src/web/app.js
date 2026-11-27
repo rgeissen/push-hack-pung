@@ -14,11 +14,6 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const KIND = { instrument: "Instrument", effect: "Audio effect", audio_fx: "Audio effect", midi_fx: "MIDI effect", midi: "MIDI effect" };
-  const ORIGIN = { pung: "Pung native", schwung: "Schwung" };
-  const ORIGIN_TIP = {
-    pung: "Written for the Push alone",
-    schwung: "Built from a Schwung module for Ableton Move",
-  };
 
   let state = { comp: "synth", info: null, values: {}, base: "", devices: [], dev: -1, follow: true,
                 comps: null, enabled: null, shown: "", pics: {}, status: null };
@@ -122,13 +117,13 @@
         b.dataset.n = d.n;
         b.dataset.name = d.name;
         b.setAttribute("aria-current", d.n === state.dev ? "true" : "false");
-        const o = d.origin === "pung" ? "pung" : "schwung";
+        const own = d.origin === "pung";   // (only Pung's own are marked: modules.js, native)
         b.innerHTML = `<span class="meter" aria-hidden="true">${"<i></i>".repeat(6)}</span>` +
           `<span class="nm">${esc(d.name)}</span>` +
-          `<span class="sub"><i class="dot ${o}" title="${esc(ORIGIN[o])}"></i><span class="where">${esc(d.track || KIND[d.kind] || "")}</span>` +
+          `<span class="sub">${own ? `<i class="dot pung" title="Pung native"></i>` : ""}<span class="where">${esc(d.track || KIND[d.kind] || "")}</span>` +
           (d.selected ? `<span class="sel" title="Selected in Live">● Live</span>` : "") +
           `<span class="rest" title="At rest: silent, and taking no processor until its next note or knob" hidden>Resting</span></span>`;
-        b.setAttribute("aria-label", `${d.name}, ${ORIGIN[o]}${d.track ? ", on " + d.track : ""}${d.selected ? ", selected in Live" : ""}`);
+        b.setAttribute("aria-label", `${d.name}${own ? ", Pung native" : ""}${d.track ? ", on " + d.track : ""}${d.selected ? ", selected in Live" : ""}`);
         b.onclick = () => { setFollow(false); selectDevice(d.n); renderRack(); };
         nav.appendChild(b);
       });
@@ -230,12 +225,12 @@
     const info = (state.info = r.info || {});
     state.values = info.values || {};
     const d = state.devices.find((x) => x.n === state.dev) || {};
-    const o = d.origin === "pung" ? "pung" : "schwung";
+    const own = d.origin === "pung";
     const at = state.devices.findIndex((x) => x.n === state.dev);
     $("unit-kicker").textContent = `Device ${String(at + 1).padStart(2, "0")} · ${KIND[d.kind] || KIND[info.type] || "Device"}${d.track ? " · " + d.track : ""}`;
     $("panel-title").textContent = info.module ? `${info.name || info.module}` : "Empty";
     $("unit-meta").innerHTML = info.module
-      ? `<span class="origin ${o}" title="${esc(ORIGIN_TIP[o])}">${esc(ORIGIN[o])}</span>` +
+      ? (own ? `<span class="origin pung" title="Written for Pung alone">Pung native</span>` : "") +
         (d.surface_app ? `<span class="surface-kind${d.surface_app_installed ? "" : " missing"}" title="${d.surface_app_installed ? "On the Push, opening this device hands the screen, pads and buttons to the " + esc(d.surface_app) + " app" : "Its surface on the Push is the " + esc(d.surface_app) + " app, which is not installed: Pung's own view opens"}">Takeover</span>` : "") +
         `<span>${esc(info.module)}${d.version ? " · v" + esc(String(d.version).replace(/^v/, "")) : ""}</span>` +
         (d.author ? `<span>${esc(d.author)}</span>` : "")

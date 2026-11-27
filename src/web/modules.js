@@ -18,7 +18,6 @@
     midi_fx: { label: "MIDI effect", plural: "MIDI effects", cls: "midi" },
   };
   const STATE = { queued: "Waiting", downloading: "Downloading", verifying: "Checking", unpacking: "Unpacking", testing: "Testing on the Push" };
-  const ORIGIN = { pung: "Pung native", schwung: "Schwung" };
   const PUBLIC = document.body.dataset.public === "1";
   // pung.live's Modules page is the catalog alone (the owner, 2026-11-27: nothing about one Pung install on
   // pung.live outside Deployments). It asks no deployment anything; once the site is launched it knows the
@@ -26,7 +25,7 @@
   // its place on a deployment's own page, where it is installed.
   const CONNECT = PUBLIC && document.body.dataset.connect === "1";
   const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
-  const m = { data: null, filter: "all", origin: "all", show: "all", q: "", open: null, timer: null, down: false, busy: {}, shots: {}, face: 0 };
+  const m = { data: null, filter: "all", show: "all", q: "", open: null, timer: null, down: false, busy: {}, shots: {}, face: 0 };
 
   async function api(path, opts) {
     const r = await fetch(path, opts);
@@ -92,17 +91,18 @@
     const q = m.q.trim().toLowerCase();
     return all.filter((x) =>
       (m.filter === "all" || x.component_type === m.filter) &&
-      (m.origin === "all" || originOf(x) === m.origin) &&
-      (m.show === "all" || (m.show === "installed" && x.installed) || (m.show === "updates" && x.status === "update") || (m.show === "face" && customOf(x))) &&
+      (m.show === "all" || (m.show === "installed" && x.installed) || (m.show === "updates" && x.status === "update") || (m.show === "face" && customOf(x)) || (m.show === "native" && native(x))) &&
       (!q || [x.name, x.id, x.author, x.description, x.license && x.license.spdx].join(" ").toLowerCase().includes(q)));
   }
 
-  const originOf = (x) => (x.origin === "pung" ? "pung" : "schwung");
+  // Written for Pung itself. Only that is marked (the owner, 2026-11-27: where a module's code came from is its
+  // credit, in its sheet, not a category of the page; an open module in the Schwung format carries no mark).
+  const native = (x) => x.origin === "pung";
   // a takeover: its surface on the Push is an app of its own
   const surfaceChip = (x) => (x.surface_app
     ? `<span class="surface-kind${x.surface_app_installed ? "" : " missing"}" title="${x.surface_app_installed ? "Its surface on the Push is the " + esc(x.surface_app) + " app" : "Its surface is the " + esc(x.surface_app) + " app, which is not installed on this Push: Pung's own view opens"}">Takeover</span>`
     : "");
-  const originChip = (x) => `<span class="origin ${originOf(x)}" title="${originOf(x) === "pung" ? "Written for the Push alone" : "Built from a Schwung module for Ableton Move"}">${ORIGIN[originOf(x)]}</span>`;
+  const originChip = (x) => (native(x) ? `<span class="origin pung" title="Written for Pung alone">Pung native</span>` : "");
 
   function render() {
     const root = $("modules-view");
@@ -114,8 +114,7 @@
     const all = (d && d.modules || []).filter((x) => x.supported);
     const counts = { installed: all.filter((x) => x.installed).length, updates: all.filter((x) => x.status === "update").length };
     setText("mod-count-installed", counts.installed);
-    setText("mod-count-pung", all.filter((x) => originOf(x) === "pung").length);
-    setText("mod-count-schwung", all.filter((x) => originOf(x) === "schwung").length);
+    setText("mod-count-pung", all.filter(native).length);
     setText("mod-count-updates", counts.updates);
     if ($("mod-count-face")) $("mod-count-face").textContent = all.filter((x) => customOf(x)).length || "";
     $("mod-search").placeholder = `Search ${all.length} modules`;
@@ -298,7 +297,7 @@
     // its own interface on the Push, edge to edge: what it looks like is the first thing told
     const pic = sh && (sh.panel || sh.default);
     const face = pic ? `<figure class="face"><img src="${shotURL(x, pic)}" alt="${esc(x.name)} on the Push: ${sh.panel ? "its front panel" : "its first page"}" width="960" height="160" loading="lazy" decoding="async"></figure>` : "";
-    return `<article class="mod ${t.cls}${originOf(x) === "pung" ? " native" : ""}${pic ? " has-face" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-label="${esc(x.name)}, ${esc(t.label)}, ${ORIGIN[originOf(x)]}${sh && sh.panel ? ", custom interface" : ""}">
+    return `<article class="mod ${t.cls}${native(x) ? " native" : ""}${pic ? " has-face" : ""}" data-id="${esc(x.id)}" tabindex="0" aria-label="${esc(x.name)}, ${esc(t.label)}${native(x) ? ", Pung native" : ""}${sh && sh.panel ? ", custom interface" : ""}">
       ${face}<div class="top"><h3>${esc(x.name)}</h3><span class="chips">${surfaceChip(x)}${originChip(x)}</span></div>
       <span class="badges"><span class="badge kind">${esc(t.label)}</span>${cat ? `<span class="badge cat">${esc(cat)}</span>` : ""}</span>
       <p class="desc" title="${esc(x.description || "")}">${esc(x.description || "")}</p>
@@ -348,6 +347,8 @@
       ["Licence", x.license && x.license.spdx ? `${x.license.spdx}${x.license.noncommercial && !/commercial/i.test(x.license.spdx) ? " (non-commercial)" : ""}` : "—"],
       ["Size", x.size ? bytes(x.size) : "—"],
     ];
+    // what an open module's format gives the player, said as that (and its credit: the format is Schwung's)
+    if (!native(x)) facts.push(["Also runs on", "Ableton Move, as a Schwung module. Sounds you save move between the two."]);
     const links = [];
     if (src.repo) links.push(`<a href="${esc(src.repo)}" target="_blank" rel="noopener">Repository</a>`);
     // a full address (a bundled catalog keeps its sources on GitHub), or one under the catalog's
@@ -608,11 +609,6 @@
       document.querySelectorAll("#mod-shows button").forEach((o) => o.setAttribute("aria-pressed", String(o.dataset.show === m.show)));
       render();
     }));
-    document.querySelectorAll("#mod-origins button").forEach((b) => (b.onclick = () => {
-      m.origin = b.dataset.origin;
-      document.querySelectorAll("#mod-origins button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
-      render();
-    }));
     $("mod-sheet-close").onclick = () => $("mod-sheet").close();
     $("mod-sheet").addEventListener("close", () => { m.open = null; if (location.hash) history.replaceState(null, "", location.pathname); });
     $("mod-sheet").addEventListener("click", (e) => { if (e.target === $("mod-sheet")) $("mod-sheet").close(); });
@@ -645,11 +641,6 @@
     document.querySelectorAll("#mod-shows button").forEach((b) => (b.onclick = () => {
       m.show = m.show === b.dataset.show ? "all" : b.dataset.show;
       document.querySelectorAll("#mod-shows button").forEach((o) => o.setAttribute("aria-pressed", String(o.dataset.show === m.show)));
-      render();
-    }));
-    document.querySelectorAll("#mod-origins button").forEach((b) => (b.onclick = () => {
-      m.origin = b.dataset.origin;
-      document.querySelectorAll("#mod-origins button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
       render();
     }));
     $("mod-refresh").onclick = () => load(true);

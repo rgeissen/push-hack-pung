@@ -42,7 +42,7 @@
     <p>Music software is made many times over. A synth written for one plugin format is ported to the next; one made for a piece of hardware stays on it. And on hardware with a screen and a handful of knobs, most instruments get a list of parameters, not an interface.</p>
     <p>Pung separates the two jobs. A <strong>module</strong> is an instrument, an audio effect or a MIDI generator: what it does to sound or to notes, its parameters and, where its maker wants, screens of its own, written once against one small contract. <strong>Pung</strong> is the platform that does the rest, wherever it runs: it builds the module for that processor, hosts it inside the music program that is already there as one of its own devices, draws it well on the hardware's screen, lays modulation and its care for the processor over all of them alike, and brings new modules and updates to every player.</p>
     <p>On Push 3 that means every module is a <strong>device in Live</strong>. You find it in Push's browser, play it with the pads, automate it and save it with your Set, while the module itself runs in a process of its own, so it can never take Live down. Pung does not build a studio around the modules. It uses the one that is already there.</p>
-    <p>On the Push today that is {{N:modules}} modules: {{N:instruments}} instruments, {{N:effects}} audio effects and {{N:midi}} MIDI generators. They come from <em>Schwung</em>, the module system of Ableton Move, and from Pung itself: Nodal Red 2X (Clavia Nord Lead 2X), OsTIrus (Access Virus TI), Vavra (Waldorf microQ), Xenia (Waldorf Microwave II/XT) and Vivace, a wavetable synth, five instruments written for what the Push's processor can do.</p>
+    <p>On the Push today that is {{N:modules}} modules: {{N:instruments}} instruments, {{N:effects}} audio effects and {{N:midi}} MIDI generators. Most are open modules in the <em>Schwung</em> module format, which began on Ableton Move and which Pung plays unchanged. Five are Pung's own: Nodal Red 2X (Clavia Nord Lead 2X), OsTIrus (Access Virus TI), Vavra (Waldorf microQ), Xenia (Waldorf Microwave II/XT) and Vivace, a wavetable synth, instruments written for what the Push's processor can do.</p>
   </div>
 </section>
 
@@ -99,7 +99,7 @@
 <section id="makers">
   <div class="sec-head"><p class="eyebrow">05 · Vision</p><h2>For module makers</h2></div>
   <div class="prose">
-    <p>Pung's module contract builds on Schwung's, the module system of Ableton Move, and keeps it whole: every Schwung module runs on Pung unchanged, and Pung's own modules are written against the same contract (audio in and out in 128-frame blocks, MIDI in and out, parameters, its saved state, and a <code>module.json</code> that names it). Pung adds to it, and a module uses each addition only where it helps:</p>
+    <p>Pung's module contract is an open one. It takes in the Schwung module format, which began on Ableton Move, whole: a module made for that format runs on Pung unchanged, and Pung's own modules are written against the same contract (audio in and out in 128-frame blocks, MIDI in and out, parameters, its saved state, and a <code>module.json</code> that names it). Pung adds to it, and a module uses each addition only where it helps:</p>
     <ul>
       <li><strong>Screens of its own</strong> for the Push, in one small JavaScript file, drawn with Pung's pictures of envelopes, filters and LFOs, so they move with the sound (see the <a href="{{LINK:design}}">design principles</a>).</li>
       <li><strong>Its live state:</strong> where the module's own modulation has each knob right now, so its screen shows that modulation as it moves.</li>
@@ -113,7 +113,7 @@
 <section id="open">
   <div class="sec-head"><p class="eyebrow">06 · Vision</p><h2>Built on open work</h2></div>
   <div class="prose">
-    <p>Pung stands on two open projects. <a href="https://github.com/charlesvestal/schwung">Schwung</a>, by Charles Vestal, gives Ableton Move its modules and the plugin contract Pung builds on; most of Pung's modules are Schwung's, built from their makers' own source. <a href="https://github.com/federico-pepe/ableton-push-hack">Push Hack</a>, by Federico Pepe, opens Push 3 to community software; Pung is a hack for it, and its Live device layer is part of Push Hack, for any hack to use. Pung's emulators are built on gearmulator. Pung itself is open source, under the MIT licence.</p>
+    <p>Pung stands on two open projects. <a href="https://github.com/charlesvestal/schwung">Schwung</a>, by Charles Vestal, gives Ableton Move its modules and defines the module format Pung plays; most of the modules Pung plays today were written for it, and are built from their makers' own source. <a href="https://github.com/federico-pepe/ableton-push-hack">Push Hack</a>, by Federico Pepe, opens Push 3 to community software; Pung is a hack for it, and its Live device layer is part of Push Hack, for any hack to use. Pung's emulators are built on gearmulator. Pung itself is open source, under the MIT licence.</p>
   </div>
 </section>
 
@@ -194,7 +194,7 @@
 
 <section id="live">
   <div class="sec-head"><p class="eyebrow">08 · On Push 3</p><h2>What Live gives a module</h2></div>
-  <div class="prose"><p>A Schwung module expects Move. On Push, every part of that contract is answered by Live, so a module runs unchanged.</p></div>
+  <div class="prose"><p>A module in the Schwung format expects Move. On Push, every part of that contract is answered by Live, so a module runs unchanged.</p></div>
   <div class="t"><table>
     <thead><tr><th>The module expects</th><th>On Push, from Live</th></tr></thead>
     <tbody>
@@ -258,14 +258,14 @@
 <section id="pipeline">
   <div class="sec-head"><p class="eyebrow">11 · On Push 3</p><h2>Module pipeline</h2></div>
   <div class="prose">
-    <p>Schwung's catalogue grows every week. Pung keeps up with it through an <strong>automatic conversion and serving pipeline</strong>, which is already built and running: a small service that does, unattended, what the previous section describes by hand.</p>
+    <p>Open modules keep coming, and their authors keep releasing. Pung follows them with a <strong>conversion and serving pipeline</strong>: what the previous section describes, done for every module at once.</p>
     <ul>
-      <li><strong>Watch.</strong> Every night it reads Schwung's catalogue and every module's latest release, and sorts each module into new, updated, current, built, failed or withheld (no known licence, or no published source).</li>
+      <li><strong>Watch.</strong> Before a release it reads the public catalogue of modules in the Schwung format and every module's latest release, and sorts each module into new, updated, current or withheld (no known licence, or no published source).</li>
       <li><strong>Convert.</strong> New modules and new releases are built for the Push's x86-64 from their source at the release tag, checked, and packaged with their licence texts, build notes and complete source, into a staging catalog. Builds run at the lowest priority with two compiles at once, so the machine they share keeps its other work.</li>
       <li><strong>Review and serve.</strong> Nothing reaches users on its own: a maintainer reviews the staging catalog and publishes it, and can put the previous catalog back. Pung's Modules page reads a served catalog as readily as the one inside its release.</li>
     </ul>
 <!--if:!launched-->
-    <p><strong>During the test phase</strong>, modules ship inside each Pung release: one file, nothing to host, and every tester on the same set. <strong>When the test phase is over</strong>, the plan is to switch on the served catalog, so new modules and module updates reach every Push as Schwung publishes them, without waiting for a Pung release.</p>
+    <p><strong>During the test phase</strong>, modules ship inside each Pung release: one file, nothing to host, and every tester on the same set. <strong>When the test phase is over</strong>, the plan is to switch on the served catalog, so new modules and module updates reach every Push as their authors release them, without waiting for a Pung release.</p>
 <!--endif-->
 <!--if:launched-->
     <p><strong>Two packs.</strong> Every Pung release carries its module pack, so a Push installs every module from its own disk, offline. And pung.live serves the current pack: a Push that is online takes it when it is newer, and new modules and module updates reach it without waiting for a Pung release. A pack is taken only with Pung's signature, and only what is new is downloaded.</p>
@@ -338,7 +338,7 @@
       <li><strong>Modules render at 44.1 kHz.</strong> At another Live sample rate, pitch and tempo are off.</li>
       <li><strong>Next on the Push screen:</strong> more instruments telling their own live state, as Mini-JV does, and custom screens for the instruments that deserve them (Braids and OB-Xd first).</li>
 <!--if:!launched-->
-      <li><strong>After the test phase:</strong> the served catalog from the module pipeline, so modules update as Schwung publishes them.</li>
+      <li><strong>After the test phase:</strong> the served catalog from the module pipeline, so modules update as their authors release them.</li>
 <!--endif-->
       <li><strong>Next for installing:</strong> browsing and installing modules from the Push itself.</li>
       <li><strong>Next for Sets:</strong> every control at the same place on every Pung, so a Set's automation survives the move to another Push (see <a href="#stacks">stacks</a>).</li>

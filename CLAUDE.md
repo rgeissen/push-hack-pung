@@ -487,6 +487,14 @@ before and linked in the footer.
   alone (the owner's word). Never
   "rack" for any of it: on a Push a rack is Ableton's, and Pung writes one per module ("Live rack"). Lower
   case, so it is not **Stacks**, the owner's chord tool.
+- **Schwung is a format Pung plays, and a credit; never a category** (the owner's word, 2026-11-27: from the
+  outside Pung must not look dependent on it). No page sorts, filters or badges modules by Schwung; only
+  "Pung native" is marked (`native()` in `modules.js`, the device's badge in `app.js`). A module's sheet
+  credits its author, port and source, and says "Also runs on Ableton Move, as a Schwung module". The prose
+  says "open modules in the Schwung module format, which began on Ableton Move". The credit stays where it
+  is owed: the foot ("Open source", the fine print), the Vision's "stands on two open projects", every
+  licence notice and source link (most modules are GPL). The dependence that is real (Schwung's chain host
+  inside Pung, the module list from its catalogue) is not changed by this.
 - **Deployment** (the owner's word, 2026-11-27, in place of "device"): a Pung that runs somewhere, a Push 3
   today (`site/pushlink.js` `KINDS`); what Pung runs on is "hardware" or its kind. **Device** is Live's word
   and only that: what a module becomes on a track ("a device in Live", "Pung device"). The site's code and

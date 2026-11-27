@@ -195,7 +195,7 @@ def footer(current="", up="", img=False):
 <nav class="sf-col" aria-label="Legal"><p class="sf-k">Legal</p>{links(FOOT)}</nav>
 </div>
 <div class="sf-fine">
-<p>Pung is a hack for Push Hack. It runs Schwung modules and modules of its own. Schwung and its modules are the work of Charles Vestal and the module authors; Pung's emulators are built on gearmulator. Every module keeps its own licence.</p>
+<p>Pung is a hack for Push Hack. It plays open modules in the Schwung module format and modules of its own. Schwung is the work of Charles Vestal, each module the work of its author; Pung's emulators are built on gearmulator. Every module keeps its own licence.</p>
 <p>Pung is not made, approved or supported by Ableton. Ableton, Push, Move and Live are trademarks of Ableton AG.</p>
 <p>Every Push screen on these pages is Pung's own drawing, captured from a Push 3 or rendered by the same code.</p>
 </div>

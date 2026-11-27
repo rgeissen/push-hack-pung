@@ -129,7 +129,7 @@
       <a class="btn" id="lib-export" href="/api/library/export" download>Export all</a>
       <label class="btn file">Import…<input type="file" id="lib-import" accept=".zip,application/zip"></label>
     </header>
-    <p class="lede">Every sound you saved, by module. They are Schwung's own user presets, so a Move opens them too. <span class="mod-status" id="lib-status" aria-live="polite"></span></p>
+    <p class="lede">Every sound you saved, by module. They are kept in the Schwung preset format, so an Ableton Move opens them too. <span class="mod-status" id="lib-status" aria-live="polite"></span></p>
     <div class="toolbar">
       <input type="search" id="lib-search" placeholder="Search all sounds" aria-label="Search all sounds" autocomplete="off">
       <div class="seg" id="lib-shows" role="group" aria-label="Show">
@@ -150,11 +150,6 @@
       <button type="button" class="btn" id="mod-refresh">Check for updates</button>
       <button type="button" class="btn primary" id="mod-update-all" hidden>Update all</button>
     </header>
-    <div class="origin-legend" aria-label="Where a module comes from">
-      <div><span class="origin pung">Pung native</span><p>Written for the Push alone. It may use all of the Push's processor and screen, and would not run on a Move.</p></div>
-      <div><span class="origin schwung">Schwung</span><p>Built from a Schwung module for Ableton Move. It follows its author's releases; Pung adds its screens and sound browser.</p></div>
-      <div><span class="surface-kind">Takeover</span><p>Its surface on the Push is an app of its own: while the device is open, that app has the screen, the pads and the buttons. It needs that app installed; without it, Pung's own view opens.</p></div>
-    </div>
     <div class="mod-banner" id="mod-banner" hidden aria-live="polite"></div>
     <div class="toolbar">
       <input type="search" id="mod-search" placeholder="Search modules" aria-label="Search modules" autocomplete="off">
@@ -164,14 +159,10 @@
         <button type="button" data-type="audio_fx" aria-pressed="false">Audio effects</button>
         <button type="button" data-type="midi_fx" aria-pressed="false">MIDI effects</button>
       </div>
-      <div class="seg" id="mod-origins" role="group" aria-label="Origin">
-        <button type="button" data-origin="all" aria-pressed="true">Any origin</button>
-        <button type="button" data-origin="pung" aria-pressed="false">Pung native <span class="count" id="mod-count-pung"></span></button>
-        <button type="button" data-origin="schwung" aria-pressed="false">Schwung <span class="count" id="mod-count-schwung"></span></button>
-      </div>
       <div class="seg" id="mod-shows" role="group" aria-label="Show">
         <button type="button" data-show="installed" aria-pressed="false">Installed <span class="count" id="mod-count-installed"></span></button>
         <button type="button" data-show="updates" aria-pressed="false">Updates <span class="count" id="mod-count-updates"></span></button>
+        <button type="button" data-show="native" aria-pressed="false" title="Written for Pung alone: they may use all of the processor and the screen">Pung native <span class="count" id="mod-count-pung"></span></button>
         <button type="button" data-show="face" aria-pressed="false" title="Modules that open on a front panel of their own on the Push">Custom interface <span class="count" id="mod-count-face"></span></button>
       </div>
     </div>

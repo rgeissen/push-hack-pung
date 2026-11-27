@@ -130,7 +130,7 @@
       const match = filter.trim() ? `${rows.length} of ` : "";
       return `${match}${f.count} sounds${f.mode ? " · " + f.mode + " mode" : ""}${tail}`;
     }
-    if (source === "user") return v.user.length ? `${v.user.length} sound${v.user.length === 1 ? "" : "s"} of yours · Schwung's own user presets: a Move opens them too` : "";
+    if (source === "user") return v.user.length ? `${v.user.length} sound${v.user.length === 1 ? "" : "s"} of yours · kept in the Schwung preset format: an Ableton Move opens them too` : "";
     return "";
   }
 
