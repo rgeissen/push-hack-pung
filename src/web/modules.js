@@ -254,17 +254,17 @@
     return cost + rest + " Two emulators run at once, and only while the Push has room for both: another waits, silent, and starts by itself when there is.";
   }
 
-  // on pung.live a module is not installed, it is shown: the way to install it leads to this module on a
-  // deployment's own page (every one the visitor has, in a module's sheet; on a card the one, or the sheet)
+  // on pung.live a module is not installed, it is shown: the way to install it is in the module's sheet and
+  // leads to this module on a deployment's own page (every one the visitor has); a card has no button
   const places = () => (CONNECT && PP ? PP.devices : []);
   const there = (d, x) => `${PP.baseOf(d)}/#modules/${encodeURIComponent(x.id)}`;
   function action(x, sheet) {
     if (PUBLIC) {
       const ds = places();
       const link = (d) => `<a class="act" href="${esc(there(d, x))}" title="Opens ${esc(x.name)} on the own page of ${esc(PP.nameOf(d))}, where it is installed">Install on ${esc(PP.nameOf(d))}</a>`;
+      if (!sheet) return "";   // (a card of the catalog only shows; the way to install is in the module's sheet)
       if (!ds.length) return `<a class="act" href="../deployments.html${CONNECT ? "" : "#install"}" title="Pung installs modules where it runs, from its own Modules page">Install on your Push</a>`;
-      if (ds.length === 1 || sheet) return ds.map(link).join("");
-      return `<span class="act">Install…</span>`; // (the card opens the sheet, which names each deployment)
+      return ds.map(link).join("");
     }
     const j = x.job;
     if (j && !["done", "failed"].includes(j.state)) {
