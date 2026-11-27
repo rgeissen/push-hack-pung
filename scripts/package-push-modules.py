@@ -171,6 +171,11 @@ for mid, m in sorted(cat.items()):
     # the source's folder in modsrc keeps the catalog's name for the repository; a fork may have another
     # (Granny's and Mr Hyde's upstream was renamed, and the forks with it): the catalog build finds it by this
     fork = FORKS.get(m["github_repo"].split("/")[1])
+    # built from a sibling repository of the same author (schwung-work holds Work In: gen-recipes.py): the
+    # commit is in that one, and that is the source the catalog names (the release check asks GitHub for it)
+    upstream = m["github_repo"]
+    if not m.get("native") and folder != upstream.split("/")[1]:
+        upstream = upstream.split("/")[0] + "/" + folder
     entries.append({
         "id": mid, "name": mj.get("name") or m.get("name"), "version": mj.get("version", ""),
         "component_type": m["component_type"], "install_subdir": sub,
@@ -181,7 +186,7 @@ for mid, m in sorted(cat.items()):
                    if m.get("native") else
                    {"github_repo": fork, "commit": commit(repo), "modsrc": folder}
                    if fork and fork.split("/")[1] != folder else
-                   {"github_repo": fork or m["github_repo"], "commit": commit(repo)}),
+                   {"github_repo": fork or upstream, "commit": commit(repo)}),
         "requires": m.get("requires", ""), "requires_modules": m.get("requires_modules", []),
     })
     built.append(mid)
