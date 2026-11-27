@@ -127,6 +127,7 @@
     "keydetect":        ["Devices|Utility"],
     "usefulity":        ["Devices|Utility"],
     "vocoder":          ["Devices|Resonator", "Devices|Vocal"],
+    "tinyvoice":        ["Devices|Vocal", "Devices|Pitch Correction", "Devices|Filter"],
 
     "superarp":         ["Devices|Generative", "Devices|Sequencer"],
     "arp":              ["Devices|Generative", "Devices|Sequencer"],
