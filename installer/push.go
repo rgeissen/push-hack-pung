@@ -21,6 +21,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -155,13 +156,35 @@ func dial(addr, user string, signer ssh.Signer) (*client, error) {
 
 func (c *client) Close() { _ = c.c.Close() }
 
+// both: one buffer for a command's output and its errors. The ssh library
+// copies each stream on a goroutine of its own, so the two write at once: into
+// a plain bytes.Buffer that lost or zeroed what a command said (on a real
+// Push, 2026-11-27: Push Hack's version read as twelve zero bytes every other
+// time, and the Push's own version never).
+type both struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (w *both) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.Write(p)
+}
+
+func (w *both) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.String()
+}
+
 func (c *client) run(cmd string) (string, error) {
 	s, err := c.c.NewSession()
 	if err != nil {
 		return "", err
 	}
 	defer s.Close()
-	var buf bytes.Buffer
+	var buf both
 	s.Stdout, s.Stderr = &buf, &buf
 	if err := s.Run(cmd); err != nil {
 		return buf.String(), fmt.Errorf("%s: %w (%s)", firstWords(cmd), err, strings.TrimSpace(buf.String()))
@@ -234,7 +257,7 @@ func (c *client) stream(cmd string, src io.Reader) error {
 		return err
 	}
 	defer s.Close()
-	var buf bytes.Buffer
+	var buf both
 	s.Stdin, s.Stdout, s.Stderr = src, &buf, &buf
 	if err := s.Run(cmd); err != nil {
 		return fmt.Errorf("%s: %w (%s)", firstWords(cmd), err, strings.TrimSpace(buf.String()))
