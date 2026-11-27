@@ -816,6 +816,24 @@
     $("snd-next").disabled = !steps;
   });
 
+  // pung.live: this Push's address goes along (#add=…), so the site opens with
+  // it connected and nobody types an address twice. The links show only while
+  // this browser reaches pung.live: without the internet this page is whole
+  // by itself and names nothing it cannot open.
+  function siteLinks() {
+    const here = location.port && location.port !== "7720" ? location.hostname + ":" + location.port : location.hostname;
+    const add = "#add=" + encodeURIComponent(here);
+    const set = (id, url) => { const el = $(id); if (el) el.href = url + add; };
+    set("site-device", "https://pung.live/devices.html");
+    set("site-modules", "https://pung.live/modules/");
+    set("setup-site-link", "https://pung.live/devices.html");
+    const show = (on) => ["rail-site", "setup-site"].forEach((id) => { const el = $(id); if (el) el.hidden = !on; });
+    const ask = () => fetch("https://pung.live/install.json", { mode: "no-cors", cache: "no-store" }).then(() => show(true), () => show(false));
+    ask();
+    window.addEventListener("online", ask);
+    window.addEventListener("offline", () => show(false));
+  }
+
   // Pung's settings (settings.go)
   async function loadPrefs() {
     const box = $("pref-touch-card");
@@ -856,6 +874,7 @@
       if (b) b.click();
     }));
     loadPrefs();
+    siteLinks();
     await refreshStatus();
     setInterval(refreshStatus, 1000);
     setInterval(refreshValues, 350);

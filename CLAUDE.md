@@ -243,6 +243,16 @@ before and linked in the footer.
   default address, port, hint) and a `"kind"` in what the device answers; nothing else on the site names the
   Push where it means "a device". A second device of a kind is added by its IP address (both answer to
   push.local).
+- **One home for each thing** (the owner's word, 2026-11-27: an easy way between what the Push serves and what
+  pung.live serves, and nothing shown twice unless it must be). On the Push's own page: playing and editing
+  the devices in the Set, sounds, samples, ROMs, removing a module. On pung.live: the device at a glance,
+  Pung's version and updates, the installer, the manual, every module with its pictures. On both, on purpose:
+  the Modules page (the Push must install offline; one script) and Pung's switches (offline on the Push, and in
+  the device's panel on pung.live). The device dashboard is never rebuilt on the Push's page.
+  **The hand-off**: the Push's page links to pung.live with `#add=<its own address>` (`siteLinks`, `app.js`;
+  shown only while the browser reaches pung.live), and `pushlink.js` (`arrived`) connects that device without
+  the address typed again (a home-network name or address only); pung.live links back to the place on the
+  device's page (its start for devices and sounds, `#setup`, `#modules/<id>`).
 - **`GET /api/system`** (`src/system.go`): the device at a glance for that page and Pung's own. The processor's
   numbers are what was used since the last request (nothing runs between requests), in percent of the whole
   machine. On the owner's Push: AbletonOS 4.2, no battery in `/sys/class/power_supply` while on power.

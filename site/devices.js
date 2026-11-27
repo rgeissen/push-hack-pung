@@ -85,7 +85,7 @@
       const devs = s.devices || [], emus = devs.filter((x) => x.emulator);
       const playing = emus.filter((x) => !x.resting).length;
       out.push(`<div class="dv-tile" data-fill><p class="dv-k">In your Set</p><p class="dv-big">${devs.length}<span> Pung device${devs.length === 1 ? "" : "s"}</span></p>
-        <p class="dv-note">${devs.length ? esc([...new Set(devs.map((x) => x.name || x.module))].slice(0, 6).join(", ")) + (emus.length ? `. ${emus.length} emulator${emus.length === 1 ? "" : "s"}: ${playing} playing, ${emus.length - playing} resting.` : ".") : "None loaded in Live right now."}</p></div>`);
+        <p class="dv-note">${devs.length ? esc([...new Set(devs.map((x) => x.name || x.module))].slice(0, 6).join(", ")) + (emus.length ? `. ${emus.length} emulator${emus.length === 1 ? "" : "s"}: ${playing} playing, ${emus.length - playing} resting.` : ".") : "None loaded in Live right now."} ${devs.length ? `<a href="${esc(PP.baseOf(d))}/" target="pung-device" rel="noopener">Play and edit them on the device ↗</a>` : ""}</p></div>`);
     }
     // Pung
     const behind = newest && d.version && older(d.version, newest);
@@ -125,7 +125,7 @@
       : `<h2>${esc(PP.nameOf(d))} <button type="button" class="dv-edit" data-rename="${d.id}" aria-label="Rename it" title="Rename it">✎</button></h2>`;
     const head = `<header class="dv-head"><i class="pl-led ${led}" aria-hidden="true"></i><div class="dv-title">${name}
         <p class="dv-sub">${esc(k.label)} · ${esc(where)}${many && use ? ` · <b>modules install here</b>` : ""}</p></div>
-      <div class="dv-acts">${d.state === "on" ? `<a class="btn" href="${esc(PP.baseOf(d))}/" target="pung-device" rel="noopener">Pung's own page ↗</a>` : ""}
+      <div class="dv-acts">${d.state === "on" ? `<a class="btn" href="${esc(PP.baseOf(d))}/" target="pung-device" rel="noopener" title="On the device itself: play and edit the devices in your Set, their sounds and samples">Devices and sounds ↗</a>` : ""}
         ${many && !use && d.state === "on" ? `<button type="button" class="btn" data-use="${d.id}">Install modules here</button>` : ""}
         ${d.state === "on" ? `<button type="button" class="btn" data-off="${d.id}">Disconnect</button>` : `<button type="button" class="btn primary" data-connect="${d.id}" ${d.state === "trying" ? "disabled" : ""}>${d.state === "trying" ? "Connecting…" : d.state === "link" ? "Try to connect" : "Connect"}</button>`}
         <button type="button" class="btn" data-remove="${d.id}" aria-label="Remove ${esc(PP.nameOf(d))} from this page">Remove</button></div></header>`;

@@ -45,12 +45,8 @@ a { color: var(--amber); text-underline-offset: 3px; }
   border-right: 1px solid var(--line); z-index: 6; }
 .brand { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 12px; padding: 22px 20px 20px;
   border-bottom: 1px solid var(--line); }
-.brand .mark { grid-row: span 2; width: 30px; height: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
-.brand .mark i { background: var(--line2); }
-.brand .mark i:nth-child(1) { background: var(--amber); }
-.brand .mark i:nth-child(4) { background: var(--native); }
-.brand .word { font-weight: 800; font-size: 22px; letter-spacing: .2em; line-height: 1; }
-.brand .ver { font: 11px var(--mono); color: var(--muted); letter-spacing: .08em; }
+.brand .logo { grid-column: 1 / -1; height: 26px; width: auto; display: block; } /* the logo of pung.live (site/brand) */
+.brand .ver { grid-column: 1 / -1; margin-top: 8px; font: 11px var(--mono); color: var(--muted); letter-spacing: .08em; }
 .views { display: flex; flex-direction: column; padding: 12px 0; }
 .views button { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: none; border: 0;
   border-left: 3px solid transparent; text-align: left; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
@@ -70,6 +66,8 @@ a { color: var(--amber); text-underline-offset: 3px; }
 .led.bad { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
 .rail-link { font: 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); text-decoration: none; }
 .rail-link:hover { color: var(--fg); }
+.rail-site { display: flex; flex-direction: column; gap: 10px; }
+.rail-k { font: 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
 
 /* ---- the page ---------------------------------------------------------------- */
 main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 72px;

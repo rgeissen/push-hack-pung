@@ -172,10 +172,34 @@ window.PungPush = (function () {
     document.getElementById("pl-dialog").close();
     changed("state", d);
   }
+  // arrived(): the visitor came from a device's own page (Pung's page on a Push
+  // links here with #add=<its address>): that device, connected, without typing
+  // the address again. The address is taken off the page's address at once.
+  function arrived() {
+    const m = /^#add=([^&]+)$/.exec(location.hash);
+    if (!m) return "";
+    history.replaceState(null, "", location.pathname + location.search);
+    let a = "";
+    try { a = decodeURIComponent(m[1]); } catch (e) { return ""; }
+    // a name or an address on a home network, nothing else (the link is the device's own, but anyone can write one)
+    if (!/^(\[[0-9a-f:]+\]|[a-z0-9.-]+)(:\d{2,5})?$/i.test(a) || a.length > 80) return "";
+    const host = a.replace(/:\d+$/, "");
+    const home = /^\[/.test(host) || /\.local$/i.test(host) || /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || !host.includes(".");
+    return home ? a : "";
+  }
+  const cameFrom = arrived();
+
   // the devices it talked to before: again, without asking (the browser remembers the permission)
   function resume() {
     if (!enabled) return;
+    if (cameFrom) {
+      const a = norm(cameFrom, "push");
+      const d = devices.find((x) => x.addr === a);
+      if (d) { inUse = d.id; save(); } // the one they came from is the one in use
+      connect(a, false).then((ok) => { if (!ok) open(devices.find((x) => x.addr === a) || "add-failed"); });
+    }
     devices.forEach((d) => {
+      if (cameFrom && d.addr === norm(cameFrom, "push")) return; // being connected above
       if (d.link) { d.state = "link"; changed("state", d); }
       else if (d.was) connectTo(d, true);
     });
@@ -224,9 +248,9 @@ window.PungPush = (function () {
   }
   // open(): the device in use; open(d): that one; open("add"): another device
   function open(what) {
-    adding = what === "add";
-    if (adding) draft = fresh({});
-    dialogDev = adding ? draft : what && what !== "add" ? what : cur();
+    adding = what === "add" || what === "add-failed";
+    if (what === "add") draft = fresh({});
+    dialogDev = adding ? draft : what ? what : cur();
     const dlg = dialog();
     renderDialog();
     if (!dlg.open) dlg.showModal();
