@@ -212,6 +212,11 @@ back as of the previous restart. Then ask the user to save the Set.
    acts on Move's own UI (`scripts/catalog-policy.json`). Every new module needs its Ableton tags
    (`src/ableton-tags.json`) and is played once as a device in Live on the Push before a release. Compare
    the module count with the last release's (`pung/catalog/catalog.json` inside `dist/pung.tar.gz`).
+   **`scripts/schwung-updates.py` says what Schwung has that the pack lacks** (newer releases, new modules,
+   which are built from a fork of Pung's that must be brought up first): run it before a release; it changes
+   nothing. On 2026-11-27 it found six newer upstream, four of them forks. `catalog-service/` (the service
+   of 2026-11-21 that would check nightly, build on the DiskStation and publish) was never started and
+   knows nothing of what a pack needs since: the signature, the registry, tags, pictures, the forks.
    `python3 scripts/build-catalog.py --base-url ""`. Its guard compares with the LOCAL `build/catalog`;
    an unpublished run of your own can trip it. Override (`PUNG_ALLOW_UNREVISED=1`) only after checking
    the published catalog (inside `pung.tar.gz` of the latest release) does not hold that version and
