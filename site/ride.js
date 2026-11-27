@@ -116,21 +116,10 @@ function PungRide(svg) {
   if (home) home.addEventListener("click", (e) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;   // (a new tab or window: the link's)
     e.preventDefault();
-    if (scrollY < 2) { go(); return; }
-    // The ride starts only once the page HAS arrived at the top. Started while the page still scrolled (an
-    // iPad takes longer than the moment this first waited), the page stopped at the section it was passing:
-    // "See it play" (the owner, 2026-11-27). And a page that has not arrived after a while is put there.
-    const t0 = performance.now();
-    let last = scrollY, moved = t0;
-    const wait = (now) => {
-      if (scrollY < 2) { go(); return; }
-      if (scrollY !== last) { last = scrollY; moved = now; }
-      // stopped short of the top (a quarter of a second without moving), or far too long on the way: put it there
-      if (now - moved > 250 || now - t0 > 2500) { scrollTo(0, 0); requestAnimationFrame(go); return; }
-      requestAnimationFrame(wait);
-    };
-    scrollTo({ top: 0, behavior: quiet.matches ? "auto" : "smooth" });
-    requestAnimationFrame(wait);
+    // At once, not in a glide: a glide can be stopped on its way by the page settling on a section, and on an
+    // iPad it was (the page ended on "See it play": the owner, 2026-11-27). A jump has no way to stop short.
+    if (scrollY >= 2) scrollTo({ top: 0, left: 0, behavior: "instant" });
+    requestAnimationFrame(go);
   });
   // scrolling settles on a section's start, just under the bar, and each section has the screen to itself:
   // the stylesheet needs the bar's height (two rows on a phone) and the foot's (the last section leaves it room)
