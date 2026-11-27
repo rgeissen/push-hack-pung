@@ -139,6 +139,7 @@ func main() {
 	h.governorRoutes(mux)
 	h.governRoutes(mux)
 	h.settingsRoutes(mux)
+	h.systemRoutes(mux)
 	h.mods.routes(mux)
 	h.sounds.routes(mux)
 	h.fileRoutes(mux)

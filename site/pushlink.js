@@ -1,71 +1,103 @@
-// pushlink.js: pung.live and the Pung on a visitor's own Push. One connection
-// for every page of the site (the Modules page installs through it, Your Push
-// shows and configures it): the address, the browser's permission, what the
-// Push answers, and the dialog and chip that say where it stands.
+// pushlink.js: pung.live and the visitor's own devices that run Pung. Today
+// that is an Ableton Push 3; the site is made for more kinds of device, and
+// for several of a kind (two Pushes). One list for every page: the Modules
+// page installs on the device in use, Your devices shows and configures each.
 //
-// The Push is reached over the visitor's home network, never through the
+// A device is reached over the visitor's home network, never through the
 // internet: an https page may talk to a device's http there once the visitor
 // allows it (Local Network Access: Chrome and Edge 142 on, Firefox 151 on),
 // and Pung lets only pung.live read the few calls this needs (src/sitecors.go).
 //
+// The list lives in this browser (localStorage): pung.live keeps nothing.
 // Offered once the Pung that answers it is released (<body data-connect="1">:
 // site/install.json, launched).
 window.PungPush = (function () {
   "use strict";
-  const KEY = "pung.push";
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const enabled = document.body.dataset.connect === "1";
-  // where the site's other pages are from here (the Modules page is a folder down)
-  const up = document.body.dataset.up || "";
-  // state: off (not connected) | trying | on | lost (it was, and does not answer) | link (this browser cannot: buttons open Pung's own page)
-  const st = { addr: localStorage.getItem(KEY) || "push.local", state: "off", data: null, version: "", err: "", restarting: false };
-  const subs = [];
-  const changed = (what) => { renderChips(); renderDialog(); subs.forEach((f) => { try { f(what || "state"); } catch (e) { /* a page's own */ } }); };
+  const up = document.body.dataset.up || ""; // where the site's other pages are from here
 
-  // the address as typed: a name or an address, a port after it if not Pung's own 7720
-  function split(a) {
+  // the kinds of device Pung runs on: one today
+  const KINDS = {
+    push: { label: "Ableton Push 3", short: "Push", addr: "push.local", port: "7720",
+      hint: "push.local finds it on most home networks; its IP address works too. Pung answers on port 7720; another port goes after a colon (push.local:7711)." },
+  };
+
+  // ---- the devices, kept in this browser ------------------------------------------------------
+  // a device: {id, kind, addr, name, link (this browser cannot talk to it: its buttons open Pung there), was (it was connected)}
+  // and, while the page is open: state (off | trying | on | lost | link), data (its catalog), version, sys, err, restarting
+  const LIST = "pung.devices", USE = "pung.device";
+  const fresh = (o) => Object.assign({ id: "d" + Math.random().toString(36).slice(2, 9), kind: "push", addr: "push.local", name: "", link: false, was: false,
+    state: "off", data: null, version: "", sys: null, err: "", restarting: false }, o);
+  let devices = [];
+  try { devices = (JSON.parse(localStorage.getItem(LIST) || "[]") || []).filter((d) => d && d.addr && KINDS[d.kind || "push"]).map(fresh); } catch (e) { devices = []; }
+  if (!devices.length && localStorage.getItem("pung.push") && (localStorage.getItem("pung.push.on") || localStorage.getItem("pung.push.link"))) {
+    // one Push, as this site first kept it
+    devices = [fresh({ addr: localStorage.getItem("pung.push"), was: !!localStorage.getItem("pung.push.on"), link: !!localStorage.getItem("pung.push.link") })];
+  }
+  let draft = fresh({});          // the device being added (not in the list until it answers)
+  let inUse = localStorage.getItem(USE) || "";
+  const save = () => {
+    localStorage.setItem(LIST, JSON.stringify(devices.map((d) => ({ id: d.id, kind: d.kind, addr: d.addr, name: d.name, link: d.link, was: d.was }))));
+    localStorage.setItem(USE, inUse);
+  };
+  // cur: the device in use (the one modules install on); none yet: the one being added
+  const cur = () => devices.find((d) => d.id === inUse) || devices[0] || draft;
+  const nameOf = (d) => d.name || (d.sys && d.sys.name && d.sys.name !== "localhost" ? d.sys.name : "") || "Your " + KINDS[d.kind].short;
+
+  const subs = [];
+  const changed = (what, d) => { renderChips(); renderDialog(); subs.forEach((f) => { try { f(what || "state", d); } catch (e) { /* a page's own */ } }); };
+
+  // ---- reaching a device ----------------------------------------------------------------------
+  // the address as typed: a name or an address, a port after it if not Pung's own
+  function split(d) {
+    const a = d.addr, port = KINDS[d.kind].port;
     const m = /^\[([^\]]+)\](?::(\d+))?$/.exec(a) || (/^[^:]+:(\d+)$/.test(a) ? [a, a.replace(/:\d+$/, ""), a.split(":").pop()] : null);
-    return m ? { host: m[1], port: m[2] || "7720" } : { host: a, port: "7720" };
+    return m ? { host: m[1], port: m[2] || port } : { host: a, port };
   }
-  const base = () => { const { host, port } = split(st.addr); return `http://${host.includes(":") ? "[" + host + "]" : host}:${port}`; };
-  function norm(a) {
-    a = String(a || "").trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "").replace(/:7720$/, "");
-    return a || "push.local";
+  const baseOf = (d) => { const { host, port } = split(d); return `http://${host.includes(":") ? "[" + host + "]" : host}:${port}`; };
+  function norm(a, kind) {
+    a = String(a || "").trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "").replace(new RegExp(":" + KINDS[kind].port + "$"), "");
+    return a || KINDS[kind].addr;
   }
-  // how the browser is told the Push is on the home network: a .local name and
-  // a private address it knows by themselves. A plain name needs
+  // how the browser is told the device is on the home network: a .local name
+  // and a private address it knows by themselves. A plain name needs
   // targetAddressSpace; given for push.local it fails wherever the name also
   // has a global IPv6 address, which the browser counts as public (Chrome 158).
-  function reach() {
-    const h = split(st.addr).host;
+  function reach(d) {
+    const h = split(d).host;
     return /\.local$/i.test(h) || /^[\d.]+$/.test(h) || h.includes(":") ? {} : { targetAddressSpace: "local" };
   }
-  function pfetch(path, opts) {
+  function fetchOf(d, path, opts) {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
-    return fetch(base() + path, { ...(opts || {}), ...reach(), mode: "cors", cache: "no-store", signal: ctl.signal }).finally(() => clearTimeout(t));
+    return fetch(baseOf(d) + path, { ...(opts || {}), ...reach(d), mode: "cors", cache: "no-store", signal: ctl.signal }).finally(() => clearTimeout(t));
   }
-  async function json(path, opts) {
-    const r = await pfetch(path, opts);
+  async function jsonOf(d, path, opts) {
+    const r = await fetchOf(d, path, opts);
     if (!r.ok) throw new Error("Pung answered " + r.status);
     return r.json();
   }
-  // read: what the Push has now (its catalog, with what is installed); true if it answered
-  async function read() {
+  // readOf: what the device has now (its catalog, with what is installed); true if it answered
+  async function readOf(d) {
     try {
-      const d = await json("/api/catalog");
-      if (!d || !d.modules) throw new Error("no catalog");
-      const was = st.state;
-      st.data = d; st.state = "on";
-      if (!st.version) json("/api/status").then((s) => { st.version = s.version || ""; changed(); }).catch(() => {});
-      if (was !== "on") changed();
+      const c = await jsonOf(d, "/api/catalog");
+      if (!c || !c.modules) throw new Error("no catalog");
+      const was = d.state;
+      d.data = c; d.state = "on";
+      if (!d.version) jsonOf(d, "/api/status").then((s) => { d.version = s.version || ""; changed("state", d); }).catch(() => {});
+      if (was !== "on") changed("state", d);
       return true;
     } catch (e) {
-      if (st.state === "on") { st.state = "lost"; changed(); }
+      if (d.state === "on") { d.state = "lost"; changed("state", d); }
       return false;
     }
   }
+  // systemOf: the device itself (processor, memory, disk, battery: Pung 0.6.0 on); null if it does not say
+  async function systemOf(d) {
+    try { d.sys = await jsonOf(d, "/api/system"); return d.sys; } catch (e) { return null; }
+  }
   // why it did not connect, as far as the browser tells
-  async function why(e) {
+  async function why(d, e) {
     let perm = "";
     for (const name of ["local-network", "local-network-access"]) { // Chrome 145 on: local-network (the other its earlier name)
       try { perm = (await navigator.permissions.query({ name })).state; break; } catch (_) { perm = "unknown"; }
@@ -74,77 +106,98 @@ window.PungPush = (function () {
     if (e && e.name === "AbortError") return "timeout";
     try { // it answers, but its Pung does not let pung.live read: one from before 0.6.0
       const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 5000);
-      await fetch(base() + "/api/status", { ...reach(), mode: "no-cors", cache: "no-store", signal: ctl.signal });
+      await fetch(baseOf(d) + "/api/status", { ...reach(d), mode: "no-cors", cache: "no-store", signal: ctl.signal });
       clearTimeout(t);
       return "old";
     } catch (_) { /* no answer at all */ }
     return perm === "unknown" ? "browser" : "unreachable";
   }
-  async function connect(addr, quiet) {
-    st.addr = norm(addr);
-    st.state = "trying"; st.err = "";
-    changed();
+  // connectTo: a device answers; one that is new joins the list
+  async function connectTo(d, quiet) {
+    d.state = "trying"; d.err = "";
+    changed("state", d);
     try {
-      const d = await json("/api/catalog");
-      if (!d || !d.modules) throw new Error("no catalog");
-      st.data = d; st.state = "on";
-      localStorage.setItem(KEY, st.addr);
-      localStorage.setItem(KEY + ".on", "1");
-      localStorage.removeItem(KEY + ".link");
-      try { st.version = (await json("/api/status")).version || ""; } catch (_) { /* the catalog is what counts */ }
-      if (!quiet) toast(`Connected to your Push${st.version ? ", Pung " + st.version : ""}.`);
+      const c = await jsonOf(d, "/api/catalog");
+      if (!c || !c.modules) throw new Error("no catalog");
+      d.data = c; d.state = "on"; d.was = true; d.link = false;
+      if (!devices.includes(d)) { devices.push(d); if (d === draft) draft = fresh({}); }
+      if (!devices.some((x) => x.id === inUse)) inUse = d.id;
+      save();
+      try { d.version = (await jsonOf(d, "/api/status")).version || ""; } catch (_) { /* the catalog is what counts */ }
+      systemOf(d).then(() => changed("state", d));
+      if (!quiet) toast(`Connected to ${nameOf(d)}${d.version ? ", Pung " + d.version : ""}.`);
       const dlg = document.getElementById("pl-dialog");
       if (dlg && dlg.open) dlg.close();
-      changed("connected");
+      changed("connected", d);
       return true;
     } catch (e) {
-      st.err = await why(e);
-      st.state = quiet ? "lost" : "off";
-      changed();
+      d.err = await why(d, e);
+      d.state = quiet ? "lost" : "off";
+      changed("state", d);
       return false;
     }
   }
-  function disconnect() {
-    st.state = "off"; st.data = null; st.version = "";
-    localStorage.removeItem(KEY + ".on");
-    localStorage.removeItem(KEY + ".link");
+  // connect(addr): the device at that address (one of the list, or a new one)
+  function connect(addr, quiet, kind) {
+    kind = kind || "push";
+    const a = norm(addr, kind);
+    let d = devices.find((x) => x.kind === kind && x.addr === a);
+    if (!d) { draft.addr = a; draft.kind = kind; d = draft; }
+    return connectTo(d, quiet);
+  }
+  // disconnect: this page stops talking to it; it stays in the list
+  function disconnect(d) {
+    d = d || cur();
+    d.state = "off"; d.data = null; d.version = ""; d.sys = null; d.was = false;
+    save();
     const dlg = document.getElementById("pl-dialog");
     if (dlg && dlg.open) dlg.close();
-    changed("disconnected");
+    changed("disconnected", d);
   }
+  function remove(d) {
+    devices = devices.filter((x) => x !== d);
+    if (inUse === d.id) inUse = devices[0] ? devices[0].id : "";
+    save();
+    changed("removed", d);
+  }
+  function select(d) { inUse = d.id; save(); changed("selected", d); }
+  function rename(d, name) { d.name = String(name || "").trim().slice(0, 40); save(); changed("state", d); }
   function useLinks() {
-    const f = document.getElementById("pl-addr");
-    st.addr = norm(f ? f.value : st.addr);
-    st.state = "link"; st.data = null;
-    localStorage.setItem(KEY, st.addr);
-    localStorage.setItem(KEY + ".link", "1");
-    localStorage.removeItem(KEY + ".on");
+    const f = document.getElementById("pl-addr"), d = dialogDev;
+    if (f) d.addr = norm(f.value, d.kind);
+    d.state = "link"; d.link = true; d.was = false; d.data = null;
+    if (!devices.includes(d)) { devices.push(d); if (d === draft) draft = fresh({}); }
+    if (!devices.some((x) => x.id === inUse)) inUse = d.id;
+    save();
     document.getElementById("pl-dialog").close();
-    changed();
+    changed("state", d);
   }
-  // the Push it talked to before: again, without asking (the browser remembers the permission)
+  // the devices it talked to before: again, without asking (the browser remembers the permission)
   function resume() {
     if (!enabled) return;
-    if (localStorage.getItem(KEY + ".link")) { st.state = "link"; changed(); }
-    else if (localStorage.getItem(KEY + ".on")) connect(st.addr, true);
+    devices.forEach((d) => {
+      if (d.link) { d.state = "link"; changed("state", d); }
+      else if (d.was) connectTo(d, true);
+    });
   }
 
-  // ---- the chip: where the Push stands, in a page's head ------------------------------------
+  // ---- the chip: where the device in use stands, in a page's head ---------------------------------
   // counts(): a page may say what to count (the Modules page: the modules it lists)
-  let counts = () => {
-    const ms = st.data ? st.data.modules.filter((x) => x.supported && x.in_catalog) : [];
+  let counts = (d) => {
+    const ms = d.data ? d.data.modules.filter((x) => x.supported && x.in_catalog) : [];
     return { installed: ms.filter((x) => x.installed).length, updates: ms.filter((x) => x.status === "update").length };
   };
   function renderChips() {
     if (!enabled) return;
     document.querySelectorAll("[data-push-chip]").forEach((el) => {
-      const a = esc(st.addr), c = counts();
+      const d = cur(), a = esc(d.addr), n = esc(nameOf(d)), c = counts(d), more = devices.length > 1 ? ` <span class="n">${devices.indexOf(d) + 1}/${devices.length}</span>` : "";
       let html;
-      if (st.state === "on") html = `<button type="button" class="pl-chip on" aria-haspopup="dialog"><i class="pl-led on" aria-hidden="true"></i><span class="t">Your Push</span><span class="s">${st.version ? "Pung " + esc(st.version) + " · " : ""}${c.installed} installed${c.updates ? " · " + c.updates + " update" + (c.updates === 1 ? "" : "s") : ""}</span></button>`;
-      else if (st.state === "trying") html = `<span class="pl-chip busy" role="status"><span class="pl-spin" aria-hidden="true"></span><span class="t">Connecting to ${a}…</span></span>`;
-      else if (st.state === "lost") html = `<button type="button" class="pl-chip bad" aria-haspopup="dialog"><i class="pl-led bad" aria-hidden="true"></i><span class="t">${st.restarting ? "Pung is starting again…" : "Your Push is not answering"}</span><span class="s">${a}${st.restarting ? "" : " · trying again"}</span></button>`;
-      else if (st.state === "link") html = `<button type="button" class="pl-chip link" aria-haspopup="dialog"><span class="t">Your Push: ${a}</span><span class="s">buttons open Pung there</span></button>`;
-      else html = `<button type="button" class="pl-btn primary" aria-haspopup="dialog">Connect your Push</button>`;
+      if (!devices.length && d.state !== "trying") html = `<button type="button" class="pl-btn primary" aria-haspopup="dialog">Connect your Push</button>`;
+      else if (d.state === "on") html = `<button type="button" class="pl-chip on" aria-haspopup="dialog"><i class="pl-led on" aria-hidden="true"></i><span class="t">${n}${more}</span><span class="s">${d.version ? "Pung " + esc(d.version) + " · " : ""}${c.installed} installed${c.updates ? " · " + c.updates + " update" + (c.updates === 1 ? "" : "s") : ""}</span></button>`;
+      else if (d.state === "trying") html = `<span class="pl-chip busy" role="status"><span class="pl-spin" aria-hidden="true"></span><span class="t">Connecting to ${a}…</span></span>`;
+      else if (d.state === "lost") html = `<button type="button" class="pl-chip bad" aria-haspopup="dialog"><i class="pl-led bad" aria-hidden="true"></i><span class="t">${d.restarting ? "Pung is starting again…" : n + " is not answering"}${more}</span><span class="s">${a}${d.restarting ? "" : " · trying again"}</span></button>`;
+      else if (d.state === "link") html = `<button type="button" class="pl-chip link" aria-haspopup="dialog"><span class="t">${n}: ${a}</span><span class="s">buttons open Pung there</span></button>`;
+      else html = `<button type="button" class="pl-chip" aria-haspopup="dialog"><i class="pl-led" aria-hidden="true"></i><span class="t">${n}${more}</span><span class="s">${a} · not connected</span></button>`;
       if (el.dataset.sig === html) return;
       el.dataset.sig = html;
       el.innerHTML = html;
@@ -153,7 +206,8 @@ window.PungPush = (function () {
     });
   }
 
-  // ---- the dialog ------------------------------------------------------------------------------
+  // ---- the dialog: connect a device, or the device in use ---------------------------------------
+  let dialogDev = draft, adding = false;
   function dialog() {
     let dlg = document.getElementById("pl-dialog");
     if (!dlg) {
@@ -164,63 +218,83 @@ window.PungPush = (function () {
       document.body.appendChild(dlg);
       dlg.querySelector(".pl-close").onclick = () => dlg.close();
       dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
-      dlg.addEventListener("close", () => subs.forEach((f) => { try { f("dialog-closed"); } catch (e) { /* a page's own */ } }));
+      dlg.addEventListener("close", () => { adding = false; subs.forEach((f) => { try { f("dialog-closed"); } catch (e) { /* a page's own */ } }); });
     }
     return dlg;
   }
-  function open() {
+  // open(): the device in use; open(d): that one; open("add"): another device
+  function open(what) {
+    adding = what === "add";
+    if (adding) draft = fresh({});
+    dialogDev = adding ? draft : what && what !== "add" ? what : cur();
     const dlg = dialog();
     renderDialog();
     if (!dlg.open) dlg.showModal();
     const f = document.getElementById("pl-addr");
-    if (f && st.state !== "on") { f.focus(); f.select(); }
+    if (f && dialogDev.state !== "on") { f.focus(); f.select(); }
   }
   const other = (a) => (/\.local$/i.test(a) ? "Its IP address works too." : "Check the address, or try push.local.");
   const WHY = {
     denied: () => `Your browser blocks pung.live from your home network. Allow <b>Local network access</b> for pung.live in the site's settings (the icon left of the address), then connect again.`,
-    timeout: (a) => `No answer from <b>${a}</b> in 8 seconds. Is the Push on, on the same network as this computer, with Pung running? ${other(a)}`,
-    unreachable: (a) => `No answer from <b>${a}</b>. Is the Push on, on the same network as this computer, with Pung running? ${other(a)}`,
-    old: () => `Your Push answers, but its Pung is older than 0.6.0, the first that talks to pung.live. <a href="${up}manual.html#update">Update Pung</a> and connect again. Until then, the buttons can open Pung's own page on your Push.`,
-    browser: () => `This browser does not let a web page reach your Push. Chrome and Edge (142 and later) and Firefox (151 and later) do, once you allow it. Here, the buttons can open Pung's own page on your Push instead.`,
+    timeout: (a) => `No answer from <b>${a}</b> in 8 seconds. Is the device on, on the same network as this computer, with Pung running? ${other(a)}`,
+    unreachable: (a) => `No answer from <b>${a}</b>. Is the device on, on the same network as this computer, with Pung running? ${other(a)}`,
+    old: () => `It answers, but its Pung is older than 0.6.0, the first that talks to pung.live. <a href="${up}manual.html#update">Update Pung</a> and connect again. Until then, the buttons can open Pung's own page on the device.`,
+    browser: () => `This browser does not let a web page reach a device on your network. Chrome and Edge (142 and later) and Firefox (151 and later) do, once you allow it. Here, the buttons can open Pung's own page on the device instead.`,
   };
   function renderDialog() {
     const body = document.getElementById("pl-body");
     if (!body) return;
-    const a = esc(st.addr);
-    const openPung = `<a class="pl-btn" href="${esc(base())}/#modules" target="pung-push" rel="noopener">Open Pung on your Push ↗</a>`;
-    if (st.state === "on") {
-      const c = counts();
+    if (!adding && !devices.includes(dialogDev) && dialogDev !== draft) dialogDev = cur();
+    if (dialogDev === draft && !adding && devices.length) dialogDev = cur();
+    const d = dialogDev, a = esc(d.addr), k = KINDS[d.kind];
+    const openPung = `<a class="pl-btn" href="${esc(baseOf(d))}/#modules" target="pung-device" rel="noopener">Open Pung on it ↗</a>`;
+    if (d.state === "on" && !adding) {
+      const c = counts(d);
+      const others = devices.length > 1 ? `<div class="pl-pick"><p class="pl-kicker">Modules install on</p>${devices.map((x) =>
+        `<label><input type="radio" name="pl-use" value="${x.id}" ${x === cur() ? "checked" : ""}><span><b>${esc(nameOf(x))}</b> <span class="pl-sub">${esc(KINDS[x.kind].label)} · ${esc(x.addr)}${x.state === "on" ? "" : " · not connected"}</span></span></label>`).join("")}</div>` : "";
       body.innerHTML = `
-        <p class="pl-kicker">Connected</p>
-        <h2 id="pl-title"><i class="pl-led on" aria-hidden="true"></i> Your Push</h2>
-        <dl class="pl-facts"><dt>Address</dt><dd>${a}</dd><dt>Pung</dt><dd>${esc(st.version || "—")}</dd>
+        <p class="pl-kicker">Connected · ${esc(k.label)}</p>
+        <h2 id="pl-title"><i class="pl-led on" aria-hidden="true"></i> ${esc(nameOf(d))}</h2>
+        <dl class="pl-facts"><dt>Address</dt><dd>${a}</dd><dt>Pung</dt><dd>${esc(d.version || "—")}</dd>
           <dt>Installed</dt><dd>${c.installed} module${c.installed === 1 ? "" : "s"}</dd><dt>Updates</dt><dd>${c.updates || "none"}</dd></dl>
-        <p class="pl-sub">This site installs and updates modules on your Push and changes Pung's settings there, over your home network. A module's ROM and removing a module stay on Pung's own page.</p>
-        <div class="pl-acts"><button type="button" class="pl-btn ghost" id="pl-off">Disconnect</button><span class="pl-grow"></span><a class="pl-btn" href="${up}push.html">Your Push</a>${openPung}</div>`;
-      document.getElementById("pl-off").onclick = disconnect;
+        ${others}
+        <p class="pl-sub">This site installs and updates modules on it and changes Pung's settings there, over your home network. A module's ROM and removing a module stay on Pung's own page.</p>
+        <div class="pl-acts"><button type="button" class="pl-btn ghost" id="pl-off">Disconnect</button><span class="pl-grow"></span><a class="pl-btn" href="${up}devices.html">Your devices</a>${openPung}</div>`;
+      document.getElementById("pl-off").onclick = () => disconnect(d);
+      body.querySelectorAll('input[name="pl-use"]').forEach((r) => (r.onchange = () => { const x = devices.find((y) => y.id === r.value); if (x) { select(x); dialogDev = x; renderDialog(); } }));
       return;
     }
-    const busy = st.state === "trying";
-    const err = st.err && !busy ? `<div class="pl-err" role="alert"><p>${WHY[st.err](a)}</p>
-        <div class="pl-acts">${openPung}${["browser", "denied", "old"].includes(st.err) ? `<button type="button" class="pl-btn ghost" id="pl-links">Use links instead</button>` : ""}</div></div>` : "";
+    const busy = d.state === "trying";
+    const err = d.err && !busy ? `<div class="pl-err" role="alert"><p>${WHY[d.err](a)}</p>
+        <div class="pl-acts">${openPung}${["browser", "denied", "old"].includes(d.err) ? `<button type="button" class="pl-btn ghost" id="pl-links">Use links instead</button>` : ""}</div></div>` : "";
+    const kinds = Object.keys(KINDS);
     body.innerHTML = `
-      <p class="pl-kicker">pung.live and your Push</p>
-      <h2 id="pl-title">Connect your Push</h2>
-      <p>pung.live talks to Pung on your Push over your home network, the way Pung's own page does: nothing passes through the internet.</p>
+      <p class="pl-kicker">pung.live and your devices</p>
+      <h2 id="pl-title">${adding && devices.length ? "Add a device" : "Connect your " + esc(k.short)}</h2>
+      <p>pung.live talks to Pung on your device over your home network, the way Pung's own page does: nothing passes through the internet.</p>
       <ol class="pl-steps">
-        <li>Your Push is on, with Pung running, on the same network as this computer.</li>
+        <li>It is on, with Pung running, on the same network as this computer.</li>
         <li>Press <b>Connect</b>. Your browser asks whether pung.live may reach devices on your local network: choose <b>Allow</b>.</li>
       </ol>
       <form id="pl-form" class="pl-form" novalidate>
-        <label for="pl-addr">Your Push</label>
+        ${kinds.length > 1 ? `<label for="pl-kind">Device</label><select id="pl-kind">${kinds.map((x) => `<option value="${x}" ${x === d.kind ? "selected" : ""}>${esc(KINDS[x].label)}</option>`).join("")}</select>` : ""}
+        <label for="pl-addr">${esc(k.label)}</label>
         <div class="pl-row"><input id="pl-addr" type="text" inputmode="url" autocomplete="off" spellcheck="false" value="${a}" ${busy ? "disabled" : ""} aria-describedby="pl-hint">
         <button type="submit" class="pl-btn primary" ${busy ? "disabled" : ""}>${busy ? `<span class="pl-spin" aria-hidden="true"></span> Connecting…` : "Connect"}</button></div>
-        <p class="pl-sub" id="pl-hint">push.local finds it on most home networks; its IP address works too. Pung answers on port 7720; another port goes after a colon (push.local:7711).</p>
+        <p class="pl-sub" id="pl-hint">${k.hint}${devices.length ? " A second one of a kind needs its IP address: both answer to the same name." : ""}</p>
       </form>
       ${err}
-      ${st.state === "link" ? `<p class="pl-sub">Now the buttons open Pung's own page on your Push. Connect to do it from here.</p>` : ""}
-      <p class="pl-sub">No Pung on your Push yet? <a href="${up}push.html#install">Install it</a>.</p>`;
-    document.getElementById("pl-form").onsubmit = (e) => { e.preventDefault(); connect(document.getElementById("pl-addr").value); };
+      ${d.state === "link" ? `<p class="pl-sub">Now the buttons open Pung's own page on it. Connect to do it from here.</p>` : ""}
+      <p class="pl-sub">No Pung on it yet? <a href="${up}devices.html#install">Install it</a>.</p>`;
+    document.getElementById("pl-form").onsubmit = (e) => {
+      e.preventDefault();
+      const kind = document.getElementById("pl-kind") ? document.getElementById("pl-kind").value : d.kind;
+      const addr = norm(document.getElementById("pl-addr").value, kind);
+      const known = devices.find((x) => x.kind === kind && x.addr === addr);
+      if (known) { dialogDev = known; connectTo(known); return; }
+      if (devices.includes(d)) { d.addr = addr; save(); connectTo(d); return; } // its address changed
+      d.addr = addr; d.kind = kind; connectTo(d);
+    };
     const l = document.getElementById("pl-links");
     if (l) l.onclick = useLinks;
   }
@@ -260,7 +334,14 @@ window.PungPush = (function () {
   if (!window.PungConfirm) window.PungConfirm = confirm;
 
   return {
-    enabled, state: st, base, fetch: pfetch, json, read, connect, disconnect, open, resume, toast, confirm,
+    enabled, KINDS,
+    // the device in use, as the Modules page reads it
+    get state() { return cur(); },
+    base: () => baseOf(cur()), fetch: (p, o) => fetchOf(cur(), p, o), json: (p, o) => jsonOf(cur(), p, o), read: () => readOf(cur()),
+    connect, disconnect, open, resume, toast, confirm,
+    // every device
+    get devices() { return devices.slice(); },
+    nameOf, baseOf, jsonOf, readOf, systemOf, connectTo, remove, select, rename, inUse: () => cur(),
     on: (f) => subs.push(f), changed, renderChips,
     setCounts: (f) => { counts = f; },
   };

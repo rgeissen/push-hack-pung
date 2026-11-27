@@ -33,7 +33,7 @@ var siteSettings = map[string]bool{"touch_card": true, "own_pack_only": true}
 func siteCall(method, path string) bool {
 	switch method {
 	case http.MethodGet:
-		return path == "/api/catalog" || path == "/api/status" || path == "/api/settings"
+		return path == "/api/catalog" || path == "/api/status" || path == "/api/settings" || path == "/api/system"
 	case http.MethodPost:
 		// the settings: Pung's own switches (Your Push on pung.live)
 		if path == "/api/catalog/update-all" || path == "/api/catalog/apply" || path == "/api/settings" {

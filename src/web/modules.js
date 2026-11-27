@@ -258,7 +258,7 @@
 
   function action(x) {
     // on pung.live: what the connected Push has; not connected, Install asks to connect first
-    if (PUBLIC && !CONNECT) return `<a class="act" href="../push.html#install" title="Pung installs modules on the Push, from its own Modules page">Install on your Push</a>`;
+    if (PUBLIC && !CONNECT) return `<a class="act" href="../devices.html#install" title="Pung installs modules on the Push, from its own Modules page">Install on your Push</a>`;
     if (PUBLIC) {
       if (push.state === "link") return `<a class="act" href="${esc(pushBase())}/#modules/${encodeURIComponent(x.id)}" target="pung-push" rel="noopener" title="Opens this module on Pung's own page on your Push">Open on your Push ↗</a>`;
       if (push.state !== "on") return `<button type="button" class="act" data-act="install" title="Connect your Push, and it installs there">Install</button>`;
@@ -595,7 +595,8 @@
 
   // ---- pung.live: the Pung on your Push (site/pushlink.js: one connection for the whole site) ----
   const PP = window.PungPush || null;
-  const push = PP ? PP.state : { state: "off", addr: "push.local", data: null };
+  // the device in use (the visitor may have several: pushlink.js); read as it is now
+  const push = PP ? new Proxy({}, { get: (_, k) => PP.state[k], set: (_, k, v) => { PP.state[k] = v; return true; } }) : { state: "off", addr: "push.local", data: null };
   const pushBase = () => (PP ? PP.base() : "");
   const pushFetch = (path, opts) => PP.fetch(path, opts);
   const openConnect = () => PP && PP.open();
@@ -629,8 +630,10 @@
         const l = push.data && m.data ? m.data.modules : [];
         return { installed: l.filter((x) => x.installed).length, updates: l.filter((x) => x.status === "update").length };
       });
-      PP.on(async (what) => {
+      PP.on(async (what, d) => {
         if (what === "dialog-closed") { if (push.state !== "trying") m.afterConnect = null; return; }
+        if (d && d !== PP.state && what !== "removed") return; // another of the visitor's devices: Your devices shows it
+        if (what === "selected") { await load(false); return; } // modules install on another device now
         if (what === "connected") {
           await load(false);
           if (m.afterConnect) { // Install was pressed before the Push was connected: now
@@ -642,7 +645,7 @@
           }
           return;
         }
-        if (what === "disconnected" || push.state === "link" || push.state === "off") { m.data = merged(); render(); }
+        if (what === "disconnected" || what === "removed" || push.state === "link" || push.state === "off") { m.data = merged(); render(); }
         if (push.state === "lost") schedule(8000);
       });
     }

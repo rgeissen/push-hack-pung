@@ -231,10 +231,21 @@ serves other sites.
 Three sections in front, everything else in the footer (the owner's word, 2026-11-27): the hero page
 (`home.src.html`: the value, and a Push screen that plays: `site/hero.js` feeds a made-up sound to Pung's own
 pictures, `src/web/visuals.js`, so the page draws what the Push draws), **Modules** (`site/modules.html` with
-`src/web/modules.js` in its public mode) and **Your Push** (`push.src.html`, `site/yourpush.js`: install, connect,
-status, Pung's two switches). Vision, Manual, Design and Performance are built as before and linked in the
-footer. `site/pushlink.js` + `pushlink.css` are the one connection to a visitor's Push for every page (classes
-`pl-`, colours from whichever stylesheet the page has).
+`src/web/modules.js` in its public mode) and **Your devices** (`devices.src.html`, `site/devices.js`: install,
+and a panel for every connected device: processor with its last minute, memory, storage, battery, what plays,
+Pung against the newest, its modules, Pung's two switches). Vision, Manual, Design and Performance are built as
+before and linked in the footer.
+
+- **Several devices, several kinds** (the owner's word, 2026-11-27: the Push is the first device, more kinds
+  will follow, and a visitor may own more than one of a kind). `site/pushlink.js` + `pushlink.css` hold the
+  list for every page (in the visitor's browser: `pung.devices`, the one modules install on in `pung.device`;
+  classes `pl-`, colours from whichever stylesheet the page has). A kind is an entry in its `KINDS` (label,
+  default address, port, hint) and a `"kind"` in what the device answers; nothing else on the site names the
+  Push where it means "a device". A second device of a kind is added by its IP address (both answer to
+  push.local).
+- **`GET /api/system`** (`src/system.go`): the device at a glance for that page and Pung's own. The processor's
+  numbers are what was used since the last request (nothing runs between requests), in percent of the whole
+  machine. On the owner's Push: AbletonOS 4.2, no battery in `/sys/class/power_supply` while on power.
 
 - **The hero's views** (`site/hero.js`): PUNG CUSTOM, the front panels of Pung's five own instruments as loops
   (`site/hero/<id>.mp4` + `.png`), and PUNG DEFAULT, the live-drawn page; they take turns until a tab is pressed.

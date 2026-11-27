@@ -1,7 +1,7 @@
 /* pushlink.css: the Push connection's chip, dialog and toast (pushlink.js), on
    every page of the site. Its own names (pl-), and the colours of whichever
    stylesheet the page has (Pung's app.css on the Modules page, pung.css elsewhere). */
-.pl-chip, .pl-dialog, .pl-toast, .pl-btn {
+.pl-chip, .pl-dialog, .pl-toast, .pl-btn, .pl-led {
   --pl-ground: var(--panel, var(--surface, #161513)); --pl-raise: var(--raise, #1f1d1a); --pl-line: var(--line2, var(--line, #2e2b27));
   --pl-ink: var(--fg, var(--ink, #eeece7)); --pl-muted: var(--muted, #a39e94); --pl-acc: var(--amber, var(--pung, #ff8a1f));
   --pl-ok: var(--ok, #57d0a4); --pl-bad: var(--warn, #ff6a5e); --pl-mono: var(--mono, ui-monospace, Menlo, monospace);
@@ -62,3 +62,8 @@ button.pl-chip { cursor: pointer; } button.pl-chip:hover { border-color: var(--p
   background: var(--pl-raise); color: var(--pl-ink); border: 1px solid var(--pl-line); border-left: 3px solid var(--pl-acc); border-radius: var(--pl-r); font: 14px/1.4 var(--pl-sans); }
 .pl-toast.bad { border-left-color: var(--pl-bad); }
 .pl-toast[hidden] { display: none; }
+.pl-chip .n { font: 500 10px var(--pl-mono); color: var(--pl-muted); margin-left: 4px; }
+.pl-pick { display: grid; gap: 8px; margin: 4px 0 14px; padding: 12px 14px; border: 1px solid var(--pl-line); border-radius: var(--pl-r); }
+.pl-pick label { display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start; cursor: pointer; }
+.pl-pick input { margin: 4px 0 0; accent-color: var(--pl-acc); }
+.pl-form select { width: 100%; min-height: 44px; padding: 0 10px; margin-bottom: 12px; background: #0b0c0d; color: #eeece7; border: 1px solid var(--pl-line); border-radius: var(--pl-r); font: 15px var(--pl-sans); }
