@@ -35,6 +35,7 @@ os.makedirs(dist, exist_ok=True)
 cat = {m["id"]: m for m in json.load(open(catalog))["modules"]}
 recipes = {r["id"]: r for r in json.load(open(os.environ.get("PUNG_RECIPES_INDEX") or os.path.join(os.path.dirname(__file__), "..", "build", "recipes", "index.json")))}
 stale = []  # modules whose build is older than their source
+restamped = []  # modules whose packed version is their author's release, ahead of the number in the source
 status = {}
 for line in open(os.path.join(logs, "status.tsv")):
     p = line.rstrip("\n").split("\t")
@@ -70,6 +71,31 @@ def commit(repo):
         return subprocess.run(["git", "-c", "safe.directory=*", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     except Exception:
         return ""
+
+
+def released(repo, mid):
+    """The version the module's author has released (the repository's release.json). Their release writes
+    it into the packed module.json; in the source the number is often the one before (four modules of the
+    0.6.0 pack carried an older number than their code, 2026-11-27). A build from the source does the same."""
+    try:
+        r = json.load(open(os.path.join(repo, "release.json")))
+    except (OSError, ValueError):
+        return ""
+    own = (r.get("modules") or {}).get(mid) or {}   # a repository of several modules
+    return str(own.get("version") or r.get("version") or "").lstrip("v")
+
+
+def vkey(v):
+    return [int(x) if x.isdigit() else 0 for x in re.split(r"[.+-]", v or "0")]
+
+
+def stamped(have, rel):
+    """the packed version: the released one where it is ahead of the source's first three numbers; a fourth
+    number (a build of Pung's fork: 0.0.1.1) is kept behind it (0.0.4.1)"""
+    if not rel or vkey(rel)[:3] <= vkey(have)[:3]:
+        return have
+    own = have.split(".")
+    return rel + ("." + own[3] if len(own) > 3 and len(rel.split(".")) == 3 else "")
 
 
 def native_commit(mid):
@@ -159,6 +185,14 @@ for mid, m in sorted(cat.items()):
             for k in ("tool_config", "ui"):
                 pj.pop(k, None)
             json.dump(pj, open(mjp, "w"), indent=1)
+        # the version its author released (released, above), where the source's own is behind it
+        if not m.get("native"):
+            src = os.path.join(modsrc, r.get("repo") or m["github_repo"].split("/")[1])
+            v = stamped(str(pj.get("version", "")), released(src, mid))
+            if v != str(pj.get("version", "")):
+                restamped.append("%s: %s (its source says %s)" % (mid, v, pj.get("version", "")))
+                pj["version"] = v
+                json.dump(pj, open(mjp, "w"), indent=1)
     asset = "%s-push-x86_64.tar.gz" % mid
     tp = os.path.join(dist, asset)
     with tarfile.open(tp, "w:gz") as t:
@@ -199,6 +233,8 @@ for mid, m in sorted(cat.items()):
     })
     built.append(mid)
 
+if restamped:
+    print("versions from the authors' releases:\n  " + "\n  ".join(restamped))
 if stale:
     sys.exit("built before their source changed (the package would name a commit it does not hold): build them again\n  "
              + "\n  ".join(stale))

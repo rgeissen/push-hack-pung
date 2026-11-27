@@ -212,6 +212,13 @@ back as of the previous restart. Then ask the user to save the Set.
    acts on Move's own UI (`scripts/catalog-policy.json`). Every new module needs its Ableton tags
    (`src/ableton-tags.json`) and is played once as a device in Live on the Push before a release. Compare
    the module count with the last release's (`pung/catalog/catalog.json` inside `dist/pung.tar.gz`).
+   **A package carries the version its author released** (`released`, `stamped` in
+   `package-push-modules.py`, since 2026-11-27): an author's release writes the number from the
+   repository's `release.json` into the packed `module.json`, and the source often still has the one
+   before. Four modules of the 0.6.0 pack were current in code and one or more releases behind in name
+   (Shimmerwash said 0.3.0 for 1.0.1). A fork build's fourth number is kept behind it (0.0.4.1). A fork that
+   is really behind is brought up with `git rebase origin/main` in its working copy (its one commit; the
+   conflicts are the version files) and gets `<upstream>.1`.
    **`scripts/schwung-updates.py` says what Schwung has that the pack lacks** (newer releases, new modules,
    which are built from a fork of Pung's that must be brought up first): run it before a release; it changes
    nothing. On 2026-11-27 it found six newer upstream, four of them forks. `catalog-service/` (the service
