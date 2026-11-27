@@ -1,7 +1,7 @@
 // pushlink.js: pung.live and the visitor's deployments: each a Pung that runs
 // somewhere. Today that is on an Ableton Push 3; the site is made for more kinds
 // of hardware, and for several of a kind (two Pushes). One list for every page: the
-// Modules page installs on the one in use, Your deployments shows and configures each.
+// Modules page installs on the one in use, Deployments shows and configures each.
 //
 // The word: the pages say "deployment" (the owner's, 2026-11-27: "device" is Live's word
 // for what a module becomes on a track). This code still says device, and the list's
@@ -287,7 +287,7 @@ window.PungPush = (function () {
           <dt>Installed</dt><dd>${c.installed} module${c.installed === 1 ? "" : "s"}</dd><dt>Updates</dt><dd>${c.updates || "none"}</dd></dl>
         ${others}
         <p class="pl-sub">This site installs and updates modules on it and changes Pung's settings there, over your home network. A module's ROM and removing a module stay on Pung's own page.</p>
-        <div class="pl-acts"><button type="button" class="pl-btn ghost" id="pl-off">Disconnect</button><span class="pl-grow"></span><a class="pl-btn" href="${up}deployments.html">Your deployments</a>${openPung}</div>`;
+        <div class="pl-acts"><button type="button" class="pl-btn ghost" id="pl-off">Disconnect</button><span class="pl-grow"></span><a class="pl-btn" href="${up}deployments.html">Deployments</a>${openPung}</div>`;
       document.getElementById("pl-off").onclick = () => disconnect(d);
       body.querySelectorAll('input[name="pl-use"]').forEach((r) => (r.onchange = () => { const x = devices.find((y) => y.id === r.value); if (x) { select(x); dialogDev = x; renderDialog(); } }));
       return;

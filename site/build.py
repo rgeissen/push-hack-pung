@@ -22,9 +22,9 @@ SITE = {"home": "./", "vision": "vision.html", "modules": "modules/", "stacks": 
         "performance": "performance.html"}
 DESC = {
     "stacks": "Stacks: the modules you play, in their order, each with its state and Pung's modulation over them. Take one from a Pung that runs on your Push, keep it, send it to another.",
-    "deployments": "Your deployments of Pung: install Pung on an Ableton Push 3 Standalone, connect it to pung.live, and see its processor, memory, storage and settings.",
-    "devices": "Your deployments of Pung.",
-    "push": "Your deployments of Pung.",
+    "deployments": "Deployments of Pung: install Pung on an Ableton Push 3 Standalone, connect it to pung.live, and see its processor, memory, storage and settings.",
+    "devices": "Deployments of Pung.",
+    "push": "Deployments of Pung.",
     "install": "Install Pung on Ableton Push 3 Standalone: the Pung Installer for macOS, Windows and Linux, or through Push Hack's catalog.",
     "home": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play: today 131 of them on Ableton Push 3 Standalone, each a device in Live with a screen made for it.",
     "vision": "Pung brings music modules (instruments, audio effects and MIDI generators) to every device musicians play, native on each: today 131 of them as devices in Live on Ableton Push 3 Standalone; next the desktop, more hardware, phones and tablets.",
@@ -34,10 +34,10 @@ DESC = {
 }
 FILES = {"home": "index.html", "stacks": "stacks.html", "vision": "vision.html", "install": "install.html", "push": "push.html", "deployments": "deployments.html", "devices": "devices.html", "manual": "manual.html", "design": "design.html", "performance": "performance.html"}
 
-PAGES = [("home", None), ("stacks", "Stacks"), ("deployments", "Your deployments"), ("devices", None), ("push", None), ("vision", "Vision"), ("install", None), ("manual", "Manual"), ("design", "Design"),
+PAGES = [("home", None), ("stacks", "Stacks"), ("deployments", "Deployments"), ("devices", None), ("push", None), ("vision", "Vision"), ("install", None), ("manual", "Manual"), ("design", "Design"),
          ("performance", "Performance")]
 # in front: the hero page (the logo), the modules, your Push; everything else is in the footer
-NAV = [("modules", "Modules"), ("deployments", "Your deployments")]
+NAV = [("modules", "Modules"), ("deployments", "Deployments")]
 if LAUNCHED:  # stacks need a deployment to talk to: in front once the site connects to one
     NAV.insert(1, ("stacks", "Stacks"))
 BACKGROUND = [("vision", "Vision"), ("manual", "Manual"), ("design", "Design"), ("performance", "Performance")]

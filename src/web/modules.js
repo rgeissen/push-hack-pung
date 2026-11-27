@@ -632,7 +632,7 @@
       });
       PP.on(async (what, d) => {
         if (what === "dialog-closed") { if (push.state !== "trying") m.afterConnect = null; return; }
-        if (d && d !== PP.state && what !== "removed") return; // another of the visitor's deployments: Your deployments shows it
+        if (d && d !== PP.state && what !== "removed") return; // another of the visitor's deployments: Deployments shows it
         if (what === "selected") { await load(false); return; } // modules install on another device now
         if (what === "connected") {
           await load(false);

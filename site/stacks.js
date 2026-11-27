@@ -154,7 +154,7 @@
     return ds.map((d) => {
       const a = of(d);
       let body;
-      if (d.state !== "on") body = `<p class="dv-note">${d.state === "trying" ? "Looking for it…" : `Not connected. <a href="deployments.html">Your deployments</a> has it.`}</p>`;
+      if (d.state !== "on") body = `<p class="dv-note">${d.state === "trying" ? "Looking for it…" : `Not connected. <a href="deployments.html">Deployments</a> has it.`}</p>`;
       else if (a.knows === false) body = `<p class="dv-note">Its Pung does not know stacks yet. <a href="deployments.html#install">Update Pung</a> on it.</p>`;
       else if (!a.playing.length) body = `<p class="dv-note">No Pung device in its Set right now. Load one there, shape its sound, and take it here.</p>`;
       else body = `<ul class="sk-play">${a.playing.map((p) => `<li><span class="sk-what"><b>${esc(p.name)}</b>${p.sound ? ` <span>${esc(p.sound)}</span>` : ""}${p.midi_fx ? ` <i>${esc(names[p.midi_fx] || p.midi_fx)} in front</i>` : ""}</span>
@@ -318,7 +318,7 @@
       return;
     }
     if (!ds.length) {
-      h += `<p>No deployment is connected. Connect one and send again.</p><div class="pl-acts end"><a class="pl-btn primary" href="deployments.html">Your deployments</a></div>`;
+      h += `<p>No deployment is connected. Connect one and send again.</p><div class="pl-acts end"><a class="pl-btn primary" href="deployments.html">Deployments</a></div>`;
       body.innerHTML = h;
       return;
     }

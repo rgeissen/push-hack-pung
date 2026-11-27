@@ -1,4 +1,4 @@
-// deployments.js: pung.live's Your deployments page. Every deployment (a Pung that runs somewhere:
+// deployments.js: pung.live's Deployments page. Every deployment (a Pung that runs somewhere:
 // "device" in the code, a word kept for what it means in Live on the pages) the visitor has
 // connected (pushlink.js: the list lives in their browser), each a panel:
 // the device itself (processor with its last minute, memory, storage,

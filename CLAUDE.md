@@ -246,12 +246,12 @@ serves other sites.
 Three sections in front, everything else in the footer (the owner's word, 2026-11-27): the hero page
 (`home.src.html`: the value, and a Push screen that plays: `site/hero.js` feeds a made-up sound to Pung's own
 pictures, `src/web/visuals.js`, so the page draws what the Push draws), **Modules** (`site/modules.html` with
-`src/web/modules.js` in its public mode) and **Your deployments** (`deployments.src.html`, `site/deployments.js`; `devices.html` goes on to it: install,
+`src/web/modules.js` in its public mode) and **Deployments** (the page; `deployments.src.html`, `site/deployments.js`; `devices.html` goes on to it: install,
 and a panel for every connected deployment: processor with its last minute, memory, storage, battery, what plays,
 Pung against the newest, its modules, Pung's two switches). Vision, Manual, Design and Performance are built as
 before and linked in the footer.
 
-- **Stacks** (`stacks.src.html`, `site/stacks.js`; a fourth entry in the menu, between Modules and Your deployments,
+- **Stacks** (`stacks.src.html`, `site/stacks.js`; a fourth entry in the menu, between Modules and Deployments,
   once the site is launched): the visitor's stacks, kept in their browser (IndexedDB `pung`/`stacks`, a file
   `.pungstack` to carry one), taken from what a connected deployment plays and sent to one (`src/stacks.go`:
   `GET /api/stacks`, `GET /api/stacks/playing/{n}`, `POST /api/stacks`, `POST /api/stacks/remove`). A stack a
