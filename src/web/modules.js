@@ -21,8 +21,8 @@
   const PUBLIC = document.body.dataset.public === "1";
   // pung.live's Modules page is the catalog alone (the owner, 2026-11-27: nothing about one Pung install on
   // pung.live outside Deployments). It asks no deployment anything; once the site is launched it knows the
-  // visitor's deployments by their names (their browser's list, site/pushlink.js) and links each module to
-  // its place on a deployment's own page, where it is installed.
+  // visitor's deployments by their names (their browser's list, site/pushlink.js) for the place switcher,
+  // which leads to a deployment's own page, where modules are installed.
   const CONNECT = PUBLIC && document.body.dataset.connect === "1";
   const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
   const m = { data: null, filter: "all", show: "all", q: "", open: null, timer: null, down: false, busy: {}, shots: {}, face: 0 };
@@ -254,18 +254,10 @@
     return cost + rest + " Two emulators run at once, and only while the Push has room for both: another waits, silent, and starts by itself when there is.";
   }
 
-  // on pung.live a module is not installed, it is shown: the way to install it is in the module's sheet and
-  // leads to this module on a deployment's own page (every one the visitor has); a card has no button
-  const places = () => (CONNECT && PP ? PP.devices : []);
-  const there = (d, x) => `${PP.baseOf(d)}/#modules/${encodeURIComponent(x.id)}`;
-  function action(x, sheet) {
-    if (PUBLIC) {
-      const ds = places();
-      const link = (d) => `<a class="act" href="${esc(there(d, x))}" title="Opens ${esc(x.name)} on the own page of ${esc(PP.nameOf(d))}, where it is installed">Install on ${esc(PP.nameOf(d))}</a>`;
-      if (!sheet) return "";   // (a card of the catalog only shows; the way to install is in the module's sheet)
-      if (!ds.length) return `<a class="act" href="../deployments.html${CONNECT ? "" : "#install"}" title="Pung installs modules where it runs, from its own Modules page">Install on your Push</a>`;
-      return ds.map(link).join("");
-    }
+  // on pung.live a module is shown, not installed (the owner, 2026-11-27: no install button there, on a card
+  // or in a module's sheet): that is done on a deployment's own page, one press away in the place switcher
+  function action(x) {
+    if (PUBLIC) return "";
     const j = x.job;
     if (j && !["done", "failed"].includes(j.state)) {
       const pct = j.state === "downloading" && j.total ? Math.round((100 * j.done) / j.total) : null;
@@ -374,7 +366,7 @@
       <div class="sheet-actions">
         ${x.managed && !PUBLIC ? `<button type="button" class="danger" id="mod-remove">Remove</button>` : ""}
         <span class="grow"></span>
-        ${action(x, true)}
+        ${action(x)}
       </div>
       <p class="err" id="mod-sheet-msg" role="alert" hidden></p>`;
     $("mod-sheet").classList.toggle("wide", !!shotsOf(x));
@@ -594,8 +586,6 @@
 
   // pung.live: one view; #<id> opens a module's sheet
   function bootPublic() {
-    // a deployment joins or leaves the list (a visitor arrives from one's own page): the links follow
-    if (PP) PP.on((what) => { if (what === "connected" || what === "removed") { render(); if (m.open) openSheet(m.open); } });
     const want = () => { const id = decodeURIComponent(location.hash.slice(1)); if (!id) return;
       if (m.data && m.data.modules.some((x) => x.id === id)) openSheet(id); else m.wantOpen = id; };
     $("mod-search").oninput = (e) => { m.q = e.target.value; render(); };
@@ -617,7 +607,7 @@
     loadShots();
     load(false).then(() => {
       m.tried = true; render();
-      // a visitor sent here by a deployment's own page: that one joins the list; nothing else is asked
+      // a visitor sent here by a deployment's own page: that one joins the place switcher's list; nothing else is asked
       if (PP && CONNECT) PP.resume("arrival");
     });
   }

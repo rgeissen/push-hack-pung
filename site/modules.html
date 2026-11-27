@@ -54,8 +54,10 @@ body[data-public] { display: block; }
 .site-bar nav a[aria-current="page"] { color: var(--fg); box-shadow: inset 0 -2px 0 var(--amber); border-radius: 0; }
 body[data-public] main { max-width: 1480px; margin: 0 auto; }
 a.act { display: inline-flex; align-items: center; text-decoration: none; }
-/* a card of the catalog has no button (the way to install is in the module's sheet): its foot is one line */
+/* the catalog has no install button, on a card or in a module's sheet: a card's foot is one line, and a
+   sheet has no row of actions */
 body[data-public] .mod footer { min-height: 0; }
+body[data-public] .sheet-actions { display: none; }
 .public-note { color: var(--muted); max-width: 80ch; margin: 6px 0 18px; }
 
 </style>
@@ -83,7 +85,7 @@ body[data-public] .mod footer { min-height: 0; }
       <span class="mod-status" id="mod-status" aria-live="polite"></span>
     </header>
 <!--if:launched-->
-    <p class="public-note">Every module in Pung's catalog. Open one to see its screens on the Push, what it needs and where its source is. A module is installed where Pung runs, on that deployment's own Modules page, and becomes a device in Live there.</p>
+    <p class="public-note">Every module in Pung's catalog. Open one to see its screens on the Push, what it needs and where its source is. A module is installed where Pung runs: switch to your deployment in the bar above, and install it on its own Modules page.</p>
 <!--endif-->
 <!--if:!launched-->
     <p class="public-note">Every module in Pung's catalog, as Pung's own Modules page shows it on the Push. Each one installs from there, in one press, and becomes a device in Live. Open a module to see its screens on the Push, what it needs and where its source is.</p>
