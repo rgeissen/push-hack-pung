@@ -18,13 +18,13 @@ supported by Ableton.
 
 Four pages go with this repository, with pictures of every screen:
 
-- **[Manual](https://rgeissen.github.io/push-hack-pung/manual.html)** ([as a Claude artifact](https://claude.ai/artifact/BJ47JjYFTh39t4RKWkNtEY)): installing Pung, the Pung view and its
+- **[Manual](https://pung.live/manual.html)** ([as a Claude artifact](https://claude.ai/artifact/BJ47JjYFTh39t4RKWkNtEY)): installing Pung, the Pung view and its
   controls, sounds, the web page, troubleshooting.
-- **[Vision](https://rgeissen.github.io/push-hack-pung/)** ([as a Claude artifact](https://claude.ai/artifact/UXRfdHMtyVs9HqevVoNqt1)): what Pung is, how it runs Schwung modules
+- **[Vision](https://pung.live/)** ([as a Claude artifact](https://claude.ai/artifact/UXRfdHMtyVs9HqevVoNqt1)): what Pung is, how it runs Schwung modules
   and its own as Live devices, and where it is going.
-- **[Design](https://rgeissen.github.io/push-hack-pung/design.html)** ([as a Claude artifact](https://claude.ai/artifact/CrRQBoVwhvpgoJpTZpHeC2)): the design principles of the Pung view
+- **[Design](https://pung.live/design.html)** ([as a Claude artifact](https://claude.ai/artifact/CrRQBoVwhvpgoJpTZpHeC2)): the design principles of the Pung view
   and of a module's own screens, for module authors.
-- **[Performance](https://rgeissen.github.io/push-hack-pung/performance.html)** ([as a Claude artifact](https://claude.ai/artifact/6vfimXTaiLxAfT8zc9nQzL)): the governor: what Pung costs a
+- **[Performance](https://pung.live/performance.html)** ([as a Claude artifact](https://claude.ai/artifact/6vfimXTaiLxAfT8zc9nQzL)): the governor: what Pung costs a
   Push's processor and battery, how emulators rest in silence, and the measurements behind it.
 
 In this repository: [docs/UX-GUIDELINES.md](docs/UX-GUIDELINES.md) (the rules behind the Design page),
@@ -146,7 +146,7 @@ the jog wheel.
 
 Pung is in Push Hack Catalog: open `http://push.local:7702`, choose **Pung** and **Install**, then restart
 the Push once so Live finds the new devices. Updates arrive the same way. The
-[Manual](https://rgeissen.github.io/push-hack-pung/manual.html#install) has the steps with pictures.
+[Manual](https://pung.live/manual.html#install) has the steps with pictures.
 
 To build it yourself, on a Mac or Linux computer with Docker:
 

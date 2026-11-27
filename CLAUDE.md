@@ -29,7 +29,15 @@ release, and native instruments built from gearmulator (`native/`).
   `xenia` (Microwave II/XT), and `vivace`, a port of an open-source wavetable synth (GPLv3; its licence
   forbids its name on a build: it appears only in `licenses/NOTICE.txt`).
 - `overrides/<id>/push_ui.js` screens Pung ships for Schwung modules.
-- `scripts/` builds, catalog, release, render-check. `site/` the public pages (GitHub Pages).
+- `scripts/` builds, catalog, release, render-check. `site/` the public pages (pung.live).
+- `installer/` the Pung Installer (its own Go module, pure Go, no cgo): a local page in the browser; SSH to the
+  Push (key at `push.local/ssh`, Shift+Select+Preferences), Push Hack at the ref in `site/install.json` where
+  missing, then Pung as Push Hack Catalog installs it (port 7720 kept or chosen). `scripts/build-installer.sh` ->
+  `build/installer/` (macOS app, Windows, Linux), published as pung.live/download/ by `make publish-site`.
+  Phase 1 of leaving Push Hack (2026-11-27): Pung's dependencies on it are core/livedevice, alsaseq, audiobus, gfx,
+  hackcfg, pmclient, push-manager's surface API (:7701) and the PushHack Remote Script (:7704).
+  Test it against a fake Push: an ubuntu container with sshd, /data, /etc/init.d/push3 (a stub). Running a new
+  binary on the owner's Mac meets the LuLu firewall (it blocks until allowed).
 - `build/`, `dist/` are outputs, never committed. Packages and firmware never go into git.
 
 ## Build and test
@@ -164,6 +172,13 @@ back as of the previous restart. Then ask the user to save the Set.
 
 ## Release
 
+0. **The chain host must be in `build/modules/chain/dsp.so`** (`make modules`; `build/patches` too). Pung does
+   not start without it, `make release` does not build it, and `build/` is not kept: 0.4.3 to 0.5.0 shipped
+   without it, so a fresh install did not start (found 2026-11-26; `release.sh` and `release-check.py` now
+   refuse). `make modules` needs a Schwung checkout that has `chain_bus.c` (upstream's `worktree-vst`, 97a30523;
+   the local `../schwung` main has not). The known-good files are those of 0.4.2's package, byte for byte what
+   runs on the owner's Push (chain host md5 8574dd39…). Prove a package on a stand-in Push before publishing:
+   an amd64 ubuntu container with sshd and `/lib/ld-linux-x86-64.so.2 -> /lib64/...` starts Pung.
 1. Bump `VERSION`, `hack.json` `version`, and the manual's eyebrow (`site/manual.src.html`).
 2. **Build changed modules from the committed tree.** A package records the commit of the last change to
    `native/<id>` at BUILD time; built before the commit, the catalog links a source archive that lacks
@@ -190,12 +205,26 @@ back as of the previous restart. Then ask the user to save the Set.
    GitHub or its archive on `sources`; HEAD on origin/main), then build, screens, test, vet,
    test-visuals and the site in that order, checks again (the binary and the pictures newer than their
    inputs, the tree still clean), and `scripts/release.sh --publish`.
-6. `release.sh --publish` uploads the sources first, then `v<version>` (rerunning replaces
-   `pung.tar.gz` on an existing release and uploads missing sources). Verify: download `pung.tar.gz`,
-   check `hack.json`, the catalog's versions and commits, and that every `source.archive` is on the
-   `sources` release.
-7. Site pages publish themselves on a push to `main` that touches `site/` (`.github/workflows/pages.yml`).
-   `site/images.json` is one compact JSON line: keep it that way (`separators=(',',':')`).
+6. `release.sh --publish` puts the sources on pung.live first (`sources/`, never replacing one), then
+   `releases/v<version>/pung.tar.gz` (checked by its checksum and through https), then `release.json`
+   there and on `main` (Push Hack's store reads it from GitHub), and the tag. Verify: download
+   `pung.tar.gz` from pung.live, check `hack.json`, the catalog's versions and commits, and that every
+   `source.archive` answers. Releases up to 0.5.0 and their sources stay on GitHub's releases.
+7. The pages: `make publish-site` (not on a push any more). It also writes `modules/`: Pung's own Modules page
+   (`src/web/modules.js` with `<body data-public>`) from the release's catalog and `build/screens`. Connected
+   to a visitor's Push (Local Network Access: the browser asks; Chrome/Edge 142+, Firefox 151+) it installs,
+   updates and restarts Live there; Pung lets only https://pung.live read those few calls (`src/sitecors.go`).
+   Never send `targetAddressSpace: "local"` for a `.local` name or an IP literal: push.local also resolves to
+   a global IPv6 address, which Chrome counts as public, and the request fails (Chrome 158, 2026-11-26).
+   Test it with Chrome over CDP: `Browser.grantPermissions` with localNetwork in ONE call (it rejects the rest). `site/images.json` is one compact JSON line:
+   keep it that way (`separators=(',',':')`).
+
+**pung.live** is the owner's DiskStation (DS412+, DSM 6.2, Web Station): one virtual host on
+`/volume2/web/pung` (pages at the root, `brand/`, `modules/`, `releases/`, `sources/`, `release.json`),
+Let's Encrypt for pung.live and www.pung.live, DNS at Hostinger (A record to the home's address; it
+changes rarely: when it does, pung.live is down until the record is changed). Scripts take the server
+from `PUNG_LIVE_HOST` (`scripts/pung-live-env.sh`) and touch nothing outside that folder: the share
+serves other sites.
 
 ## Native instruments (gearmulator)
 

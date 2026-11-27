@@ -1,7 +1,7 @@
 #!/bin/sh
-# Publishes the module catalog (scripts/build-catalog.py) to the DiskStation's
-# web share, where it is public (a virtual host on
-# /volume2/web/pung)
+# Publishes the module catalog (scripts/build-catalog.py) to pung.live/catalog/,
+# on the DiskStation (scripts/pung-live-env.sh). Pung reads it only when its
+# catalog_url setting names it: a release carries its own catalog.
 #
 #   scripts/publish-catalog.sh [--prune]
 #
@@ -9,16 +9,13 @@
 # first, then a check that every package on the server is the one the new
 # catalog names (by checksum), then catalog.json and the page, each by an
 # atomic rename. --prune then removes packages and sources no catalog names.
-#
-# Only /volume2/web/pung is ever touched: the share serves other sites.
 set -eu
 cd "$(dirname "$0")/.."
+. scripts/pung-live-env.sh
 SRC=build/catalog
-# the server and its SSH port: yours, from the environment
-HOST="${PUNG_CATALOG_HOST:?set PUNG_CATALOG_HOST (user@host of the server)}"
-PORT="${PUNG_CATALOG_PORT:-22}"
-DEST=/volume2/web/pung
-SSH="ssh -o BatchMode=yes -p $PORT"
+HOST="$LIVE_HOST"
+DEST="$LIVE_DIR/catalog"
+SSH="$LIVE_SSH"
 
 [ -f "$SRC/catalog.json" ] || { echo "no $SRC/catalog.json: run scripts/build-catalog.py first" >&2; exit 1; }
 # never ROMs: the build checks, and so does the last step before the internet

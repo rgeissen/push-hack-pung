@@ -15,7 +15,7 @@ DOCKER  := docker run --rm --platform linux/amd64 \
 LDFLAGS := -s -w -X main.buildVersion=$(VERSION) -linkmode external \
 	-extldflags -Wl,--dynamic-linker=/lib/ld-linux-x86-64.so.2
 
-.PHONY: screens all image build modules catalog-modules test test-visuals vet deploy clean release publish
+.PHONY: screens all image build modules catalog-modules test test-visuals vet deploy clean release publish publish-site
 
 all: build
 
@@ -65,6 +65,10 @@ publish:
 	$(RELEASE_STEPS)
 	python3 scripts/release-check.py --publish --after-build
 	GH=gh scripts/release.sh --publish
+
+# the pages at pung.live, on the DiskStation (scripts/pung-live-env.sh)
+publish-site:
+	scripts/publish-site.sh
 
 # Schwung's chain host and its built-in modules, from the Schwung checkout
 modules:

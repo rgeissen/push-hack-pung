@@ -12,3 +12,4 @@ __pycache__/
 /site/design.html
 /site/performance.html
 /_site/
+/installer/dist/
