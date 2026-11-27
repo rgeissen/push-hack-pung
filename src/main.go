@@ -141,6 +141,7 @@ func main() {
 	h.settingsRoutes(mux)
 	h.systemRoutes(mux)
 	h.stackRoutes(mux)
+	h.layoutRoutes(mux)
 	h.mods.routes(mux)
 	h.sounds.routes(mux)
 	h.fileRoutes(mux)
@@ -192,6 +193,7 @@ func main() {
 	// DESIGN-v2: every Pung device in Live is a chain instance here, on
 	// push-hack's Live device layer (core/livedevice)
 	sclasses := h.buildClasses()
+	h.fresh = sclasses // as built afresh, before this installation's own order (layouts.go)
 	// every parameter where its class last had it: a Set's automation stays on it (stablelayout.go)
 	sclasses = stableLayouts(sclasses, knownClasses(*data))
 	// a class whose layout changed keeps the one a running Live has (classlock.go)

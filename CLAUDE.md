@@ -137,6 +137,10 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   `hangs.json`; the surface given back; states from `kept-states.json`). A module that hangs twice in
   15 minutes is refused until then. Nothing else restarts a Pung that died: the service has no
   supervisor. Tested 2026-11-23 with a module whose `set_param` never returns.
+- **Never deploy while a build is still running** (`scripts/deploy.sh` beside a `make build` in the
+  background): rsync warned "file truncated while reading" on `livedevice.so`, the plugin Live loads, on
+  2026-11-27. That time nothing was replaced; check the Push's `livedevice.so` and `Pung.so` against the
+  local file by checksum after any deploy that warned.
 - Deploy Pung: `make deploy HOST=<push-ip>` (restarts Pung, not Live). Deploy one module: scp to
   `<file>.new`, then `mv` (never overwrite a loaded `.so` in place), then restart Pung. **Pung keeps a
   module's `push_ui.js` loaded: a new one needs a Pung restart.**

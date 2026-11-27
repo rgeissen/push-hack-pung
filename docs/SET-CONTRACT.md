@@ -1,6 +1,8 @@
 # The Set contract: one parameter order for every Pung
 
-A design for the owner's decision (2026-11-27). No code is changed by it. It is the first piece of the
+A design, decided on 2026-11-27 ("I trust all your recommendation": 64 entries for the MIDI generators, new
+devices beside the old, "MIDI FX n" in Live's lists). Being built in the order given at the end; what is
+done says so. It is the first piece of the
 groundwork the launch waits for (`docs/PUNG-STACK.md`, the Set contract, clause 2, and Phase 0).
 
 ## What it must do
@@ -50,13 +52,17 @@ An instrument, 256 positions:
 
 | Positions | What | How many |
 |---|---|---|
-| 0 to 190 | The module's own parameters, in the order the registry gives (below) | 191 |
-| 191 | The MIDI FX selector | 1 |
-| 192 to 255 | General MIDI-effect slots | 64 |
+| 0 to 191 | The module's own parameters, in the order the registry gives (below), then the empty entries its pages are filled up with | 192 (24 pages) |
+| 192 | The MIDI FX selector | 1 |
+| 193 to 255 | General MIDI-effect slots | 63 |
+
+This is the split today's large instruments already have (measured: their own pages take exactly 192 entries
+and the MIDI generators' pages 64), so no instrument has fewer of its own parameters in Live than now. The
+MIDI part is eight whole pages.
 
 - **The general slots** take their meaning from the MIDI generator that is selected: slot *k* is that
   generator's parameter *k* in its own registry order. A Set says which generator is selected, so a slot's
-  automation always means the same control. In Live's lists they are named "MIDI FX 1" to "MIDI FX 64"; Pung's
+  automation always means the same control. In Live's lists they are named "MIDI FX 1" to "MIDI FX 63"; Pung's
   view and its web page show the real names, as now.
 - **The selector** has a fixed number of steps (64): none, then the generators in the registry's order, each
   at its place for good, installed or not. Today its steps are the installed ones, so its value means
@@ -70,9 +76,9 @@ What this gives and takes, against today:
 
 | | Today | With the contract |
 |---|---|---|
-| A MIDI generator's parameters in Live | 7 on a large instrument, all on a small one; named ("Arp Rate") | The first 64 on every instrument; named "MIDI FX n" |
-| A generator with more than 64 (Eucalypso: 82) | All on a small instrument | The rest in Pung's view only |
-| An instrument's own parameters in Live | As many as fit beside the generators (up to 186 today) | Up to 191 |
+| A MIDI generator's parameters in Live | 7 on a large instrument, all on a small one; named ("Arp Rate") | The first 63 on every instrument; named "MIDI FX n" |
+| A generator with more than 63 (Eucalypso: 82) | All on a small instrument | The rest in Pung's view only |
+| An instrument's own parameters in Live | 24 pages (192 entries with their padding; up to 186 parameters today) | The same 24 pages |
 | The same position on every Pung | No | Yes |
 
 ### 2. The registry
@@ -150,8 +156,9 @@ Each needs Live restarted, in a throwaway Set, on the owner's word.
 
 In this order; each step is small and tested before the next.
 
-1. Pung writes out the fresh order of every module; the registry is seeded from the owner's Push and
-   committed.
+1. Pung writes out the fresh order of every module (`GET /api/layouts`, `src/layouts.go`); the registry is
+   seeded from it and committed: from a stand-in with every module of the pack for all that need no
+   firmware, from the owner's Push for the emulators.
 2. The layout from the registry, with a test that the same registry gives the same layout whatever is
    installed and in whatever order it came.
 3. The new devices beside the old: identity, the browser's entries, the saved sounds' entries, patches.
@@ -175,6 +182,8 @@ In this order; each step is small and tested before the next.
   the contract.
 
 ## Decisions for the owner
+
+Decided on 2026-11-27 (1 to 3 as recommended); kept here for the record.
 
 1. **64 general slots** for the selected MIDI generator (recommended), or 32, or none?
 2. **New devices beside the old** (recommended), accepting that Sets saved before stay bound to their
