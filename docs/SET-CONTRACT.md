@@ -156,9 +156,15 @@ Each needs Live restarted, in a throwaway Set, on the owner's word.
 
 In this order; each step is small and tested before the next.
 
-1. Pung writes out the fresh order of every module (`GET /api/layouts`, `src/layouts.go`); the registry is
-   seeded from it and committed: from a stand-in with every module of the pack for all that need no
-   firmware, from the owner's Push for the emulators.
+1. **Done (2026-11-27).** Pung writes out every module's own pages against the kind's room
+   (`GET /api/layouts`, `src/layouts.go`: from the module alone); `src/registry.json` is seeded from it by
+   `scripts/registry.py`: from a stand-in with every module of the pack for all that need no firmware, from
+   the owner's Push for the seven emulators. 135 modules, every one of the catalog; twelve MIDI generators
+   in the selector's order. What the seeding showed: taken from the devices as they stood, two
+   installations disagreed on 50 of 86 modules (a large instrument's own pages shrink with every MIDI
+   generator installed, and small modules came in another order); computed from the module alone they
+   agree on 85, and the one that differs is Osirus, which names one more parameter where its firmware is.
+   `registry.py check` refuses a registry that is not an append of the one before.
 2. The layout from the registry, with a test that the same registry gives the same layout whatever is
    installed and in whatever order it came.
 3. The new devices beside the old: identity, the browser's entries, the saved sounds' entries, patches.
