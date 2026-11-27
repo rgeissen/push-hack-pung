@@ -168,7 +168,8 @@
       if (await PP.confirm(`Remove ${PP.nameOf(d)} from this page? Nothing changes on the device; connect it again any time.`, "Remove", true)) { more.delete(d.id); PP.remove(d); }
     }));
     box.querySelectorAll("[data-rename]").forEach((b) => (b.onclick = () => { of(dev(b.dataset.rename)).renaming = true; sig = ""; render(); const i = box.querySelector(".dv-rename input"); if (i) { i.focus(); i.select(); } }));
-    box.querySelectorAll(".dv-rename").forEach((f) => (f.onsubmit = (e) => { e.preventDefault(); const d = dev(f.dataset.dev); of(d).renaming = false; sig = ""; PP.rename(d, f.querySelector("input").value); }));
+    box.querySelectorAll(".dv-rename").forEach((f) => (f.onsubmit = (e) => { e.preventDefault(); const d = dev(f.dataset.dev); of(d).renaming = false; sig = "";
+      f.querySelector("input").blur(); // Enter leaves the field focused, and a focused field is not redrawn PP.rename(d, f.querySelector("input").value); }));
     box.querySelectorAll("input[data-key]").forEach((i) => (i.onchange = () => setSwitch(dev(i.dataset.dev), i.dataset.key, i.checked, i.checked ? i.dataset.on : i.dataset.off)));
     const add = document.getElementById("dv-add");
     if (add) add.onclick = () => PP.open("add");

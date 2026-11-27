@@ -365,7 +365,7 @@ window.PungPush = (function () {
     connect, disconnect, open, resume, toast, confirm,
     // every device
     get devices() { return devices.slice(); },
-    nameOf, baseOf, jsonOf, readOf, systemOf, connectTo, remove, select, rename, inUse: () => cur(),
+    nameOf, baseOf, fetchOf, jsonOf, readOf, systemOf, connectTo, remove, select, rename, inUse: () => cur(),
     on: (f) => subs.push(f), changed, renderChips,
     setCounts: (f) => { counts = f; },
   };

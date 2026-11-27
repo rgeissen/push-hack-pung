@@ -444,6 +444,61 @@ footer .links { display: flex; gap: 8px 18px; flex-wrap: wrap; }
 .yp-switch > span > span { color: var(--muted); font-size: 0.93rem; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) { .yp-switch input::after, .dv-bar i { transition: none; } }
 
+/* Stacks: the visitor's stacks, each a card; what plays on their devices; the send dialog (stacks.js) */
+.sk { display: grid; gap: 56px; }
+.sk-bar { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; justify-content: space-between; }
+.sk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 20px; }
+.sk-card { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; min-width: 0; }
+.sk-card.fresh { border-color: var(--pung); }
+.sk-pic { display: block; width: 100%; height: auto; aspect-ratio: 6 / 1; background: #000; border-bottom: 1px solid var(--line); }
+.sk-pic.none { background: repeating-linear-gradient(90deg, #0b0b0a 0 12.5%, #111110 12.5% 25%); }
+.sk-body { flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 20px; min-width: 0; }
+.sk-body > .dv-acts { margin-top: auto; padding-top: 4px; }
+.sk-body p, .sk-body ul, .sk-body ol { margin: 0; }
+.sk-body header { display: grid; gap: 4px; }
+.sk-body h3, .sk-dev h3 { margin: 0; font: 760 1.35rem/1.2 var(--display); font-stretch: 112%; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+/* the modules in the order they play: MIDI in front, the instrument, effects behind */
+.sk-chain { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.sk-chain li { position: relative; display: grid; gap: 2px; padding: 9px 14px 10px; min-width: 96px; border: 1px solid var(--line); border-left: 3px solid var(--muted); border-radius: 6px; background: var(--ground); }
+.sk-chain li + li::before { content: ""; position: absolute; left: -20px; top: 50%; width: 14px; height: 1px; background: var(--muted); }
+.sk-chain li + li::after { content: ""; position: absolute; left: -10px; top: calc(50% - 3px); width: 6px; height: 6px; border-top: 1px solid var(--muted); border-right: 1px solid var(--muted); transform: rotate(45deg); }
+.sk-chain li.midi_fx { border-left-color: var(--cyan); }
+.sk-chain li.synth { border-left-color: var(--pung); }
+.sk-chain li.audio_fx { border-left-color: var(--ok); }
+.sk-chain span { font: 500 0.66rem/1.3 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.sk-chain b { font-weight: 650; }
+.sk-chain i { font: 500 0.72rem var(--mono); font-style: normal; color: var(--muted); }
+/* Pung's own modulation is magenta on the Push, and here */
+.sk-mod { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 0.9rem; }
+.sk-mod i { flex: none; width: 22px; height: 3px; border-radius: 2px; background: #e24bd0; }
+.sk-on { list-style: none; padding: 12px 14px; display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--ground); font-size: 0.9rem; line-height: 1.5; color: var(--muted); }
+.sk-on li { display: grid; grid-template-columns: 8px 1fr; gap: 10px; }
+.sk-on .pl-led { margin-top: 7px; }
+.sk-on b { color: var(--ink); font-weight: 600; }
+.sk-link { border: 0; background: none; padding: 0; color: var(--pung-ink); font: inherit; text-decoration: underline; cursor: pointer; }
+.sk-link:hover { color: var(--ink); }
+.sk-first { max-width: 76ch; }
+.sk-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; color: var(--muted); }
+.sk-steps b { color: var(--ink); }
+.sk-warn { margin: 0; padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); border-radius: 8px; }
+.sk-devs { display: grid; gap: 16px; }
+.sk-dev { display: grid; gap: 14px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.sk-dev header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.sk-dev header .dv-sub { flex-basis: 100%; padding-left: 20px; }
+.sk-dev p { margin: 0; }
+.sk-play { list-style: none; margin: 0; padding: 0; display: grid; }
+.sk-play li { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--line); }
+.sk-play .btn { min-height: 40px; padding: 0 14px; font-size: 0.88rem; }
+.sk-what { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; min-width: 0; }
+.sk-what b { font-weight: 650; font-size: 1.05rem; }
+.sk-what span { color: var(--muted); }
+.sk-what i { font: 500 0.74rem var(--mono); font-style: normal; letter-spacing: 0.04em; color: var(--cyan); }
+.sk-unmet { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 8px; }
+.sk-where { padding: 12px 14px; border: 1px solid var(--pl-line, var(--line)); border-radius: 6px; font: 500 0.86rem/1.5 var(--mono); overflow-wrap: anywhere; }
+.pl-dialog .pl-led { margin-right: 6px; }
+body.sk-drop::after { content: "Drop the stack here"; position: fixed; inset: 16px; z-index: 70; display: grid; place-items: center; border: 2px dashed var(--pung); border-radius: 16px;
+  background: color-mix(in srgb, var(--ground) 88%, transparent); color: var(--ink); font: 760 1.6rem var(--display); pointer-events: none; }
+
 /* the footer: the pages in the background (vision, manual, design, performance) first */
 footer .links.more a { font-weight: 600; }
 footer .links.more a[aria-current="page"] { color: var(--ink); text-decoration: none; }

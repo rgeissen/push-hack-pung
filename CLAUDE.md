@@ -17,7 +17,7 @@ release, and native instruments built from gearmulator (`native/`).
 | Native modules (emulators): rules, measurements, each instrument's quirks | `docs/NATIVE-MODULES.md` |
 | Module builds for the Push | `docs/push-module-builds.md` |
 | What devices cost (processor, energy), `GET /api/governor` | `docs/GOVERNOR.md` |
-| Stacks (modules with their states, moved between devices): the idea, the format, what is open | `docs/STACKS.md` |
+| Stacks (modules with their states, moved between devices): the idea, the format, what is built, what is open | `docs/STACKS.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
 | The public pages (manual, vision, design) | `site/README.md` |
 
@@ -237,6 +237,12 @@ and a panel for every connected device: processor with its last minute, memory, 
 Pung against the newest, its modules, Pung's two switches). Vision, Manual, Design and Performance are built as
 before and linked in the footer.
 
+- **Stacks** (`stacks.src.html`, `site/stacks.js`; a fourth entry in the menu, between Modules and Your devices,
+  once the site is launched): the visitor's stacks, kept in their browser (IndexedDB `pung`/`stacks`, a file
+  `.pungstack` to carry one), taken from what a connected device plays and sent to a device (`src/stacks.go`:
+  `GET /api/stacks`, `GET /api/stacks/playing/{n}`, `POST /api/stacks`, `POST /api/stacks/remove`). A stack a
+  Push takes is a rack in Push's browser, in "Pung Stacks" beside the sounds' racks. `pung.css` gives every
+  `article` a 64-pixel gap: a card that is an article sets its own.
 - **Several devices, several kinds** (the owner's word, 2026-11-27: the Push is the first device, more kinds
   will follow, and a visitor may own more than one of a kind). `site/pushlink.js` + `pushlink.css` hold the
   list for every page (in the visitor's browser: `pung.devices`, the one modules install on in `pung.device`;
@@ -281,7 +287,7 @@ before and linked in the footer.
 
 - **Module**: one instrument, audio effect or MIDI generator. **Stack** (the owner's word, 2026-11-27): the
   modules in their order with the state of each and what is laid over them, the thing that travels between
-  devices (`docs/STACKS.md`; not built yet). Never "rack" for it: on a Push a rack is Ableton's, and Pung
+  devices (`docs/STACKS.md`; a first version is built: one Pung device's worth). Never "rack" for it: on a Push a rack is Ableton's, and Pung
   writes one per module ("Live rack"). Lower case, so it is not **Stacks**, the owner's chord tool.
 - **Device**: a thing Pung runs on (a Push 3 today; `site/pushlink.js` `KINDS`). In Live, a "device" is
   also what a module becomes on a track: say "a device in Live" or "Pung device" for that.

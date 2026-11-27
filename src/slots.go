@@ -78,6 +78,7 @@ type Host struct {
 	settings *settingsStore  // Pung's own settings (settings.go)
 	mods     *modMgr         // modules from the catalog (modmgr.go)
 	sounds   *soundLib       // every module's sounds (sounds_device.go)
+	stacks   *stackKeep      // the stacks this device was sent (stacks.go)
 	files    *fileLib        // the files modules ask for: samples, wavetables (files.go)
 	hangs    *hangLog        // modules that hung lately (watchdog.go)
 	gov      *governor       // what rests, what has room (govrest.go)

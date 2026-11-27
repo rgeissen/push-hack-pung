@@ -140,6 +140,7 @@ func main() {
 	h.governRoutes(mux)
 	h.settingsRoutes(mux)
 	h.systemRoutes(mux)
+	h.stackRoutes(mux)
 	h.mods.routes(mux)
 	h.sounds.routes(mux)
 	h.fileRoutes(mux)
@@ -241,6 +242,7 @@ func main() {
 		go h.sounds.SyncAllRacks()
 	}
 	h.prov = newProvider(h, sclasses)
+	go h.stacks.syncRacks() // the stacks this device keeps, as racks beside the sounds' (stacks.go)
 	devs := livedevice.NewServer(livedevice.Config{Name: "pung", Socket: *socket}, h.prov, classes)
 	mux.Handle("GET /api/devices", devs.Handler())
 	if err := devs.Listen(); err != nil {

@@ -35,6 +35,17 @@ func TestSiteCORS(t *testing.T) {
 	if w := do("OPTIONS", "/api/catalog/jp8000/install", "https://www.pung.live", "POST"); w.Code != 204 || acao(w) != "https://www.pung.live" {
 		t.Errorf("install preflight: %d %q", w.Code, acao(w))
 	}
+	// the Stacks page: what plays, the stack of one device, sending and removing one
+	for _, c := range [][2]string{{"GET", "/api/stacks"}, {"GET", "/api/stacks/playing/3"}, {"POST", "/api/stacks"}, {"POST", "/api/stacks/remove"}} {
+		if !siteCall(c[0], c[1]) {
+			t.Errorf("pung.live may not %s %s", c[0], c[1])
+		}
+	}
+	for _, c := range [][2]string{{"GET", "/api/stacks/playing/"}, {"GET", "/api/stacks/playing/3/x"}, {"GET", "/api/stacks/kept"}, {"POST", "/api/stacks/playing/3"}} {
+		if siteCall(c[0], c[1]) {
+			t.Errorf("pung.live may %s %s", c[0], c[1])
+		}
+	}
 	if w := do("POST", "/api/catalog/jp8000/install", "https://pung.live", ""); w.Code != 200 || acao(w) == "" {
 		t.Errorf("install: %d %q", w.Code, acao(w))
 	}

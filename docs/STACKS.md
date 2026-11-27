@@ -1,6 +1,7 @@
 # Stacks
 
-A sketch, not yet built (2026-11-27). The word and the idea are settled; what is marked *open* is not.
+The word and the idea are settled (2026-11-27), and a first version is built: take a stack from a device,
+keep it on pung.live, send it to a device ("What is built", below). What is marked *open* is not decided.
 
 ## What a stack is
 
@@ -56,8 +57,9 @@ the part that becomes the service.
 - **Between them**, as everything else on pung.live: the visitor's browser talks to the device over their
   home network.
 
-So a device needs two calls and no more: give the stack a Pung device is playing (`GET`), and take one
-(`POST`: check it, install what is missing from the module pack, say what cannot be met, load it).
+So a device needs two calls and little more: give the stack a Pung device is playing (`GET`), and take one
+(`POST`: check it, say what cannot be met, keep it, load it). Installing what is missing stays where it is:
+the Modules page, which the Stacks page points to.
 
 ## Where the stacks are kept
 
@@ -84,6 +86,46 @@ So a device needs two calls and no more: give the stack a Pung device is playing
 - A device's state is kept and restored (`kept-states.json`), Pung's modulation in it (`pung_mod`).
 - pung.live knows the visitor's devices, of several kinds, and talks to each (`site/pushlink.js`).
 - The module pack installs what is missing, signed, on any device.
+
+## What is built (the first version, 2026-11-27)
+
+The whole trip, for the stack one Pung device holds on a Push: an instrument with the MIDI effect in front
+of it, or a MIDI generator, or an audio effect; each with Pung's modulation.
+
+- **The device** (`src/stacks.go`; the calls pung.live may make are in `src/sitecors.go`):
+  - `GET /api/stacks`: `playing` (every Pung device in the Set: `n`, module, name, its sound, the MIDI
+    effect in front) and `kept` (the stacks this device was sent, each `ready` or with what is `unmet`, and
+    `where` it is in Push's browser).
+  - `GET /api/stacks/playing/{n}`: the stack that device plays (the document above; `needs` derived: the
+    oldest Pung, firmware the modules ask for, how many are emulators).
+  - `POST /api/stacks {"stack", "check"?, "onto"?}`: with `check` it only says what this device lacks
+    (`unmet`: `install`, `restart`, `pung`, `firmware`, `unknown`, `shape`). Without, it keeps the stack
+    (`<data>/stacks/<name>.json`; one per `id`, so a stack renamed on pung.live and sent again is the same
+    one) and writes its rack; `onto: n` also loads it into that Pung device now (the device must be the
+    stack's instrument; it replaces what the device plays). A stack this device can never play (`shape`,
+    `unknown`, `pung`) is refused with 409 and not kept.
+  - `POST /api/stacks/remove {"id" | "name"}`.
+- **In Push's browser**: a kept stack is a Live rack, as a saved sound is (`sounds_racks.go`): the module's
+  own rack with the whole device state in it (MIDI effect, Pung's modulation), at User Library › Presets ›
+  Instruments › Pung › **Pung Stacks** (not "Stacks": the module of that name has its sounds' racks in a
+  folder so called). Loading it brings the device with the stack; the device names it (its sound is
+  `{"source":"stack","name":…}`). Only racks Pung wrote are replaced or removed (`.pung-racks`). A stack
+  whose module is not yet a device in Live here is kept and gets its rack at the first start that has the
+  module (after the install and the restart of Live).
+- **A device's MIDI effect travels by its id**, not by its place in the class's list (a device's state
+  keeps the place, which differs between devices): `stackState` maps it.
+- **pung.live** (`site/stacks.src.html`, `site/stacks.js`; in the menu once the site is launched): the
+  visitor's stacks as cards (the instrument's picture, the modules in order, Pung's modulation, what it
+  needs, which device keeps it), kept in the browser's IndexedDB (`pung` / `stacks`); *Take as a stack*
+  from what plays on a connected device; *Send to a device* (the device is asked first, and what it lacks
+  is said with the way to meet it); download and open as a file (`.pungstack`, the document itself); a file
+  dropped anywhere on the page; duplicate, rename, delete.
+- **Proven on a Push** (2026-11-27, Dexed): taken, sent, its rack loaded from Push's browser (the device
+  came up with the stack's state and name), loaded into a playing device (`onto`, on a device made without
+  Live), another instrument's stack refused, removed (rack and folder gone).
+
+Not built: effects behind an instrument in one stack, the eight knobs, building a stack on the website
+(choosing modules and their order), an account, sending to another kind of device.
 
 ## Open
 

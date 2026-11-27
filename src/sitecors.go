@@ -4,7 +4,8 @@ package main
 // on the visitor's own Push, over their home network, the way Pung's own
 // Modules page does: it reads the catalog with what is installed, installs and
 // updates modules, and restarts Live once new ones wait for it; its Your Push
-// page reads and changes Pung's settings. The browser
+// page reads and changes Pung's settings, and its Stacks page takes the stack
+// a Pung device is playing and sends one (stacks.go). The browser
 // asks the visitor first (Local Network Access, Chrome 142 and Firefox 151 on;
 // the page fetches with targetAddressSpace "local"), and lets the page read
 // Pung's answers only where Pung says pung.live may: here.
@@ -33,10 +34,17 @@ var siteSettings = map[string]bool{"touch_card": true, "own_pack_only": true}
 func siteCall(method, path string) bool {
 	switch method {
 	case http.MethodGet:
-		return path == "/api/catalog" || path == "/api/status" || path == "/api/settings" || path == "/api/system"
+		if path == "/api/catalog" || path == "/api/status" || path == "/api/settings" || path == "/api/system" || path == "/api/stacks" {
+			return true
+		}
+		// /api/stacks/playing/{n}: the stack a Pung device is playing (stacks.go)
+		n := strings.TrimPrefix(path, "/api/stacks/playing/")
+		return n != path && n != "" && strings.Trim(n, "0123456789") == ""
 	case http.MethodPost:
 		// the settings: Pung's own switches (Your Push on pung.live)
-		if path == "/api/catalog/update-all" || path == "/api/catalog/apply" || path == "/api/settings" {
+		// and a stack sent to this device, or one it should keep no longer (Stacks on pung.live)
+		if path == "/api/catalog/update-all" || path == "/api/catalog/apply" || path == "/api/settings" ||
+			path == "/api/stacks" || path == "/api/stacks/remove" {
 			return true
 		}
 		// /api/catalog/{id}/install

@@ -147,6 +147,13 @@ func soundRack(tmpl []byte, c *sclass, name, state string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return stateRack(tmpl, name, string(js))
+}
+
+// stateRack: a module's rack with this device state in it (what the plugin
+// itself saves: devices.go, State), named name.
+func stateRack(tmpl []byte, name, state string) ([]byte, error) {
+	js := []byte(state)
 	blob := make([]byte, 4+len(js))
 	binary.LittleEndian.PutUint32(blob, uint32(len(js)))
 	copy(blob[4:], js)
