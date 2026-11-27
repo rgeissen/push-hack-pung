@@ -315,8 +315,8 @@ before and linked in the footer.
   it; the owner's word, 2026-11-27): the logo as wide as the page, and its dot rides from the G through N
   and U to its place on the P (a ball on a track: slower the higher it is; one mask over all four letters,
   so the gap travels with it). Once as the page opens, again on a press, never where motion is turned down
-  or without the script (the logo then stands as drawn). The bar's small logo is hidden while the large one
-  is in view. The small logo's offset is 0.8 px at 22 px high (27.4 of the drawing's 740.9 units).
+  or without the script (the logo then stands as drawn). The bar keeps its small logo, still, on that page
+  too: hiding it while the large one was in view read as a logo gone missing (the owner, 2026-11-27). The small logo's offset is 0.8 px at 22 px high (27.4 of the drawing's 740.9 units).
 - **The tagline is "The open instrument platform"** (the owner's word, 2026-11-27; treatment B chosen from a
   mockup after A had been live for an hour): spaced capitals under the logo, one line as wide as the logo
   (`.tag`, sized by `ride.js`); it is the footer's line and the link preview's too. "Open music modules, at

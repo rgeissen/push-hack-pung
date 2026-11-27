@@ -120,9 +120,4 @@ function PungRide(svg) {
   addEventListener("resize", fit);
   addEventListener("DOMContentLoaded", fit);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
-  // the bar's small logo is shown once the large one has scrolled away
-  const bar = document.querySelector(".topbar");
-  if (bar && "IntersectionObserver" in window) {
-    new IntersectionObserver((es) => bar.classList.toggle("over-logo", es[0].isIntersecting), { rootMargin: "-56px 0px 0px 0px" }).observe(svg);
-  }
 })();
