@@ -72,10 +72,12 @@
   } else if (!PP && /^#add=/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search); // (a page that connects nothing: the hand-off's mark goes)
   function deployments() {
     if (onSite) {
-      if (PP) return PP.devices.map((d) => ({ id: d.id, name: PP.nameOf(d), kind: d.kind, addr: d.addr, state: d.state, version: d.version, behind: PP.behind(d) }));
+      // its dot: what this page knows (it is connected: pushlink.js), else what the deployment answered when
+      // this page asked (below); never "not answering" for one this page has not asked
+      if (PP) return PP.devices.map((d) => ({ id: d.id, name: PP.nameOf(d), kind: d.kind, addr: d.addr, state: d.state === "on" || d.state === "trying" ? d.state : reach[d.id] || "", version: d.version, behind: PP.behind(d) }));
       let l = [];
       try { l = JSON.parse(localStorage.getItem("pung.devices") || "[]") || []; } catch (e) { l = []; }
-      return clean(l).map((d) => ({ ...d, name: d.name || "Your " + KINDS[d.kind].short, state: "" }));
+      return clean(l).map((d) => ({ ...d, name: d.name || "Your " + KINDS[d.kind].short, state: reach[d.id] || "" }));
     }
     const mine = kept.list.find((d) => d.id === kept.self) || kept.list.find((d) => baseOf(d) === location.origin);
     const self = { id: mine ? mine.id : "self", name: (mine && mine.name) || "This " + KINDS.push.short, kind: mine ? mine.kind : "push",
@@ -83,15 +85,39 @@
     return [self, ...kept.list.filter((d) => d !== mine).map((d) => ({ ...d, name: d.name || "A " + KINDS[d.kind].short, state: reach[d.id] || "" }))];
   }
 
-  // ---- who answers (a deployment's page asks, when the list is opened) ---------------------------------------
+  // ---- who answers (asked when the page has loaded and when the list is opened) -------------------------------
   const reach = {};
   let siteUp = onSite ? true : null;
   function ping(url, ms) {
     const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
     return fetch(url, { mode: "no-cors", cache: "no-store", signal: c.signal }).then(() => true, () => false).finally(() => clearTimeout(t));
   }
+  // pung.live asks a deployment only where the browser lets it without putting a question to the visitor: where
+  // the visitor has allowed the home network (Chrome, Edge, Firefox on a computer ask for that, for a secure
+  // address too), or, in a browser with no such permission (Safari, everything on an iPad), a secure address.
+  // What it may not ask keeps a grey dot: not known, which is not "not answering".
+  async function allowed() {
+    for (const name of ["local-network", "local-network-access"]) {
+      try { return (await navigator.permissions.query({ name })).state; } catch (e) { /* no such permission by that name */ }
+    }
+    return "none";
+  }
+  async function askSite() {
+    const perm = await allowed();
+    for (const d of deployments()) {
+      if (PP && PP.devices.some((x) => x.id === d.id && (x.state === "on" || x.state === "trying"))) continue;
+      const url = new URL(baseOf(d)), tls = url.protocol === "https:", h = url.hostname;
+      if (!(perm === "granted" || (perm === "none" && (tls || location.protocol === "http:")))) { delete reach[d.id]; continue; }
+      const far = tls || /\.local$/i.test(h) || /^[\d.]+$/.test(h) || h.includes(":") ? {} : { targetAddressSpace: "local" };   // (as pushlink.js, reach)
+      const c = new AbortController(), t = setTimeout(() => c.abort(), 3000);
+      fetch(baseOf(d) + "/api/status", { ...far, mode: "no-cors", cache: "no-store", signal: c.signal }).then(() => true, () => false).then((ok) => {
+        clearTimeout(t); reach[d.id] = ok ? "on" : "lost"; if (!box.querySelector(".pls-find:focus")) draw();
+      });
+    }
+  }
+  if (onSite) { if (document.readyState === "complete") askSite(); else addEventListener("load", () => askSite()); }
   function ask() {
-    if (onSite) return;
+    if (onSite) { askSite(); return; }
     ping(SITE + "install.json", 5000).then((ok) => { siteUp = ok; draw(); });
     for (const d of kept.list) {
       if (baseOf(d) === location.origin) continue;
