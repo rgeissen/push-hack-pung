@@ -467,6 +467,12 @@ for m in mods:
                    "archive": "source/" + src_name, "archive_size": os.path.getsize(src_path)},
         "assets": mj.get("assets") or None,
     })
+    # the oldest Pung that runs this version (modpack.go): the module's own
+    # word (module.json "min_pung"), or the policy's; an older Pung keeps
+    # the version its own pack has
+    min_pung = (policy.get("min_pung", {}).get(mid) if mid != "_doc" else None) or mj.get("min_pung")
+    if min_pung:
+        entry["min_pung"] = str(min_pung)
     published.append(entry)
     print(f"  {mid:20} {spdx:28} {entry['size'] // 1024:6} KB  source {entry['source']['archive_size'] // (1 << 20)} MB", flush=True)
 

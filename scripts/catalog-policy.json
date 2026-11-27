@@ -15,5 +15,8 @@
   "scratch": "played with Move's jog wheel or Serato control vinyl: neither reaches a device in Live on the Push",
   "strut": "its licence is PolyForm Strict 1.0.0 (no distribution, no changes): Pung may not ship it",
   "quilt": "its licence is PolyForm Strict 1.0.0 (no distribution, no changes): Pung may not ship it"
+ },
+ "min_pung": {
+  "_doc": "module id -> the oldest Pung that runs the catalog's version of it (the pack pung.live serves reaches older Pungs too: modpack.go). A module that uses something a Pung release added names that release here, or in its module.json (\"min_pung\")."
  }
 }

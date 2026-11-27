@@ -85,7 +85,7 @@ def footer():
     return """<footer class="band"><div class="wrap">
 <div class="links">
 <a href="https://github.com/rgeissen/push-hack-pung">Pung on GitHub</a>
-<a href="https://github.com/rgeissen/push-hack-pung/releases/latest">Latest release</a>
+<a href="INSTALL_LINK">Install</a>
 <a href="https://github.com/charlesvestal/schwung">Schwung</a>
 <a href="https://github.com/federico-pepe/ableton-push-hack">Push Hack</a>
 </div>
@@ -166,7 +166,7 @@ def build(name):
     # (install.json, installer.available); <!--if:!installer--> until then
     for flag, on in (("installer", INSTALLER), ("!installer", not INSTALLER), ("launched", LAUNCHED), ("!launched", not LAUNCHED)):
         src = re.sub(r"<!--if:%s-->(.*?)<!--endif-->" % re.escape(flag), (lambda m: m.group(1)) if on else "", src, flags=re.S)
-    src = src.replace("{{TOPBAR}}", topbar(name)).replace("{{FOOTER}}", footer())
+    src = src.replace("{{TOPBAR}}", topbar(name)).replace("{{FOOTER}}", footer().replace("INSTALL_LINK", LINKS["install"]))
     for key in LINKS:
         src = src.replace("{{LINK:%s}}" % key, LINKS[key])
     left = re.findall(r"\{\{[^}]*\}\}|\[\[[^\]]*\]\]", src)
@@ -225,18 +225,15 @@ def module_limits():
     return out
 
 
-def modules_page(out):
-    """pung.live/modules/: Pung's own Modules page (src/web/modules.js in its
-    public mode, site/modules.html), the release's catalog as Pung's API
-    answers it, and the pictures of each module's screens (make screens)"""
-    cat = next((p for p in (os.path.join(ROOT, "dist", "pung", "catalog", "catalog.json"),
-                            os.path.join(ROOT, "build", "catalog", "catalog.json")) if os.path.exists(p)), None)
-    screens = os.path.join(ROOT, "build", "screens")
-    if not cat or not os.path.exists(os.path.join(screens, "index.json")):
-        sys.exit("the Modules page needs the catalog (build-catalog.py, or make release) and the screens (make screens)")
+GITHUB_SOURCES = "https://github.com/rgeissen/push-hack-pung/releases/download/sources"
+PACK_SOURCES = "https://pung.live/catalog/source"  # beside the pack pung.live serves (publish-catalog.sh)
+
+
+def modules_data(cat, sources):
+    """a catalog as Pung's own API answers it (src/modmgr.go, view): what the
+    Modules page reads. sources: where a catalog built here has its sources"""
     doc = json.load(open(cat))
     limits = module_limits()
-    sources = "https://github.com/rgeissen/push-hack-pung/releases/download/sources"
     rows = []
     for e in doc["modules"]:
         if e.get("component_type") not in INSTALLABLE:
@@ -244,7 +241,7 @@ def modules_page(out):
         r = {k: v for k, v in e.items() if k not in ("asset", "sha256")}
         src = dict(r.get("source") or {})
         if src.get("archive") and not re.match(r"https?://", src["archive"]):
-            src["archive"] = sources + "/" + os.path.basename(src["archive"])  # a catalog built here: its sources as published
+            src["archive"] = sources + "/" + os.path.basename(src["archive"])
         r["source"] = src
         r.update({"supported": True, "in_catalog": True, "status": "available", "installed": "", "managed": False})
         if e["id"] in limits:
@@ -252,8 +249,23 @@ def modules_page(out):
         rows.append(r)
     rows.sort(key=lambda r: r["name"].lower())
     pung = json.load(open(os.path.join(ROOT, "hack.json")))["version"] if LAUNCHED else RELEASED
-    data = {"ok": True, "apply": None, "pending": [], "restarting": False, "modules": rows,
+    return {"ok": True, "apply": None, "pending": [], "restarting": False, "modules": rows,
             "catalog": {"generated_at": doc.get("generated_at", ""), "taxonomy": doc.get("taxonomy", {}), "base_url": "", "pung": pung}}
+
+
+def modules_page(out):
+    """pung.live/modules/: Pung's own Modules page (src/web/modules.js in its
+    public mode, site/modules.html), the release's catalog as Pung's API
+    answers it, and the pictures of each module's screens (make screens).
+    Once pung.live serves a pack, publish-catalog.sh replaces its catalog.json
+    with that pack's (--modules-data): the page and a Push read the same."""
+    cat = next((p for p in (os.path.join(ROOT, "dist", "pung", "catalog", "catalog.json"),
+                            os.path.join(ROOT, "build", "catalog", "catalog.json")) if os.path.exists(p)), None)
+    screens = os.path.join(ROOT, "build", "screens")
+    if not cat or not os.path.exists(os.path.join(screens, "index.json")):
+        sys.exit("the Modules page needs the catalog (build-catalog.py, or make release) and the screens (make screens)")
+    data = modules_data(cat, GITHUB_SOURCES)
+    rows = data["modules"]
     d = os.path.join(out, "modules")
     if os.path.exists(d):
         shutil.rmtree(d)
@@ -272,6 +284,9 @@ def modules_page(out):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args[:1] == ["--modules-data"]:  # OUT CATALOG: the Modules page's data for a pack pung.live serves
+        json.dump(modules_data(args[2], PACK_SOURCES), open(args[1], "w"), separators=(",", ":"))
+        sys.exit(0)
     if args[:1] == ["--pages"]:
         OUT = args[1]
         os.makedirs(OUT, exist_ok=True)

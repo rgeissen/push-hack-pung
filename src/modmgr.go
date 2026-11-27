@@ -125,6 +125,9 @@ type catalogEntry struct {
 	// 2: with the factory patches the first package left out). The same
 	// version with a higher revision is an update.
 	Rev int `json:"pung_rev,omitempty"`
+	// MinPung: the oldest Pung that runs this version of the module; an
+	// older Pung does not offer it (modpack.go)
+	MinPung string `json:"min_pung,omitempty"`
 }
 
 // moduleRev: the packaging revision an installed module came with
@@ -176,6 +179,9 @@ type modMgr struct {
 	catFetched time.Time // when the copy in cat was fetched
 	catOffline bool      // the last fetch failed: cat is the cached copy
 	catErr     string
+	catSource  string            // "pung" (the pack that came with Pung) | "pung.live"; "" a catalog named in the settings
+	packErr    string            // why pung.live's pack was not read, if it was not
+	local      map[string]string // packages on this Push's disk, by checksum (modpack.go)
 	jobs       map[string]*modJob
 	queue      chan string
 	pending    []string // changes Live has not seen yet (persisted)
@@ -231,6 +237,10 @@ func (mm *modMgr) catalogURL() string {
 // catalog: the catalog, fetched again when older than catalogTTL (force: now).
 // Offline, the last copy, marked so.
 func (mm *modMgr) catalog(force bool) {
+	if mm.h.settings.get().CatalogURL == "" {
+		mm.catalogPack(force) // Pung's own pack and pung.live's (modpack.go)
+		return
+	}
 	url := mm.catalogURL()
 	if url == "" {
 		mm.mu.Lock()
@@ -266,6 +276,7 @@ func (mm *modMgr) catalog(force bool) {
 		doc.BaseURL = strings.TrimSuffix(url, "/catalog.json")
 	}
 	mm.cat, mm.catURL, mm.catFetched, mm.catOffline, mm.catErr = &doc, url, time.Now(), false, ""
+	mm.local, mm.catSource, mm.packErr = nil, "", ""
 	raw, _ := json.Marshal(map[string]any{"fetched": mm.catFetched, "url": url, "doc": doc})
 	writeFileAtomic(mm.path("catalog-cache.json"), raw)
 }
@@ -745,21 +756,33 @@ func (mm *modMgr) worker() {
 	}
 }
 
+// assetSource: where a module's package is read from: this Push's disk when
+// the same package came with Pung (modpack.go), else the catalog's address
+func (mm *modMgr) assetSource(e catalogEntry) string {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
+	if p := mm.local[e.SHA256]; p != "" && e.SHA256 != "" {
+		return p
+	}
+	return strings.TrimSuffix(mm.cat.BaseURL, "/") + "/" + e.Asset
+}
+
 func (mm *modMgr) install(id string) error {
 	e, ok := mm.entry(id)
 	if !ok {
 		return errors.New("not in the catalog any more")
 	}
+	if pungTooOld(e) {
+		return fmt.Errorf("it needs Pung %s or later: update Pung first", e.MinPung)
+	}
 	sub := installSubdirs[e.ComponentType]
-	mm.mu.Lock()
-	base := mm.cat.BaseURL
-	mm.mu.Unlock()
+	src := mm.assetSource(e)
 
 	// download, checking size and checksum
 	mm.setJob(id, func(j *modJob) { j.State = "downloading" })
 	os.MkdirAll(mm.path(".downloads"), 0o755) //nolint:errcheck
 	pkg := mm.path(".downloads", filepath.Base(e.Asset))
-	if err := mm.download(id, strings.TrimSuffix(base, "/")+"/"+e.Asset, pkg, e.Size); err != nil {
+	if err := mm.download(id, src, pkg, e.Size); err != nil {
 		return err
 	}
 	defer os.Remove(pkg)
@@ -1099,6 +1122,8 @@ type moduleRow struct {
 	Job         *modJob      `json:"job,omitempty"`
 	AssetState  []assetState `json:"asset_state,omitempty"`
 	Limits      *moduleLimit `json:"limits,omitempty"` // limits.go
+	// NeedsPung: the catalog's version asks for this Pung or a later one
+	NeedsPung string `json:"needs_pung,omitempty"`
 }
 
 func (mm *modMgr) view() map[string]any {
@@ -1119,8 +1144,13 @@ func (mm *modMgr) view() map[string]any {
 	if mm.cat != nil {
 		cat = *mm.cat
 	}
-	meta := map[string]any{"url": mm.catalogURL(), "generated_at": cat.GeneratedAt, "base_url": cat.BaseURL, "taxonomy": cat.Taxonomy,
-		"offline": mm.catOffline, "error": mm.catErr, "have": mm.cat != nil}
+	url := mm.catURL
+	if url == "" {
+		url = mm.catalogURL()
+	}
+	meta := map[string]any{"url": url, "generated_at": cat.GeneratedAt, "base_url": cat.BaseURL, "taxonomy": cat.Taxonomy,
+		"offline": mm.catOffline, "error": mm.catErr, "have": mm.cat != nil,
+		"source": mm.catSource, "pack_error": mm.packErr}
 	if !mm.catFetched.IsZero() {
 		meta["fetched_at"] = mm.catFetched
 	}
@@ -1141,7 +1171,7 @@ func (mm *modMgr) view() map[string]any {
 			if i.Managed {
 				rev = moduleRev(i.Dir)
 			}
-			if updateFor(i.Version, rev, e) {
+			if updateFor(i.Version, rev, e) && !pungTooOld(e) {
 				r.Status = "update"
 				r.Repacked = !versionLess(i.Version, e.Version)
 			}
@@ -1151,6 +1181,12 @@ func (mm *modMgr) view() map[string]any {
 			}
 			if r.SurfaceApp == "" {
 				r.SurfaceApp = i.SurfaceApp
+			}
+		}
+		if pungTooOld(e) {
+			r.NeedsPung = e.MinPung
+			if r.Status == "available" {
+				r.Status = "needs-pung"
 			}
 		}
 		if r.Origin != "pung" {

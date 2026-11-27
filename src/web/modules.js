@@ -162,7 +162,13 @@
     const when = c.fetched_at ? ago(new Date(c.fetched_at)) : "";
     if (c.offline && c.have) s.innerHTML = `<span class="warn">Offline</span> · the catalog as read ${esc(when)} · ${esc(c.error || "")}`;
     else if (c.offline) s.innerHTML = `<span class="warn">The catalog cannot be read</span> · ${esc(c.error || "")}`;
-    else s.textContent = `Catalog updated ${c.generated_at ? ago(new Date(c.generated_at)) : "?"}`;
+    else {
+      // where the pack is from (modpack.go): pung.live's, or the one that came with Pung
+      const when = c.generated_at ? ago(new Date(c.generated_at)) : "?";
+      const from = c.source === "pung.live" ? "Modules from pung.live" : c.source === "pung" ? "The modules that came with Pung" : "Catalog";
+      s.textContent = `${from} · updated ${when}`;
+      s.title = c.source === "pung" && c.pack_error ? `pung.live was not read (${c.pack_error}): Pung goes on with its own modules` : "";
+    }
   }
 
   // Update all: every module with an update, queued at once (each installs as
@@ -266,6 +272,7 @@
         <span class="pstate">${esc(STATE[j.state] || j.state)}${pct !== null ? " " + pct + "%" : "…"}</span>`;
     }
     if (j && j.state === "failed") return `<button type="button" class="act retry" data-act="install">Try again</button>`;
+    if (x.status === "needs-pung") return `<a class="act" href="${PUBLIC ? "../manual.html#update" : "https://pung.live/manual.html#update"}" ${PUBLIC ? "" : 'target="_blank" rel="noopener"'} title="This module needs Pung ${esc(x.needs_pung)} or later: update Pung first">Needs Pung ${esc(x.needs_pung)}</a>`;
     if (x.status === "update") return `<button type="button" class="act primary" data-act="install"${x.repacked ? ' title="The same version, packed again by Pung with files the first package left out"' : ""}>${x.repacked ? "Update (new build)" : "Update to " + esc(x.version)}</button>`;
     if (x.status === "installed") return `<span class="done">Installed ${esc(x.installed || "")}</span>`;
     if (x.status === "builtin") return `<span class="done">Built into Pung</span>`;
@@ -650,7 +657,7 @@
     const rows = site.modules.map((x) => {
       const p = by.get(x.id);
       if (!p) return { ...x, push_missing: true };
-      return { ...x, status: p.status, installed: p.installed, version: p.version || x.version, job: p.job, managed: p.managed,
+      return { ...x, status: p.status, installed: p.installed, version: p.version || x.version, job: p.job, managed: p.managed, needs_pung: p.needs_pung,
         in_use: p.in_use, repacked: p.repacked, asset_state: p.asset_state, assets_missing: p.assets_missing, assets_ready: p.assets_ready };
     });
     return { ...site, modules: rows, pending: push.data.pending, apply: push.data.apply, restarting: push.data.restarting };

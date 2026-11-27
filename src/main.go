@@ -201,7 +201,7 @@ func main() {
 	// "live_devices" lets push-catalog remove the browser entries with it.
 	// Pung.vst3: Pung's plugins in Live, Pung's browser folders. (The rename
 	// from Schwung, 2026-11-15, gave the classes new UIDs: devices.go.)
-	bcfg := livedevice.BundleConfig{Vendor: "Pung", URL: "https://github.com/federico-pepe/ableton-push-hack", Socket: *socket}
+	bcfg := livedevice.BundleConfig{Vendor: "Pung", URL: "https://pung.live", Socket: *socket}
 	if *presets != "" {
 		bcfg.Presets = livedevice.PresetFolders(*presets, "Pung", classes)
 	}

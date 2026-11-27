@@ -226,6 +226,25 @@ changes rarely: when it does, pung.live is down until the record is changed). Sc
 from `PUNG_LIVE_HOST` (`scripts/pung-live-env.sh`) and touch nothing outside that folder: the share
 serves other sites.
 
+## The module pack
+
+A release carries its pack (`catalog/` beside the binary: every module, installed from the Push's disk), and
+pung.live serves the current one (`scripts/publish-catalog.sh` -> `pung.live/catalog/`, signed). Pung from 0.6.0
+on takes the newer of the two (`src/modpack.go`); a package whose checksum its own pack has is read from the
+disk; offline it goes on with its own. `own_pack_only` in the settings never asks.
+
+- **The pack key.** A served pack is taken only when signed with Pung's pack key: the public half is in
+  `modpack.go`, the private one is the owner's (`~/.config/pung/pack-signing.key`, `scripts/packsign`), in no
+  repository and no backup of this one. **Never make a new key**: every Pung in the world would refuse the
+  packs from then on, until it is updated by a release. Losing it means the same.
+- **`min_pung`** (a module's `module.json`, or `scripts/catalog-policy.json`): the pack reaches older Pungs too.
+  A module that uses something a Pung release added (a `g.*` call, a `live_mod` key Pung must know) names that
+  release, or older Pungs install a module they cannot draw. Such a Pung keeps the version its own pack has.
+- A staging copy: `PUNG_PACK_URL` in Pung's environment (still must be signed). Tests never ask pung.live
+  (`modpack_test.go` points `packURL` at nothing).
+- Publishing a pack also rewrites `pung.live/modules/catalog.json`: the site's Modules page and a Push read
+  the same pack.
+
 ## Native instruments (gearmulator)
 
 - Engine pattern (Nodal Red first, then the others): the emulator on its own thread at FIFO 45 rendering

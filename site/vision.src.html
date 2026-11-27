@@ -223,7 +223,12 @@
       <li>A module is published only when its licence is known: a licence file, its <code>module.json</code>, its README, or a recorded permission.</li>
       <li>Every package carries its licence texts and build notes. The complete source of every build is published beside it, as GPL-3.0 section 6(d) asks.</li>
       <li>Firmware and ROMs are never in a package. Modules that need them (JE-8086, Mini-JV, Osirus) take the file you add yourself, recognised by its checksum.</li>
+<!--if:!launched-->
       <li>A Pung release is one file with the whole catalog inside. The Modules page installs from that copy on the Push's own disk: nothing is downloaded at install.</li>
+<!--endif-->
+<!--if:launched-->
+      <li>A Pung release is one file with the whole module pack inside. The Modules page installs from that copy on the Push's own disk; only a module that is newer on pung.live is downloaded, from a pack signed with Pung's key.</li>
+<!--endif-->
     </ul>
   </div>
 </section>
@@ -237,7 +242,12 @@
       <li><strong>Convert.</strong> New modules and new releases are built for the Push's x86-64 from their source at the release tag, checked, and packaged with their licence texts, build notes and complete source, into a staging catalog. Builds run at the lowest priority with two compiles at once, so the machine they share keeps its other work.</li>
       <li><strong>Review and serve.</strong> Nothing reaches users on its own: a maintainer reviews the staging catalog and publishes it, and can put the previous catalog back. Pung's Modules page reads a served catalog as readily as the one inside its release.</li>
     </ul>
+<!--if:!launched-->
     <p><strong>During the test phase</strong>, modules ship inside each Pung release: one file, nothing to host, and every tester on the same set. <strong>When the test phase is over</strong>, the plan is to switch on the served catalog, so new modules and module updates reach every Push as Schwung publishes them, without waiting for a Pung release.</p>
+<!--endif-->
+<!--if:launched-->
+    <p><strong>Two packs.</strong> Every Pung release carries its module pack, so a Push installs every module from its own disk, offline. And pung.live serves the current pack: a Push that is online takes it when it is newer, and new modules and module updates reach it without waiting for a Pung release. A pack is taken only with Pung's signature, and only what is new is downloaded.</p>
+<!--endif-->
   </div>
 </section>
 
@@ -305,7 +315,9 @@
       <li><strong>Overtake modules</strong>, which take over Move's whole surface, need a Move compatibility runtime and do not run yet.</li>
       <li><strong>Modules render at 44.1 kHz.</strong> At another Live sample rate, pitch and tempo are off.</li>
       <li><strong>Next on the Push screen:</strong> more instruments telling their own live state, as Mini-JV does, and custom screens for the instruments that deserve them (Braids and OB-Xd first).</li>
+<!--if:!launched-->
       <li><strong>After the test phase:</strong> the served catalog from the module pipeline, so modules update as Schwung publishes them.</li>
+<!--endif-->
       <li><strong>Next for installing:</strong> browsing and installing modules from the Push itself.</li>
       <li><strong>Beyond the Push:</strong> Pung as a plugin on the desktop, the first device after the Push (see <a href="#devices">Where Pung goes</a>).</li>
     </ul>

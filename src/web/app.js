@@ -827,6 +827,17 @@
       if (!r.ok) { box.checked = !box.checked; toast(r.error || "The setting could not be saved.", true); }
       else toast(box.checked ? "The detail card is on." : "The detail card is off.");
     };
+    // where modules come from (modpack.go)
+    const own = $("pref-own-pack");
+    if (!own) return;
+    try { own.checked = !!(await api("/api/settings")).settings.own_pack_only; } catch (e) { return; }
+    own.onchange = async () => {
+      let r = { ok: false };
+      try { r = await post("/api/settings", { own_pack_only: own.checked }); } catch (e) { /* said below */ }
+      if (!r.ok) { own.checked = !own.checked; toast(r.error || "The setting could not be saved.", true); return; }
+      toast(own.checked ? "Only the modules that came with Pung." : "Pung asks pung.live for newer modules.");
+      api("/api/catalog?refresh=1").catch(() => {});
+    };
   }
 
   async function boot() {

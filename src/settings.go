@@ -22,6 +22,9 @@ type settings struct {
 	// CatalogURL: where the Modules page reads the module catalog; empty:
 	// the one that came with Pung (modmgr.go)
 	CatalogURL string `json:"catalog_url,omitempty"`
+	// OwnPackOnly: only the modules that came with this Pung; pung.live is
+	// never asked for a newer pack (modpack.go)
+	OwnPackOnly bool `json:"own_pack_only,omitempty"`
 }
 
 type settingsStore struct {
