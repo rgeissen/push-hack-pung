@@ -399,6 +399,19 @@ before and linked in the footer.
   scroll when a phone is too narrow for all four). Under the logo, as it first was, it made the bar twice
   as tall on an iPad. Look at it without a Push: the
   scratch `layout/web-standin.sh` (the new build, three devices made without Live, port 7734).
+- **The place switcher** (`src/web/places.js`; the owner's word, 2026-11-27: one consistent way between the
+  coordinator, pung.live, and a child, a deployment's own page, and back, with many children): one control
+  that names where you are (pung.live, or the deployment with its state) and opens the list of pung.live and
+  every deployment; a press switches in the same tab, to the same section there (Modules to Modules). Its
+  seat: the right end of the bar beside the theme switch, on pung.live (`places()` in `build.py`, once
+  launched) and on a deployment's page; under the logo where the rail stands at the left. One file for both:
+  Pung has it built in, the site's build copies it; it brings its own styles in the page's colours.
+  pung.live knows the deployments (the browser's `pung.devices`); a deployment's page knows itself and
+  pung.live, and its siblings once pung.live has handed them over: switching carries the list
+  (`?places=<base64 JSON>`), the page keeps it (`pung.places`) and takes from it only names and home-network
+  addresses. Back goes through the old hand-off (`#add=<address>`, `pushlink.js` `arrived`). The rail's
+  links to pung.live are gone but the Manual's. Try it without a Push: `layout/web-standin.sh` and a scratch
+  build of the launched site, with `pung.devices` put into the browser's storage.
 - **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
   folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS

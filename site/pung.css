@@ -298,6 +298,9 @@ button.copy:hover { border-color: var(--pung); }
   .anno .pin { width: 15px; height: 15px; font-size: 0.56rem; line-height: 15px; box-shadow: 0 0 0 1.5px #000; }
 }
 
+/* the place switcher's seat in the bar (src/web/places.js brings its own looks) */
+.topbar [data-places] { margin-left: 6px; }
+.topbar [data-places] + .theme-sw { margin-left: 8px; }
 /* the logo in the top bar: it rides once as a page opens, still where motion is turned down */
 .mark .logo { display: block; line-height: 0; }
 .mark .logo svg { height: 22px; width: auto; display: block; margin-left: -0.8px; /* the P begins that far inside the drawing's box at this height: its edge on the page's */ }

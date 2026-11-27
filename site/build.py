@@ -141,6 +141,12 @@ def biglogo():
 {open(os.path.join(HERE, "ride.js")).read()}</script>"""
 
 
+def places(here, up=""):
+    """the place switcher's seat in a bar (src/web/places.js: pung.live and every deployment, one press apart);
+    only once the site talks to deployments at all (launched)"""
+    return f'<div data-places="site" data-here="{here}" data-up="{up}"></div>' if LAUNCHED else ""
+
+
 def topbar(current):
     links = []
     for key, label in NAV:
@@ -149,7 +155,7 @@ def topbar(current):
     return f"""<header class="band topbar"><div class="wrap">
 <a class="mark{' quiet' if current == 'home' else ''}" href="{LINKS['home']}" aria-label="Pung, home">{logo()}</a>
 <nav aria-label="Pung">{''.join(links)}</nav>
-{theme_button()}
+{places(current)}{theme_button()}
 </div></header>"""
 
 
@@ -368,6 +374,7 @@ def build(name):
 {'<script src="visuals.js"></script><script src="hero.js"></script>' if live else ""}
 {'<script src="pushlink.js"></script><script src="deployments.js"></script>' if name == "deployments" else ""}
 {'<script src="pushlink.js"></script><script src="stacks.js"></script>' if name == "stacks" and LAUNCHED else ""}
+{'<script src="places.js"></script>' if LAUNCHED else ""}
 </body>
 </html>
 """
@@ -479,7 +486,7 @@ def modules_page(out):
     page = page.replace("<!--FOOTER-->", footer("modules", up="../", img=True))
     barlogo = themed(open(os.path.join(HERE, "brand", "pung-logo.svg")).read(), pung="var(--amber)", cyan="var(--mod)", ink="var(--fg)"
                      ).replace('id="ld"', 'id="mbl"').replace("url(#ld)", "url(#mbl)")
-    for mark, what in (("<!--THEME-HEAD-->", THEME_HEAD), ("<!--THEME-BUTTON-->", theme_button().replace('class="theme-sw"', 'class="theme-sw" style="margin-left:6px"')), ("<!--BAR-LOGO-->", barlogo)):
+    for mark, what in (("<!--THEME-HEAD-->", THEME_HEAD), ("<!--THEME-BUTTON-->", places("modules", "../") + theme_button().replace('class="theme-sw"', 'class="theme-sw" style="margin-left:6px"')), ("<!--BAR-LOGO-->", barlogo)):
         if mark not in page:
             sys.exit(f"modules.html: {mark} is missing")
         page = page.replace(mark, what)
@@ -510,12 +517,13 @@ if __name__ == "__main__":
     if OUT and not args:
         # the front page's playing screen
         shutil.copy2(os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(OUT, "visuals.js"))
+        shutil.copy2(os.path.join(ROOT, "src", "web", "places.js"), os.path.join(OUT, "places.js"))  # the place switcher: Pung's own file
         for f in ("hero.js", "pushlink.js", "pushlink.css", "footer.css", "deployments.js", "stacks.js"):
             shutil.copy2(os.path.join(HERE, f), os.path.join(OUT, f))
         # a script that does not parse leaves its page standing still, without a word (Your devices was
         # published so, 2026-11-27): no page is built with one
         node = shutil.which("node")
-        for f in ("hero.js", "ride.js", "pushlink.js", "deployments.js", "stacks.js", os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(ROOT, "src", "web", "modules.js")):
+        for f in ("hero.js", "ride.js", "pushlink.js", "deployments.js", "stacks.js", os.path.join(ROOT, "src", "web", "visuals.js"), os.path.join(ROOT, "src", "web", "modules.js"), os.path.join(ROOT, "src", "web", "places.js")):
             path = f if os.path.isabs(f) else os.path.join(HERE, f)
             if node and subprocess.run([node, "--check", path], capture_output=True).returncode != 0:
                 sys.exit(f"{os.path.basename(path)} does not parse (node --check): nothing is built from it")

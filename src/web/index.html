@@ -23,17 +23,14 @@
     <button type="button" data-view="modules" aria-current="false"><span class="ix">03</span><span class="lb">Modules</span><span class="count" id="view-modules-badge" hidden title="Updates"></span></button>
     <button type="button" data-view="setup" aria-current="false"><span class="ix">04</span><span class="lb">Setup</span></button>
   </nav>
+  <!-- the place switcher (places.js): this deployment, pung.live, and the deployments pung.live handed over -->
+  <div data-places="deployment"></div>
   <button class="theme-sw" id="theme-sw" type="button" aria-label="Switch between light and dark"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2z"/></svg></button>
   <div class="rail-foot">
     <div class="health" id="health" aria-live="polite"></div>
-    <!-- pung.live: where a thing has its home there (the device at a glance, every module with its
-         pictures, the manual), a link that takes this Push's address along, so pung.live opens with it
-         connected. Shown while this browser reaches pung.live (app.js, siteLinks). -->
+    <!-- the manual is on pung.live (shown while this browser reaches it: app.js, siteLinks); everything else
+         there is one press away in the place switcher -->
     <nav class="rail-site" id="rail-site" aria-label="On pung.live" hidden>
-      <p class="rail-k">On pung.live</p>
-      <a class="rail-link" id="site-device" href="https://pung.live/deployments.html" target="_blank" rel="noopener" title="Processor, memory and storage, Pung's version and updates: this Push at a glance">This Push <span aria-hidden="true">↗</span></a>
-      <a class="rail-link" id="site-modules" href="https://pung.live/modules/" target="_blank" rel="noopener" title="Every module with its screens; installs on this Push from there">All modules <span aria-hidden="true">↗</span></a>
-      <a class="rail-link" id="site-stacks" href="https://pung.live/stacks.html" target="_blank" rel="noopener" title="The stack of the Set that is open here, and what another Push needs for it">Stacks <span aria-hidden="true">↗</span></a>
       <a class="rail-link" href="https://pung.live/manual.html" target="_blank" rel="noopener">Manual <span aria-hidden="true">↗</span></a>
     </nav>
   </div>
@@ -251,5 +248,6 @@
 <script src="/sounds.js"></script>
 <script src="/library.js"></script>
 <script src="/modules.js"></script>
+<script src="/places.js"></script>
 </body>
 </html>

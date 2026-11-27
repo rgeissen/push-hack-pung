@@ -692,6 +692,22 @@ svg .moddot { fill: #3cc8e6; stroke: var(--panel, #111); stroke-width: 1.5; }
 }
 :root[data-theme="light"] .theme-sw .sun { display: none; }
 :root[data-theme="light"] .theme-sw .moon { display: block; }
+/* ---- the place switcher (places.js): under the logo where the rail stands at the left, at the bar's right end
+   beside the theme switch where the rail lies across the top ----------------------------------------------- */
+.rail > [data-places] { order: 1; padding: 0 16px 12px; border-bottom: 1px solid var(--line); }
+.rail > [data-places] .pls-btn { width: 100%; max-width: none; }
+.rail > [data-places] .pls-car { margin-left: auto; }
+.rail > .brand { order: 0; border-bottom: 0; padding-bottom: 14px; }
+.rail > .views { order: 2; }
+.rail > .rail-foot { order: 3; }
+@media (max-width: 1200px) {
+  .rail > [data-places] { order: 3; padding: 0; border: 0; align-self: center; margin-left: 8px; }
+  .rail > [data-places] .pls-btn { width: auto; max-width: min(40vw, 220px); }
+  .rail > [data-places] .pls-car { margin-left: 0; }
+  .rail > .brand { padding-bottom: 10px; }
+  .rail > .theme-sw { order: 4; }
+}
+@media (max-width: 620px) { .rail > [data-places] .pls-btn { height: 28px; padding: 0 8px; font-size: 12.5px; max-width: 34vw; } .rail > [data-places] { margin-left: 4px; } }
 /* in the rail it stands at the right of the version's line; where the rail lies across the top (a tablet, a
    phone) it stands at the bar's right end, as on pung.live, and never under the logo */
 .rail > .theme-sw { position: absolute; top: 46px; right: 18px; }
