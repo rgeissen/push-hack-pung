@@ -377,6 +377,11 @@ before and linked in the footer.
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
   folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS
   does: look for elements beyond the screen's edges instead of trusting `scrollWidth`.
+- **The Vision page says the same as the front page** (aligned 2026-11-27): Pung as an open platform for
+  instruments, the slogan as its headline, the two interface levels by their names, the Pung stack and a
+  Set's stack with the Set contract's five promises in one sentence, and where Pung goes (Push today, Live
+  on the desktop next, other music programs and hardware later). In its running text hardware is
+  "hardware" or "wherever Pung runs"; "device" is Live's. Nothing there about what will be sold.
 - **The hero's views** (`site/hero.js`): PUNG CUSTOM, the front panels of Pung's five own instruments as loops
   (`site/hero/<id>.mp4` + `.png`), and PUNG DEFAULT, the live-drawn page; they take turns until a tab is pressed.
   `scripts/hero-loops.sh` records the loops from Pung's own renderer (`src/heroframes_test.go`: a chord, the
