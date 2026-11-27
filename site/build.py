@@ -133,7 +133,7 @@ def footer(current="", up="", img=False):
 <div class="sf-top">
 <div class="sf-brand">
 <a class="sf-logo" href="{href('home')}" aria-label="Pung, home">{mark}</a>
-<p class="sf-tag">Open music modules, at home on every device.</p>
+<p class="sf-tag">The open instrument platform.</p>
 <a class="sf-get" href="{href('deployments')}#install">Get Pung on your Push →</a>
 </div>
 <nav class="sf-col" aria-label="Pung"><p class="sf-k">Pung</p>{links(NAV)}</nav>

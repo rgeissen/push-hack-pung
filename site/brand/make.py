@@ -168,14 +168,15 @@ def main(ttf):
         chrome_png(page(inner, n, n, DARK["tile"]), n, n, os.path.join(HERE, name))
     # the link preview (1200 x 630)
     logo = open(os.path.join(HERE, "pung-logo.svg")).read()
+    # the logo and its tagline as on the front page: one mark, the tagline as wide as the logo
     og = (f'<style>@font-face{{font-family:A;src:url("file://{os.path.abspath(ttf)}")}}</style>'
-          f'<div style="width:1200px;height:630px;box-sizing:border-box;padding:96px 104px;background:{DARK["ground"]};'
+          f'<div style="width:1200px;height:630px;box-sizing:border-box;padding:84px 104px 76px;background:{DARK["ground"]};'
           f'display:flex;flex-direction:column;justify-content:space-between;font-family:A,Helvetica,Arial,sans-serif;'
-          f'font-stretch:112%">'
-          + logo.replace("<svg ", '<svg style="height:96px;width:auto" ', 1)
-          + f'<div style="color:{DARK["ink"]};font-size:64px;font-weight:800;line-height:1.05;letter-spacing:-0.01em">'
-          f'Open music modules,<br>at home on every device.</div>'
-          f'<div style="color:#a39e94;font-size:26px">Instruments · audio effects · MIDI generators · pung.live</div></div>')
+          f'font-stretch:112%"><div>'
+          + logo.replace("<svg ", '<svg style="display:block;width:992px;height:auto;margin-left:-13px" ', 1)
+          + f'<div style="color:{DARK["ink"]};font-size:58.5px;font-weight:800;line-height:1;letter-spacing:-0.012em;'
+          f'white-space:nowrap;margin-top:26px">The open instrument platform</div></div>'
+          f'<div style="color:#a39e94;font-size:26px">Open music modules, at home on every device · pung.live</div></div>')
     chrome_png(page(og, 1200, 630, DARK["ground"]), 1200, 630, os.path.join(HERE, "og-image.png"))
     for f in sorted(os.listdir(HERE)):
         if f != "make.py":
