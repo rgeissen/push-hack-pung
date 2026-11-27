@@ -351,7 +351,11 @@ before and linked in the footer.
   mandatory` on that page alone (`html:has(main.front)`), each section a start, the foot the page's end (or
   it could not be reached), the bar's real height as the room above (`ride.js`; two rows on a phone). A
   section taller than the screen scrolls freely inside. A new section there needs nothing more; a new
-  block that is not a `.sect` would be skipped over.
+  block that is not a `.sect` would be skipped over. **And one section has the screen to itself** ("no
+  overlap between the sections"): each is at least the screen under the bar tall, its content in the
+  middle; the last leaves the foot its room so the two fill the last screen together (`--bar`, `--foot`
+  from `ride.js`). Measured at 1180x700 (a tablet held wide, Safari's bars taken off): every section fits.
+  A section that grows must still fit there, or it is cut where the page settles.
 - **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
   folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS

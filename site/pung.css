@@ -360,6 +360,17 @@ button.copy:hover { border-color: var(--pung); }
 html:has(main.front) { scroll-snap-type: y mandatory; scroll-padding-top: calc(54px + env(safe-area-inset-top, 0px)); }
 .hero.home, .front > .sect { scroll-snap-align: start; }
 .hero.home { scroll-margin-top: 50vh; }   /* (the first one settles on the page's very top, whatever the bar's height) */
+/* and where the page settles, one section has the screen to itself: each is at least as tall as the screen
+   under the bar, its content in the middle, so nothing of the next shows above or below it (the owner,
+   2026-11-27: "no overlap between the sections"). The last one leaves the foot its room, so the two fill
+   the last screen together. A section with more than a screen's worth is as tall as it needs.
+   (--bar and --foot: the bar's and the foot's real heights, from ride.js; 54 px and none until then) */
+.hero.home, .front > .sect { min-height: calc(100vh - var(--bar, 54px)); min-height: calc(100svh - var(--bar, 54px)); align-content: center; }
+.front > .sect:last-child { min-height: calc(100vh - var(--bar, 54px) - var(--foot, 0px)); min-height: calc(100svh - var(--bar, 54px) - var(--foot, 0px)); }
+.front > .sect .wrap { padding-block: clamp(28px, 6vh, 96px); }
+.front > .sect:last-child .wrap { padding-block: clamp(16px, 3vh, 60px); }   /* (so it and the foot fill the last screen together where they can) */
+.front > .stage .wrap { padding-block: clamp(16px, 3.5vh, 96px); gap: clamp(16px, 3vh, 40px); }   /* (the tallest: it must fit a tablet held wide) */
+.hero.home .wrap { padding-block: clamp(20px, 4vh, 56px); }
 html:has(main.front) .sf { scroll-snap-align: end; }
 
 /* The hero uses the page's width, on three lines every part keeps to: the left edge, a light rule between

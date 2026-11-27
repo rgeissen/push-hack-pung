@@ -109,11 +109,16 @@ function PungRide(svg) {
     else document.addEventListener("visibilitychange", function once() { if (document.visibilityState === "visible") { document.removeEventListener("visibilitychange", once); start(); } });
   }
   svg.addEventListener("click", go);
-  // scrolling settles on a section's start, just under the bar: the bar's height, which is two rows on a phone
-  const bar = document.querySelector(".topbar");
-  if (bar) {
-    const under = () => { document.documentElement.style.scrollPaddingTop = Math.round(bar.getBoundingClientRect().height) + "px"; };
-    under(); addEventListener("resize", under);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(under);
-  }
+  // scrolling settles on a section's start, just under the bar, and each section has the screen to itself:
+  // the stylesheet needs the bar's height (two rows on a phone) and the foot's (the last section leaves it room)
+  const bar = document.querySelector(".topbar"), root = document.documentElement;
+  const sizes = () => {
+    const b = bar ? Math.round(bar.getBoundingClientRect().height) : 54;
+    const foot = document.querySelector("footer.sf");   // (it comes after this script in the page: looked for each time)
+    root.style.scrollPaddingTop = b + "px";
+    root.style.setProperty("--bar", b + "px");
+    if (foot) root.style.setProperty("--foot", Math.round(foot.getBoundingClientRect().height) + "px");
+  };
+  sizes(); addEventListener("resize", sizes); addEventListener("load", sizes); addEventListener("DOMContentLoaded", sizes);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(sizes);
 })();
