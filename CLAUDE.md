@@ -319,7 +319,8 @@ before and linked in the footer.
   too: hiding it while the large one was in view read as a logo gone missing (the owner, 2026-11-27). The small logo's offset is 0.8 px at 22 px high (27.4 of the drawing's 740.9 units).
 - **The tagline is "The open instrument platform"** (the owner's word, 2026-11-27; treatment B chosen from a
   mockup after A had been live for an hour): spaced capitals under the logo, one line as wide as the logo
-  (`.tag`, sized by `ride.js`); it is the footer's line and the link preview's too. "Open music modules, at
+  (`.tag`, sized in the stylesheet alone: the column's width over the line's 29.24 em; a script that sized
+  it left an iPad turned to portrait with a page as wide as landscape); it is the footer's line and the link preview's too. "Open music modules, at
   home on every device." is the headline under it. Pung is spoken of as the platform (host, interface in two
   levels, modulation, governor, deployment), never as a collection of modules, and not as a Push add-on: the
   Push is where it is today (the "Today" line).
@@ -328,6 +329,10 @@ before and linked in the footer.
   version that went both ways and dimmed the P's stroke beyond the dot. Built in `ride.js`, played where
   the logo carries `data-twist` (`biglogo()`); approved from a mockup and on the site since 2026-11-27.
   Show a change to the logo's motion as a mockup first (an Artifact page with the real script).
+- **Safari's engine is on this Mac for tests** (Playwright's WebKit, in the scratch venv; 2026-11-27): it
+  renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
+  folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS
+  does: look for elements beyond the screen's edges instead of trusting `scrollWidth`.
 - **The hero's views** (`site/hero.js`): PUNG CUSTOM, the front panels of Pung's five own instruments as loops
   (`site/hero/<id>.mp4` + `.png`), and PUNG DEFAULT, the live-drawn page; they take turns until a tab is pressed.
   `scripts/hero-loops.sh` records the loops from Pung's own renderer (`src/heroframes_test.go`: a chord, the

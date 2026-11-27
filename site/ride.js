@@ -109,15 +109,4 @@ function PungRide(svg) {
     else document.addEventListener("visibilitychange", function once() { if (document.visibilityState === "visible") { document.removeEventListener("visibilitychange", once); start(); } });
   }
   svg.addEventListener("click", go);
-  // the tagline under it, as wide as the logo: its size from the column's width
-  const fit = () => document.querySelectorAll("[data-fit]").forEach((el) => {
-    const box = el.parentElement.clientWidth, s = el.firstElementChild;
-    if (!box || !s) return;
-    el.style.fontSize = "100px";
-    const w = s.getBoundingClientRect().width - (parseFloat(el.dataset.fit) || 0) * 100;   // (less the spacing after its last letter)
-    el.style.fontSize = w ? (100 * box / w).toFixed(2) + "px" : "";
-  });
-  addEventListener("resize", fit);
-  addEventListener("DOMContentLoaded", fit);
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
 })();

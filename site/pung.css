@@ -311,13 +311,17 @@ button.copy:hover { border-color: var(--pung); }
 .mark.quiet .logo.ride { display: none; }
 .mark.quiet .logo.still { display: block; }
 .biglogo { line-height: 0; margin: 0; }
-.biglogo svg { display: block; width: 100%; height: auto; overflow: visible; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.biglogo svg { display: block; width: 100%; height: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .hero.home .wrap { padding-top: clamp(4px, 1.2vw, 16px); }   /* (the room above the letters is the dot's: its hops) */
-/* the tagline is the logo's: one line of spaced capitals, as wide as the logo (ride.js sizes it to the
-   column once the typeface is there; until then, and without the script, close to it by the column's width) */
-.lockup { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(10px, 2.2vw, 30px); min-width: 0; container-type: inline-size; }
-.tag { margin: 0 -0.34em 0 0; font-family: var(--display); font-weight: 560; font-stretch: 112%; font-variation-settings: "wdth" 112;
-  white-space: nowrap; line-height: 1; letter-spacing: .34em; text-transform: uppercase; color: var(--muted); font-size: 2.9vw; font-size: 3.05cqw; }
+/* the tagline is the logo's: one line of spaced capitals, as wide as the logo. Its size is the column's
+   width over the line's own (29.24 em in Archivo at this width and spacing): from the stylesheet alone, so
+   it follows a turned tablet at once. A script that sized it kept the wider size after an iPad was turned
+   to portrait, and Safari then laid the whole page out that wide (2026-11-27). Nothing in the lockup may
+   make the page wider than the screen: it is clipped at its own edge. */
+.lockup { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(10px, 2.2vw, 30px); min-width: 0; container-type: inline-size; overflow: hidden; overflow: clip; }
+.tag { margin: 0; font-family: var(--display); font-weight: 560; font-stretch: 112%; font-variation-settings: "wdth" 112;
+  white-space: nowrap; line-height: 1; letter-spacing: .34em; text-transform: uppercase; color: var(--muted);
+  font-size: min(calc((100vw - 32px) * 0.0342), 39.67px); font-size: 3.42cqw; }
 /* under the logo and its tagline the line is the second thing said: smaller than on the other pages */
 .hero.home h1 { font-size: clamp(1.7rem, 3.5vw, 2.9rem); line-height: 1.06; }
 .lead b { font-weight: 700; }
