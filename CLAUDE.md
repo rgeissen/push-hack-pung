@@ -12,6 +12,7 @@ release, and native instruments built from gearmulator (`native/`).
 
 | Area | Read |
 |---|---|
+| How an instrument is built: an engine of five layers, a hardware interface, a web interface (a draft standard) | `docs/OPEN-INSTRUMENT.md` |
 | Push view behaviour, pictures, motion, budgets | `docs/UX-GUIDELINES.md` |
 | A module's `push_ui.js` (widgets, compartments, front panels, `g.*`) | `docs/overrides.md` |
 | Native modules (emulators): rules, measurements, each instrument's quirks | `docs/NATIVE-MODULES.md` |
@@ -444,6 +445,16 @@ hero, the foot, publishing) are in its repository: `site/CLAUDE.md`.
 ## Words
 
 - **Module**: one instrument, audio effect or MIDI generator.
+- **The Open Instrument format** (the owner, 2026-11-28; `docs/OPEN-INSTRUMENT.md`, a draft): how an instrument
+  is built. Three parts: the **engine** (the same everywhere; five layers inside: sound, parameters, state,
+  structure, live signals), the **hardware interface** (one per kind of hardware) and the **web interface**
+  (independent of the hardware). The two interfaces are independent of each other and add no meaning. The
+  package is the plate, not a layer. **The engine's interface is the format's own; modules written for
+  Schwung are accepted as they are**: never "in the Schwung format", never "Schwung compliant" (the owner's
+  words). Ableton Move is a kind of hardware, and a Schwung module's Move screen is its hardware interface
+  there. The picture is `docs/open-instrument/picture.html`, rendered to `picture.png` (a browser at 1160 px,
+  twice the size). The public wording elsewhere ("in the Schwung module format", README, site, skills) is
+  not changed yet: it changes when the owner publishes the standard.
 - **The Pung stack** (the owner's ambition, 2026-11-27): the modules, the host, how they appear in a DAW and
   how they get onto a machine; what the Reason Rack is to Reason's devices. **A stack**: what one Live Set
   uses of it: all its Pung devices with their modules, versions and states, and what they need; the MIDI and
