@@ -153,8 +153,8 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   Hack's picture (the owner, 2026-11-28). The frames (`src/bootride/`, 106 small pictures, 284 KB) are drawn by the site's
   own script: `site/boot-ride.py` after a change to the logo or its ride. `POST /api/debug/ride` plays it
   now. Seen on the owner's Push after a deploy and by that call (2026-11-28); **the start of a Push itself
-  not yet**. Proposed to Push Hack (branch `pr/startup-picture-hook` in the clone beside this one, not sent
-  as of that day): a hack whose `hack.json` says `"startup_picture": true` shows the picture itself and
+  not yet**. Proposed to Push Hack (pull request federico-pepe/ableton-push-hack#112, sent 2026-11-28; not
+  merged as of that day): a hack whose `hack.json` says `"startup_picture": true` shows the picture itself and
   push-manager leaves its stars out; Pung's `hack.json` says so already and begins at 8.3 s where
   push-manager's display status names it (`rideIsPungs`). The same ride is in the Pung Installer's window
   (`installer/ui/ride.js`, also written by `boot-ride.py`: never edited here): riding while it installs,
