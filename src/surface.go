@@ -173,7 +173,7 @@ type surface struct {
 }
 
 func newSurface(h *Host) *surface {
-	pm := pmclient.New("http://127.0.0.1:7701")
+	pm := pmclient.New(pmBase)
 	pm.App = "pung"
 	exe, _ := os.Executable()
 	u := &surface{h: h, pm: pm, view: "chain", touched: -1, peekEnc: -1, focus: -1, focusWake: make(chan struct{}, 1),

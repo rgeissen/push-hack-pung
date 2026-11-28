@@ -147,6 +147,7 @@ func main() {
 	h.sounds.routes(mux)
 	h.fileRoutes(mux)
 	h.sounds.libraryRoutes(mux)
+	registerRide(mux, *data)
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: withSiteCORS(mux), ReadHeaderTimeout: 5 * time.Second} // pung.live may talk to it (sitecors.go)
 	if ln == nil {
 		ln = listenWaiting(srv.Addr, 15*time.Second)
@@ -298,8 +299,9 @@ func main() {
 	go h.transport.watch()
 	saved := make(chan struct{})
 	go func() { h.autosave(stop); close(saved) }()
-	go h.prov.keepWhileRunning(stop) // the devices' states, for a Pung that does not stop cleanly
-	leave := func() {                // what a restart after a hang does with the surface (watchdog.go)
+	go h.prov.keepWhileRunning(stop)        // the devices' states, for a Pung that does not stop cleanly
+	go startRide(*data, buildVersion, stop) // the logo's ride on the Push's screen, as the Push starts or after an install (bootride.go)
+	leave := func() {                       // what a restart after a hang does with the surface (watchdog.go)
 		if surf.focused.Load() {
 			surf.pm.SurfaceLeave("live") //nolint:errcheck
 		}

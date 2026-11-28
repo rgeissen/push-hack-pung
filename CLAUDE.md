@@ -141,6 +141,17 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   hung Pung left the new one without its port and Pung down (2026-11-22). The devices' states are filed
   while Pung runs (`kept-states.json`, 2 s after a device goes quiet), so a Pung that hangs or crashes
   gives the next start every sound but the last seconds' (killed with `kill -9` on the Push, 2026-11-23).
+- **The logo's ride on the Push's screen** (`bootride.go`; the owner, 2026-11-28): as the Push starts, and once
+  after a new Pung was installed (`<data>/ride-shown` names the Pung), never when Pung restarts in a session.
+  The display alone, through push-manager's display calls without an app id (mode 2, frames, mode 0):
+  push-manager allows that only while neither Home nor an app has the surface, and nothing is shown
+  otherwise. **Push Hack's own start-up picture (the stars, "Push Hack loaded...") is push-manager's and has
+  no switch**: Pung waits until it is over (Push3 13.5 s old) and plays after it; replacing it needs a change
+  upstream. A picture drawn while Push3 is younger than 8 s is never shown and the last one freezes
+  (push-manager's README). The frames (`src/bootride/`, 106 small pictures, 305 KB) are drawn by the site's
+  own script: `site/boot-ride.py` after a change to the logo or its ride. `POST /api/debug/ride` plays it
+  now. Seen on the owner's Push after a deploy and by that call (2026-11-28); **the start of a Push itself
+  not yet**.
 - **Watchdog** (`watchdog.go`): a call into a module that runs past its limit (module load or destroy
   90 s, a parameter 30 s, a block or MIDI 5 s) restarts Pung as the same process (the hang in the log,
   `hangs.json`; the surface given back; states from `kept-states.json`). A module that hangs twice in
