@@ -13,7 +13,8 @@
 # loads it). Out: build/dev/out/modules/<type>/<id>/ and build/dev/out/dist/.
 #
 # Needs Docker, and Schwung's source for the host headers: SCHWUNG=<its
-# folder> (default ../schwung: git clone https://github.com/charlesvestal/schwung).
+# folder> (default ../schwung, beside this repository: git clone --depth 1
+# https://github.com/charlesvestal/schwung).
 # [id]: which module, when the working copy holds several.
 set -euo pipefail
 [ $# -ge 1 ] || { echo "usage: scripts/dev-module.sh <the module's working copy> [id]" >&2; exit 2; }
@@ -21,7 +22,7 @@ SRC=$(cd "$1" && pwd)
 WANT=${2:-}
 cd "$(dirname "$0")/.."
 SCHWUNG=${SCHWUNG:-../schwung}
-[ -f "$SCHWUNG/src/host/plugin_api_v1.h" ] || { echo "no Schwung source at $SCHWUNG (SCHWUNG=<folder>; git clone https://github.com/charlesvestal/schwung)" >&2; exit 2; }
+[ -f "$SCHWUNG/src/host/plugin_api_v1.h" ] || { echo "no Schwung source at $SCHWUNG (SCHWUNG=<folder>; git clone --depth 1 https://github.com/charlesvestal/schwung)" >&2; exit 2; }
 SCHWUNG=$(cd "$SCHWUNG" && pwd)
 IMAGE=${IMAGE:-push-hack-pung-modules}
 docker image inspect "$IMAGE" >/dev/null 2>&1 || {
@@ -58,6 +59,7 @@ kind = (j.get("capabilities") or {}).get("component_type") or j.get("component_t
 if kind not in ("sound_generator", "audio_fx", "midi_fx"):
     sys.exit("%s: module.json says component_type %r; Pung plays sound_generator, audio_fx and midi_fx" % (j["id"], kind))
 json.dump({"modules": [{"id": j["id"], "name": j.get("name", j["id"]), "component_type": kind,
+                        "description": j.get("description", ""), "author": j.get("author", ""),
                         "github_repo": "local/" + name, "default_branch": "main"}]}, open(out, "w"), indent=1)
 print(j["id"])
 PY
@@ -78,15 +80,27 @@ docker run --rm --platform linux/amd64 --network none \
     -v "$PWD/$DEV/modsrc:/modsrc:ro" -v "$SCHWUNG:/schwung:ro" -v "$PWD/build/deps:/deps:ro" \
     -v "$PWD/$DEV/recipes:/recipes:ro" -v "$PWD/scripts/recipes:/hand:ro" -v "$PWD/scripts:/s:ro" \
     -v "$PWD/$DEV/out/modules:/out" -v "$PWD/$DEV/out/logs:/logs" \
-    "$IMAGE" bash /s/build-all.sh "$ID" | grep -v '^== ' || true
+    "$IMAGE" bash /s/build-all.sh "$ID" > "$DEV/build.log" 2>&1 || true
 if ! grep -q "^$ID	ok	" "$DEV/out/logs/status.tsv"; then
     echo "the build failed; the end of $DEV/out/logs/$ID.log:" >&2
     tail -25 "$DEV/out/logs/$ID.log" >&2
     exit 1
 fi
+echo "compiled ($(grep "^$ID	" "$DEV/out/logs/status.tsv" | cut -f3) s)"
+rm -f "$DEV/out/dist/$ID-push-x86_64.tar.gz"
 docker run --rm --platform linux/amd64 --network none -v "$PWD:/w" -v "$SCHWUNG:/schwung:ro" -w /w \
     -e PUNG_RECIPES_INDEX="$DEV/recipes/index.json" "$IMAGE" \
-    python3 scripts/package-push-modules.py "$DEV/catalog.json" "$DEV/modsrc" "$DEV/out"
+    python3 scripts/package-push-modules.py "$DEV/catalog.json" "$DEV/modsrc" "$DEV/out" > "$DEV/package.log" 2>&1 || true
+if [ ! -f "$DEV/out/dist/$ID-push-x86_64.tar.gz" ]; then
+    echo "compiled, but refused by the checks every module of the pack passes (x86_64, glibc 2.35 or older," >&2
+    echo "loads as Pung's host loads it with its entry point exported):" >&2
+    sed -n '/^## /,$p' "$DEV/out/REPORT.md" 2>/dev/null | grep -v '^$' | head -12 >&2
+    cat "$DEV/package.log" >&2
+    exit 1
+fi
 MOD=$(find "$DEV/out/modules" -maxdepth 2 -type d -name "$ID" | head -1)
-echo "built: $MOD"
-echo "hear it (an instrument): RENDER_MODULES=$DEV/out/modules scripts/render-check.sh $ID <a folder with what the module asks its player for; an empty one if nothing>"
+echo "checked: every binary is x86_64, needs glibc 2.35 or older, and loads as Pung's host loads it"
+echo "built:   $MOD"
+echo "package: $DEV/out/dist/$ID-push-x86_64.tar.gz"
+git -C "$SRC" rev-parse HEAD >/dev/null 2>&1 || echo "note: the working copy is not a git repository, so the package names no commit (Pung's module pack needs one)"
+echo "hear it (an instrument): RENDER_MODULES=$DEV/out/modules scripts/render-check.sh $ID <a folder with what the module asks its player for; an empty one if nothing> 2"
