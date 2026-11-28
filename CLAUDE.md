@@ -168,6 +168,13 @@ owner moved it after reading what the GPL asks of a host that loads GPL modules.
   `visuals.js`, the catalog, the screens. A change to one of them is a change to pung.live at its next
   publish: build the site (`python3 site/build.py --pages <dir>`) after touching them.
 - The site's history up to 0.6.0 is in this repository's history, public, and stays there.
+- **A Pung knows itself; what goes between Pungs is the site's** (the owner's word, 2026-11-28). Core holds
+  what one deployment does and answers about itself: its state, its Set's stack, a patch taken or handed
+  over, an install, a restart. Whatever compares, moves or keeps things in step between deployments
+  (a stack from one to another, a library, versions kept alike, an account, any syncing) is built in the
+  site's repository, against those calls. **A Pung never calls another Pung**, and its own page grows no
+  such logic. A new need between deployments gets the smallest call here that states or applies one
+  deployment's side; the rest, and its design, are written there (`site/docs/`), not in `docs/`.
 
 ## Pung on macOS (a proof: `docs/PUNG-MACOS.md`)
 
