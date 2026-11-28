@@ -4,6 +4,7 @@
 
 #include "bridge.h"
 #include "livedevice_ipc.h"
+#include "ratebridge.h"
 
 #include <limits.h>
 #ifdef __APPLE__
@@ -107,6 +108,12 @@ struct rtloop {
     int64_t last_t0;
     float out[LD_IPC_MAXF * 2], in[LD_IPC_MAXF * 2];
     uint8_t mbuf[1024];
+    /* a host at another rate than the module's (ratebridge.h; rt_set_rate) */
+    ratebridge *rb;                  /* this thread's: the one in use, NULL at 44100 Hz */
+    _Atomic(ratebridge *) rb_next;   /* the one to take up at the next block */
+    _Atomic(ratebridge *) rb_done;   /* the one let go, for rt_set_rate or rt_free to free */
+    _Atomic int rb_change;
+    float mod_out[RB_MAX_MOD * 2], mod_in[RB_MAX_MOD * 2];
 
     /* to Go */
     par_t par[PAR_RING];
@@ -462,9 +469,30 @@ static void block(rtloop *rt) {
                    atomic_load_explicit(&rt->midifx, memory_order_relaxed);
         rt->touch_seen = touch;
         float pk = 0;
+        const float *heard = rt->out; /* what the screens read: the module's own frames */
+        int nheard = frames;
+        if (atomic_exchange_explicit(&rt->rb_change, 0, memory_order_acquire)) {
+            atomic_store_explicit(&rt->rb_done, rt->rb, memory_order_release);
+            rt->rb = atomic_load_explicit(&rt->rb_next, memory_order_acquire);
+        }
         if (rt_rest_before(&rt->rest, busy, frames)) {
             int64_t tr = now_ns();
-            pk = sb_render_nolock(rt->slot, rt->out, input, frames);
+            if (rt->rb) {
+                /* the host runs at another rate: the module renders its share of
+                 * frames at its own, and the bridge makes the host's of them */
+                int need = rb_need(rt->rb, frames);
+                const float *min = NULL;
+                if (input) {
+                    rb_in(rt->rb, input, frames, rt->mod_in, need);
+                    min = rt->mod_in;
+                }
+                if (need > 0) pk = sb_render_nolock(rt->slot, rt->mod_out, min, need);
+                rb_out(rt->rb, rt->mod_out, need, rt->out, frames);
+                heard = rt->mod_out;
+                nheard = need;
+            } else {
+                pk = sb_render_nolock(rt->slot, rt->out, input, frames);
+            }
             int64_t dr = now_ns() - tr;
             keep_max(&rt->render_max, dr);
             atomic_fetch_add_explicit(&rt->render_sum, dr, memory_order_relaxed);
@@ -479,13 +507,13 @@ static void block(rtloop *rt) {
             atomic_store_explicit(&rt->meter, fbits(pk), memory_order_relaxed);
         /* the screens' copy (feedAudio, the capture) */
         unsigned w = atomic_load_explicit(&rt->aud_w, memory_order_relaxed);
-        if (AUDIO_RING - (w - atomic_load_explicit(&rt->aud_r, memory_order_acquire)) >= (unsigned)frames) {
-            for (int i = 0; i < frames; i++) {
+        if (AUDIO_RING - (w - atomic_load_explicit(&rt->aud_r, memory_order_acquire)) >= (unsigned)nheard) {
+            for (int i = 0; i < nheard; i++) {
                 unsigned k = (w + (unsigned)i) & (AUDIO_RING - 1);
-                rt->aud[k * 2] = rt->out[i * 2];
-                rt->aud[k * 2 + 1] = rt->out[i * 2 + 1];
+                rt->aud[k * 2] = heard[i * 2];
+                rt->aud[k * 2 + 1] = heard[i * 2 + 1];
             }
-            atomic_store_explicit(&rt->aud_w, w + (unsigned)frames, memory_order_release);
+            atomic_store_explicit(&rt->aud_w, w + (unsigned)nheard, memory_order_release);
         }
         for (int i = 0; i < frames; i++) {
             outL[i] = rt->out[i * 2];
@@ -619,7 +647,21 @@ void rt_stop(rtloop *rt) {
 void rt_free(rtloop *rt) {
     if (!rt) return;
     rt_stop(rt);
+    rb_free(atomic_load(&rt->rb_done));
+    if (atomic_load(&rt->rb_change)) rb_free(atomic_load(&rt->rb_next)); /* made and never taken up */
+    rb_free(rt->rb);
     free(rt);
+}
+
+/* rt_set_rate: the host's sample rate (the plugin says it when it knows, and
+ * again when it changes). The bridge is made here, off the audio thread, and
+ * taken up at the next block; the one before is freed at the call after. */
+void rt_set_rate(rtloop *rt, int hz) {
+    if (!rt) return;
+    rb_free(atomic_exchange(&rt->rb_done, NULL));
+    if (atomic_load(&rt->rb_change)) rb_free(atomic_load(&rt->rb_next)); /* not yet taken up: replaced */
+    atomic_store(&rt->rb_next, rb_new(hz, rt->kind == RT_EFFECT));
+    atomic_store_explicit(&rt->rb_change, 1, memory_order_release);
 }
 
 void rt_set_out_ch(rtloop *rt, int ch) { atomic_store_explicit(&rt->out_ch, ch, memory_order_relaxed); }

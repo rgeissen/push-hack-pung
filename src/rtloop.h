@@ -38,6 +38,8 @@ void rt_set_midifx(rtloop *rt, int on); /* a MIDI effect is loaded: it gets the 
 /* host rest: an instrument silent this many frames, with no key down and
  * nothing sent to it, is not rendered until something is (0: always rendered) */
 void rt_set_rest(rtloop *rt, int frames);
+/* the host's sample rate, where it is not the module's 44100 Hz (ratebridge.h) */
+void rt_set_rate(rtloop *rt, int hz);
 int rt_resting(rtloop *rt, uint32_t *rests); /* at rest now; how often it has rested */
 void rt_touch_slot(int slot);                /* Go changed the slot's module: a rested one wakes */
 /* the rule itself, apart from the thread (rtloop_test.go) */

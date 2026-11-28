@@ -625,6 +625,8 @@ type device struct {
 	// nil: Process runs them. loopMu: held while it is read or freed.
 	loopMu sync.RWMutex
 	loop   *rtState
+	// hostRate: the sample rate the host runs the device at, as the plugin said (0: not said, 44100)
+	hostRate int
 	// the MIDI clock made for the MIDI effect (Process): the realtime thread's only
 	clkPlaying bool
 	clkTick    int64
@@ -1429,6 +1431,9 @@ func (d *device) Stats() map[string]any {
 		// the realtime thread counts what core's loop would have (blocks,
 		// notes, peaks) and what Process did
 		m["own_thread"] = true
+		if d.hostRate > 0 {
+			m["host_rate"] = d.hostRate // (other than 44100: the loop converts, ratebridge.c)
+		}
 		m["blocks"], m["notes_in"], m["notes_out"] = uint64(st.blocks), uint64(st.notes_in), uint64(st.notes_out)
 		m["out_peak"], m["in_peak"] = float32(st.out_peak), float32(st.in_peak)
 		m["preview_frames"] = uint64(st.preview_frames)

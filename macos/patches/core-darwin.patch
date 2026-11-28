@@ -115,8 +115,24 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/bundle.go core/livedevi
  // retirePresetFolder removes the .adg entries a hack wrote into a browser
 diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/server.go core/livedevice/server.go
 --- a/core/livedevice/server.go	2026-11-21 23:45:24
-+++ b/core/livedevice/server.go	2026-11-28 01:48:24
-@@ -182,7 +182,7 @@
++++ b/core/livedevice/server.go	2026-11-28 02:03:46
+@@ -38,6 +38,15 @@
+ 	Close()
+ }
+ 
++// RateSetter is an optional extra: a device that wants to know the sample
++// rate its host runs at (a block carries frames, not their rate). On a Push
++// Live runs at 44100 Hz; a host on a computer runs at any, and a device that
++// renders at one rate converts. The plugin says the rate when it makes the
++// device and whenever the host changes it.
++type RateSetter interface {
++	SetRate(hz int)
++}
++
+ // Looper is an optional extra: a device that serves its own blocks, on a
+ // thread it makes outside the Go runtime. Process then never runs.
+ //
+@@ -182,7 +191,7 @@
  	if err != nil {
  		return nil, err
  	}
@@ -125,6 +141,33 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/server.go core/livedevi
  	mem, err := shmCreate(path, ipcSize)
  	if err != nil {
  		dev.Close()
+@@ -340,6 +349,7 @@
+ 			UID   string `json:"uid"`
+ 			ID    int    `json:"id"`
+ 			State string `json:"state"`
++			Rate  int    `json:"rate"`
+ 		}
+ 		if json.Unmarshal(line, &req) != nil {
+ 			fail("bad request")
+@@ -353,7 +363,18 @@
+ 				continue
+ 			}
+ 			mine[d.id] = true
++			if rs, ok := d.dev.(RateSetter); ok && req.Rate > 0 {
++				rs.SetRate(req.Rate)
++			}
+ 			enc.Encode(map[string]any{"ok": true, "id": d.id, "shm": d.path})
++		case "set_rate":
++			// the host's sample rate: said with create, and again when it changes
++			if d := s.get(req.ID); d != nil && mine[req.ID] && req.Rate > 0 {
++				if rs, ok := d.dev.(RateSetter); ok {
++					rs.SetRate(req.Rate)
++				}
++			}
++			enc.Encode(map[string]any{"ok": true})
+ 		case "destroy":
+ 			if mine[req.ID] {
+ 				s.destroy(req.ID)
 diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/sys_darwin.go core/livedevice/sys_darwin.go
 --- a/core/livedevice/sys_darwin.go	1970-01-01 01:00:00
 +++ b/core/livedevice/sys_darwin.go	2026-11-28 01:48:24
@@ -302,7 +345,7 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/CMakeLists.mac.txt
 +target_link_libraries(playtest PRIVATE sdk_hosting "-framework Cocoa")
 diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp core/livedevice/vst3/source/proxy.cpp
 --- a/core/livedevice/vst3/source/proxy.cpp	2026-11-21 23:45:24
-+++ b/core/livedevice/vst3/source/proxy.cpp	2026-11-28 01:48:24
++++ b/core/livedevice/vst3/source/proxy.cpp	2026-11-28 02:03:46
 @@ -28,13 +28,17 @@
  #include <cmath>
  #include <cstring>
@@ -372,7 +415,55 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
          sockaddr_un a{};
          a.sun_family = AF_UNIX;
          std::strncpy(a.sun_path, config().socket.c_str(), sizeof a.sun_path - 1);
-@@ -469,7 +492,11 @@
+@@ -188,6 +211,16 @@
+         rate_ = s.sampleRate > 0 ? s.sampleRate : 44100;
+         return AudioEffect::setupProcessing(s);
+     }
++    // The delay through a hack that renders at 44100 Hz and converts to the
++    // host's rate. It follows from the rate and the kind alone (Pung's
++    // ratebridge.h: 16 points each side, 8 frames in hand for an effect's
++    // input), so the host is told without asking the hack.
++    uint32 PLUGIN_API getLatencySamples() override {
++        double rate = rate_.load();
++        if (rate == 44100 || rate < 22050 || ci_->kind == "midifx" || ci_->kind == "midi") return 0;
++        if (ci_->kind == "effect") return (uint32)(16 + 8 + (int)std::ceil(16.0 * rate / 44100.0));
++        return (uint32)std::lround(16.0 * rate / 44100.0);
++    }
+ 
+     tresult PLUGIN_API process(ProcessData& d) override {
+         uint8_t* m = shm_.load(std::memory_order_acquire);
+@@ -219,7 +252,7 @@
+         futexWake(u32(m, LD_OFF_REQ));
+         // at most half a block: Live's deadline is the block, ours is half of it
+         auto deadline = std::chrono::steady_clock::now() +
+-                        std::chrono::nanoseconds((long)(0.5e9 * frames / rate_));
++                        std::chrono::nanoseconds((long)(0.5e9 * frames / rate_.load()));
+         for (;;) {
+             uint32_t done = __atomic_load_n(u32(m, LD_OFF_DONE), __ATOMIC_ACQUIRE);
+             if (done == req) break;
+@@ -436,7 +469,9 @@
+                 // creating a device loads its engine, which can take seconds (a
+                 // large module, a ROM boot): 2 s gave up on a device that was
+                 // still loading, and the retry loaded it a second time
+-                if (link_.call("{\"op\":\"create\",\"uid\":\"" + ci_->uid + "\"}", r, 20000) && r.ok && map(r.shm)) {
++                int rate = (int)std::lround(rate_.load());
++                if (link_.call("{\"op\":\"create\",\"uid\":\"" + ci_->uid + "\",\"rate\":" + std::to_string(rate) + "}", r, 20000) && r.ok && map(r.shm)) {
++                    saidRate_ = rate;
+                     id_ = r.id;
+                     std::string st;
+                     {
+@@ -456,6 +491,10 @@
+                 continue;
+             }
+             sleepMs(250);
++            if (int rate = (int)std::lround(rate_.load()); rate != saidRate_) { // the host changed its rate
++                Reply rr;
++                if (link_.call("{\"op\":\"set_rate\",\"id\":" + std::to_string(id_) + ",\"rate\":" + std::to_string(rate) + "}", rr, 2000)) saidRate_ = rate;
++            }
+             uint32_t a = __atomic_load_n(u32(m, LD_OFF_ALIVE), __ATOMIC_RELAXED) + __atomic_load_n(u32(m, LD_OFF_DONE), __ATOMIC_RELAXED);
+             quiet = (a == lastAlive) ? quiet + 1 : 0;
+             lastAlive = a;
+@@ -469,7 +508,11 @@
          }
      }
      bool map(const std::string& path) {
@@ -384,3 +475,115 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
          if (fd < 0) return false;
          void* p = mmap(nullptr, LD_IPC_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
          ::close(fd);
+@@ -499,7 +542,8 @@
+     uint8_t* mapped_ = nullptr;
+     std::atomic<bool> resend_{false};
+     int id_ = 0;
+-    double rate_ = 44100;
++    std::atomic<double> rate_{44100};
++    int saidRate_ = 0; // the rate the hack was last told (the connection's thread only)
+     std::mutex stateMu_;
+     std::string state_;
+ };
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/test/playtest.cpp core/livedevice/vst3/test/playtest.cpp
+--- a/core/livedevice/vst3/test/playtest.cpp	2026-11-21 23:45:24
++++ b/core/livedevice/vst3/test/playtest.cpp	2026-11-28 02:04:15
+@@ -3,7 +3,11 @@
+ // effect, notes out of a MIDI device. Prints the peak, the time each block
+ // took and the late blocks.
+ //
+-//   playtest <Bundle.vst3> "<class name>" [blocks]
++//   playtest <Bundle.vst3> "<class name>" [blocks [frames [rate [pitch]]]]
++//
++// frames and rate: the host's block and sample rate (128 at 44100 Hz, as Live
++// on a Push). pitch: an instrument holds A4 for the whole run, and the pitch
++// that comes back is measured (440 Hz at every rate, where the hack converts).
+ #include "public.sdk/source/vst/hosting/eventlist.h"
+ #include "public.sdk/source/vst/hosting/hostclasses.h"
+ #include "public.sdk/source/vst/hosting/module.h"
+@@ -20,6 +24,7 @@
+ #include <cstring>
+ #include <string>
+ #include <thread>
++#include <vector>
+ 
+ using namespace Steinberg;
+ using namespace Steinberg::Vst;
+@@ -56,8 +61,10 @@
+     bool midiOnly = component->getBusCount(kAudio, kOutput) == 0;
+     bool midiOut = component->getBusCount(kEvent, kOutput) > 0;
+ 
+-    const int frames = 128;
+-    const double rate = 44100;
++    const int frames = argc > 4 ? std::atoi(argv[4]) : 128;
++    const double rate = argc > 5 ? std::atof(argv[5]) : 44100;
++    const bool pitchRun = argc > 6 && std::string(argv[6]) == "pitch";
++    std::vector<float> heard;
+     ProcessSetup setup{kRealtime, kSample32, frames, rate};
+     proc->setupProcessing(setup);
+     if (!midiOnly) component->activateBus(kAudio, kOutput, 0, true);
+@@ -92,14 +99,22 @@
+     for (int b = 0; b < blocks; b++) {
+         events.clear();
+         outEvents.clear();
+-        if (!effect && b % 100 == 0) {
++        if (pitchRun && !effect) {
++            if (b == 0) {
++                Event e{};
++                e.type = Event::kNoteOnEvent;
++                e.noteOn.pitch = 69;
++                e.noteOn.velocity = 0.9f;
++                events.addEvent(e);
++            }
++        } else if (!effect && b % 100 == 0) {
+             Event e{};
+             e.type = Event::kNoteOnEvent;
+             e.noteOn.pitch = 48 + (b / 100) % 12;
+             e.noteOn.velocity = 0.9f;
+             events.addEvent(e);
+         }
+-        if (!effect && b % 100 == 60) {
++        if (!pitchRun && !effect && b % 100 == 60) {
+             Event e{};
+             e.type = Event::kNoteOffEvent;
+             e.noteOff.pitch = 48 + (b / 100) % 12;
+@@ -130,6 +145,8 @@
+         for (int i = 0; i < frames; i++)
+             bp = std::max(bp, (double)std::fabs(data.outputs[0].channelBuffers32[0][i]));
+         peak = std::max(peak, bp);
++        if (b * (double)frames > rate) // (after the first second: the note has settled)
++            heard.insert(heard.end(), data.outputs[0].channelBuffers32[0], data.outputs[0].channelBuffers32[0] + frames);
+         if (bp > 0.001) sounding++;
+         std::this_thread::sleep_for(std::chrono::microseconds((long)(1e6 * frames / rate) - (long)us));
+     }
+@@ -139,7 +156,30 @@
+                     notesOut, sum / std::max(1, counted), worst);
+         return notesOut > 0 ? 0 : 3;
+     }
++    // the pitch that came back: the lag at which the sound best matches itself
++    double pitch = 0;
++    if (heard.size() > 16384) {
++        const size_t N = 16384;
++        const float* x = heard.data() + (heard.size() - N) / 2;
++        int lo = (int)(rate / 2000), hi = (int)(rate / 50), best = 0;
++        double bestv = -1;
++        std::vector<double> ac((size_t)hi + 2, 0.0);
++        for (int lag = lo; lag <= hi + 1; lag++) {
++            double a = 0, e1 = 0, e2 = 0;
++            for (size_t i = 0; i + (size_t)lag < N; i++) { a += x[i] * x[i + lag]; e1 += x[i] * x[i]; e2 += x[i + lag] * x[i + lag]; }
++            ac[(size_t)lag] = a / (std::sqrt(e1 * e2) + 1e-12);
++        }
++        for (int lag = lo + 1; lag <= hi; lag++)
++            if (ac[(size_t)lag] > bestv + 0.01) { bestv = ac[(size_t)lag]; best = lag; } // the shortest of equally good lags
++        if (best > lo) {
++            double y0 = ac[(size_t)best - 1], y1 = ac[(size_t)best], y2 = ac[(size_t)best + 1];
++            double d = (y0 - y2) / (2 * (y0 - 2 * y1 + y2) + 1e-12);
++            pitch = rate / (best + d);
++        }
++    }
++    uint32 latency = proc->getLatencySamples();
+     component->setActive(false);
++    if (pitch > 0) std::printf("%s: at %.0f Hz in blocks of %d: pitch %.2f Hz, delay told to the host %u frames\n", argv[2], rate, frames, pitch, latency);
+     std::printf("%s: peak %.3f, %d of %d blocks sound, hand-off avg %.0f us, worst %.0f us (block %.0f us)\n",
+                 argv[2], peak, sounding, blocks, sum / std::max(1, counted), worst, 1e6 * frames / rate);
+     return peak > 0.001 ? 0 : 3;

@@ -79,9 +79,24 @@ func (d *device) Loop(mem unsafe.Pointer, size int, version uint32, priority int
 	l := &rtState{rt: rt, stop: make(chan struct{}), done: make(chan struct{})}
 	d.loopMu.Lock()
 	d.loop = l
+	if d.hostRate > 0 {
+		C.rt_set_rate(rt, C.int(d.hostRate))
+	}
 	d.loopMu.Unlock()
 	go d.pump(l)
 	return true
+}
+
+// SetRate: the sample rate the host runs this device at (the plugin says it:
+// livedevice's server). A module renders at 44100 Hz; at another rate the
+// loop converts (ratebridge.c). Kept for a loop started later.
+func (d *device) SetRate(hz int) {
+	d.loopMu.Lock()
+	d.hostRate = hz
+	if d.loop != nil {
+		C.rt_set_rate(d.loop.rt, C.int(hz))
+	}
+	d.loopMu.Unlock()
 }
 
 // StopLoop is livedevice.Looper: the thread first, then the pump.
