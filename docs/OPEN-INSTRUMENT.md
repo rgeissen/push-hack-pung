@@ -144,6 +144,22 @@ How an instrument travels. It is the plate, not a layer.
 - **Never firmware, ROMs or factory sounds that are not the author's to give.** An emulator names what the
   player must bring.
 
+## What stands around an instrument
+
+The format says what an instrument is. What hosts one is a platform, and is not in the picture: a host that
+loads it (a music program), and the platform's own services. Pung's are the **governor** (it measures what
+every instrument costs and lets one rest while nothing sounds: `docs/GOVERNOR.md`), its own modulation over
+any control, the sound browser, the module pack and the limits of the hardware it runs on.
+
+An instrument owes a platform three statements, so that such services need no list of their own:
+
+- **whether it may rest**: an engine that is silent may be left unrendered or told to sleep, and comes back
+  clean on the next note;
+- **how many of it may run**: any number, or one at a time (an emulator of one machine);
+- **what it needs** that the package does not hold: firmware, samples.
+
+What it *costs* is not the instrument's to say: that is measured, on each kind of hardware, by the platform.
+
 ## Describing a module
 
 Three parts are present in every instrument a platform hosts, so "complete" says nothing. A module is
@@ -174,6 +190,7 @@ compartments, live signals, a hardware interface for a Push) a host that does no
 | Live signals | Many modules answer `live_mod`; fewer answer `mod_map`. |
 | Hardware interface | A Push: default for every module, designed for some. A Move: the module's own, run by Schwung, not by Pung. |
 | Web interface | A module's own page keeps rule 1 (it talks to the remote interface Schwung has, which Pung serves unchanged). **Pung's default page does not**: it talks to Pung's own interface. |
+| What stands around | The governor knows which instruments rest, which run one at a time and what each costs from **a list of its own, by module** (`src/limits.go`), not from what the instrument says. |
 | Describing a module | No tool yet says how far a module goes. `scripts/dev-module.sh` and `scripts/render-check.sh` build one, play it and round-trip its state. |
 
 ## Open
@@ -184,5 +201,6 @@ compartments, live signals, a hardware interface for a Push) a host that does no
 - A Push panel's lists of modulation destinations hang on its segments, which are the hardware's; what of
   them is meaning belongs in the engine.
 - When the sound layer moves past 16 bits at 44.1 kHz, and how.
+- Where an instrument says whether it may rest and how many of it may run: in its package, or in its engine.
 - A check that reads a module and states its description.
 - Who changes this standard, and how a change is proposed.
