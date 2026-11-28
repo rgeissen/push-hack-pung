@@ -1,0 +1,361 @@
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/bundle.go core/livedevice/bundle.go
+--- a/core/livedevice/bundle.go	2026-11-21 23:45:24
++++ b/core/livedevice/bundle.go	2026-11-28 01:48:05
+@@ -2,11 +2,16 @@
+ 
+ import (
+ 	"bytes"
++	"crypto/sha256"
++	"encoding/hex"
+ 	"encoding/json"
+ 	"errors"
++	"fmt"
+ 	"os"
++	"os/exec"
+ 	"path/filepath"
+ 	"regexp"
++	"runtime"
+ 	"strings"
+ )
+ 
+@@ -65,7 +70,34 @@
+ 	root := filepath.Join(BundleDir(dir, name), "Contents")
+ 	soPath := filepath.Join(root, "x86_64-linux", name+".so")
+ 	changed := false
+-	if old, err := os.ReadFile(soPath); err != nil || !bytes.Equal(old, so) {
++	if runtime.GOOS == "darwin" {
++		// a Mac's bundle: the binary in Contents/MacOS, named by an Info.plist
++		soPath = filepath.Join(root, "MacOS", name)
++		// The installed binary is signed again below and so never equals its
++		// source: which source it came from is kept beside the bundle's
++		// settings, or every start would look like a new plugin to Live.
++		sum := sha256.Sum256(so)
++		mark, markPath := []byte(hex.EncodeToString(sum[:])), filepath.Join(root, "Resources", "livedevice.source")
++		if old, err := os.ReadFile(markPath); err != nil || !bytes.Equal(old, mark) || !fileExists(soPath) {
++			if err := writeAtomic(soPath, so, 0o755); err != nil {
++				return "", cfg, false, err
++			}
++			if err := writeAtomic(markPath, mark, 0o644); err != nil {
++				return "", cfg, false, err
++			}
++			changed = true
++		}
++		so = nil // (written, or the same: the comparison below is Linux's)
++		plist := macInfoPlist(name)
++		if old, err := os.ReadFile(filepath.Join(root, "Info.plist")); err != nil || !bytes.Equal(old, plist) {
++			if err := writeAtomic(filepath.Join(root, "Info.plist"), plist, 0o644); err != nil {
++				return "", cfg, false, err
++			}
++			writeAtomic(filepath.Join(root, "PkgInfo"), []byte("BNDL????"), 0o644) //nolint:errcheck
++			changed = true
++		}
++	}
++	if old, err := os.ReadFile(soPath); so != nil && (err != nil || !bytes.Equal(old, so)) {
+ 		if err := writeAtomic(soPath, so, 0o755); err != nil {
+ 			return "", cfg, false, err
+ 		}
+@@ -98,7 +130,44 @@
+ 	// A moduleinfo.json made at build time would list no classes (they come
+ 	// from the class file at run time), and Live would believe it.
+ 	os.Remove(filepath.Join(root, "Resources", "moduleinfo.json"))
++	if runtime.GOOS == "darwin" && changed {
++		// The binary's signature names the Info.plist it was built beside: with
++		// another one macOS, and so Live, refuses the bundle ("invalid Info.plist
++		// (plist or signature have been modified)", Live 13.0b27, 2026-11-28).
++		// So the bundle is signed again as it stands now (ad hoc: a build for
++		// others is signed with its maker's identity instead).
++		if out, err := exec.Command("codesign", "--force", "--sign", "-", BundleDir(dir, name)).CombinedOutput(); err != nil {
++			return "", cfg, false, fmt.Errorf("livedevice: signing the bundle: %v: %s", err, strings.TrimSpace(string(out)))
++		}
++	}
+ 	return soPath, cfg, changed, nil
++}
++
++func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
++
++// macInfoPlist: what makes a folder a plugin bundle on macOS.
++func macInfoPlist(name string) []byte {
++	id := "live.pushhack.livedevice." + strings.ToLower(strings.Map(func(r rune) rune {
++		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
++			return r
++		}
++		return '-'
++	}, name))
++	return []byte(`<?xml version="1.0" encoding="UTF-8"?>
++<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<plist version="1.0"><dict>
++<key>CFBundleDevelopmentRegion</key><string>English</string>
++<key>CFBundleExecutable</key><string>` + name + `</string>
++<key>CFBundleIdentifier</key><string>` + id + `</string>
++<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
++<key>CFBundleName</key><string>` + name + `</string>
++<key>CFBundlePackageType</key><string>BNDL</string>
++<key>CFBundleShortVersionString</key><string>0.1.0</string>
++<key>CFBundleVersion</key><string>0.1.0</string>
++<key>CFBundleSignature</key><string>????</string>
++<key>CSResourcesFileMapped</key><true/>
++</dict></plist>
++`)
+ }
+ 
+ // retirePresetFolder removes the .adg entries a hack wrote into a browser
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/server.go core/livedevice/server.go
+--- a/core/livedevice/server.go	2026-11-21 23:45:24
++++ b/core/livedevice/server.go	2026-11-28 01:36:33
+@@ -182,7 +182,7 @@
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	path := fmt.Sprintf("/dev/shm/%s-dev-%d", s.cfg.Name, id)
++	path := shmPath(s.cfg.Name, id)
+ 	mem, err := shmCreate(path, ipcSize)
+ 	if err != nil {
+ 		dev.Close()
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/sys_darwin.go core/livedevice/sys_darwin.go
+--- a/core/livedevice/sys_darwin.go	1970-01-01 01:00:00
++++ b/core/livedevice/sys_darwin.go	2026-11-28 01:36:33
+@@ -0,0 +1,97 @@
++//go:build darwin
++
++package livedevice
++
++/*
++#include <errno.h>
++#include <fcntl.h>
++#include <mach/mach.h>
++#include <mach/mach_time.h>
++#include <mach/thread_policy.h>
++#include <os/os_sync_wait_on_address.h>
++#include <pthread.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <sys/mman.h>
++#include <unistd.h>
++
++// A device's shared memory on macOS: a POSIX shared memory object (memory only,
++// no file behind it). The plugin opens it by the same name.
++static void* ld_shm_create(const char* name, size_t size) {
++	shm_unlink(name);
++	int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
++	if (fd < 0) return NULL;
++	if (ftruncate(fd, (off_t)size) != 0) { close(fd); shm_unlink(name); return NULL; }
++	void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++	close(fd);
++	if (p == MAP_FAILED) { shm_unlink(name); return NULL; }
++	return p;
++}
++static void ld_shm_free(void* p, size_t size, const char* name) { munmap(p, size); shm_unlink(name); }
++
++// The wake word: sleep while *addr == val, at most ns. Shared: the plugin is
++// another process (macOS 14.4 and later).
++static void ld_wait(uint32_t* addr, uint32_t val, uint64_t ns) {
++	os_sync_wait_on_address_with_timeout(addr, val, 4, OS_SYNC_WAIT_ON_ADDRESS_SHARED, OS_CLOCK_MACH_ABSOLUTE_TIME, ns);
++}
++static void ld_wake(uint32_t* addr) { os_sync_wake_by_address_all(addr, 4, OS_SYNC_WAKE_BY_ADDRESS_SHARED); }
++
++// A realtime thread on macOS: a time-constraint policy (there is no SCHED_FIFO
++// for an ordinary program). The numbers are for a 128-frame block at 44.1 kHz:
++// every 2.9 ms, at most 1.5 ms of work, done within the period.
++static int ld_realtime(void) {
++	mach_timebase_info_data_t tb;
++	mach_timebase_info(&tb);
++	double ticks_per_ms = 1e6 * (double)tb.denom / (double)tb.numer;
++	thread_time_constraint_policy_data_t pol;
++	pol.period = (uint32_t)(2.9 * ticks_per_ms);
++	pol.computation = (uint32_t)(1.5 * ticks_per_ms);
++	pol.constraint = (uint32_t)(2.9 * ticks_per_ms);
++	pol.preemptible = 1;
++	return thread_policy_set(pthread_mach_thread_np(pthread_self()), THREAD_TIME_CONSTRAINT_POLICY,
++		(thread_policy_t)&pol, THREAD_TIME_CONSTRAINT_POLICY_COUNT) == KERN_SUCCESS;
++}
++*/
++import "C"
++
++import (
++	"errors"
++	"fmt"
++	"time"
++	"unsafe"
++)
++
++// shmPath: a device's shared memory, a POSIX name (at most 31 letters on
++// macOS, so the name is kept short: the id is unique by itself).
++func shmPath(name string, id int) string {
++	if len(name) > 12 {
++		name = name[:12]
++	}
++	return fmt.Sprintf("/%s-%d", name, id)
++}
++
++func shmCreate(path string, size int) ([]byte, error) {
++	cs := C.CString(path)
++	defer C.free(unsafe.Pointer(cs))
++	p := C.ld_shm_create(cs, C.size_t(size))
++	if p == nil {
++		return nil, errors.New("livedevice: no shared memory " + path)
++	}
++	return unsafe.Slice((*byte)(p), size), nil
++}
++
++func shmFree(mem []byte, path string) {
++	cs := C.CString(path)
++	defer C.free(unsafe.Pointer(cs))
++	C.ld_shm_free(unsafe.Pointer(&mem[0]), C.size_t(len(mem)), cs)
++}
++
++func futexWait(addr *uint32, val uint32, d time.Duration) {
++	C.ld_wait((*C.uint32_t)(unsafe.Pointer(addr)), C.uint32_t(val), C.uint64_t(d.Nanoseconds()))
++}
++
++func futexWake(addr *uint32) { C.ld_wake((*C.uint32_t)(unsafe.Pointer(addr))) }
++
++// setRealtime: the calling thread becomes a realtime one (the priority is
++// Linux's and means nothing here).
++func setRealtime(priority int) { C.ld_realtime() }
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/sys_linux.go core/livedevice/sys_linux.go
+--- a/core/livedevice/sys_linux.go	2026-11-21 23:45:24
++++ b/core/livedevice/sys_linux.go	2026-11-28 01:36:33
+@@ -3,11 +3,15 @@
+ package livedevice
+ 
+ import (
++	"fmt"
+ 	"os"
+ 	"syscall"
+ 	"time"
+ 	"unsafe"
+ )
++
++// shmPath: a device's shared memory, a file in /dev/shm.
++func shmPath(name string, id int) string { return fmt.Sprintf("/dev/shm/%s-dev-%d", name, id) }
+ 
+ func shmCreate(path string, size int) ([]byte, error) {
+ 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/sys_other.go core/livedevice/sys_other.go
+--- a/core/livedevice/sys_other.go	2026-11-21 23:45:24
++++ b/core/livedevice/sys_other.go	2026-11-28 01:36:33
+@@ -1,4 +1,4 @@
+-//go:build !linux
++//go:build !linux && !darwin
+ 
+ package livedevice
+ 
+@@ -9,6 +9,8 @@
+ 
+ // Devices run on the Push (Linux) only; elsewhere the package builds and its
+ // pure parts (classes, presets) work.
++
++func shmPath(name string, id int) string { return "" }
+ 
+ func shmCreate(path string, size int) ([]byte, error) {
+ 	return nil, errors.New("livedevice: devices need Linux")
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/CMakeLists.mac.txt core/livedevice/vst3/CMakeLists.mac.txt
+--- a/core/livedevice/vst3/CMakeLists.mac.txt	1970-01-01 01:00:00
++++ b/core/livedevice/vst3/CMakeLists.mac.txt	2026-11-28 01:37:05
+@@ -0,0 +1,22 @@
++# livedevice for macOS: the same proxy, as a VST3 bundle Live on a Mac loads
++# (Pung, docs/PUNG-MACOS.md). Built with Makefiles and Apple's command line
++# tools; no Xcode.
++cmake_minimum_required(VERSION 3.25)
++set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "")   # os_sync_wait_on_address
++set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "")
++project(LiveDevice VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
++set(CMAKE_CXX_STANDARD 17)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
++set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "" FORCE)
++set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES OFF CACHE BOOL "" FORCE)
++set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
++set(SMTG_CREATE_PLUGIN_LINK OFF CACHE BOOL "" FORCE)
++set(SMTG_RUN_VST_VALIDATOR OFF CACHE BOOL "" FORCE)
++set(SMTG_CREATE_MODULE_INFO OFF CACHE BOOL "" FORCE)
++set(SMTG_ENABLE_AUV2_BUILDS OFF CACHE BOOL "" FORCE)
++set(SMTG_DISABLE_CODE_SIGNING ON CACHE BOOL "" FORCE)
++set(VST3SDK "" CACHE PATH "the VST3 SDK")
++add_subdirectory(${VST3SDK} ${PROJECT_BINARY_DIR}/vst3sdk)
++smtg_enable_vst3_sdk()
++smtg_add_vst3plugin(livedevice source/proxy.cpp source/params.cpp)
++target_link_libraries(livedevice PRIVATE sdk)
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp core/livedevice/vst3/source/proxy.cpp
+--- a/core/livedevice/vst3/source/proxy.cpp	2026-11-21 23:45:24
++++ b/core/livedevice/vst3/source/proxy.cpp	2026-11-28 01:37:05
+@@ -28,13 +28,17 @@
+ #include <cmath>
+ #include <cstring>
+ #include <fcntl.h>
+-#include <linux/futex.h>
+ #include <mutex>
+ #include <poll.h>
+ #include <sys/mman.h>
+ #include <sys/socket.h>
+-#include <sys/syscall.h>
+ #include <sys/un.h>
++#ifdef __APPLE__
++#include <os/os_sync_wait_on_address.h>
++#else
++#include <linux/futex.h>
++#include <sys/syscall.h>
++#endif
+ #include <thread>
+ #include <unistd.h>
+ 
+@@ -83,11 +87,22 @@
+ static inline float* f32(uint8_t* m, int off) { return reinterpret_cast<float*>(m + off); }
+ static inline double* f64(uint8_t* m, int off) { return reinterpret_cast<double*>(m + off); }
+ 
++#ifdef __APPLE__
++// macOS (14.4 and later): the same wait on a word, shared with the hack's process
++static void futexWake(uint32_t* a) { os_sync_wake_by_address_all(a, 4, OS_SYNC_WAKE_BY_ADDRESS_SHARED); }
++static void futexWait(uint32_t* a, uint32_t v, long ns) {
++    if (ns <= 0) return;
++    os_sync_wait_on_address_with_timeout(a, v, 4, OS_SYNC_WAIT_ON_ADDRESS_SHARED, OS_CLOCK_MACH_ABSOLUTE_TIME, (uint64_t)ns);
++}
++#define LD_SEND_FLAGS 0
++#else
+ static void futexWake(uint32_t* a) { syscall(SYS_futex, a, FUTEX_WAKE, 1 << 30, nullptr, nullptr, 0); }
+ static void futexWait(uint32_t* a, uint32_t v, long ns) {
+     timespec ts{ns / 1000000000L, ns % 1000000000L};
+     syscall(SYS_futex, a, FUTEX_WAIT, v, &ts, nullptr, 0);
+ }
++#define LD_SEND_FLAGS MSG_NOSIGNAL
++#endif
+ 
+ // ---- the control socket -------------------------------------------------------
+ 
+@@ -104,7 +119,7 @@
+         std::lock_guard<std::mutex> g(mu_);
+         if (fd_ < 0 && !connect()) return false;
+         std::string out = line + "\n";
+-        if (::send(fd_, out.data(), out.size(), MSG_NOSIGNAL) != (ssize_t)out.size()) { close(); return false; }
++        if (::send(fd_, out.data(), out.size(), LD_SEND_FLAGS) != (ssize_t)out.size()) { close(); return false; }
+         auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+         for (;;) {
+             size_t nl = buf_.find('\n');
+@@ -127,8 +142,16 @@
+ 
+ private:
+     bool connect() {
++#ifdef __APPLE__
++        fd_ = ::socket(AF_UNIX, SOCK_STREAM, 0);
++        if (fd_ < 0) return false;
++        ::fcntl(fd_, F_SETFD, FD_CLOEXEC);
++        int one = 1;
++        ::setsockopt(fd_, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one); // a hack that went away must not kill Live
++#else
+         fd_ = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+         if (fd_ < 0) return false;
++#endif
+         sockaddr_un a{};
+         a.sun_family = AF_UNIX;
+         std::strncpy(a.sun_path, config().socket.c_str(), sizeof a.sun_path - 1);
+@@ -469,7 +492,11 @@
+         }
+     }
+     bool map(const std::string& path) {
++#ifdef __APPLE__
++        int fd = ::shm_open(path.c_str(), O_RDWR, 0); // a POSIX shared memory object, by its name
++#else
+         int fd = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
++#endif
+         if (fd < 0) return false;
+         void* p = mmap(nullptr, LD_IPC_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+         ::close(fd);

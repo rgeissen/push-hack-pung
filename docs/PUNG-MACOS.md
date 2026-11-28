@@ -176,6 +176,43 @@ after it is started before it holds.
 
 P5 needs the contract's new layout and someone at both machines; P1 to P4 need neither.
 
+### What the proof has shown (2026-11-28, the owner's Mac, Live 13.0b27 and then 13.0b28)
+
+Built by `macos/build.sh`: core's plugin with a macOS port (`macos/patches/core-darwin.patch`: shared memory
+by `shm_open`, the wake word by `os_sync_wait_on_address`, a time-constraint thread, the bundle's layout and
+its signature), Steinberg's validator, and `pungstub` (`macos/cmd/pungstub`), a placeholder service that
+answers Live for every class of a Pung: it keeps a device's state, an instrument plays a sine.
+
+- **P1 holds.** With the 104 classes of the owner's Push (its `classes-known.json`) the validator passes
+  4,888 tests, none failed. Installed as `~/Library/Audio/Plug-Ins/VST3/Pung.vst3`, Live lists all 104
+  (81 instruments, 23 audio effects, vendor Pung); Braids is `device:vst3:instr:e968acf7-…-21ebcda983ed`,
+  the Push's id to the letter.
+- **Live scans the player's own VST3 folder** (it says so in `PluginScanner.txt`: "(user)"), in a scanner
+  process of its own, at start. No administrator is needed to install.
+- **A bundle must be signed as it stands.** Live refused the first install: "invalid Info.plist (plist or
+  signature have been modified)". The plugin's built-in signature names the description file it was built
+  beside. The install step signs the bundle again after writing it (ad hoc here), and remembers which
+  source binary it came from, so that an unchanged plugin is not a new one to Live at every start. Live
+  rescans a bundle whose size or date changed (its database's `fingerprint`), at its next start.
+- **P3, the mechanism.** A rack as Pung writes it for Live's browser (core's `WritePresets`, the same code as
+  on the Push) opens in Live on the Mac: "plugin processor successfully loaded: Pung 'Braids' (cid:
+  {E968ACF7-…})", "parameter count is 201" (Braids' 197 and the four hidden ones). A rack with a Pung state
+  written into it as Pung writes a sound's rack hands that state to the service whole (283 bytes: its
+  module and its sound's name read back). Not yet done with a file the Push itself wrote (it was switched
+  off), nor with a real module, so nothing has been heard.
+- **P2, a first number only.** One placeholder device in Live at 48 kHz and 512 frames: 11,495 blocks in
+  two minutes, none late; a service that is restarted is found again by the plugin and the device is made
+  again with its state. This is the easy case (a large block, an idle machine, no module). The question
+  stays open until a module renders on its own thread at 64 frames beside a busy Set.
+- **P4, half.** Live reads all 201 parameters of the class; how many it shows and automates is not measured
+  (it needs someone at Live, or its script).
+- **Live updated itself** from 13.0b27 to 13.0b28 when it was restarted for the scan. The Push runs 13.0b25:
+  the two ends drift apart by themselves, and a Set saved by the newer Live may not open in the older.
+
+Left on the Mac by the proof: `~/Library/Audio/Plug-Ins/VST3/Pung.vst3`, `~/Library/Application
+Support/Pung/` (`classes.json`, the socket), and `pungstub` running. Removing the first and stopping the
+last undoes it; Live then lists no Pung device.
+
 ## Decisions for the owner
 
 1. **The contract's layout** (`docs/SET-CONTRACT.md`): the go for the one that fits Live's 127. Nothing of
