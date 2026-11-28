@@ -51,6 +51,7 @@ The frame starts at the widget's top left. Nothing you draw can leave it.
 | `g.value(x, y, s, color, align[, maxWidth])` | the larger value face; with `maxWidth`, a smaller face before a cut, and a number is never cut (`-24000` becomes `-24K`) |
 | `g.measure(s[, "value"])` | the width of `s` in pixels, in the label face or the value face |
 | `g.layer(key, fn)` | the part of a screen that does not change: `fn` draws it once, and while `key` stays the same the kept picture is copied in instead (a dot-matrix display of a thousand dots costs a copy). The layer **replaces the frame drawn so far**, so a screen has one, and it comes first; a second layer wipes the first. Put everything the key decides into the one layer and its key (Xenia's front panel: the display's two lines, the wavetable and the start positions) |
+| `g.knobs({accent, colors, top, names, values, tabs, ground})` | a front panel's encoder row, the same on every instrument: under each encoder its name, a ring with its value, and the value with its unit, the touched one in the slot's colour; drawn from `v.$knobs`, so it follows pages and segments by itself. Every option may be left out. `accent`: the rings' colour, the instrument's. `colors`: `{key: colour}` for single knobs. `top`: where the row begins (104: the bottom 56 pixels). `names`, `values`: eight strings where the panel says what a knob is (`""` leaves Pung's). `tabs`: the lower buttons too, under a tighter row (a panel with `draws_tabs`). `ground`: a colour behind the row; a panel with a ground of its own may give `label` (the names' colour), `track` (the rings' unlit part) and `rules: false` (it draws the row's lines itself) |
 | `g.segment(id, x, y, w, h)` | this frame the segment `id` sits here, not at its declared `rect`: for a panel that moves a section with a value (Maze Voice's ORDER swaps the folder and the filter). Pung's bar and the outlines while choosing follow it; call it on every frame it applies |
 
 Colors: `"#rrggbb"`, a Push palette name (`"orange"`, `"sky"`, ...), or `"slot"` (the slot's color), `"fg"`,
@@ -98,6 +99,10 @@ push.compartment({
 - **`segments`** (a front panel): the panel's sections, each one press away. See *Segments* below.
 - **`extra_keys`**: values a screen shows that no encoder edits (a patch name, a mode); they are read with
   the compartment's keys and given in `v`, even without metadata.
+- **`wheel`** (a key) and **`wheel_press`** (a key): for a compartment whose page is about one thing among
+  several that can be walked (Stacks: the chord the knobs edit). Inside the open device a jog nudge right
+  goes in and the wheel then walks that key's values, a nudge left comes back; a press of the wheel sets
+  the `wheel_press` key to `"on"` (Stacks: hear the chord). Few modules need it.
 - Band screens and page screens also get `v.$page`, `v.$pages` and `v.$knobs`.
 - The header says `COMPARTMENT / PAGE`. The jog wheel and Page < > step through the pages; the open device's lower row lists them.
 - Parameters no compartment names stay reachable after the compartments, on the generic banks.
@@ -210,6 +215,12 @@ push.display(function (key, raw) {
   // nothing: Pung's own
 });
 ```
+
+`raw` is the module's own answer, a string. The function returns a text (the whole reading, as it is to
+stand), or `{ value, unit }` (the two apart, as Pung has them for its own values: `v[k].display` and
+`v[k].unit`; Pung sets the unit small beside the value, in capitals whatever its case here), or nothing
+for Pung's own text. Pung shows a unit by itself only where `chain_params` states one or the parameter's
+name and range tell it: a unit that stands only in `ui_hierarchy` needs this.
 
 It is asked once per key and value (remembered), never while a frame of the module's own is being
 drawn (then Pung's own text stands), and a script error means Pung's own text.

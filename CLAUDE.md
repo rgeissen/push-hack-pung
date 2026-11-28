@@ -23,6 +23,7 @@ release, and native instruments built from gearmulator (`native/`).
 | pung.live and a deployment over https (so it works in Safari and on an iPad): half built, a plan for the rest | `docs/SECURE-LINK.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
 | pung.live's pages (the manual too): a private repository, checked out at `site/` | `site/CLAUDE.md`, `site/README.md` |
+| The skills for people who make modules and interfaces (and their AI assistants) | `skills/README.md` |
 
 ## Layout
 
@@ -33,6 +34,12 @@ release, and native instruments built from gearmulator (`native/`).
   `xenia` (Microwave II/XT), and `vivace`, a port of an open-source wavetable synth (GPLv3; its licence
   forbids its name on a build: it appears only in `licenses/NOTICE.txt`).
 - `overrides/<id>/push_ui.js` screens Pung ships for Schwung modules.
+- `skills/` what an AI assistant needs to make a module (`pung-module`) or its interface (`pung-interface`) for
+  Pung: the owner wants a community of developers (2026-11-28), and pung.live's Develop page offers these as
+  zips (`scripts/build-skills.sh`). Their `references/` are links to `docs/`: a skill says nothing the
+  documents and the code do not. **When `docs/overrides.md`, `docs/UX-GUIDELINES.md` or the module build
+  change, read the skill again**; a rule learned the hard way about screens or modules belongs in the
+  document, and in the skill when an outsider needs it. `.claude/skills/` links to them.
 - `scripts/` builds, catalog, release, render-check. `site/` is not this repository's: the website
   application (pung.live) is private, a repository of its own checked out there ("Core and the site").
 - `installer/` the Pung Installer (its own Go module, pure Go, no cgo): a local page in the browser; SSH to the

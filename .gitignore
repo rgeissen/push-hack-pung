@@ -10,3 +10,4 @@ __pycache__/
 /site/
 /_site/
 /installer/dist/
+/.claude/worktrees/

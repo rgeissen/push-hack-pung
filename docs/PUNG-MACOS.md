@@ -314,5 +314,13 @@ bundle and the class file undoes it; Live then lists no Pung device.
 
 ## Not in this design
 
-Windows (the same shape, other system calls); other hosts than Live; accounts; moving a Set's files
-between machines.
+Windows (the same shape, other system calls); other hosts than Live; accounts.
+
+## How a Set gets from a Push to the Mac
+
+By Live's own way (the owner, 2026-11-28): a Push that Live on the computer can see has an entry in Live's
+browser, with its Sets, and a Set is dragged from there into Live. Live copies the Set and what it
+collected. Pung moves no Set file and never reads one. What Pung must make true is what the Set finds when
+it opens: the same devices under the same ids (holds), every parameter at its number (the Set contract,
+`docs/SET-CONTRACT.md`), a state that means the same, and the modules, sounds and samples the devices name,
+present on the Mac. **Not yet seen:** a Set with Pung devices taken that way.

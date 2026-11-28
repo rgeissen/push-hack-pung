@@ -117,6 +117,11 @@ push.compartment({ id: "fp", label: "Plain", front_panel: true, keys: ["c"], scr
 // timing says nothing about the Push's.)
 func TestShippedOverlaysDraw(t *testing.T) {
 	initFaces()
+	if dir := os.Getenv("PUNG_SHOTS"); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil { // (a missing folder took every picture, silently)
+			t.Fatal(err)
+		}
+	}
 	// Pung's overlays, and the screens its native modules bring themselves
 	for _, d := range []string{"../overrides", "../native"} {
 		overlaysDraw(t, d)

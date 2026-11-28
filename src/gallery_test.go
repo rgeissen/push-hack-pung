@@ -24,6 +24,9 @@ import (
 //	PUNG_GALLERY=<out dir>           where the PNGs go (960x160, as the display)
 //	PUNG_GALLERY_CACHE=<file>        a Push's module-screen.json: each module's
 //	                                 metadata and the values it had once loaded
+//	                                 (scripts/screens/probes.json has the same
+//	                                 shape and every module of the pack: it
+//	                                 serves where no Push is at hand)
 //	PUNG_GALLERY_VALUES=<dir>        optional <module>.json, {"key": "raw value"}
 //	                                 over those (a sound worth looking at)
 //	PUNG_GALLERY_ONLY=dexed,xenia    optional: only these

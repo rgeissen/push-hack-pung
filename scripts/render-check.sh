@@ -25,8 +25,9 @@ cd "$(dirname "$0")/.."
 ID=$1; ASSETS=$(cd "$2" && pwd); shift 2
 SCHWUNG=${SCHWUNG:-../schwung}
 IMAGE=${IMAGE:-push-hack-pung-modules}
-MOD=$(find build/push-modules/modules -maxdepth 2 -type d -name "$ID" | head -1)
-[ -n "$MOD" ] || { echo "no build of $ID in build/push-modules/modules"; exit 2; }
+MODULES=${RENDER_MODULES:-build/push-modules/modules} # (scripts/dev-module.sh builds into build/dev/out/modules)
+MOD=$(find "$MODULES" -maxdepth 2 -type d -name "$ID" | head -1)
+[ -n "$MOD" ] || { echo "no build of $ID in $MODULES"; exit 2; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/$ID"
@@ -40,4 +41,5 @@ done
 set -- "${ARGS[@]}"
 docker run --rm --platform linux/amd64 --shm-size=1g --network none ${PUNG_MC68K_LOG:+-e PUNG_MC68K_LOG=1} ${RENDER_SETTLE_MS:+-e RENDER_SETTLE_MS=$RENDER_SETTLE_MS} ${RENDER_NOTES:+-e RENDER_NOTES=$RENDER_NOTES} ${RENDER_WATCH:+-e RENDER_WATCH=$RENDER_WATCH} ${RENDER_WATCH_MS:+-e RENDER_WATCH_MS=$RENDER_WATCH_MS} ${RENDER_LATE:+-e RENDER_LATE=$RENDER_LATE} ${RENDER_SEQ:+-e RENDER_SEQ=$RENDER_SEQ} ${RENDER_SEQ_MS:+-e RENDER_SEQ_MS=$RENDER_SEQ_MS} ${PUNG_SCAN_LOG:+-e PUNG_SCAN_LOG=1} -v "$PWD/scripts:/s:ro" -v "$(cd "$SCHWUNG" && pwd)/src:/schwung:ro" \
     -v "$WORK:/w" "$IMAGE" sh -c "ln -sf /lib64/ld-linux-x86-64.so.2 /lib/ld-linux-x86-64.so.2; gcc -O1 -I/schwung -o /tmp/rc /s/render-check.c -ldl -lm && /tmp/rc /w/$ID $*"
-cp "$WORK/render-check.wav" "build/push-modules/$ID-render-check.wav" 2>/dev/null && echo "kept: build/push-modules/$ID-render-check.wav"
+KEEP=$(dirname "$MODULES")/$ID-render-check.wav
+cp "$WORK/render-check.wav" "$KEEP" 2>/dev/null && echo "kept: $KEEP"

@@ -348,13 +348,6 @@ If it only restyles the default page, it does not ship.
 
 ### Rules
 
-1. **Reuse Pung's pictures** for the structures Pung knows: `g.envelope`, `g.filter`, `g.lfo`, `g.mix`,
-   not hand-drawn ones. The
-   user has learned the picture on every other module, and it is the picture the web page draws.
-2. **Respect the bands.** Draw in your band (952 x 86). The header and the name and value row belong to
-   Pung.
-3. **Show the touch.** Whatever is under a finger (`v.$touched`) is drawn in slot colour, as in §4.
-4. **Show unknown honestly.** Check `v[key].known`; draw a neutral shape until values arrive.
 0. **A custom screen costs no more than Pung's own.** It is a principle of the design, and Pung keeps it
    for the author (`override.go`, `render`): a screen is a function of its values, so its script runs
    only when a value it shows, the touched knob or the page changes. Every other frame is a copy of the
@@ -364,6 +357,13 @@ If it only restyles the default page, it does not ship.
    oscillator screen 0.8 ms, its filter screen 2.5 ms, JE-8086's Patch front panel 2.5 ms. While nothing
    turns: no script runs at all. Keep a changing frame cheap too: what never changes goes into
    `g.layer`, curves are cached, and nothing is computed that the frame does not show.
+1. **Reuse Pung's pictures** for the structures Pung knows: `g.envelope`, `g.filter`, `g.lfo`, `g.mix`,
+   not hand-drawn ones. The
+   user has learned the picture on every other module, and it is the picture the web page draws.
+2. **Respect the bands.** Draw in your band (952 x 86). The header and the name and value row belong to
+   Pung.
+3. **Show the touch.** Whatever is under a finger (`v.$touched`) is drawn in slot colour, as in §4.
+4. **Show unknown honestly.** Check `v[key].known`; draw a neutral shape until values arrive.
 5. **Fit the budget**: 8 ms a frame, 14 ms for a front panel (§7). One `g.poly` per curve; cache what does
    not change. What a screen draws the same every frame (a panel's ground, frames, legends) goes into
    `g.layer(key, fn)`: drawn once, copied after that. Nodal Red's panel went from 26 ms to 3 ms a frame. `/api/surface/state` reports `module_ui_draw_us`: measure on the device.
@@ -723,8 +723,8 @@ Before a screen, widget or web section ships:
 - [ ] Every text is fitted to its room by measuring (`g.text`/`g.value` with a width); no number is cut.
       `TestCellsKeepTheirText` and its siblings check Pung's own elements this way (`PUNG_GALLERY=dir`
       writes the frames).
-- [ ] It stays under 8 ms a frame on the device (`TestShippedOverlaysDraw` renders it; screenshots with
-      `PUNG_SHOTS=dir go test`).
+- [ ] It stays under 8 ms a frame **on the device** (`module_ui_draw_us`). `TestShippedOverlaysDraw` renders it
+      without a Push (screenshots with `PUNG_SHOTS=dir go test`); a computer's timing says nothing of the Push's.
 - [ ] For a custom screen: one sentence saying what it shows that the default cannot. If there is no such
       sentence, it does not ship.
 - [ ] For a front panel: the encoder row (names, values, the touched one) and the page are on it; it was

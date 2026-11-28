@@ -24,6 +24,16 @@ Output, in `build/push-modules/`:
 Modules that are not in Schwung's catalog at all, written for the Push only, are **Pung-native**:
 `native/`, `docs/NATIVE-MODULES.md`. They go through the same steps with a hand recipe.
 
+## One module, from its working copy
+
+For whoever writes or ports a module: `scripts/dev-module.sh <the module's working copy> [id]` builds that
+one module through the same steps as below (recipe read from its build script, compiled with no network,
+checked as packaging checks), into `build/dev/` and nowhere else: no catalog, no other module, and
+`build/push-modules` (the release's build) is not touched. It needs Schwung's source for the host headers
+(`SCHWUNG=<folder>`, default `../schwung`). `RENDER_MODULES=build/dev/out/modules scripts/render-check.sh <id>
+<assets>` then plays it. The whole-catalog build above expects the working copies named in
+`scripts/local-sources.json` beside this repository, which only the maintainer has.
+
 ## How a module is built
 
 A module repo's own `scripts/build.sh` is **read, never run**. Those scripts
