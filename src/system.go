@@ -83,6 +83,9 @@ func (h *Host) cpuNow() map[string]any {
 
 // meminfo: /proc/meminfo's total and available, in bytes
 func meminfo() (total, avail int64) {
+	if onMac {
+		return macMeminfo()
+	}
 	raw, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
 		return 0, 0
@@ -105,6 +108,9 @@ func meminfo() (total, avail int64) {
 
 // battery: the first battery the kernel knows (percent, and whether it charges)
 func battery() map[string]any {
+	if onMac {
+		return macBattery()
+	}
 	dirs, _ := filepath.Glob("/sys/class/power_supply/*")
 	for _, d := range dirs {
 		if t, _ := os.ReadFile(filepath.Join(d, "type")); strings.TrimSpace(string(t)) != "Battery" {
@@ -143,6 +149,9 @@ func temperature() float64 {
 
 // osRelease: the system's name and version (/etc/os-release)
 func osRelease() (name, version string) {
+	if onMac {
+		return macOSRelease()
+	}
 	raw, _ := os.ReadFile("/etc/os-release")
 	for _, line := range strings.Split(string(raw), "\n") {
 		k, v, ok := strings.Cut(line, "=")

@@ -35,6 +35,9 @@ type procInfo struct {
 }
 
 func listProcs() []procInfo {
+	if onMac {
+		return macListProcs()
+	}
 	ents, _ := os.ReadDir("/proc")
 	var out []procInfo
 	for _, e := range ents {

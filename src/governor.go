@@ -39,6 +39,9 @@ const govSilenceEvery = 250 * time.Millisecond
 
 // procCPU: the processor time a process has used, all its threads.
 func procCPU(pid int) (time.Duration, bool) {
+	if onMac {
+		return macProcCPU(pid)
+	}
 	b, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
 	if err != nil {
 		return 0, false
@@ -69,6 +72,9 @@ func parseProcCPU(stat string) (time.Duration, bool) {
 // a low priority, "nice": Live's library indexer runs so for hours, and gives
 // way to anything that plays) and the whole.
 func systemCPU() (busy, background, total time.Duration, ok bool) {
+	if onMac {
+		return macSystemCPU()
+	}
 	b, err := os.ReadFile("/proc/stat")
 	if err != nil {
 		return 0, 0, 0, false
@@ -121,6 +127,9 @@ const rtThreadName = "pung-rt"
 
 // threadCPUs: every thread of this process.
 func threadCPUs() map[int]govThread {
+	if onMac {
+		return macThreadCPUs()
+	}
 	out := map[int]govThread{}
 	ents, _ := os.ReadDir("/proc/self/task")
 	for _, e := range ents {
@@ -179,9 +188,9 @@ func (h *Host) govSampleNow() govSample {
 			} else {
 				s.children += c
 			}
-		case p.exe == "/opt/push3/Live":
+		case p.exe == "/opt/push3/Live" || strings.HasSuffix(p.exe, ".app/Contents/MacOS/Live"): // (a Push's Live, a Mac's)
 			s.live, s.liveFound = procCPU(p.pid)
-		case p.exe == "/opt/push3/Push3":
+		case p.exe == "/opt/push3/Push3" || strings.HasSuffix(p.exe, "/Push3.app/Contents/MacOS/Push3"):
 			s.push3, _ = procCPU(p.pid)
 		}
 	}

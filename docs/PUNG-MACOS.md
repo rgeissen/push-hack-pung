@@ -139,6 +139,17 @@ may not do is not what Pung may not do (`src/deployment.go`):
 | An emulator of one kind twice | One runs, the second waits (the engine's own lock) | The same, until the engines are taught otherwise |
 | Rest in silence | Yes | Yes: a laptop's battery is worth as much |
 
+**The governor is ported with it** (2026-11-28). What it does to save work was already there, being shared
+code: a device rests in silence, the realtime loop does not render a rested module, the view draws only what
+changed. What it *measures* came from Linux's `/proc` and is now read through macOS's own calls
+(`src/sysread_darwin.go`): a process's and a thread's processor time, the machine's load, memory, the
+battery, the system's version, the list of processes (an emulator's engine, Live itself). So on a Mac
+`GET /api/governor` says what every device costs and `GET /api/system` shows the machine at a glance, as on
+a Push. Measured here with Braids playing at 48 kHz: its device thread takes 1.3 percent of one core, 0.6 of
+it rendering; Pung as a whole 6.9. The room check stays off on a Mac until an emulator has been built and
+measured there: the governor is now the tool that measures it. A Mac's eight cores are not all alike
+(four fast, four slow on the owner's M3): a rule that counts free cores will have to know that.
+
 Pung says which kind it is and what that carries (`GET /api/system`: `kind`, `limits`; the catalog's
 `deployment`), and a module's card words its limits from that: on a Mac no sentence about two emulators and
 no cost in a Push's cores. **What follows for a Set**: one made on a Mac may hold more emulators than a Push

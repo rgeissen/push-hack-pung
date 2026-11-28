@@ -199,6 +199,8 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   **That count is the Push's, not Pung's** (the owner, 2026-11-28: each deployment carries its own limits;
   `src/deployment.go`): a Mac has none, and the governor's room check uses costs measured on a Push only on
   a Push. A new kind of deployment gets its limits there, measured, not copied.
+  The governor's and the system page's readings have a Mac's version (`src/sysread_darwin.go`, asked for
+  through `onMac`); a new reading from `/proc` or `/sys` needs its counterpart there.
 
 ## When the Push froze: getting an unsaved Set back
 

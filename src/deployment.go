@@ -38,6 +38,9 @@ func kindOf(goos string) deploymentKind {
 	return kindPush
 }
 
+// onMac: the system's own readings come from macOS's calls (sysread_darwin.go), not from /proc.
+var onMac = runtime.GOOS == "darwin"
+
 // limits: what this deployment carries, as /api/system answers it.
 func (k deploymentKind) limits() map[string]any {
 	m := map[string]any{}
