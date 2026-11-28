@@ -19,6 +19,7 @@ release, and native instruments built from gearmulator (`native/`).
 | What devices cost (processor, energy), `GET /api/governor` | `docs/GOVERNOR.md` |
 | Where Pung goes: the Pung stack, Set compatibility, hosts, the phases, what is sold | `docs/PUNG-STACK.md` |
 | One parameter order for every Pung (the groundwork's first piece; a design, not built) | `docs/SET-CONTRACT.md` |
+| Pung in Live on macOS: Sets that cross between a Push and a Mac, the same experience there; a design and its proof | `docs/PUNG-MACOS.md` |
 | Patches (what one Pung device holds, moved between deployments; built as "Stacks" on 2026-11-27) | `docs/STACKS.md` |
 | pung.live and a deployment over https (so it works in Safari and on an iPad): half built, a plan for the rest | `docs/SECURE-LINK.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |

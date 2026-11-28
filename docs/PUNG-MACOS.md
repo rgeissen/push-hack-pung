@@ -1,0 +1,192 @@
+# Pung in Live on macOS
+
+A design (2026-11-28). It is Phase 2 of `docs/PUNG-STACK.md`, worked out for the Mac. What is measured says
+so; everything else is a plan. Nothing here is built unless a line under "The proof" says so.
+
+## The two ambitions
+
+1. **A Set made on a Push with Pung devices opens and plays in Live on a Mac, and the other way round.**
+   The same devices, the same sounds, automation and mappings on the same controls.
+2. **The same Pung experience in Live on the Mac as on the Push**: in Live itself (the device's own window),
+   and on a Push connected to that Live in control mode.
+
+## What it rests on (measured)
+
+- **Live knows a VST3 device by its kind and class id alone.** Live 13.0b27 on the owner's Mac files every
+  scanned plugin as `device:vst3:<instr|audiofx>:<class id>`, and one bundle may hold several devices
+  (its plugin database, 2026-11-28). Pung's class id is `md5(namespace:kind:module id)`
+  (`livedevice.ClassUID`): the same on every machine. So a Mac plugin that answers with the Push's class
+  ids is, to Live, the same device. **To be proven first** (below): that Live on the Mac takes it so.
+- **Live remembers a bundle by its size and date** (the same database: `fingerprint`), and scans it again
+  when they change. Pung on the Push touches its plugin to be scanned again; the same will do on a Mac.
+- **What Live loads on the Push** is a VST3 plugin without a window (core's `livedevice`, Steinberg's SDK
+  3.8.1, about 1,100 lines), installed as `Pung.vst3`. It holds no instrument: each block it hands Pung the
+  events, parameters and input through shared memory, wakes Pung, and waits at most half a block for the
+  sound. Pung, a process of its own, renders (`rtloop.c`, one realtime thread a device).
+- **A device's parameters are numbered by their place** (0..255), with four hidden ones at 1000..1003 (pitch
+  bend, mod wheel, pressure, sustain). Live stores automation and mappings by place.
+- **A device's saved state** is text Pung writes (`{"pung_device":1,"midi_fx","out_ch","chain",
+  "pung_mod","sound","sound_hash"}`); the plugin only frames it (a length, then the bytes).
+- **Modules render 128 frames at 44.1 kHz.** Nothing on the Push resamples or tells Live a latency: the
+  design document that says so is ahead of the code.
+- **The owner's Mac**: an M3, macOS 26, Live 13.0b27 (the Push runs 13.0b25), Apple's compiler; no Go, no
+  CMake. A Set saved by the newer Live may not open in the older: both ends want the same Live.
+- **The connected Push**: Live 13 on the Mac carries its own `Push3.app` (the Push's scripts, its pictures,
+  libusb): in control mode that program decides what the Push's screen shows. Ableton's Extensions SDK
+  (JavaScript, public beta since June 2026) acts on a Set's contents; nothing public says it can draw on a
+  Push. The owner has heard that Ableton will open that way.
+
+## The shape
+
+The same two parts as on the Push, so that one code base serves both:
+
+```
+Live on the Mac                         Pung (a service beside Live)
+┌──────────────────────┐   shared      ┌───────────────────────────────────┐
+│ Pung.vst3            │   memory,     │ the device server (core's, ported) │
+│  one class a module  │◄─ a wake ────►│ one realtime thread a device       │
+│  the device's window │   word, a     │ Schwung's chain host, the modules  │
+│  (a web view)        │   socket      │ the view, the page, the catalog    │
+└──────────────────────┘               └───────────────────────────────────┘
+```
+
+**Why beside and not inside** (the choice in PUNG-STACK.md, confirmed for the Mac): the modules are other
+people's code and stay out of Live's process (a module that crashes takes Pung's device, not the Set);
+every module names the Push's folders, which Pung can answer in its own process and never in Live's; the
+view, the page and the catalog are the same program everywhere. That a helper process can render realtime
+audio for a host on macOS is how plugin hosts that isolate plugins work. **To be proven on this Mac** before
+anything is built on it (the proof, P2). The way back if it does not hold: the realtime half (`rtloop.c`,
+the bridge, the chain host, the modules) inside the plugin, the rest of Pung reaching it through the same
+shared memory. That is a large change to how Pung reads and sets a module's parameters; it is named, not
+planned.
+
+### What changes underneath
+
+| On the Push (Linux) | On the Mac |
+|---|---|
+| A file in `/dev/shm` for each device | `shm_open` (a name of at most 31 letters) |
+| A futex on the request and done words | `os_sync_wait_on_address` and its wake, shared between processes (macOS 14.4 and later) |
+| `SCHED_FIFO` 70 for a device's thread | A time-constraint thread that joins the audio device's workgroup (so an Apple chip runs it on the fast cores, with Live's own audio thread) |
+| The socket at `/data/push-hack/data/pung/devices.sock` | A socket in Pung's folder (a short path: macOS allows 104 letters) |
+| The plugin finds its settings inside its own bundle | Outside it, in Pung's folder: a signed bundle may not change |
+| `/proc`, process groups, priority-inheriting locks with a deadline | Their macOS counterparts, or done without (the Push's are for a Live Pung restarts; on a Mac Pung never restarts Live) |
+| Pung restarts Live to make it scan | Pung never touches Live on a computer: it says "restart Live", and (below) needs it far less often |
+
+### Where things live on a Mac
+
+| | |
+|---|---|
+| The plugin | `~/Library/Audio/Plug-Ins/VST3/Pung.vst3` (the player's own folder: no administrator needed) |
+| Pung, its modules, sounds, pack | `~/Library/Application Support/Pung/` |
+| The service | Started by macOS on demand (a launch agent that owns the socket and the page's port: nothing runs while nothing asks) |
+| The page | `http://127.0.0.1:7720`, as on the Push |
+
+## Ambition 1: the same Set on both
+
+The five clauses of the Set contract (`docs/PUNG-STACK.md`), and what the Mac asks of each.
+
+1. **Identity.** Holds by construction (above). The Mac plugin gives each class the Push's id, name, kind
+   and category.
+2. **Parameter positions.** The contract must be on, on both ends, before Sets are exchanged, and its layout
+   must be the one that fits what Live shows (`docs/SET-CONTRACT.md`, "What the Push said": the module's own
+   first 96, the MIDI effect selector at 96, thirty slots, then the rest). **This is the open decision that
+   blocks everything else here.** Whether Live on a computer also stops at 127 is measured in the proof.
+3. **State.** Two repairs, both needed before a Set crosses:
+   - *The MIDI effect* is named by its number in the registry, not by its place in one machine's list (the
+     contract's classes do this already).
+   - *Files* (samples, sound files) are written into the state as the Push's path, and stay so: **the Push's
+     path is the name, each deployment answers it.** On a Mac every module is built so that a path under
+     `/data/UserData/UserLibrary`, `/data/UserData/schwung` and Live's packs is opened in the Mac's own
+     User Library, Pung's folder and Live's packs. The state is then the same text on both machines, and
+     forty-one modules that name those folders in their own code need no change of their own.
+     Whether the file is there is the fifth clause's.
+4. **Versions.** As everywhere: a module must read what its last version wrote. A test for that belongs to
+   the pack's build, not to the Mac.
+5. **What lies outside the Set.** The stack check (`POST /api/stack/check`) already says what a Set needs
+   and what is missing; a Mac is one more deployment it is asked of. Files a Set's sounds use are added to
+   what it lists. Firmware never travels: it is named.
+
+**A class for every module in the pack, installed or not.** On a Push a module that is not installed has no
+class, and a Set that uses it meets a missing plugin. On a computer Pung cannot restart Live to add one. So
+the Mac plugin lists a class for every module of the pack (the pack carries each module's layout: names,
+kinds, ranges). A device whose module is not installed says so and what to install, keeps its state, and
+plays once the module is there. Live then needs a new scan only when the pack itself grows. The same is
+right for the Push and can follow there.
+
+**Rate and block.** Live on a computer runs at any rate and block size. A device renders 128 frames at
+44.1 kHz; the service converts where Live runs at another rate, and the plugin tells Live the latency (the
+128 frames it must gather, plus the converter's). The shared block gains the rate. Without this a Set at
+48 kHz plays sharp: it is part of the first build, not an extra.
+
+**The modules, built for the Mac.** Each of the 132 is built from its source for Apple silicon (Intel only
+if asked for), packaged beside its Push build under the same version. A survey comes first: which build as
+they are, which need work, which cannot. What the survey must expect:
+- The chain host uses glibc's `dlinfo` and names the Push's folders: it is built with the Mac's own answers.
+- The emulators (gearmulator) come from a desktop project and build for the Mac. Their helper processes use
+  Linux's memory files, shared semaphores and parent-death signal: each has a macOS counterpart. Their
+  compiled code needs the Mac's permission for it (a signing entitlement).
+- A module that cannot be built yet is the placeholder above, not a broken Set.
+
+## Ambition 2: the same experience
+
+Pung's view needs two things from where it runs: **somewhere to put a 960 by 160 picture, and the controls'
+events** (eight encoders, two rows of buttons, the pages). On the standalone Push, Push Hack gives it both.
+The design keeps the view exactly so and gives it other places to stand.
+
+**In Live on the Mac: the device's window is a Push.** The plugin's window shows the device as the Push
+shows it: the screen, live, with the same front panel, pages, segment mode and ASSIGN, and under it the
+encoders and buttons to turn and press with the mouse. Beside it, what the page already has for a device:
+its sounds, its samples, its pages as lists. It is Pung's own page for that device in a web view, fed by
+the same view code that draws for the Push (a surface that is a window instead of hardware). Nothing is
+drawn twice, and a panel that changes on the Push changes here.
+
+**On a Push connected to Live on the Mac**, two levels:
+- **Push native, by construction.** Live's own device view on the Push shows a Pung device's parameters in
+  banks of eight, with Pung's names and units, in the order of Pung's pages: the contract's layout puts a
+  module's first pages first. No hack, nothing to break.
+- **The Pung view, when Ableton opens the way.** The same surface as the window above is handed the Push's
+  screen and controls in place of the window. What is needed from Ableton is exactly the two things the view
+  asks for. Until that exists Pung does not hook Ableton's program on the Mac: that would mean changing a
+  signed application, which a product must not do. (On a Push 3 Standalone in control mode the Push's own
+  system still runs; whether Push Hack's hook there could show a view fed from the Mac is a question for a
+  spike, not a promise.)
+
+## Installing, and what a player must never do
+
+The rule of `docs/SECURE-LINK.md` holds: nothing after the installer. The Pung Installer gains a second
+target, "this Mac": the plugin into the player's VST3 folder, Pung and the pack into its folder, the launch
+agent. Live finds the plugin at its next start. pung.live's Deployments gains the kind (`KINDS`): a Mac is
+a deployment like a Push, at `127.0.0.1`.
+
+For anyone but the owner the programs must be signed with an Apple Developer identity and notarised, or
+macOS refuses them. That costs a membership and is the owner's to decide; the proof needs none of it.
+
+## The proof, in order
+
+Each step answers one question and has a result that is either there or not. Step 1 costs days; nothing
+after it is started before it holds.
+
+| | Question | Done when |
+|---|---|---|
+| **P1** | Does Live on the Mac take Pung's plugin, with the Push's class ids? | A build of the plugin for the Mac passes Steinberg's validator and Live lists its devices |
+| **P2** | Does realtime hold between Live and Pung beside it on an Apple chip? | One module plays in Live at 64, 128 and 256 frames, 44.1 and 48 kHz, for ten minutes without a late block, beside a busy Set |
+| **P3** | Does a device saved on the Push open on the Mac? | A rack Pung wrote on the Push, with a sound in it, loads in Live on the Mac and sounds the same |
+| **P4** | How many parameters does Live on a computer show, and does a changed bundle get scanned? | Measured, and written into `docs/SET-CONTRACT.md` |
+| **P5** | Does a whole Set cross, both ways? | A Set with a Pung device, automation and a mapped Macro, saved on the Push, plays the same on the Mac; saved there, the same on the Push |
+
+P5 needs the contract's new layout and someone at both machines; P1 to P4 need neither.
+
+## Decisions for the owner
+
+1. **The contract's layout** (`docs/SET-CONTRACT.md`): the go for the one that fits Live's 127. Nothing of
+   ambition 1 can be finished without it.
+2. **Whose the plugin is.** Today it is Push Hack's, for Linux. For the Mac either the changes go upstream
+   (one plugin for everybody, on their schedule), or Pung carries its own (what the independence from Push
+   Hack asks for anyway). Recommended: Pung's own, kept source-compatible, offered upstream.
+3. **An Apple Developer identity**, when others are to install it.
+4. **Intel Macs**: left out unless asked for.
+
+## Not in this design
+
+Windows (the same shape, other system calls); other hosts than Live (Phase 4); accounts and the deployment
+service (Phase 3); moving a Set's files between machines.
