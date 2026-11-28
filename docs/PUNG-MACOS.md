@@ -262,6 +262,13 @@ answers Live for every class of a Pung: it keeps a device's state, an instrument
   effect's round trip arrives after exactly the delay told. Measured through the whole chain with Braids
   holding A4: 440.18 Hz at 44.1 kHz, 440.09 at 48 kHz (blocks of 512 and of 64) and at 88.2 kHz, 439.72 at
   96 kHz (the measurement's own resolution).
+- **A device has a window** (ambition 2, in Live on the Mac): the plugin's window is a web view
+  (`editor_mac.mm`) on Pung's own page for that device (`?embed=1&device=<its id>`: the device alone, no bar,
+  no list). It shows what the page shows on a Push's side: the front panel as the Push draws it, the encoder
+  row, the pages, the sound browser. Opened by a test host that photographs it (`viewtest`), with Braids
+  and with Freeverb; not yet opened in Live by hand. Still to come: the encoders and buttons of the Push
+  under the screen, to turn with the mouse (today the page's sliders do that work), and "Show on Push"
+  taken off where there is no Push.
 - **P2: good numbers, not the last word.** Braids held for a minute at 48 kHz in blocks of 64 frames (1.3 ms
   each), the plugin's own count of blocks it gave up on: **none late in 25,618 blocks on an idle Mac, none in
   19,679 beside eight busy loops** (one a core), a block taking Pung at most 0.17 ms. Handing a block over

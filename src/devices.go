@@ -1431,6 +1431,7 @@ func (d *device) Stats() map[string]any {
 		// the realtime thread counts what core's loop would have (blocks,
 		// notes, peaks) and what Process did
 		m["own_thread"] = true
+		m["n"] = d.s.Index // (its number on Pung's page: a device's window finds its device by its id)
 		if d.hostRate > 0 {
 			m["host_rate"] = d.hostRate // (other than 44100: the loop converts, ratebridge.c)
 		}

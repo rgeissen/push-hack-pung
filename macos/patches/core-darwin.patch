@@ -1,6 +1,6 @@
 diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/bundle.go core/livedevice/bundle.go
 --- a/core/livedevice/bundle.go	2026-11-21 23:45:24
-+++ b/core/livedevice/bundle.go	2026-11-28 01:53:59
++++ b/core/livedevice/bundle.go	2026-11-28 03:12:30
 @@ -2,11 +2,16 @@
  
  import (
@@ -18,7 +18,18 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/bundle.go core/livedevi
  	"strings"
  )
  
-@@ -39,6 +44,13 @@
+@@ -21,6 +26,10 @@
+ 	URL    string `json:"url,omitempty"`
+ 	Email  string `json:"email,omitempty"`
+ 	Socket string `json:"socket"` // the Server's control socket
++	// Page: the hack's own page for one device, shown in the device's window
++	// where the plugin has one (macOS). The plugin adds "embed=1" and
++	// "device=<the device's id>". Empty: no window.
++	Page string `json:"page,omitempty"`
+ 	// Classes is the class file (WriteClasses). Empty: ClassesPath, inside
+ 	// the bundle, where it outlives the hack (see InstallBundle).
+ 	Classes string `json:"classes"`
+@@ -39,6 +48,13 @@
  // the devices in the user's Sets still load (silent) instead of being
  // missing plugins (Live 13.0b25 crashed recovering a Set with a missing one).
  func ClassesPath(dir, name string) string {
@@ -32,7 +43,7 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/bundle.go core/livedevi
  	return filepath.Join(BundleDir(dir, name), "Contents", "Resources", "classes.json")
  }
  
-@@ -65,7 +77,34 @@
+@@ -65,7 +81,34 @@
  	root := filepath.Join(BundleDir(dir, name), "Contents")
  	soPath := filepath.Join(root, "x86_64-linux", name+".so")
  	changed := false
@@ -68,7 +79,7 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/bundle.go core/livedevi
  		if err := writeAtomic(soPath, so, 0o755); err != nil {
  			return "", cfg, false, err
  		}
-@@ -98,7 +137,44 @@
+@@ -98,7 +141,44 @@
  	// A moduleinfo.json made at build time would list no classes (they come
  	// from the class file at run time), and Live would believe it.
  	os.Remove(filepath.Join(root, "Resources", "moduleinfo.json"))
@@ -308,8 +319,8 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/sys_other.go core/lived
  	return nil, errors.New("livedevice: devices need Linux")
 diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/CMakeLists.mac.txt core/livedevice/vst3/CMakeLists.mac.txt
 --- a/core/livedevice/vst3/CMakeLists.mac.txt	1970-01-01 01:00:00
-+++ b/core/livedevice/vst3/CMakeLists.mac.txt	2026-11-28 01:54:26
-@@ -0,0 +1,33 @@
++++ b/core/livedevice/vst3/CMakeLists.mac.txt	2026-11-28 03:13:14
+@@ -0,0 +1,45 @@
 +# livedevice for macOS: the same proxy, as a VST3 bundle Live on a Mac loads
 +# (Pung, docs/PUNG-MACOS.md). Built with Makefiles and Apple's command line
 +# tools; no Xcode.
@@ -330,8 +341,9 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/CMakeLists.mac.txt
 +set(VST3SDK "" CACHE PATH "the VST3 SDK")
 +add_subdirectory(${VST3SDK} ${PROJECT_BINARY_DIR}/vst3sdk)
 +smtg_enable_vst3_sdk()
-+smtg_add_vst3plugin(livedevice source/proxy.cpp source/params.cpp)
-+target_link_libraries(livedevice PRIVATE sdk)
++smtg_add_vst3plugin(livedevice source/proxy.cpp source/params.cpp source/editor_mac.mm)
++set_source_files_properties(source/editor_mac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
++target_link_libraries(livedevice PRIVATE sdk "-framework Cocoa" "-framework WebKit")
 +
 +# playtest: hosts a bundle like Live and checks real sound through its hack
 +add_executable(playtest test/playtest.cpp
@@ -343,10 +355,116 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/CMakeLists.mac.txt
 +    ${VST3SDK}/public.sdk/source/common/memorystream.cpp)
 +set_source_files_properties(${VST3SDK}/public.sdk/source/vst/hosting/module_mac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 +target_link_libraries(playtest PRIVATE sdk_hosting "-framework Cocoa")
++
++# viewtest: opens a device's window as a host does and takes a picture of it
++add_executable(viewtest test/viewtest.mm
++    ${VST3SDK}/public.sdk/source/vst/hosting/module.cpp
++    ${VST3SDK}/public.sdk/source/vst/hosting/module_mac.mm
++    ${VST3SDK}/public.sdk/source/vst/hosting/plugprovider.cpp
++    ${VST3SDK}/public.sdk/source/vst/hosting/connectionproxy.cpp
++    ${VST3SDK}/public.sdk/source/vst/moduleinfo/moduleinfoparser.cpp
++    ${VST3SDK}/public.sdk/source/common/memorystream.cpp)
++set_source_files_properties(test/viewtest.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
++target_link_libraries(viewtest PRIVATE sdk_hosting "-framework Cocoa" "-framework WebKit")
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/classes.h core/livedevice/vst3/source/classes.h
+--- a/core/livedevice/vst3/source/classes.h	2026-11-21 23:45:24
++++ b/core/livedevice/vst3/source/classes.h	2026-11-28 03:12:30
+@@ -34,7 +34,7 @@
+ // the plugin belongs to. $LIVEDEVICE_CONFIG, $LIVEDEVICE_SOCKET and
+ // $LIVEDEVICE_CLASSES override it (tests).
+ struct Config {
+-    std::string vendor, url, email, socket, classes;
++    std::string vendor, url, email, socket, classes, page;
+ };
+ const Config& config();
+ 
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/editor_mac.mm core/livedevice/vst3/source/editor_mac.mm
+--- a/core/livedevice/vst3/source/editor_mac.mm	1970-01-01 01:00:00
++++ b/core/livedevice/vst3/source/editor_mac.mm	2026-11-28 03:12:30
+@@ -0,0 +1,59 @@
++// editor_mac.mm: a device's window on macOS: the hack's own page for that
++// device, in a web view. The page is the hack's (Pung serves its interface on
++// this machine); the plugin only gives it a place in the host's window.
++#include "public.sdk/source/common/pluginview.h"
++
++#import <Cocoa/Cocoa.h>
++#import <WebKit/WebKit.h>
++#include <string>
++
++using namespace Steinberg;
++
++namespace {
++
++class WebEditor : public CPluginView {
++public:
++    explicit WebEditor(std::string url) : url_(std::move(url)) {
++        ViewRect r(0, 0, 1040, 700);
++        setRect(r);
++    }
++    tresult PLUGIN_API isPlatformTypeSupported(FIDString type) override {
++        return type && strcmp(type, kPlatformTypeNSView) == 0 ? kResultTrue : kResultFalse;
++    }
++    tresult PLUGIN_API attached(void* parent, FIDString type) override {
++        if (isPlatformTypeSupported(type) != kResultTrue) return kResultFalse;
++        NSView* p = (__bridge NSView*)parent;
++        web_ = [[WKWebView alloc] initWithFrame:p.bounds configuration:[[WKWebViewConfiguration alloc] init]];
++        web_.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
++        [p addSubview:web_];
++        NSURL* u = [NSURL URLWithString:[NSString stringWithUTF8String:url_.c_str()]];
++        if (u) [web_ loadRequest:[NSURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:10]];
++        return CPluginView::attached(parent, type);
++    }
++    tresult PLUGIN_API removed() override {
++        [web_ removeFromSuperview];
++        web_ = nil;
++        return CPluginView::removed();
++    }
++    tresult PLUGIN_API canResize() override { return kResultTrue; }
++    tresult PLUGIN_API onSize(ViewRect* r) override {
++        if (!r) return kInvalidArgument;
++        setRect(*r);
++        if (web_) [web_ setFrame:NSMakeRect(0, 0, r->getWidth(), r->getHeight())];
++        return kResultTrue;
++    }
++    tresult PLUGIN_API checkSizeConstraint(ViewRect* r) override {
++        if (!r) return kInvalidArgument;
++        if (r->getWidth() < 640) r->right = r->left + 640;
++        if (r->getHeight() < 400) r->bottom = r->top + 400;
++        return kResultTrue;
++    }
++
++private:
++    std::string url_;
++    WKWebView* web_ = nil;
++};
++
++} // namespace
++
++Steinberg::IPlugView* ldMakeView(const std::string& url) { return new WebEditor(url); }
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/params.cpp core/livedevice/vst3/source/params.cpp
+--- a/core/livedevice/vst3/source/params.cpp	2026-11-21 23:45:24
++++ b/core/livedevice/vst3/source/params.cpp	2026-11-28 03:12:30
+@@ -210,6 +210,7 @@
+                 c.email = strOf(root, "email");
+                 c.socket = strOf(root, "socket");
+                 c.classes = strOf(root, "classes");
++                c.page = strOf(root, "page");
+             }
+         }
+         // a test runs a bundle against its own hack
 diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp core/livedevice/vst3/source/proxy.cpp
 --- a/core/livedevice/vst3/source/proxy.cpp	2026-11-21 23:45:24
-+++ b/core/livedevice/vst3/source/proxy.cpp	2026-11-28 02:03:46
-@@ -28,13 +28,17 @@
++++ b/core/livedevice/vst3/source/proxy.cpp	2026-11-28 03:12:30
+@@ -14,6 +14,8 @@
+ #include "base/source/fstreamer.h"
+ #include "pluginterfaces/base/ibstream.h"
+ #include "pluginterfaces/base/ustring.h"
++#include "pluginterfaces/gui/iplugview.h"
++#include "pluginterfaces/vst/ivstmessage.h"
+ #include "pluginterfaces/vst/ivstevents.h"
+ #include "pluginterfaces/vst/ivstmidicontrollers.h"
+ #include "pluginterfaces/vst/ivstparameterchanges.h"
+@@ -28,13 +30,17 @@
  #include <cmath>
  #include <cstring>
  #include <fcntl.h>
@@ -366,7 +484,18 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
  #include <thread>
  #include <unistd.h>
  
-@@ -83,11 +87,22 @@
+@@ -43,6 +49,10 @@
+ 
+ #define LD_PLUGIN_VERSION "0.1.0"
+ 
++#ifdef __APPLE__
++Steinberg::IPlugView* ldMakeView(const std::string& url); // editor_mac.mm
++#endif
++
+ namespace livedevice {
+ 
+ // hidden parameters that carry MIDI controllers (VST3 has no CC events)
+@@ -83,11 +93,22 @@
  static inline float* f32(uint8_t* m, int off) { return reinterpret_cast<float*>(m + off); }
  static inline double* f64(uint8_t* m, int off) { return reinterpret_cast<double*>(m + off); }
  
@@ -389,7 +518,7 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
  
  // ---- the control socket -------------------------------------------------------
  
-@@ -104,7 +119,7 @@
+@@ -104,7 +125,7 @@
          std::lock_guard<std::mutex> g(mu_);
          if (fd_ < 0 && !connect()) return false;
          std::string out = line + "\n";
@@ -398,7 +527,7 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
          auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
          for (;;) {
              size_t nl = buf_.find('\n');
-@@ -127,8 +142,16 @@
+@@ -127,8 +148,16 @@
  
  private:
      bool connect() {
@@ -415,7 +544,24 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
          sockaddr_un a{};
          a.sun_family = AF_UNIX;
          std::strncpy(a.sun_path, config().socket.c_str(), sizeof a.sun_path - 1);
-@@ -188,6 +211,16 @@
+@@ -184,10 +213,33 @@
+         return kResultFalse;
+     }
+     tresult PLUGIN_API canProcessSampleSize(int32 s) override { return s == kSample32 ? kResultTrue : kResultFalse; }
++    // The device's window asks which device this is (the controller knows only
++    // its class): answered at once, on the thread that asked.
++    tresult PLUGIN_API notify(IMessage* m) override {
++        if (m && FIDStringsEqual(m->getMessageID(), "ld.id?")) {
++            if (IPtr<IMessage> r = owned(allocateMessage())) {
++                r->setMessageID("ld.id");
++                r->getAttributes()->setInt("id", id_.load());
++                sendMessage(r);
++            }
++            return kResultOk;
++        }
++        return AudioEffect::notify(m);
++    }
+     tresult PLUGIN_API setupProcessing(ProcessSetup& s) override {
          rate_ = s.sampleRate > 0 ? s.sampleRate : 44100;
          return AudioEffect::setupProcessing(s);
      }
@@ -432,7 +578,7 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
  
      tresult PLUGIN_API process(ProcessData& d) override {
          uint8_t* m = shm_.load(std::memory_order_acquire);
-@@ -219,7 +252,7 @@
+@@ -219,7 +271,7 @@
          futexWake(u32(m, LD_OFF_REQ));
          // at most half a block: Live's deadline is the block, ours is half of it
          auto deadline = std::chrono::steady_clock::now() +
@@ -441,7 +587,7 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
          for (;;) {
              uint32_t done = __atomic_load_n(u32(m, LD_OFF_DONE), __ATOMIC_ACQUIRE);
              if (done == req) break;
-@@ -436,7 +469,9 @@
+@@ -436,7 +488,9 @@
                  // creating a device loads its engine, which can take seconds (a
                  // large module, a ROM boot): 2 s gave up on a device that was
                  // still loading, and the retry loaded it a second time
@@ -452,7 +598,7 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
                      id_ = r.id;
                      std::string st;
                      {
-@@ -456,6 +491,10 @@
+@@ -456,6 +510,10 @@
                  continue;
              }
              sleepMs(250);
@@ -463,7 +609,7 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
              uint32_t a = __atomic_load_n(u32(m, LD_OFF_ALIVE), __ATOMIC_RELAXED) + __atomic_load_n(u32(m, LD_OFF_DONE), __ATOMIC_RELAXED);
              quiet = (a == lastAlive) ? quiet + 1 : 0;
              lastAlive = a;
-@@ -469,7 +508,11 @@
+@@ -469,7 +527,11 @@
          }
      }
      bool map(const std::string& path) {
@@ -475,16 +621,59 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/source/proxy.cpp c
          if (fd < 0) return false;
          void* p = mmap(nullptr, LD_IPC_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
          ::close(fd);
-@@ -499,7 +542,8 @@
+@@ -498,8 +560,9 @@
+     std::atomic<uint8_t*> shm_{nullptr};
      uint8_t* mapped_ = nullptr;
      std::atomic<bool> resend_{false};
-     int id_ = 0;
+-    int id_ = 0;
 -    double rate_ = 44100;
++    std::atomic<int> id_{0};
 +    std::atomic<double> rate_{44100};
 +    int saidRate_ = 0; // the rate the hack was last told (the connection's thread only)
      std::mutex stateMu_;
      std::string state_;
  };
+@@ -583,6 +646,32 @@
+         return kResultFalse;
+     }
+ 
++#ifdef __APPLE__
++    // The device's window (macOS): the hack's own page for this device, in a
++    // web view (editor_mac.mm). Without a page in the bundle's settings the
++    // device has no window, as on a Push.
++    IPlugView* PLUGIN_API createView(FIDString name) override {
++        if (!name || !FIDStringsEqual(name, ViewType::kEditor) || config().page.empty()) return nullptr;
++        deviceId_ = 0;
++        if (IPtr<IMessage> q = owned(allocateMessage())) {
++            q->setMessageID("ld.id?");
++            sendMessage(q); // the processor answers in notify, before this returns
++        }
++        std::string url = config().page;
++        url += url.find('?') == std::string::npos ? "?" : "&";
++        url += "embed=1&device=" + std::to_string(deviceId_);
++        return ldMakeView(url);
++    }
++    tresult PLUGIN_API notify(IMessage* m) override {
++        if (m && FIDStringsEqual(m->getMessageID(), "ld.id")) {
++            int64 id = 0;
++            if (m->getAttributes()->getInt("id", id) == kResultOk) deviceId_ = (int)id;
++            return kResultOk;
++        }
++        return EditController::notify(m);
++    }
++#endif
++
+     OBJ_METHODS(Controller, EditController)
+     DEFINE_INTERFACES
+         DEF_INTERFACE(IMidiMapping)
+@@ -591,6 +680,7 @@
+ 
+ private:
+     const ClassInfo* ci_;
++    int deviceId_ = 0; // the device this controller's processor made, as it answered (the window's)
+ };
+ 
+ } // namespace livedevice
 diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/test/playtest.cpp core/livedevice/vst3/test/playtest.cpp
 --- a/core/livedevice/vst3/test/playtest.cpp	2026-11-21 23:45:24
 +++ b/core/livedevice/vst3/test/playtest.cpp	2026-11-28 02:04:15
@@ -587,3 +776,90 @@ diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/test/playtest.cpp 
      std::printf("%s: peak %.3f, %d of %d blocks sound, hand-off avg %.0f us, worst %.0f us (block %.0f us)\n",
                  argv[2], peak, sounding, blocks, sum / std::max(1, counted), worst, 1e6 * frames / rate);
      return peak > 0.001 ? 0 : 3;
+diff -ruN -x .macbuild -x .sdk -x *.so a/core/livedevice/vst3/test/viewtest.mm core/livedevice/vst3/test/viewtest.mm
+--- a/core/livedevice/vst3/test/viewtest.mm	1970-01-01 01:00:00
++++ b/core/livedevice/vst3/test/viewtest.mm	2026-11-28 03:13:31
+@@ -0,0 +1,83 @@
++// viewtest: opens a device's window the way a host does and takes a picture
++// of it (macOS). A validator cannot tell a window that shows the hack's page
++// from an empty one; this can.
++//
++//   viewtest <Bundle.vst3> "<class name>" <out.png> [seconds]
++#include "public.sdk/source/vst/hosting/hostclasses.h"
++#include "public.sdk/source/vst/hosting/module.h"
++#include "public.sdk/source/vst/hosting/plugprovider.h"
++#include "pluginterfaces/gui/iplugview.h"
++#include "pluginterfaces/vst/ivstaudioprocessor.h"
++#include "pluginterfaces/vst/ivstcomponent.h"
++#include "pluginterfaces/vst/ivsteditcontroller.h"
++
++#import <Cocoa/Cocoa.h>
++#import <WebKit/WebKit.h>
++#include <cstdio>
++#include <string>
++
++using namespace Steinberg;
++using namespace Steinberg::Vst;
++
++static WKWebView* findWeb(NSView* v) {
++    if ([v isKindOfClass:[WKWebView class]]) return (WKWebView*)v;
++    for (NSView* s in v.subviews)
++        if (WKWebView* w = findWeb(s)) return w;
++    return nil;
++}
++
++int main(int argc, char** argv) {
++    if (argc < 4) { std::fprintf(stderr, "usage: %s <Bundle.vst3> <class name> <out.png> [seconds]\n", argv[0]); return 2; }
++    double seconds = argc > 4 ? std::atof(argv[4]) : 6;
++    @autoreleasepool {
++        [NSApplication sharedApplication];
++        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
++        std::string err;
++        auto module = VST3::Hosting::Module::create(argv[1], err);
++        if (!module) { std::fprintf(stderr, "load: %s\n", err.c_str()); return 1; }
++        PluginContextFactory::instance().setPluginContext(new HostApplication());
++        VST3::Hosting::ClassInfo found;
++        bool ok = false;
++        for (auto& ci : module->getFactory().classInfos())
++            if (ci.category() == kVstAudioEffectClass && ci.name() == argv[2]) { found = ci; ok = true; }
++        if (!ok) { std::fprintf(stderr, "no class %s\n", argv[2]); return 1; }
++        IPtr<PlugProvider> provider = owned(new PlugProvider(module->getFactory(), found, true));
++        if (!provider->initialize()) { std::fprintf(stderr, "initialize failed\n"); return 1; }
++        IPtr<IComponent> component = owned(provider->getComponent());
++        IPtr<IEditController> controller = owned(provider->getController());
++        component->setActive(true);
++        // the plugin reaches its service on a thread of its own: the device is made a moment later
++        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:2.0]];
++        IPtr<IPlugView> view = owned(controller->createView(ViewType::kEditor));
++        if (!view) { std::printf("%s: no window\n", argv[2]); return 3; }
++        ViewRect r;
++        view->getSize(&r);
++        NSWindow* win = [[NSWindow alloc] initWithContentRect:NSMakeRect(80, 80, r.getWidth(), r.getHeight())
++                                                    styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
++        [win orderBack:nil];
++        if (view->attached((__bridge void*)win.contentView, kPlatformTypeNSView) != kResultTrue) { std::printf("attach failed\n"); return 4; }
++        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:seconds]];
++        WKWebView* web = findWeb(win.contentView);
++        if (!web) { std::printf("%s: a window, but no web view in it\n", argv[2]); return 5; }
++        __block bool done = false;
++        __block int rc = 6;
++        NSString* out = [NSString stringWithUTF8String:argv[3]];
++        std::printf("%s: window %d x %d, showing %s\n", argv[2], r.getWidth(), r.getHeight(), web.URL.absoluteString.UTF8String ?: "(nothing)");
++        [web evaluateJavaScript:@"JSON.stringify({title: document.title, embed: document.documentElement.classList.contains('embed'), unit: (document.querySelector('#panel-title')||{}).textContent || '', bar: !!(document.querySelector('.bar') && document.querySelector('.bar').offsetParent), text: document.body.innerText.slice(0, 160)})"
++              completionHandler:^(id res, NSError* e) { std::printf("page: %s\n", res ? [[res description] UTF8String] : (e ? e.localizedDescription.UTF8String : "?")); }];
++        [web takeSnapshotWithConfiguration:nil completionHandler:^(NSImage* img, NSError* e) {
++            if (img) {
++                NSBitmapImageRep* rep = [[NSBitmapImageRep alloc] initWithData:[img TIFFRepresentation]];
++                [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:out atomically:YES];
++                rc = 0;
++            } else if (e) {
++                std::printf("no picture: %s\n", e.localizedDescription.UTF8String);
++            }
++            done = true;
++        }];
++        for (int i = 0; i < 100 && !done; i++) [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
++        view->removed();
++        component->setActive(false);
++        return rc;
++    }
++}

@@ -222,6 +222,7 @@ func main() {
 	// Pung.vst3: Pung's plugins in Live, Pung's browser folders. (The rename
 	// from Schwung, 2026-11-15, gave the classes new UIDs: devices.go.)
 	bcfg := livedevice.BundleConfig{Vendor: "Pung", URL: "https://pung.live", Socket: *socket}
+	setDevicePage(&bcfg, cfg.Port) // (a device's own window, where the plugin has one: deployment_darwin.go)
 	if *presets != "" {
 		bcfg.Presets = livedevice.PresetFolders(*presets, "Pung", shown)
 	}

@@ -44,7 +44,7 @@ ln -sfn "$V/test" "$V/.macbuild/src/test"
 # (the SDK's build asks for Xcode's version; Apple's command line tools build it as well)
 XCODE_VERSION=16.0 "$CMAKE" -S "$V/.macbuild/src" -B "$V/.macbuild/out" -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release \
   -DXCODE_VERSION=16.0 -DVST3SDK="$ROOT/$D/vst3sdk" > "$V/.macbuild/configure.log" 2>&1 || { tail -20 "$V/.macbuild/configure.log"; exit 1; }
-XCODE_VERSION=16.0 "$CMAKE" --build "$V/.macbuild/out" --target livedevice validator playtest -j 8 > "$V/.macbuild/build.log" 2>&1 \
+XCODE_VERSION=16.0 "$CMAKE" --build "$V/.macbuild/out" --target livedevice validator playtest viewtest -j 8 > "$V/.macbuild/build.log" 2>&1 \
   || { grep -E "error" -A3 "$V/.macbuild/build.log" | head -40; exit 1; }
 cp "$V/.macbuild/out/VST3/Release/livedevice.vst3/Contents/MacOS/livedevice" $M/livedevice
 cp "$V/.macbuild/out/bin/Release/validator" $M/validator
@@ -71,6 +71,7 @@ cp $M/livedevice $DIST/livedevice.so      # (the name Pung looks for beside itse
 python3 -c "import json;d=json.load(open('hack.json'));d['port']=7733;json.dump(d,open('$DIST/hack.json','w'),indent=1)"
 ln -sfn "$ROOT/overrides" $DIST/overrides
 cp "$V/.macbuild/out/bin/Release/playtest" $M/playtest 2>/dev/null || true
+cp "$V/.macbuild/out/bin/Release/viewtest" $M/viewtest 2>/dev/null || true
 echo "   $DIST/pung ($(file -b $DIST/pung | cut -d, -f1)); its modules: macos/build-modules.sh"
 
 if [ "${1:-}" = validate ]; then

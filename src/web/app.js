@@ -49,6 +49,13 @@
     no.focus();
   });
 
+  // A device's own window in its host (a plugin window on a Mac: "?embed=1&device=<the device's id>"): the
+  // page shows that device alone, without the bar, the foot and the list of devices.
+  const QUERY = new URLSearchParams(location.search);
+  const EMBED = QUERY.get("embed") === "1";
+  const EMBED_ID = EMBED && /^\d+$/.test(QUERY.get("device") || "") && QUERY.get("device") !== "0" ? QUERY.get("device") : "";
+  if (EMBED) document.documentElement.classList.add("embed");
+
   // ---- status: Pung, Live, the devices ------------------------------------------
   async function refreshStatus() {
     let st;
@@ -80,7 +87,13 @@
     cnt.textContent = n || ""; cnt.hidden = !n;
     renderSystem(st);
     let want = state.dev;
-    if (state.follow && dv.selected >= 0) want = dv.selected;
+    if (EMBED_ID) {
+      // a device's own window in its host: this one device, whichever Live has selected
+      try {
+        const mine = ((await api("/api/devices")).devices || []).find((x) => String(x.id) === EMBED_ID);
+        if (mine && mine.n !== undefined) want = mine.n;
+      } catch (e) { /* the list as it is */ }
+    } else if (state.follow && dv.selected >= 0) want = dv.selected;
     if (!state.devices.some((d) => d.n === want)) want = n ? state.devices[0].n : -1;
     if (want !== state.dev) selectDevice(want);
     renderRack();

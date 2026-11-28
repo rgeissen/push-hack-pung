@@ -694,3 +694,8 @@ svg .moddot { fill: #3cc8e6; stroke: var(--panel, #111); stroke-width: 1.5; }
   .bar [data-places] .pls-name { display: none; }   /* (its dot and the arrow stay: the list names the place) */
   .bar .theme-sw { width: 28px; height: 28px; }
 }
+
+/* ---- a device's own window in its host (app.js, EMBED): the device alone ---- */
+.embed .bar, .embed .foot, .embed .skip, .embed #devices-view > .view-head, .embed #slots { display: none; }
+.embed main { padding: 10px 12px 16px; }
+.embed { --barh: 0px; }
