@@ -2,7 +2,7 @@
   "id": "pung",
   "name": "Pung",
   "version": "0.6.1",
-  "description": "Pung, the open instrument platform: open instruments, audio effects and MIDI generators on Push 3 as devices in Live, in Push's browser and device view, each with a designed interface on the Push screen. It plays modules in the Schwung format (which began on Ableton Move) and modules of its own, on Push Hack's Live device layer (core/livedevice). Needs Push Manager's VST3 scan switched on.",
+  "description": "Pung, the open instrument platform: open instruments, audio effects and MIDI generators on Push 3 as devices in Live, in Push's browser and device view, each with a designed interface on the Push screen. It hosts instruments in the Open Instrument format (modules written for Schwung, which began on Ableton Move, are accepted as they are), on Push Hack's Live device layer (core/livedevice). Needs Push Manager's VST3 scan switched on.",
   "author": "rgeissen",
   "homepage": "https://pung.live",
   "binary": "pung",

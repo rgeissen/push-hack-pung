@@ -1,26 +1,37 @@
 ---
 name: pung-module
-description: Make, port, review or package an instrument, audio effect or MIDI generator module for Pung on an Ableton Push 3 - the open Schwung module format (module.json, the DSP plugin's C interface, chain_params, ui_hierarchy, state), building one module for the Push (x86_64, glibc 2.35), checking what it answers and how it sounds without a Push, and what a module needs to be offered in Pung's module pack. Use when asked to write a new Pung module, bring an existing synth or effect to Pung, review a module, fix its build for the Push, or prepare it for the pack.
+description: Make, port, review or package the engine of an instrument, audio effect or MIDI generator for Pung, in the Open Instrument format - its five layers (sound, parameters, state, structure, live signals), module.json, the plugin's C interface, chain_params, ui_hierarchy, building one module for the Push (x86_64, glibc 2.35), checking what it answers and how it sounds without a Push, and what a module needs to be offered in Pung's module pack. Modules written for Schwung are accepted as they are. Use when asked to write a new Pung module, bring an existing synth or effect to Pung, review a module or say how far its engine goes, fix its build for the Push, or prepare it for the pack.
 ---
 
 # A module for Pung
 
-Pung runs open modules as devices in Ableton Live on a Push 3 Standalone. A module is one instrument,
-audio effect or MIDI generator: a folder with a description (`module.json`), a compiled DSP plugin and
-whatever it needs beside it (sounds, licence texts). Pung plays the Schwung module format, which began
-on Ableton Move, so one module can run on both.
+Pung hosts instruments as devices in Ableton Live on a Push 3 Standalone. An instrument is built in the
+**Open Instrument format**: an **engine**, which is the same wherever Pung runs, and two interfaces on
+it, a hardware interface and a web interface. Pung gives every engine both interfaces for nothing. This
+skill is about the engine.
+
+A module is how an instrument travels: a folder with a description (`module.json`), the compiled
+engine and whatever it needs beside it (sounds, licence texts). Modules written for Schwung, the format
+that began on Ableton Move, are engines as they are, so one module can run on both.
+
+The engine has five layers, each resting on the one below; it may stop at any and still plays:
+**1 sound** (the functions a host calls), **2 parameters** (each control's identity for good),
+**3 state** (what a Set brings back), **4 structure** (its sections and pages), **5 live signals**
+(what the sound is doing now).
 
 The Push is an x86_64 computer with glibc 2.35. A module built for Move (ARM) has to be built again;
 its source usually needs no change.
 
 ## Read first
 
-- The format is Schwung's and is documented there: https://github.com/charlesvestal/schwung, `docs/`.
+- `references/OPEN-INSTRUMENT.md`: the format, as a draft standard: the three parts, the five layers and
+  their rules, how an instrument is described, and what of it Pung does not yet keep itself.
+- The engine's functions are, in this version, Schwung's, and are documented there: https://github.com/charlesvestal/schwung, `docs/`.
   What counts for Pung: in `MODULES.md` the parts on `module.json`, the plugin's functions for each
   kind of module, parameters and state; `PARAM_PAGES.md`; `REALTIME_SAFETY.md`. What does not: Move's
   own interface (`ui.js`, `ui_chain.js`, the shadow UI, overtake modules, LEDs). Those files travel in
   a package and Pung does not run them: on Pung a module's interface is its parameters and, where it
-  has one, a `push_ui.js` (the `pung-interface` skill).
+  has one, a hardware interface of its own (on a Push a `push_ui.js`: the `pung-interface` skill).
 - `references/push-module-builds.md`: how Pung builds a module for the Push, what the check refuses,
   the known limits (hard-coded Move paths among them).
 - `references/plugin_api_v1.h`: the plugin interface Pung's host is built with (v1, and the
@@ -172,4 +183,7 @@ pull request or an issue in Pung's repository.
 ## When you hand it over
 
 Say what you built and from which commit, what the build printed after `checked:`, the render check's
-peak and RMS, the result of the state round trip, and what was not verified on a Push.
+peak and RMS, the result of the state round trip, and what was not verified on a Push. And describe
+the instrument as the format does: how far its engine goes and what its interfaces are, for example
+"engine to layer 3 (no compartments, no live signals) · default hardware interface for the Push ·
+default web interface".

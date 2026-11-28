@@ -54,13 +54,16 @@ In this repository: [docs/UX-GUIDELINES.md](docs/UX-GUIDELINES.md) (the rules be
 Pung is open, and every module on it is somebody's work. [pung.live/develop.html](https://pung.live/develop.html)
 is the way in.
 
-- **A module** is a small folder: a description, a compiled sound engine, what it needs beside it. Pung
-  plays open modules in the Schwung module format, which began on Ableton Move, so one module can run on
-  both.
-- **Its interface** is one file, `push_ui.js`: from the instrument's own colours on Pung's pages up to a
-  front panel with its sections under your hands ([docs/overrides.md](docs/overrides.md)).
+- **An instrument is built in the Open Instrument format** ([docs/OPEN-INSTRUMENT.md](docs/OPEN-INSTRUMENT.md), a
+  draft standard): an engine, which is the same wherever Pung runs, and on it a hardware interface and a web
+  interface. Pung gives every engine both interfaces for nothing; a designed one replaces the default.
+- **A module** is how an instrument travels: a small folder with a description, the compiled engine and
+  what it needs beside it. Modules written for Schwung, which began on Ableton Move, are accepted as they
+  are, so one module can run on both.
+- **Its hardware interface on a Push** is one file, `push_ui.js`: from the instrument's own colours on
+  Pung's pages up to a front panel with its sections under your hands ([docs/overrides.md](docs/overrides.md)).
 - **Skills for your AI assistant** are in [`skills/`](skills/): what an assistant needs to know to design an
-  interface (`pung-interface`) or to make, port and check a module (`pung-module`). Opened with Claude Code,
+  interface on the Push (`pung-interface`) or to make, port and check an engine (`pung-module`). Opened with Claude Code,
   this repository has them in place.
 - **One module, built and heard without a Push**: `scripts/dev-module.sh <the module's working copy>`, then
   `scripts/render-check.sh` ([docs/push-module-builds.md](docs/push-module-builds.md)).

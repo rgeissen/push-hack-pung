@@ -453,8 +453,8 @@ hero, the foot, publishing) are in its repository: `site/CLAUDE.md`.
   Schwung are accepted as they are**: never "in the Schwung format", never "Schwung compliant" (the owner's
   words). Ableton Move is a kind of hardware, and a Schwung module's Move screen is its hardware interface
   there. The picture is `docs/open-instrument/picture.html`, rendered to `picture.png` (a browser at 1160 px,
-  twice the size). The public wording elsewhere ("in the Schwung module format", README, site, skills) is
-  not changed yet: it changes when the owner publishes the standard.
+  twice the size). The public wording (README, site, skills) follows it since
+  the same day.
 - **The Pung stack** (the owner's ambition, 2026-11-27): the modules, the host, how they appear in a DAW and
   how they get onto a machine; what the Reason Rack is to Reason's devices. **A stack**: what one Live Set
   uses of it: all its Pung devices with their modules, versions and states, and what they need; the MIDI and
@@ -469,7 +469,8 @@ hero, the foot, publishing) are in its repository: `site/CLAUDE.md`.
   outside Pung must not look dependent on it). No page sorts, filters or badges modules by Schwung; only
   "Pung native" is marked (`native()` in `modules.js`, the device's badge in `app.js`). A module's sheet
   credits its author, port and source, and says "Also runs on Ableton Move, as a Schwung module". The prose
-  says "open modules in the Schwung module format, which began on Ableton Move". The credit stays where it
+  says "instruments in the Open Instrument format; modules written for Schwung, which began on Ableton Move,
+  are accepted as they are" (since 2026-11-28; before: "open modules in the Schwung module format"). The credit stays where it
   is owed: the foot ("Open source", the fine print), the Vision's "stands on two open projects", every
   licence notice and source link (most modules are GPL). The dependence that is real (Schwung's chain host
   inside Pung, the module list from its catalogue) is not changed by this.

@@ -96,7 +96,7 @@
   }
 
   // Written for Pung itself. Only that is marked (the owner, 2026-11-27: where a module's code came from is its
-  // credit, in its sheet, not a category of the page; an open module in the Schwung format carries no mark).
+  // credit, in its sheet, not a category of the page; a module written for Schwung carries no mark).
   const native = (x) => x.origin === "pung";
   // a takeover: its surface on the Push is an app of its own
   const surfaceChip = (x) => (x.surface_app

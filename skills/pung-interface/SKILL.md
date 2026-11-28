@@ -10,10 +10,17 @@ screen (960 x 160 pixels, eight encoders under it, a row of buttons above and be
 complete, playable page from Pung with no Push code at all: **Pung Default**. A file named `push_ui.js`
 adds to it, up to a front panel that draws the whole instrument: **Pung Custom**.
 
+In the **Open Instrument format** an instrument is an engine with two interfaces on it: a hardware
+interface, one per kind of hardware, and a web interface. This file is the instrument's **hardware
+interface for the Push**. Two of the format's rules decide most questions here: an interface adds no
+meaning (every name, section and control it shows is the engine's), and what belongs to this hardware
+(a panel's layout, its segments) is never something a Set or a sound may depend on.
+
 Your work is that one file. It only draws: Pung owns every encoder, button and value.
 
 ## Read first
 
+- `references/OPEN-INSTRUMENT.md`: the format, as a draft standard: what an interface is and is not.
 - `references/overrides.md`: the whole API (`push.*`, `g.*`, `v`), with every option. Read it before
   writing any code; do not guess a call from its name.
 - `references/UX-GUIDELINES.md`: what good looks like. For a screen file read section 3 (the screen: its
@@ -156,6 +163,7 @@ Look at every picture: text that is cut, overlaps, an empty shape where a value 
 
 ## When you hand it over
 
-Say what step you stopped at and why, the one sentence for each screen, what you rendered and looked
+Describe the instrument's hardware interface as the format does ("default" or "designed", for the
+Push). Say what step you stopped at and why, the one sentence for each screen, what you rendered and looked
 at, and what you could not check without a Push (timing, real values, motion with sound). Then go
 through the review checklist (UX-GUIDELINES section 8) and name the lines you could not verify.
