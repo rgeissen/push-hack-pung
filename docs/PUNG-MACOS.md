@@ -233,11 +233,15 @@ answers Live for every class of a Pung: it keeps a device's state, an instrument
   effect's round trip arrives after exactly the delay told. Measured through the whole chain with Braids
   holding A4: 440.18 Hz at 44.1 kHz, 440.09 at 48 kHz (blocks of 512 and of 64) and at 88.2 kHz, 439.72 at
   96 kHz (the measurement's own resolution).
-- **P2 is not settled.** Handing a block to Pung and back takes 47 to 171 microseconds on average; the
-  worst single block of a run took 0.5 to 2.2 ms, more than once longer than the half block Live waits (at
-  64 frames, 737 against 667 microseconds). A device's thread is a time-constraint thread but does not yet
-  join the audio device's workgroup, and the lock it shares with Pung's other threads has no priority
-  inheritance on a Mac. Both are the next work on this, with a long run beside a busy Set as the measure.
+- **P2: good numbers, not the last word.** Braids held for a minute at 48 kHz in blocks of 64 frames (1.3 ms
+  each), the plugin's own count of blocks it gave up on: **none late in 25,618 blocks on an idle Mac, none in
+  19,679 beside eight busy loops** (one a core), a block taking Pung at most 0.17 ms. Handing a block over
+  and back takes about 50 microseconds. The host test that plays those blocks is an ordinary program and
+  was itself held up by the busy loops (its own worst wait was 18 ms), so it says what Pung does, not what
+  Live's audio thread sees. Still to do: the same count in Live at 64 frames beside a busy Set; and two
+  things known to be weaker than on the Push, to be taken up if that count is not zero: a device's thread
+  does not join the audio hardware's workgroup, and the lock it shares with Pung's other threads has no
+  priority inheritance on a Mac.
 - **The class file stands beside the bundle** (`Pung.classes.json` in the VST3 folder): written into a signed
   bundle it breaks the seal ("a sealed resource is missing or invalid").
 - **Schwung has a desktop branch of its own** (`worktree-vst`, `desktop/`, its author's, September 2026):
