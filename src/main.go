@@ -147,7 +147,7 @@ func main() {
 	h.sounds.routes(mux)
 	h.fileRoutes(mux)
 	h.sounds.libraryRoutes(mux)
-	registerRide(mux, *data)
+	registerRide(mux, *data, buildVersion)
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: withSiteCORS(mux), ReadHeaderTimeout: 5 * time.Second} // pung.live may talk to it (sitecors.go)
 	if ln == nil {
 		ln = listenWaiting(srv.Addr, 15*time.Second)

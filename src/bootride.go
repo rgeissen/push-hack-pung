@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/png"
 	"log"
@@ -45,6 +46,9 @@ type rideMeta struct {
 	FPS        int `json:"fps"`
 	Frames     int `json:"frames"`
 	HoldMs     int `json:"hold_ms"` // the last picture stays that long
+	// Landing: the picture from which the dot is on the P and the tagline
+	// stands under the logo; from then Pung writes its version in the corner
+	Landing int `json:"landing"`
 }
 
 func loadRide() (rideMeta, error) {
@@ -78,6 +82,41 @@ func rideFrame(m rideMeta, i int, dst *image.NRGBA) error {
 	}
 	draw.Draw(dst, image.Rect(m.X, m.Y, m.X+m.W, m.Y+m.H), img, img.Bounds().Min, draw.Src)
 	return nil
+}
+
+// rideWords: what Pung writes itself, once the dot has landed (the owner,
+// 2026-11-28): its version in the right corner, and in the left one the Push
+// Hack it runs on where its ride stands in place of Push Hack's own picture
+// (there Push Hack's "loaded" is not shown, and this line is its credit).
+// Before the landing, and for a build without a version, nothing.
+func rideWords(dst *image.NRGBA, m rideMeta, i int, version, pushHack string) {
+	if i < m.Landing {
+		return
+	}
+	grey := color.NRGBA{138, 133, 124, 255}
+	if version != "" && version != "dev" {
+		label(dst, display.VisW-16, display.VisH-9, "Pung "+version, grey, 1)
+	}
+	if pushHack != "" {
+		label(dst, 16, display.VisH-9, "on Push Hack "+pushHack, grey, -1)
+	}
+}
+
+// pushHackVersion: the Push Hack this Push runs (push-manager's status), ""
+// where it does not say
+func pushHackVersion(base string) string {
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Get(base + "/api/status")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var st struct {
+		Hack string `json:"hack_version"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&st) != nil || st.Hack == "dev" {
+		return ""
+	}
+	return st.Hack
 }
 
 const (
@@ -123,10 +162,12 @@ func rideMayBegin(age time.Duration, running, pungs bool) bool {
 	return age >= push3Settled
 }
 
-// playRide shows the ride once. It returns how many pictures reached the
-// screen; an error says why it stopped or never began (the display is
-// someone's, push-manager is not there): nothing to do about it.
-func playRide(base, dataDir string, stop <-chan struct{}) (int, error) {
+// playRide shows the ride once: version is Pung's, pushHack the Push Hack to
+// name where the ride stands in place of its picture ("" else). It returns
+// how many pictures reached the screen; an error says why it stopped or
+// never began (the display is someone's, push-manager is not there): nothing
+// to do about it.
+func playRide(base, dataDir, version, pushHack string, stop <-chan struct{}) (int, error) {
 	m, err := loadRide()
 	if err != nil {
 		return 0, err
@@ -167,6 +208,7 @@ func playRide(base, dataDir string, stop <-chan struct{}) (int, error) {
 		if err := rideFrame(m, i, screen); err != nil {
 			return shown, err
 		}
+		rideWords(screen, m, i, version, pushHack)
 		if err := pm.PushFrame(screen); err != nil {
 			return shown, err // (the surface went to an app or to Home: its screen now)
 		}
@@ -304,7 +346,11 @@ func startRide(dataDir, version string, stop <-chan struct{}) {
 			return
 		}
 	}
-	n, err := playRide(pmBase, dataDir, stop)
+	credit := ""
+	if rideIsPungs(pmBase) {
+		credit = pushHackVersion(pmBase)
+	}
+	n, err := playRide(pmBase, dataDir, version, credit, stop)
 	if err != nil && n == 0 {
 		log.Printf("ride: not shown (%s): %v", why, err)
 		return
@@ -316,9 +362,14 @@ func startRide(dataDir, version string, stop <-chan struct{}) {
 }
 
 // POST /api/debug/ride: show it now (a look at it without a restart)
-func registerRide(mux *http.ServeMux, dataDir string) {
+// (?credit=1: with the Push Hack line, as where the ride replaces its picture)
+func registerRide(mux *http.ServeMux, dataDir, version string) {
 	mux.HandleFunc("POST /api/debug/ride", func(w http.ResponseWriter, r *http.Request) {
-		n, err := playRide(pmBase, dataDir, r.Context().Done())
+		credit := ""
+		if r.URL.Query().Get("credit") != "" || rideIsPungs(pmBase) {
+			credit = pushHackVersion(pmBase)
+		}
+		n, err := playRide(pmBase, dataDir, version, credit, r.Context().Done())
 		out := map[string]any{"ok": err == nil, "shown": n}
 		if err != nil {
 			out["error"] = err.Error()

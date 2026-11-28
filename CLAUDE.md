@@ -148,7 +148,9 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   otherwise. **Push Hack's own start-up picture (the stars, "Push Hack loaded...") is push-manager's and has
   no switch**: Pung waits until it is over (Push3 13.5 s old) and plays after it; replacing it needs a change
   upstream. A picture drawn while Push3 is younger than 8 s is never shown and the last one freezes
-  (push-manager's README). The frames (`src/bootride/`, 106 small pictures, 305 KB) are drawn by the site's
+  (push-manager's README). The tagline comes under the logo as the dot lands, and from that picture on Pung writes its version in
+  the right corner; "on Push Hack <version>" in the left one only where the ride stands in place of Push
+  Hack's picture (the owner, 2026-11-28). The frames (`src/bootride/`, 106 small pictures, 284 KB) are drawn by the site's
   own script: `site/boot-ride.py` after a change to the logo or its ride. `POST /api/debug/ride` plays it
   now. Seen on the owner's Push after a deploy and by that call (2026-11-28); **the start of a Push itself
   not yet**. Proposed to Push Hack (branch `pr/startup-picture-hook` in the clone beside this one, not sent

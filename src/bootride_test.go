@@ -141,7 +141,7 @@ func TestRidePlaysAndGivesTheDisplayBack(t *testing.T) {
 	dir := t.TempDir()
 	m, _ := loadRide()
 	t0 := time.Now()
-	n, err := playRide(s.URL, dir, nil)
+	n, err := playRide(s.URL, dir, "0.6.0", "", nil)
 	if err != nil || n != m.Frames {
 		t.Fatalf("%d pictures of %d, %v", n, m.Frames, err)
 	}
@@ -163,12 +163,12 @@ func TestRidePlaysAndGivesTheDisplayBack(t *testing.T) {
 // A display that is someone's is left alone: nothing is set, nothing sent.
 func TestRideLeavesATakenDisplayAlone(t *testing.T) {
 	taken := &fakeDisplay{mode: modeTakeover}
-	if n, err := playRide(taken.serve(t).URL, t.TempDir(), nil); err == nil || n != 0 || len(taken.modes) != 0 || taken.frames != 0 {
+	if n, err := playRide(taken.serve(t).URL, t.TempDir(), "0.6.0", "", nil); err == nil || n != 0 || len(taken.modes) != 0 || taken.frames != 0 {
 		t.Errorf("a display in takeover: %d pictures, %v, modes %v", n, err, taken.modes)
 	}
 	apps := &fakeDisplay{refuse: true}
 	dir := t.TempDir()
-	if n, err := playRide(apps.serve(t).URL, dir, nil); err == nil || n != 0 || apps.frames != 0 {
+	if n, err := playRide(apps.serve(t).URL, dir, "0.6.0", "", nil); err == nil || n != 0 || apps.frames != 0 {
 		t.Errorf("a surface that is an app's: %d pictures, %v", n, err)
 	}
 	if exists(filepath.Join(dir, rideMark)) {
@@ -180,7 +180,7 @@ func TestRideLeavesATakenDisplayAlone(t *testing.T) {
 // screen is not set back.
 func TestRideStopsWhenTheSurfaceIsTaken(t *testing.T) {
 	f := &fakeDisplay{cutAt: 10}
-	n, err := playRide(f.serve(t).URL, t.TempDir(), nil)
+	n, err := playRide(f.serve(t).URL, t.TempDir(), "0.6.0", "", nil)
 	if err == nil || n != 10 {
 		t.Fatalf("%d pictures, %v", n, err)
 	}
@@ -195,7 +195,7 @@ func TestRideStopsWithPung(t *testing.T) {
 	stop := make(chan struct{})
 	time.AfterFunc(300*time.Millisecond, func() { close(stop) })
 	m, _ := loadRide()
-	n, err := playRide(f.serve(t).URL, t.TempDir(), stop)
+	n, err := playRide(f.serve(t).URL, t.TempDir(), "0.6.0", "", stop)
 	if err != nil || n == 0 || n >= m.Frames {
 		t.Fatalf("%d pictures of %d, %v", n, m.Frames, err)
 	}
@@ -254,5 +254,59 @@ func TestRideWaitsForPushHacksPicture(t *testing.T) {
 		if rideIsPungs(f.serve(t).URL) {
 			t.Errorf("the picture is %q's, not Pung's", other)
 		}
+	}
+}
+
+// The tagline stands under the logo only once the dot has landed, and from
+// that picture on Pung writes its version in the right corner; the Push Hack
+// line in the left one only where Pung is given it (its ride in place of
+// Push Hack's picture). Nothing is written for a build without a version.
+func TestRideWordsComeWithTheLanding(t *testing.T) {
+	m, err := loadRide()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Landing < m.Frames/2 || m.Landing >= m.Frames-10 {
+		t.Fatalf("the dot lands at picture %d of %d", m.Landing, m.Frames)
+	}
+	lit := func(img *image.NRGBA, r image.Rectangle) int {
+		n := 0
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			for x := r.Min.X; x < r.Max.X; x++ {
+				if c := img.NRGBAAt(x, y); int(c.R)+int(c.G)+int(c.B) > 60 {
+					n++
+				}
+			}
+		}
+		return n
+	}
+	right := image.Rect(display.VisW-200, display.VisH-24, display.VisW, display.VisH)
+	left := image.Rect(0, display.VisH-24, 260, display.VisH)
+	// the tagline's place: the lowest 14 rows of the pictures (the letters end above them)
+	tag := image.Rect(m.X, m.Y+m.H-14, m.X+m.W, m.Y+m.H)
+	shot := func(i int, version, hack string) *image.NRGBA {
+		img := image.NewNRGBA(image.Rect(0, 0, display.VisW, display.VisH))
+		if err := rideFrame(m, i, img); err != nil {
+			t.Fatal(err)
+		}
+		rideWords(img, m, i, version, hack)
+		return img
+	}
+	before := shot(m.Landing-12, "0.6.0", "0.2.0")
+	if lit(before, right)+lit(before, left)+lit(before, tag) != 0 {
+		t.Errorf("before the landing: %d lit right, %d left, %d where the tagline goes", lit(before, right), lit(before, left), lit(before, tag))
+	}
+	after := shot(m.Landing, "0.6.0", "")
+	if lit(after, tag) < 300 {
+		t.Errorf("landed, the tagline shows %d lit pixels", lit(after, tag))
+	}
+	if lit(after, right) < 60 || lit(after, left) != 0 {
+		t.Errorf("landed: the version %d lit pixels, the left corner %d (no Push Hack line was asked for)", lit(after, right), lit(after, left))
+	}
+	if both := shot(m.Frames-1, "0.6.0", "0.2.0"); lit(both, left) < 60 {
+		t.Errorf("the Push Hack line shows %d lit pixels", lit(both, left))
+	}
+	if dev := shot(m.Frames-1, "dev", ""); lit(dev, right) != 0 {
+		t.Error("a build without a version writes one")
 	}
 }
