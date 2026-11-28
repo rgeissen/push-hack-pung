@@ -17,10 +17,9 @@ release, and native instruments built from gearmulator (`native/`).
 | Native modules (emulators): rules, measurements, each instrument's quirks | `docs/NATIVE-MODULES.md` |
 | Module builds for the Push | `docs/push-module-builds.md` |
 | What devices cost (processor, energy), `GET /api/governor` | `docs/GOVERNOR.md` |
-| Where Pung goes: the Pung stack, Set compatibility, hosts, the phases, what is sold | `docs/PUNG-STACK.md` |
-| One parameter order for every Pung (the groundwork's first piece; a design, not built) | `docs/SET-CONTRACT.md` |
+| The Set contract: its five clauses, and one parameter order for every Pung (a design, built behind a switch) | `docs/SET-CONTRACT.md` |
 | Pung in Live on macOS: Sets that cross between a Push and a Mac, the same experience there; a design and its proof | `docs/PUNG-MACOS.md` |
-| Patches (what one Pung device holds, moved between deployments; built as "Stacks" on 2026-11-27) | `docs/STACKS.md` |
+| A Set's stack and a device's patch, as one deployment answers them | `src/setstack.go`, `src/stacks.go` (the plans are the site's: `site/docs/`) |
 | pung.live and a deployment over https (so it works in Safari and on an iPad): half built, a plan for the rest | `docs/SECURE-LINK.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
 | pung.live's pages (the manual too): a private repository, checked out at `site/` | `site/CLAUDE.md`, `site/README.md` |
@@ -354,7 +353,7 @@ hero, the foot, publishing) are in its repository: `site/CLAUDE.md`.
   installed, its updates and the restart of Live are on its own page and counted in its panel on
   Deployments. The Stacks page still talks to a deployment when the visitor takes or checks a stack. That dashboard is never rebuilt on the Push's page. **Stacks are
   managed on pung.live** (the owner's word): a deployment plays one and hands its state over, and its own page
-  grows no stack library (`docs/STACKS.md`).
+  grows no stack library.
   **The hand-off**: the Push's page links to pung.live with `#add=<its own address>` (`siteLinks`, `app.js`;
   shown only while the browser reaches pung.live), and `pushlink.js` (`arrived`) connects that deployment without
   the address typed again (a home-network name or address only); pung.live links back to the place on
@@ -422,8 +421,8 @@ hero, the foot, publishing) are in its repository: `site/CLAUDE.md`.
 - **The Pung stack** (the owner's ambition, 2026-11-27): the modules, the host, how they appear in a DAW and
   how they get onto a machine; what the Reason Rack is to Reason's devices. **A stack**: what one Live Set
   uses of it: all its Pung devices with their modules, versions and states, and what they need; the MIDI and
-  automation against them travel in the Set (`docs/PUNG-STACK.md`). **A patch**: what one Pung device holds;
-  the page and the calls built on 2026-11-27 under the name "Stacks" are patches (`docs/STACKS.md`).
+  automation against them travel in the Set. **A patch**: what one Pung device holds;
+  the page and the calls built on 2026-11-27 under the name "Stacks" are patches (`src/stacks.go`).
   **A host** is the program Pung's modules appear in (Live today, other DAWs later) and **a project** what it
   saves (in Live, a Set): a stack is one per project, and nothing in the stack's own design may be Live's
   alone (the owner's word). Never

@@ -1,6 +1,6 @@
 package main
 
-// stacks.go: a stack is what travels between devices (docs/STACKS.md): the
+// stacks.go: a stack is what travels between devices: the
 // modules in their order, the state of each, and Pung's modulation over
 // them. Stacks are managed on pung.live; a device does two things: it gives
 // the stack a Pung device is playing, and it takes one.
@@ -8,7 +8,7 @@ package main
 // On a Push a stack is, today, what one Pung device holds: an instrument with
 // the MIDI effect in front of it, or a MIDI generator, or an audio effect.
 // Effects behind an instrument are devices of their own in Live and not yet
-// part of one stack (STACKS.md, Open).
+// part of one stack.
 //
 // A stack a Push takes is kept (<data>/stacks/<name>.json) and becomes a
 // rack in Push's own browser, as a saved sound does (sounds_racks.go):

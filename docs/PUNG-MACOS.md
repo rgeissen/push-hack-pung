@@ -1,6 +1,6 @@
 # Pung in Live on macOS
 
-A design (2026-11-28). It is Phase 2 of `docs/PUNG-STACK.md`, worked out for the Mac. What is measured says
+A design (2026-11-28). Pung in Live on the computer, worked out for the Mac. What is measured says
 so; everything else is a plan. Nothing here is built unless a line under "The proof" says so.
 
 ## The two ambitions
@@ -50,7 +50,7 @@ Live on the Mac                         Pung (a service beside Live)
 └──────────────────────┘               └───────────────────────────────────┘
 ```
 
-**Why beside and not inside** (the choice in PUNG-STACK.md, confirmed for the Mac): the modules are other
+**Why beside and not inside** (chosen before the Mac, confirmed for it): the modules are other
 people's code and stay out of Live's process (a module that crashes takes Pung's device, not the Set);
 every module names the Push's folders, which Pung can answer in its own process and never in Live's; the
 view, the page and the catalog are the same program everywhere. That a helper process can render realtime
@@ -83,7 +83,7 @@ planned.
 
 ## Ambition 1: the same Set on both
 
-The five clauses of the Set contract (`docs/PUNG-STACK.md`), and what the Mac asks of each.
+The five clauses of the Set contract (`docs/SET-CONTRACT.md`), and what the Mac asks of each.
 
 1. **Identity.** Holds by construction (above). The Mac plugin gives each class the Push's id, name, kind
    and category.
@@ -314,5 +314,5 @@ bundle and the class file undoes it; Live then lists no Pung device.
 
 ## Not in this design
 
-Windows (the same shape, other system calls); other hosts than Live (Phase 4); accounts and the deployment
-service (Phase 3); moving a Set's files between machines.
+Windows (the same shape, other system calls); other hosts than Live; accounts; moving a Set's files
+between machines.

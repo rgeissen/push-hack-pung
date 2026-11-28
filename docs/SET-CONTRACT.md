@@ -2,8 +2,27 @@
 
 A design, decided on 2026-11-27 ("I trust all your recommendation": 64 entries for the MIDI generators, new
 devices beside the old, "MIDI FX n" in Live's lists). Being built in the order given at the end; what is
-done says so. It is the first piece of the
-groundwork the launch waits for (`docs/PUNG-STACK.md`, the Set contract, clause 2, and Phase 0).
+done says so. It is the second of the contract's five clauses (below), the one fixed first.
+
+## The five clauses
+
+For a Set saved in one place to open the same in another, five things must hold.
+
+1. **Identity.** A module is the same device everywhere. *Holds:* its identifier in Live is made from its
+   kind and its id alone (`livedevice.ClassUID`, `src/devices.go`).
+2. **Parameter positions.** Live stores automation, clip envelopes and MIDI and Macro mappings by a
+   parameter's position in the device (`src/stablelayout.go`: giving parameters ids of their own crashed Live
+   13). *Does not hold:* an instrument's list also carries the parameters of every MIDI effect installed on
+   that machine, and each installation keeps the order it grew with (`classes-known.json`). Two Pungs with
+   different histories can disagree, and a Set then plays its automation on a neighbouring control. **This is
+   the one clause that gets more expensive with every Set saved**, so it is fixed first (this document).
+3. **State.** What a device saves must mean the same elsewhere. *Mostly holds:* a module's state is its own.
+   *Does not:* a device's state names its MIDI effect by its place in that machine's list (found while
+   building patches, 2026-11-27), and samples by their path.
+4. **Versions.** A Set saved with a module's version opens with a later one. *Assumed, not checked:* nothing
+   tests that a module still reads the state its previous version wrote.
+5. **What lies outside the Set.** Modules, firmware, samples, saved sounds. *Does not hold:* nothing says what
+   a Set needs, or brings it along. Firmware never travels: it is named, and must be the player's own.
 
 ## What it must do
 
@@ -245,7 +264,7 @@ In this order; each step is small and tested before the next.
    carries that is the same grown at its ends (`currentRegistry`: read from the disk, never waited for).
 6. **Done (2026-11-27), with a result that changes step 2** ("What the Push said", above): the layout
    must keep the selector and the slots within Live's first 127 positions. Measurements 3 and 4 remain.
-7. The test Phase 0 ends with: one Set with automation, opened on the same Push in two conditions (all MIDI
+7. The test this ends with: one Set with automation, opened on the same Push in two conditions (all MIDI
    generators installed; some removed and installed again in another order), the automation on the same
    controls both times. A second Push would be the better witness.
 

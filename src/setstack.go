@@ -2,8 +2,8 @@ package main
 
 // setstack.go: GET /api/stack, the stack of the open project: every Pung
 // device with its module, version and state and what those need, and where
-// the host says it sits (docs/PUNG-STACK.md: a stack is a container of
-// modules, one for each project).
+// the host says it sits (a stack is a container of modules, one for each
+// project).
 //
 // What a project uses is Pung's own to know, in any host: its devices, as
 // they are connected. Where each one sits is the host's: in Live, asked
