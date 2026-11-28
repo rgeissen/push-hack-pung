@@ -16,6 +16,16 @@ The Push and the web page are two views of that one structure, and each one does
 | Changes values with | 8 encoders, with touch | sliders, menus, dragging the pictures |
 | Strength | playing: eyes on the music, hands on the knobs | overview, precise entry, editing away from the device |
 
+**What a compartment means is the module's; how it is shown is the hardware's** (the owner, 2026-11-28).
+The Push and the web page are the first two of more: a computer's plugin window, a tablet, other hardware
+with other screens and other numbers of controls. A compartment is the same thing on all of them: its
+identity, its name, its place in the order, the controls that belong to it and what they mean. Each kind
+of hardware shows it in its own way (one screen of eight encoders here, a panel with everything at once
+there, two pages of four knobs somewhere else). So a module says once what its compartments are, and a
+drawing for one hardware (a Push screen's pixels, a front panel's segment positions) never decides what a
+compartment is or which controls it has. Today both stand in one file, `push_ui.js`; when a second kind
+of hardware gets drawings of its own, they go beside the Push's, under the same compartments.
+
 **The rules that keep them together:**
 
 1. **Same names, same order.** A compartment, page or parameter has one name, used on both surfaces. The
