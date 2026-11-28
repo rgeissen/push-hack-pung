@@ -17,5 +17,6 @@
     "label": "PUNG",
     "color": "orange",
     "device_view": true
-  }
+  },
+  "startup_picture": true
 }

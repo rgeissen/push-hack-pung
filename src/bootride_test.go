@@ -24,6 +24,7 @@ type fakeDisplay struct {
 	refuse  bool // the surface is an app's: mode and frames answer 409
 	cutAt   int  // from this frame on the surface is an app's (0: never)
 	badSize int
+	leftTo  string // the hack push-manager left the start-up picture to
 }
 
 func (f *fakeDisplay) serve(t *testing.T) *httptest.Server {
@@ -31,7 +32,7 @@ func (f *fakeDisplay) serve(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/api/display/status", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		json.NewEncoder(w).Encode(map[string]any{"connected": true, "mode": f.mode}) //nolint:errcheck
+		json.NewEncoder(w).Encode(map[string]any{"connected": true, "mode": f.mode, "startup_picture": f.leftTo}) //nolint:errcheck
 	})
 	mux.HandleFunc("/api/display/mode", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -221,6 +222,37 @@ func TestRideReason(t *testing.T) {
 	} {
 		if got := rideReason(c.version, c.shown, c.age, c.running); got != c.want {
 			t.Errorf("Pung %s, shown for %q, Push3 %v (running %v): %q, want %q", c.version, c.shown, c.age, c.running, got, c.want)
+		}
+	}
+}
+
+// As a Push starts the ride waits for Push Hack's own picture to be over; where
+// push-manager says it left the picture to Pung, only for the hook to draw at all.
+func TestRideWaitsForPushHacksPicture(t *testing.T) {
+	for _, c := range []struct {
+		age            time.Duration
+		running, pungs bool
+		want           bool
+	}{
+		{0, false, false, false},
+		{5 * time.Second, true, false, false},
+		{9 * time.Second, true, false, false}, // push-manager's stars are on
+		{14 * time.Second, true, false, true},
+		{5 * time.Second, true, true, false}, // the hook draws nothing yet
+		{9 * time.Second, true, true, true},
+	} {
+		if got := rideMayBegin(c.age, c.running, c.pungs); got != c.want {
+			t.Errorf("Push3 %v (running %v), left to Pung %v: %v, want %v", c.age, c.running, c.pungs, got, c.want)
+		}
+	}
+	mine := &fakeDisplay{leftTo: "pung"}
+	if !rideIsPungs(mine.serve(t).URL) {
+		t.Error("push-manager left the picture to pung, and Pung did not see it")
+	}
+	for _, other := range []string{"", "another"} {
+		f := &fakeDisplay{leftTo: other}
+		if rideIsPungs(f.serve(t).URL) {
+			t.Errorf("the picture is %q's, not Pung's", other)
 		}
 	}
 }

@@ -89,9 +89,39 @@ const (
 	// Push Hack's own start-up picture is over when Push3 is this old: the
 	// hook draws nothing for its first 8 s, then push-manager's stars run 5 s
 	push3Settled = 13500 * time.Millisecond
+	// where push-manager leaves the start-up picture to Pung (proposed to
+	// Push Hack, 2026-11-28: hack.json "startup_picture"; its display status
+	// then names this hack), the ride begins when the hook draws at all
+	push3Grace = 8300 * time.Millisecond
 	// a Pung that starts while Push3 is younger than this started with the Push
 	push3Young = 45 * time.Second
 )
+
+// rideIsPungs: push-manager left this start's picture to Pung (its display
+// status says so; a push-manager from before that says nothing)
+func rideIsPungs(base string) bool {
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Get(base + "/api/display/status")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var st struct {
+		StartupPicture string `json:"startup_picture"`
+	}
+	return json.NewDecoder(resp.Body).Decode(&st) == nil && st.StartupPicture == "pung"
+}
+
+// rideMayBegin: Push3 is old enough for a picture to be drawn, and Push
+// Hack's own is over (or was left to Pung)
+func rideMayBegin(age time.Duration, running, pungs bool) bool {
+	if !running {
+		return false
+	}
+	if pungs {
+		return age >= push3Grace
+	}
+	return age >= push3Settled
+}
 
 // playRide shows the ride once. It returns how many pictures reached the
 // screen; an error says why it stopped or never began (the display is
@@ -258,7 +288,7 @@ func startRide(dataDir, version string, stop <-chan struct{}) {
 	var settled time.Time
 	for {
 		age, running = push3Age()
-		if running && age >= push3Settled {
+		if rideMayBegin(age, running, running && age >= push3Grace && rideIsPungs(pmBase)) {
 			if settled.IsZero() {
 				settled = time.Now()
 			}

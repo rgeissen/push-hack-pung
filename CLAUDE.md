@@ -151,7 +151,13 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   (push-manager's README). The frames (`src/bootride/`, 106 small pictures, 305 KB) are drawn by the site's
   own script: `site/boot-ride.py` after a change to the logo or its ride. `POST /api/debug/ride` plays it
   now. Seen on the owner's Push after a deploy and by that call (2026-11-28); **the start of a Push itself
-  not yet**.
+  not yet**. Proposed to Push Hack (branch `pr/startup-picture-hook` in the clone beside this one, not sent
+  as of that day): a hack whose `hack.json` says `"startup_picture": true` shows the picture itself and
+  push-manager leaves its stars out; Pung's `hack.json` says so already and begins at 8.3 s where
+  push-manager's display status names it (`rideIsPungs`). The same ride is in the Pung Installer's window
+  (`installer/ui/ride.js`, also written by `boot-ride.py`: never edited here): riding while it installs,
+  once more and at rest when Pung is on the Push. A changed installer needs a new `installer/VERSION`
+  and the Deployments page's line with it.
 - **Watchdog** (`watchdog.go`): a call into a module that runs past its limit (module load or destroy
   90 s, a parameter 30 s, a block or MIDI 5 s) restarts Pung as the same process (the hang in the log,
   `hangs.json`; the surface given back; states from `kept-states.json`). A module that hangs twice in

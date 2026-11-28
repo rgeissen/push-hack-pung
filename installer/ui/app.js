@@ -13,13 +13,13 @@
     return r.json();
   }
   async function tick() {
-    try { S = await call("state"); render(); } catch (e) { gone(); }
+    try { S = await call("state"); render(); showRide(); } catch (e) { gone(); }
     setTimeout(tick, S && /ing$/.test(S.phase) ? 400 : 1000);
   }
   function gone() {
     $("panel").innerHTML = `<p class="kicker">Installer</p><h1>The installer has stopped</h1><p class="lead">Start Pung Installer again to go on.</p>`;
   }
-  const act = (path, body) => call(path, body).then((s) => { S = s; render(); }).catch(gone);
+  const act = (path, body) => call(path, body).then((s) => { S = s; render(); showRide(); }).catch(gone);
 
   // which step of the rail the phase belongs to
   const STEP = { find: "find", finding: "find", key: "key", waiting: "key", inspecting: "ready", ready: "ready", installing: "install", done: "install", failed: "install" };
@@ -52,6 +52,26 @@
     if (focused && $(focused)) $(focused).focus();
     else if (S.phase !== lastPhase) { const f = $("panel").querySelector("input, .btn.primary"); if (f) f.focus(); }
     lastPhase = S.phase;
+  }
+
+  // The logo's ride (ride.js): while Pung is installed the dot rides from the G to the P again and again,
+  // and when Pung is on the Push it rides once more and stays in its place. It stands outside the panel,
+  // which is written anew with every change. Where motion is turned down, the logo stands still.
+  let ride = null, ridePhase = "", rideTimer = 0;
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)");
+  function showRide() {
+    const box = $("ride"), phase = S ? S.phase : "";
+    if (!box || !window.PungRide) return;
+    const on = phase === "installing" || phase === "done";
+    box.hidden = !on;
+    if (!on) { clearTimeout(rideTimer); ridePhase = ""; return; }
+    if (!ride) { box.innerHTML = window.PungRideLogo; ride = window.PungRide(box.querySelector("svg")); }
+    if (phase === ridePhase) return;
+    ridePhase = phase;
+    clearTimeout(rideTimer);
+    if (still.matches) { ride.at(ride.duration); return; }
+    const again = () => { ride.play(); if (ridePhase === "installing") rideTimer = setTimeout(again, (ride.duration + 0.8) * 1000); };
+    again();
   }
 
   const spin = `<span class="spin" aria-hidden="true"></span>`;
