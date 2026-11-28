@@ -16,6 +16,15 @@ package main
 //	193 .. 255 63 general slots: slot k is parameter k of the MIDI generator
 //	           that is selected, in that generator's own registry order
 //
+// Those are the parameters' numbers. What a host shows of a device is another
+// matter: Live takes the first 127 entries of the list the device's rack
+// gives it, in that list's order, wherever they sit in the plugin's own
+// (measured on a Push, 2026-11-27: a Dexed's 127 ended at "Op4 RS", number
+// 93, with 33 fillers from numbers 147 on among them). So an instrument's
+// list is its first twelve pages, then the selector and the slots, then its
+// later pages: every instrument has the selector and at least thirty slots
+// in Live, and one of eight pages or fewer has them all but the last.
+//
 // An audio effect and a MIDI generator as a device of its own: their own
 // parameters at their registry numbers (the MIDI output channel Pung adds is
 // in the registry, "@outch"), and the entries that fill their pages after.
@@ -45,6 +54,11 @@ const (
 	contractSlots     = livedevice.MaxParams - ownEntriesInstrument - 1 // 63
 	selectorSteps     = contractSlots + 1                               // none, and one for each of 63 generators
 	slotRole          = "fxslot"
+	// contractOwnPagesFirst: an instrument's pages that stand before the MIDI
+	// part in the list a host is given (96 entries, which leaves the selector
+	// and thirty slots of Live's 127)
+	contractOwnPagesFirst = 12
+	liveListed            = 127 // what Live takes of a device's list, beside "Device On"
 )
 
 // registry: registry.json
@@ -311,15 +325,20 @@ func contractClass(reg *registry, name, kind, category, module, folder string, c
 			}
 			out.slots[id] = targets
 		}
-		// the MIDI part's pages: the selector and seven slots, then eights
-		c.Banks = append(c.Banks, []int{selPos, first, first + 1, first + 2, first + 3, first + 4, first + 5, first + 6})
+		// the MIDI part's pages: the selector and seven slots, then eights.
+		// They stand after the instrument's twelfth page (after its last, if
+		// it has fewer): what a host lists of a device is the beginning of
+		// this order, not of the numbers
+		midi := [][]int{{selPos, first, first + 1, first + 2, first + 3, first + 4, first + 5, first + 6}}
 		for k := 7; k < contractSlots; k += 8 {
 			var row []int
 			for j := k; j < k+8 && j < contractSlots; j++ {
 				row = append(row, first+j)
 			}
-			c.Banks = append(c.Banks, row)
+			midi = append(midi, row)
 		}
+		head := min(contractOwnPagesFirst, len(pages))
+		c.Banks = append(append(append([][]int{}, pages[:head]...), midi...), pages[head:]...)
 	}
 	for i, p := range c.Params {
 		if p.Key != "" {

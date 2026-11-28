@@ -486,7 +486,8 @@ disk; offline it goes on with its own. `own_pack_only` in the settings never ask
   deployment that has the module, and for an emulator its firmware; `check`; the catalog build refuses
   anything else and a published module without an entry). A new module, or a module's new parameter, needs
   its entry before the release. `contract.go` lays a device out by it (an instrument: 192 entries of its
-  own, the selector at 192 with 64 fixed steps, 63 general slots for the selected MIDI generator) under an
+  own, the selector at 192 with 64 fixed steps, 63 general slots for the selected MIDI generator; in the
+  list a host is given, the MIDI part after the twelfth page, so Live has it) under an
   identity of its own (`pung-set-1`); the devices from before stay for their Sets ("… (old)").
   `PUNG_SET_CONTRACT=1` or a file `set-contract` in Pung's data turns it on.
 - **A parameter keeps its place in its class** (`stablelayout.go`): Live saves automation and mappings
@@ -566,12 +567,15 @@ disk; offline it goes on with its own. `own_pack_only` in the settings never ask
 
 ## Facts measured on a Push 3
 
-- **Live 13.0b25 shows a plugin's first 127 parameters beside "Device On"** (measured again 2026-11-27 on a
-  contract Dexed of 256 entries: Live logs "parameter count is 260", the Remote Script gets 128). Whatever
-  sits at position 127 or beyond is not Live's: not automated, not mapped, not on Push's own device view.
-  The Set contract's first layout put the MIDI FX selector at 192 and lost it for all 67 instruments (42
-  have it within reach before the contract): `docs/SET-CONTRACT.md`, "What the Push said". **The contract
-  stays off until its layout keeps the selector and slots below 127.**
+- **Live 13.0b25 takes the first 127 entries of the list a device's rack gives it, beside "Device On"**, in
+  that list's order (`sclass.order`, core's `paramOrder`), wherever the entries sit in the plugin's own list
+  (a contract Dexed of 256, 2026-11-27: Live logs "parameter count is 260", the Remote Script gets 128,
+  ending at Dexed's number 93 with 33 page fillers from number 147 on among them). What is listed later is
+  not Live's: not automated, not mapped, not on Push's own device view. **First read as a limit on
+  positions, which was wrong** (one large instrument looked at, whose list shows no difference): before
+  concluding from one device, look at one where the two readings differ. The contract's numbers stay; its
+  MIDI part stands after an instrument's twelfth page in the list (`docs/SET-CONTRACT.md`, "What the Push
+  said"). The contract stays off by default until that is seen on a Push.
 - **What the Remote Script deletes is not in Live's recovery history**: after a Live restart a device a test
   loaded and deleted is back. And **a recovery that meets a device whose class is gone crashes Live**, which
   then asks "While recovering your work, Live crashed again …": No is the lower button 7 (CC 26 to Push3's

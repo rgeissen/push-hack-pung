@@ -91,13 +91,21 @@ MIDI part is eight whole pages.
 - The registry's order keeps the module's pages whole, as today's does, so Push's own device view shows the
   same pages.
 
+**What Live has of an instrument is another matter than its numbers.** Live takes the first 127 entries of
+the list a device's rack gives it, in that list's order, wherever they sit among the 256 ("What the Push
+said", 2). So the list is: the instrument's first twelve pages (96 entries), the selector and the slots, then
+its later pages. Every instrument has the selector and at least thirty slots in Live (30 with twelve pages
+or more of its own, 38, 46, 54 with eleven, ten, nine, and 62 or all 63 with eight or fewer). The numbers
+are the same either way: what a Set stores does not depend on how much of a device Live lists.
+
 What this gives and takes, against today:
 
 | | Today | With the contract |
 |---|---|---|
-| A MIDI generator's parameters in Live | 7 on a large instrument, all on a small one; named ("Arp Rate") | The first 63 on every instrument; named "MIDI FX n" |
-| A generator with more than 63 (Eucalypso: 82) | All on a small instrument | The rest in Pung's view only |
-| An instrument's own parameters in Live | 24 pages (192 entries with their padding; up to 186 parameters today) | The same 24 pages |
+| A MIDI generator's parameters in Live | 7 on a large instrument, all on a small one; named ("Arp Rate") | The first 30 on every instrument, up to 63 on a small one; named "MIDI FX n" |
+| A generator with more than that (Eucalypso: 82) | All on a small instrument | The rest in Pung's view only |
+| An instrument's own parameters in Live | Its first sixteen pages, less one entry | Its first twelve pages; all of them for 44 of the 77 instruments |
+| The MIDI FX selector in Live | On 42 of the owner's 67 instruments | On every instrument |
 | The same position on every Pung | No | Yes |
 
 ### 2. The registry
@@ -180,39 +188,27 @@ Measured on the owner's Push (Live 13.0b25) in a throwaway Set, the contract swi
    "… (old)", 18 in a local order) against 105. Live started as before (76 s for Pung and Live together,
    56 s for Live alone earlier that day) and held 689 MB against 675 MB. A device recovered from before the
    switch came back as its "(old)" device, as it must.
-2. **Positions 191 to 255 are out of Live's reach. This changes the design.** Live shows a plugin's first
-   127 parameters beside "Device On" (128 in all; it logs "parameter count is 260" and gives the Remote
-   Script 128). The selector at 192 and the 63 slots behind it are therefore not Live's: not automatable,
-   not mappable, not on Push's own device view. Before the contract, 42 of this Push's 67 instruments have
-   the selector within those 127 (every instrument with fewer than 127 entries of its own: Braids at 17,
-   Hera at 29, OB-Xd at 76) and up to 113 of the MIDI generators' parameters; with the contract as designed,
-   none has. **The contract must not be turned on by default with this layout.**
-3. **The 64-step selector:** not seen, for the same reason. To be looked at once it sits within reach.
+2. **Live takes the first 127 entries of the rack's list, in the list's order; a parameter's number does
+   not matter for it.** A contract Dexed of 256 entries: Live logs "parameter count is 260" and gives the
+   Remote Script 128 parameters, "Device On" and 127 more, ending at "Op4 Vel", "Op4 AMS", "Op4 RS". Those
+   are the last of Dexed's sixteenth page: numbers 91 to 93. Among the 127 are 33 fillers of its pages,
+   which sit at numbers 147 and up. So Live did not take numbers 0 to 126 (it would have ended at
+   "Op5 RC", number 126): it took the list as the rack orders it (`sclass.order`, core's `paramOrder`),
+   cut after 127.
+   *This was first read wrongly* (2026-11-27: "positions 191 to 255 are out of Live's reach", and a layout
+   proposed that moved the selector and thirty slots to numbers 96 to 126). Only the Dexed had been looked
+   at, and its list happens to hold nothing of the MIDI part within 127 entries either way. Laid out again
+   on 2026-11-28 from the kept probe record, the list's 127th entry is number 93, as the Push showed.
+   What follows from it: **the numbers stay as designed** (the selector at 192, 63 slots behind it), the
+   identity stays `pung-set-1`, and only the list's order changes: the MIDI part stands after an
+   instrument's twelfth page (`contractOwnPagesFirst`). `TestLiveHasTheSelectorOfEveryInstrument` lays
+   out all 77 instruments of the registry from their real pages: every one has the selector and thirty
+   slots or more among the 127, and 44 have every parameter of their own there.
+   *Still to be seen on a Push:* a small instrument's selector and slots in Live's own lists, automated
+   and mapped (numbers from 192 on, listed early).
+3. **The 64-step selector:** not seen yet. To be looked at with the list's new order.
 4. **Whether Live follows a changed name:** not measured. It needs a plugin that renames a parameter while
    it runs, which core's plugin does not do yet.
-
-What the instruments of that Push have of their own (entries, with their pages' padding): 30 have at most
-64, 40 at most 96, 25 more than 127 (those are cut by Live today already).
-
-**The layout this asks for** (proposed, for the owner to decide): everything a player automates within
-Live's 127, and the rest behind it.
-
-| Positions | What | How many |
-|---|---|---|
-| 0 to 95 | The module's own parameters, first twelve pages | 96 |
-| 96 | The MIDI FX selector | 1 |
-| 97 to 126 | General MIDI-effect slots | 30 |
-| 127 to 255 | The module's own parameters, from the thirteenth page on | 129 |
-
-- All 67 instruments have the selector and thirty slots in Live (42 have the selector today).
-- 40 instruments keep every parameter of their own in Live; the 27 larger ones show their first 96 where
-  they show 127 today, and gain the selector and the slots for it.
-- Room for a module's own parameters stays 225 (the largest has 186).
-- Thirty slots cover a generator's first thirty parameters (Arp, Chord and most others whole; Stacks 56,
-  Eucalypso 82 and SuperArp 33 in part); the rest stay in Pung's view.
-- The registry is not touched: it numbers a module's parameters, and only the mapping from that number to
-  a position changes (0 to 95 as they are, 96 and above moved up by 31). The contract's identity
-  (`pung-set-1`) has not been on any Push by default, so no Set is bound to the first layout.
 
 Two things learned beside the measurements, both about testing on a Push:
 
@@ -262,8 +258,10 @@ In this order; each step is small and tested before the next.
    catalog build refuses a registry that is not the last one grown at its ends, and a published module
    without an entry. Pung lays devices out by the registry it was built with, or by one a pack on its disk
    carries that is the same grown at its ends (`currentRegistry`: read from the disk, never waited for).
-6. **Done (2026-11-27), with a result that changes step 2** ("What the Push said", above): the layout
-   must keep the selector and the slots within Live's first 127 positions. Measurements 3 and 4 remain.
+6. **Done (2026-11-27, read again 2026-11-28)** ("What the Push said", above): Live goes by the list's
+   order, so the MIDI part stands after an instrument's twelfth page in it (built 2026-11-28); the numbers
+   are untouched. To be seen on a Push: the selector and slots of a small and of a large instrument in
+   Live's lists, and measurements 3 and 4.
 7. The test this ends with: one Set with automation, opened on the same Push in two conditions (all MIDI
    generators installed; some removed and installed again in another order), the automation on the same
    controls both times. A second Push would be the better witness.

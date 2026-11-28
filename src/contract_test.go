@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"regexp"
+	"strconv"
 	"testing"
 
 	"github.com/federico-pepe/ableton-push-hack/core/livedevice"
@@ -284,4 +286,94 @@ func TestRegistryFromAPack(t *testing.T) {
 	if grown.appends(base) {
 		t.Error("the smaller registry counts as the larger one grown")
 	}
+}
+
+// rackEntry: where a rack lists the selector (number 192), counted from 0
+var rackEntry = regexp.MustCompile(`<VisualIndex Value="(\d+)" />\s*<ParameterId Value="192" />`)
+
+// What Live takes of a device is the first 127 entries of the list its rack
+// gives it (measured, 2026-11-27), so for every instrument of the registry,
+// laid out from its real pages (the kept probe records): the selector and at
+// least thirty slots are among them, each parameter is listed once, and an
+// instrument of twelve pages or fewer has every parameter of its own there.
+// The numbers do not move for it: the selector is at 192, slot k at 192+k.
+func TestLiveHasTheSelectorOfEveryInstrument(t *testing.T) {
+	reg, err := builtinRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	probes := cardShotProbes(t)
+	n, whole, least := 0, 0, contractSlots
+	for mod, kinds := range reg.Modules {
+		keys, ok := kinds[livedevice.Instrument]
+		v, has := probes[mod]
+		if !ok || !has || v.Probe == nil || v.Probe.Meta["chain_params"] == "" {
+			continue
+		}
+		cm := buildMeta(mod, func(k string) (string, bool) { x, ok := v.Probe.Meta[k]; return x, ok })
+		if cm == nil {
+			continue
+		}
+		cl, ok := contractClass(reg, mod, livedevice.Instrument, "", mod, "Pung", cm, nil, nil)
+		if !ok {
+			t.Errorf("%s: no device", mod)
+			continue
+		}
+		n++
+		if p := cl.Params[contractSelector]; p.Role != "midifx" {
+			t.Errorf("%s: the selector is not at %d", mod, contractSelector)
+		}
+		for k := 1; k <= contractSlots; k++ {
+			if p := cl.Params[contractSelector+k]; p.Name != fmt.Sprintf("MIDI FX %d", k) {
+				t.Errorf("%s: slot %d is not at %d (%q)", mod, k, contractSelector+k, p.Name)
+				break
+			}
+		}
+		listed := cl.order[:min(liveListed, len(cl.order))]
+		seen, sel, slots, own := map[int]bool{}, false, 0, 0
+		for _, i := range listed {
+			if seen[i] {
+				t.Errorf("%s: entry %d is listed twice", mod, i)
+			}
+			seen[i] = true
+			switch p := cl.Params[i]; {
+			case p.Role == "midifx":
+				sel = true
+			case p.Role == slotRole:
+				slots++
+			case p.Type != livedevice.PadType:
+				own++
+			}
+		}
+		if !sel || slots < 30 {
+			t.Errorf("%s: Live would have the selector: %v, and %d slots (want it, and 30 or more)", mod, sel, slots)
+		}
+		least = min(least, slots)
+		// and the rack core writes for it says the same (its list is what Live reads)
+		xml, err := livedevice.RenderPreset(cl.Class)
+		if err != nil {
+			t.Errorf("%s: its rack: %v", mod, err)
+		} else if m := rackEntry.FindStringSubmatch(xml); m == nil {
+			t.Errorf("%s: its rack does not list the selector", mod)
+		} else if at, _ := strconv.Atoi(m[1]); at >= liveListed {
+			t.Errorf("%s: its rack lists the selector as entry %d, beyond the %d Live takes", mod, at+1, liveListed)
+		}
+		placed := len(keys) // (its parameters the registry names; fewer if this version lacks one)
+		for _, k := range keys {
+			if _, has := cl.keyIdx["synth:"+k]; !has {
+				placed--
+			}
+		}
+		pages := (len(cl.Banks)*8 - (1 + contractSlots)) / 8
+		if pages <= contractOwnPagesFirst && own != placed {
+			t.Errorf("%s: %d pages of its own, and Live would have %d of its %d parameters", mod, pages, own, placed)
+		}
+		if own == placed {
+			whole++
+		}
+	}
+	if n < 60 {
+		t.Fatalf("only %d instruments were laid out from their probe records", n)
+	}
+	t.Logf("%d instruments: every one has the selector in Live and %d slots or more; %d have every parameter of their own there", n, least, whole)
 }
