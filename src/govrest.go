@@ -267,8 +267,8 @@ func baseName(path string) string {
 // next key, so each running emulator counts at its playing cost at least.
 func govRoom(module string, busy float64, engines map[string]float64, running []string, cores int) string {
 	l := limitsOf(module)
-	if l == nil || !l.Emulator {
-		return ""
+	if l == nil || !l.Emulator || !here.EmulatorCosts {
+		return "" // (no emulator; or a deployment whose costs nobody has measured: deployment.go)
 	}
 	if l.One != "" {
 		for _, m := range running {
@@ -284,7 +284,7 @@ func govRoom(module string, busy float64, engines map[string]float64, running []
 		}
 	}
 	if room := float64(cores)*100 - govFreeShare; need > room {
-		return fmt.Sprintf("the Push is too busy for it now (it takes about %.1f of a core while it plays, and %.1f of the %d are free beside what the emulators here need): it starts when there is room",
+		return fmt.Sprintf("the "+here.Name+" is too busy for it now (it takes about %.1f of a core while it plays, and %.1f of the %d are free beside what the emulators here need): it starts when there is room",
 			l.cost()/100, (float64(cores)*100-need+l.cost())/100, cores)
 	}
 	return ""

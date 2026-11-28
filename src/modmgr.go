@@ -1242,5 +1242,7 @@ func (mm *modMgr) view() map[string]any {
 		r.AssetsReady = r.AssetsNeed == 0
 	}
 	sort.Slice(rows, func(a, b int) bool { return strings.ToLower(rows[a].Name) < strings.ToLower(rows[b].Name) })
-	return map[string]any{"ok": true, "catalog": meta, "modules": rows, "pending": pending, "restarting": restarting}
+	// (deployment: what this Pung runs on and what that carries, for the words on a module's card: deployment.go)
+	return map[string]any{"ok": true, "catalog": meta, "modules": rows, "pending": pending, "restarting": restarting,
+		"deployment": map[string]any{"kind": here.Kind, "name": here.Name, "limits": here.limits()}}
 }

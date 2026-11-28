@@ -151,7 +151,7 @@ func placeDevices(devs []*device, plugs []livePlug, cost func(d *device, p liveP
 func (h *Host) setStackNow() (*setStack, error) {
 	host, _ := os.Hostname()
 	st := &setStack{Format: setStackFormat, Host: map[string]string{"kind": "live"},
-		MadeOn: map[string]string{"kind": "push", "pung": buildVersion, "name": host},
+		MadeOn: map[string]string{"kind": here.Kind, "pung": buildVersion, "name": host},
 		Taken:  time.Now().UTC().Format(time.RFC3339), Entries: []stackEntry{}}
 	var devs []*device
 	if h.prov != nil {
@@ -362,8 +362,8 @@ func (h *Host) setStackCheck(st *setStack) map[string]any {
 		ready = false
 	}
 	// its emulators against what plays at once here: more wait, silent, until one is removed (limits.go)
-	if emus := emulatorsRunning(leads); len(emus) > maxEmulators {
-		out["emulators"] = map[string]any{"wanted": emus, "at_once": maxEmulators}
+	if emus := emulatorsRunning(leads); here.MaxEmulators > 0 && len(emus) > here.MaxEmulators {
+		out["emulators"] = map[string]any{"wanted": emus, "at_once": here.MaxEmulators}
 	}
 	out["ready"] = ready
 	return out

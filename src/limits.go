@@ -14,8 +14,9 @@ import (
 //     emulators: a lock in /dev/shm). "refuses": a second one reports an
 //     error and stays silent (JE-8086: "already running in another slot").
 //   - emulator: an emulated hardware DSP that takes most of a core. Three at
-//     once left the Push unreachable (2026-11-21, CLAUDE.md): no more than
-//     maxEmulators run together (emulatorsRunning, provider.New).
+//     once left the Push unreachable (2026-11-21, CLAUDE.md): no more than a
+//     deployment's own count run together (deployment.go: two on a Push, no
+//     count on a Mac; emulatorsRunning, provider.New).
 //   - rests: the module stops its engine while nobody hears it, and wakes on
 //     time (govrest.go; NATIVE-MODULES.md, "Rest"). Pung's own emulators.
 //   - hostRests: the module is not asked for sound while nobody hears it
@@ -61,10 +62,6 @@ func limitsOf(id string) *moduleLimit {
 	return nil
 }
 
-// maxEmulators: emulators that run together. Measured: two play, three left
-// the Push unreachable (2026-11-21).
-const maxEmulators = 2
-
 // emulatorsRunning: the emulators that run for these modules (one a device):
 // a kind that runs one at a time counts once however many devices it has
 // (the others wait, silent, and cost nothing); any other emulator once a
@@ -97,10 +94,14 @@ func emulatorRefused(module string, running []string) string {
 	if l == nil || !l.Emulator {
 		return ""
 	}
+	max := here.MaxEmulators
+	if max <= 0 {
+		return "" // this deployment has no count of its own
+	}
 	now := emulatorsRunning(running)
-	if len(emulatorsRunning(append(append([]string(nil), running...), module))) <= maxEmulators || len(now) < maxEmulators {
+	if len(emulatorsRunning(append(append([]string(nil), running...), module))) <= max || len(now) < max {
 		return ""
 	}
-	return fmt.Sprintf("%d emulators are running (%s), the most a Push carries: this one starts when one of them is removed",
-		len(now), strings.Join(now, ", "))
+	return fmt.Sprintf("%d emulators are running (%s), the most a %s carries: this one starts when one of them is removed",
+		len(now), strings.Join(now, ", "), here.Name)
 }

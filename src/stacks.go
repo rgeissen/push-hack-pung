@@ -578,7 +578,7 @@ func (h *Host) stackOf(d *device) (*stackDoc, error) {
 		st.Name = d.c.Name
 	}
 	host, _ := os.Hostname()
-	st.MadeOn = map[string]string{"kind": "push", "pung": buildVersion, "name": host}
+	st.MadeOn = map[string]string{"kind": here.Kind, "pung": buildVersion, "name": host}
 	st.Taken = time.Now().UTC().Format(time.RFC3339)
 	needs := &stackNeeds{}
 	inst := map[string]installed{}

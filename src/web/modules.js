@@ -240,18 +240,26 @@
     return out.join("");
   }
   // a module's limits (limits.go), in words
+  // The limits are a deployment's own (deployment.go): its Pung says what it runs on and what that carries.
+  // pung.live's catalog has no deployment: it speaks of the Push, the hardware the numbers were measured on.
+  const dep = () => (m.data && m.data.deployment) || { kind: "push", name: "Push", limits: { emulators: 2 } };
   function oneText(l) {
     return l.one === "refuses"
-      ? "One instance on the Push: a second one in the Set reports an error and stays silent. Remove the first to use it."
-      : "One instance on the Push: a second one in the Set stays silent and says Waiting; it starts the moment the first is removed.";
+      ? "One instance at a time: a second one in the Set reports an error and stays silent. Remove the first to use it."
+      : "One instance at a time: a second one in the Set stays silent and says Waiting; it starts the moment the first is removed.";
   }
   // what an emulator costs and when it costs nothing (limits.go: cost in percent of one core, rests)
   function emuText(l) {
+    const d = dep(), push = d.kind === "push", n = d.limits && d.limits.emulators;
     const cores = l.cost ? (l.cost / 100).toFixed(1).replace(/\.0$/, "") : "";
-    const cost = cores ? `An emulated hardware DSP: about ${cores} of the Push's four processor cores while it plays.` : "An emulated hardware DSP: it takes most of a processor core.";
+    // what it costs was measured on a Push: said only there (and on pung.live, as the Push's)
+    const cost = !push ? "An emulated hardware DSP."
+      : cores ? `An emulated hardware DSP: about ${cores} of the Push's four processor cores while it plays.` : "An emulated hardware DSP: it takes most of a processor core.";
     const rest = l.rests ? " In silence it rests and takes none, and wakes with the next note, on time."
       : l.host_rests ? " In silence it rests and takes next to none, and wakes with the next note, on time." : "";
-    return cost + rest + " Two emulators run at once, and only while the Push has room for both: another waits, silent, and starts by itself when there is.";
+    const count = { 2: "Two", 3: "Three", 4: "Four" }[n] || n;
+    const many = n ? ` ${count} emulators run at once on a ${d.name}, and only while it has room for them: another waits, silent, and starts by itself when there is.` : "";
+    return cost + rest + many;
   }
 
   // on pung.live a module is shown, not installed (the owner, 2026-11-27: no install button there, on a card

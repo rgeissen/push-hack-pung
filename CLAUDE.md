@@ -196,6 +196,9 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   a third (OsTIrus in place of a test Xenia, 2026-11-21) left the Push unreachable on the network.
   Pung now refuses a third (`emulatorRefused`, `limits.go`; a kind that runs one at a time counts
   once): the device waits, silent, and starts when one is removed (Live's plugin asks every second).
+  **That count is the Push's, not Pung's** (the owner, 2026-11-28: each deployment carries its own limits;
+  `src/deployment.go`): a Mac has none, and the governor's room check uses costs measured on a Push only on
+  a Push. A new kind of deployment gets its limits there, measured, not copied.
 
 ## When the Push froze: getting an unsaved Set back
 

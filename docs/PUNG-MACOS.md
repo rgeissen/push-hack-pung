@@ -127,6 +127,24 @@ they are, which need work, which cannot. What the survey must expect:
   compiled code needs the Mac's permission for it (a signing entitlement).
 - A module that cannot be built yet is the placeholder above, not a broken Set.
 
+## A limit is the deployment's own
+
+Decided and built on 2026-11-28 (the owner: "each deployment option carries its own limits"). What a Push
+may not do is not what Pung may not do (`src/deployment.go`):
+
+| | A Push 3 | A Mac |
+|---|---|---|
+| Emulators that run at once | Two (three left it unreachable, 2026-11-21) | No count of its own |
+| Room kept for an emulator by what it costs | Yes, by costs measured on a Push | No: those numbers are a Push's. A Mac gets its own once they are measured there |
+| An emulator of one kind twice | One runs, the second waits (the engine's own lock) | The same, until the engines are taught otherwise |
+| Rest in silence | Yes | Yes: a laptop's battery is worth as much |
+
+Pung says which kind it is and what that carries (`GET /api/system`: `kind`, `limits`; the catalog's
+`deployment`), and a module's card words its limits from that: on a Mac no sentence about two emulators and
+no cost in a Push's cores. **What follows for a Set**: one made on a Mac may hold more emulators than a Push
+plays. That is not found out by a Set that stays silent: the stack's check against a deployment says it
+(`emulators`: wanted, and how many play at once there).
+
 ## Ambition 2: the same experience
 
 Pung's view needs two things from where it runs: **somewhere to put a 960 by 160 picture, and the controls'

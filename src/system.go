@@ -194,7 +194,7 @@ func (h *Host) systemInfo() map[string]any {
 	name, _ := os.Hostname()
 	osName, osVer := osRelease()
 	out := map[string]any{
-		"ok": true, "kind": "push", "name": name, "addresses": addresses(),
+		"ok": true, "kind": here.Kind, "limits": here.limits(), "name": name, "addresses": addresses(),
 		"pung":   map[string]any{"version": buildVersion, "uptime_s": int(time.Since(pungStarted).Seconds())},
 		"system": map[string]any{"name": osName, "version": osVer},
 		"cpu":    h.cpuNow(),
