@@ -250,13 +250,20 @@ answers Live for every class of a Pung: it keeps a device's state, an instrument
   made to exist on a Mac by a system setting that needs an administrator. It is another shape than Pung's
   (no device a module, no fixed parameter order, no Set that crosses), but its module builds and its
   findings are directly useful, and its author should hear of this work early.
-- **Not done in Live with the new plugin.** Live had the earlier plugin loaded when the rate conversion was
-  built, and would not quit by itself: it holds a Set with the test device and asks about saving. Until Live
-  is started again it runs the device without the rate (sharp at 48 kHz).
+- **In Live with the new plugin** (after Live was closed and started again): the device says "host_rate
+  48000" to Pung, Live reads 49 parameters (Braids' 45 beside two MIDI effects, and the four hidden ones), a
+  chord sounds at the device at -12.8 dB, no block late.
+- **Closing Live on the Mac without anyone at it.** Asked to quit with unsaved changes, Live asks about
+  saving and stays; a key press cannot be sent to it (macOS wants the owner's permission for that). Ended as
+  a process, Live asks at its next start whether to recover the Set. With the owner's word that the Set may
+  go: end the process, then move `BaseFiles`, `Undo`, `Undo.lock`, `CrashRecoveryInfo.cfg` and
+  `CrashDetection.cfg` out of `~/Library/Preferences/Ableton/Live <ver>/` (into its `Crash` folder, kept).
+  Live then starts as after a clean exit.
 
 Left on the Mac by the proof: `~/Library/Audio/Plug-Ins/VST3/Pung.vst3` and `Pung.classes.json` beside it,
 `~/Library/Application Support/Pung/` (Pung's data, the socket), Pung running from `build/macos/dist`
-(its page on 127.0.0.1:7733), and Live open with an unsaved test Set. Stopping Pung and removing the
+(its page on 127.0.0.1:7733). Live is closed; two folders `set-aside-…` in its `Crash` folder hold the test
+Sets' recovery data and can be deleted. Stopping Pung and removing the
 bundle and the class file undoes it; Live then lists no Pung device.
 
 ## Decisions for the owner

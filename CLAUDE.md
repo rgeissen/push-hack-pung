@@ -160,7 +160,10 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   binary's signature names. The install step signs again after writing; the class file stands beside the
   bundle, never in it.
 - Live on the Mac is asked to quit with `osascript -e 'tell application "Ableton Live 13 Beta" to quit'`.
-  With unsaved changes it asks about saving and stays: never answer that for the owner. A restart of Live
+  With unsaved changes it asks about saving and stays: never answer that for the owner. With the owner's
+  word that the Set may go (given 2026-11-28 for a test Set): end Live's process and move `BaseFiles`, `Undo`,
+  `Undo.lock`, `CrashRecoveryInfo.cfg` and `CrashDetection.cfg` out of its preference folder into its
+  `Crash` folder, or it asks to recover at the next start (a key press cannot be sent: no assistive access). A restart of Live
   may update it (13.0b27 became 13.0b28 that way, 2026-11-28); its logs are per version
   (`~/Library/Preferences/Ableton/Live <ver>/Log.txt`, `PluginScanner.txt`).
 - The shared realtime loop (`src/rtloop.c`, `src/bridge.c`, `src/ratebridge.c`) is the Push's too: after a
