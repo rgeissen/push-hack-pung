@@ -156,6 +156,13 @@ func main() {
 	if rc, err := ln.(*net.TCPListener).SyscallConn(); err == nil {
 		rc.Control(func(fd uintptr) { cCloseInChildren(int(fd)) }) //nolint:errcheck
 	}
+	// The logo's ride on the Push's screen, as the Push starts or after an
+	// install (bootride.go). From here, not from the end of the start: as a
+	// Push starts, Pung takes half a minute to lay its devices out (25 s on
+	// 2026-11-28), and the ride then came seven seconds after Push Hack's own
+	// picture had gone.
+	stop := make(chan struct{})
+	go startRide(*data, buildVersion, stop)
 	go func() {
 		log.Printf("http on :%d", cfg.Port)
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -270,7 +277,6 @@ func main() {
 	}
 	h.mods.afterStart(base) // an Apply that started this Pung: Live next
 
-	stop := make(chan struct{})
 	go runEngine(h, stop)
 	lv := newLive(h)
 	h.live = lv
@@ -299,9 +305,8 @@ func main() {
 	go h.transport.watch()
 	saved := make(chan struct{})
 	go func() { h.autosave(stop); close(saved) }()
-	go h.prov.keepWhileRunning(stop)        // the devices' states, for a Pung that does not stop cleanly
-	go startRide(*data, buildVersion, stop) // the logo's ride on the Push's screen, as the Push starts or after an install (bootride.go)
-	leave := func() {                       // what a restart after a hang does with the surface (watchdog.go)
+	go h.prov.keepWhileRunning(stop) // the devices' states, for a Pung that does not stop cleanly
+	leave := func() {                // what a restart after a hang does with the surface (watchdog.go)
 		if surf.focused.Load() {
 			surf.pm.SurfaceLeave("live") //nolint:errcheck
 		}
