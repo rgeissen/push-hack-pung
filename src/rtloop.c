@@ -6,14 +6,23 @@
 #include "livedevice_ipc.h"
 
 #include <limits.h>
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#include <mach/thread_policy.h>
+#include <os/os_sync_wait_on_address.h>
+#else
 #include <linux/futex.h>
+#endif
 #include <math.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef __APPLE__
 #include <sys/syscall.h>
+#endif
 #include <time.h>
 #include <unistd.h>
 
@@ -150,11 +159,31 @@ static inline float bitsf(uint32_t u) {
 }
 
 /* shared futexes: the plugin is another process */
+#ifdef __APPLE__
+/* macOS (14.4 and later): the same wait on a word, shared between processes */
+static void futex_wait(uint32_t *a, uint32_t v, long ns) {
+    os_sync_wait_on_address_with_timeout(a, v, 4, OS_SYNC_WAIT_ON_ADDRESS_SHARED, OS_CLOCK_MACH_ABSOLUTE_TIME, (uint64_t)ns);
+}
+static void futex_wake(uint32_t *a) { os_sync_wake_by_address_all(a, 4, OS_SYNC_WAKE_BY_ADDRESS_SHARED); }
+/* A realtime thread on macOS: a time-constraint policy for a 128-frame block
+ * at 44.1 kHz (every 2.9 ms, at most 1.5 ms of it). */
+static void rt_realtime(void) {
+    mach_timebase_info_data_t tb;
+    mach_timebase_info(&tb);
+    double ticks_per_ms = 1e6 * (double)tb.denom / (double)tb.numer;
+    thread_time_constraint_policy_data_t pol = {
+        .period = (uint32_t)(2.9 * ticks_per_ms), .computation = (uint32_t)(1.5 * ticks_per_ms),
+        .constraint = (uint32_t)(2.9 * ticks_per_ms), .preemptible = 1};
+    thread_policy_set(pthread_mach_thread_np(pthread_self()), THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&pol,
+                      THREAD_TIME_CONSTRAINT_POLICY_COUNT);
+}
+#else
 static void futex_wait(uint32_t *a, uint32_t v, long ns) {
     struct timespec ts = {ns / 1000000000L, ns % 1000000000L};
     syscall(SYS_futex, a, FUTEX_WAIT, v, &ts, NULL, 0);
 }
 static void futex_wake(uint32_t *a) { syscall(SYS_futex, a, FUTEX_WAKE, INT_MAX, NULL, NULL, 0); }
+#endif
 
 static uint32_t pack(const uint8_t *m, int len) {
     uint32_t p = (uint32_t)len & 3;
@@ -519,7 +548,12 @@ finish:
 
 static void *rt_main(void *arg) {
     rtloop *rt = arg;
+#ifdef __APPLE__
+    pthread_setname_np("pung-rt");
+    rt_realtime();
+#else
     pthread_setname_np(pthread_self(), "pung-rt");
+#endif
     uint32_t *req = u32(rt->mem, LD_OFF_REQ), *done = u32(rt->mem, LD_OFF_DONE);
     uint32_t *alive = u32(rt->mem, LD_OFF_ALIVE);
     uint32_t last = rt->last;
@@ -554,6 +588,10 @@ int rt_start(rtloop *rt, void *mem, int size, unsigned version, int priority) {
     if (!rt || !mem || version != LD_IPC_VERSION || size < (int)LD_IPC_SIZE) return -1;
     rt->mem = mem;
     rt->last = __atomic_load_n(u32(rt->mem, LD_OFF_REQ), __ATOMIC_ACQUIRE);
+#ifdef __APPLE__
+    (void)priority; /* the thread makes itself a realtime one (rt_realtime) */
+    int err = pthread_create(&rt->th, NULL, rt_main, rt);
+#else
     pthread_attr_t a;
     pthread_attr_init(&a);
     pthread_attr_setinheritsched(&a, PTHREAD_EXPLICIT_SCHED);
@@ -562,6 +600,7 @@ int rt_start(rtloop *rt, void *mem, int size, unsigned version, int priority) {
     pthread_attr_setschedparam(&a, &sp);
     int err = pthread_create(&rt->th, &a, rt_main, rt);
     pthread_attr_destroy(&a);
+#endif
     if (err != 0) /* no realtime allowed here (a test): an ordinary thread still serves */
         err = pthread_create(&rt->th, NULL, rt_main, rt);
     if (err != 0) return -1;
@@ -687,10 +726,18 @@ int rt_preview_stopping(rtloop *rt) { return atomic_load_explicit(&rt->prev_stop
  * to a block for it. */
 void rt_usage(rtloop *rt, rt_usage_t *o) {
     o->cpu_ns = 0;
+#ifdef __APPLE__
+    thread_basic_info_data_t bi;
+    mach_msg_type_number_t n = THREAD_BASIC_INFO_COUNT;
+    if (rt->running && thread_info(pthread_mach_thread_np(rt->th), THREAD_BASIC_INFO, (thread_info_t)&bi, &n) == KERN_SUCCESS)
+        o->cpu_ns = ((int64_t)bi.user_time.seconds + bi.system_time.seconds) * 1000000000LL +
+                    ((int64_t)bi.user_time.microseconds + bi.system_time.microseconds) * 1000LL;
+#else
     clockid_t c;
     struct timespec ts;
     if (rt->running && pthread_getcpuclockid(rt->th, &c) == 0 && clock_gettime(c, &ts) == 0)
         o->cpu_ns = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+#endif
     o->render_ns = atomic_load(&rt->render_sum);
     o->blocks = atomic_load(&rt->blocks);
     o->out_peak = bitsf(atomic_load(&rt->out_peak));

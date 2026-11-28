@@ -11,8 +11,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
-#include <sys/syscall.h>
 #include <fcntl.h>
+#ifdef __APPLE__
+#include <sys/param.h>
+#else
+#include <sys/syscall.h>
+#endif
 
 #include "third_party/schwung/host/plugin_api_v1.h"
 
@@ -111,6 +115,23 @@ static atomic_int g_nclose;
  * a threaded process, where malloc may be locked.
  */
 static char g_lock_dir[512];
+#ifdef __APPLE__
+/* macOS has no /proc: every open file is asked for its path (fcntl, a plain system call). */
+static void sb_close_inherited_locks(void) {
+    size_t plen = strlen(g_lock_dir);
+    if (!plen) return;
+    char link[MAXPATHLEN];
+    int max = getdtablesize();
+    for (int fd = 3; fd < max; fd++) {
+        if (fcntl(fd, F_GETPATH, link) != 0) continue;
+        size_t ll = strlen(link);
+        if (ll <= plen || memcmp(link, g_lock_dir, plen) != 0 || ll < 5 || memcmp(link + ll - 5, ".lock", 5) != 0) continue;
+        int nested = 0;
+        for (size_t k = plen; k < ll; k++) if (link[k] == '/') { nested = 1; break; }
+        if (!nested) close(fd);
+    }
+}
+#else
 struct sb_dirent64 { unsigned long long d_ino; long long d_off; unsigned short d_reclen; unsigned char d_type; char d_name[]; };
 static void sb_close_inherited_locks(void) {
     size_t plen = strlen(g_lock_dir);
@@ -147,6 +168,7 @@ static void sb_close_inherited_locks(void) {
     }
     close(dfd);
 }
+#endif
 void sb_lock_dir(const char *dir) { snprintf(g_lock_dir, sizeof g_lock_dir, "%s", dir); }
 
 static void sb_atfork_child(void) {
@@ -222,7 +244,21 @@ static void slot_unlock(int slot) { pthread_mutex_unlock(&g_lock[slot]); }
 int sb_slot_lock_until(int slot, const struct timespec *abs_realtime) {
     if (!valid(slot) || atomic_load_explicit(&g_busy[slot], memory_order_relaxed)) return -1;
     pthread_once(&g_lock_once, lock_init);
+#ifdef __APPLE__
+    /* macOS has no lock with a deadline: tried again every 50 microseconds until
+     * then. The holder is not lifted to the waiter's priority meanwhile (on Linux
+     * it is): to be measured, and replaced if a block is lost to it. */
+    for (;;) {
+        if (pthread_mutex_trylock(&g_lock[slot]) == 0) return 0;
+        struct timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        if (now.tv_sec > abs_realtime->tv_sec || (now.tv_sec == abs_realtime->tv_sec && now.tv_nsec >= abs_realtime->tv_nsec)) return -1;
+        struct timespec nap = {0, 50000};
+        nanosleep(&nap, NULL);
+    }
+#else
     return pthread_mutex_timedlock(&g_lock[slot], abs_realtime) == 0 ? 0 : -1;
+#endif
 }
 void sb_slot_unlock(int slot) { if (valid(slot)) slot_unlock(slot); }
 void sb_slot_busy(int slot, int on) { if (valid(slot)) atomic_store(&g_busy[slot], on); }
