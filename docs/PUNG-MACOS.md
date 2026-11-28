@@ -209,9 +209,51 @@ answers Live for every class of a Pung: it keeps a device's state, an instrument
 - **Live updated itself** from 13.0b27 to 13.0b28 when it was restarted for the scan. The Push runs 13.0b25:
   the two ends drift apart by themselves, and a Set saved by the newer Live may not open in the older.
 
-Left on the Mac by the proof: `~/Library/Audio/Plug-Ins/VST3/Pung.vst3`, `~/Library/Application
-Support/Pung/` (`classes.json`, the socket), and `pungstub` running. Removing the first and stopping the
-last undoes it; Live then lists no Pung device.
+### Pung itself on the Mac (the same night)
+
+- **Pung builds and runs on macOS from the same source** (`macos/build.sh`): its bridge to the modules and
+  its realtime loop are ported behind compile-time switches (`src/bridge.c`, `src/rtloop.c`: the wake word,
+  a time-constraint thread, a lock tried until its deadline where Linux has one that waits, the lock files
+  of a forked child found without `/proc`). Everything Push-only fails softly, as it does on a stand-in:
+  no ALSA, no Push surface, no Remote Script, no `/data`. The Push's build and its tests are unchanged.
+- **The chain host and the first modules are built for the Mac** (`macos/build-modules.sh`): Schwung's chain
+  host from its branch `worktree-vst`, Freeverb, the arpeggiator, Chord, the line input, Pung's MIDI sink,
+  and Braids from the source the Push's build uses. A Mach-O library keeps the name `dsp.so`.
+- **A real module sounds.** Through a host test (`playtest`, core's, built for the Mac): Braids at a peak of
+  0.31 with every block sounding, Freeverb passing its tone, the arpeggiator 15 notes in and 20 out;
+  Steinberg's validator passes on Pung's own devices (188 tests). **And in Live**: with the Mac-built Pung
+  behind the Braids device that was open in Live, a chord played from Pung's interface peaked at -12.9 dB at
+  the device, no block late (48 kHz, 512 frames; the Mac's output muted meanwhile).
+- **A device at the host's rate** (`src/ratebridge.c`, in the shared loop; on a Push, at 44.1 kHz, it does
+  nothing): the module renders its share of frames at 44.1 kHz and a windowed sinc of 32 points makes the
+  host's of them; an effect's input goes the other way first. The plugin says the host's rate when it makes
+  the device and when it changes, and tells the host the delay, which follows from rate and kind alone
+  (17 frames for an instrument at 48 kHz, 42 for an effect). Tested (`TestRateBridge…`): 440 Hz stays
+  440 Hz at five rates and five block sizes, at its level; 21 kHz taken down to 32 kHz is 40 dB down; an
+  effect's round trip arrives after exactly the delay told. Measured through the whole chain with Braids
+  holding A4: 440.18 Hz at 44.1 kHz, 440.09 at 48 kHz (blocks of 512 and of 64) and at 88.2 kHz, 439.72 at
+  96 kHz (the measurement's own resolution).
+- **P2 is not settled.** Handing a block to Pung and back takes 47 to 171 microseconds on average; the
+  worst single block of a run took 0.5 to 2.2 ms, more than once longer than the half block Live waits (at
+  64 frames, 737 against 667 microseconds). A device's thread is a time-constraint thread but does not yet
+  join the audio device's workgroup, and the lock it shares with Pung's other threads has no priority
+  inheritance on a Mac. Both are the next work on this, with a long run beside a busy Set as the measure.
+- **The class file stands beside the bundle** (`Pung.classes.json` in the VST3 folder): written into a signed
+  bundle it breaks the seal ("a sealed resource is missing or invalid").
+- **Schwung has a desktop branch of its own** (`worktree-vst`, `desktop/`, its author's, September 2026):
+  the chain host as one VST3 and AU plugin for Live (JUCE), one chain an instance, 512 macros bound to the
+  loaded module's parameters, a rate bridge, a script that builds modules for the Mac, and Move's folders
+  made to exist on a Mac by a system setting that needs an administrator. It is another shape than Pung's
+  (no device a module, no fixed parameter order, no Set that crosses), but its module builds and its
+  findings are directly useful, and its author should hear of this work early.
+- **Not done in Live with the new plugin.** Live had the earlier plugin loaded when the rate conversion was
+  built, and would not quit by itself: it holds a Set with the test device and asks about saving. Until Live
+  is started again it runs the device without the rate (sharp at 48 kHz).
+
+Left on the Mac by the proof: `~/Library/Audio/Plug-Ins/VST3/Pung.vst3` and `Pung.classes.json` beside it,
+`~/Library/Application Support/Pung/` (Pung's data, the socket), Pung running from `build/macos/dist`
+(its page on 127.0.0.1:7733), and Live open with an unsaved test Set. Stopping Pung and removing the
+bundle and the class file undoes it; Live then lists no Pung device.
 
 ## Decisions for the owner
 

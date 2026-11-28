@@ -148,6 +148,26 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   module's `push_ui.js` loaded: a new one needs a Pung restart.**
 - Never write to `/boot`, `/opt` or kernel parameters; `/etc` only for Pung's init.d and udev items.
 
+## Pung on macOS (branch `macos`, a proof: `docs/PUNG-MACOS.md`)
+
+- `macos/build.sh` builds the plugin, Steinberg's validator, a host test and Pung for this Mac into
+  `build/macos/`; `macos/build-modules.sh` the chain host and the first modules. Go, CMake and the VST3 SDK
+  are fetched into `build/tools` and `build/deps`; nothing is installed on the machine.
+- **A new program on this Mac cannot reach the network** (LuLu asks, and nobody answers at night): the Go
+  toolchain takes its modules from the project's Docker volume (`build/tools/goproxy`), and `git` and `curl`
+  fetch the rest.
+- **A plugin bundle is signed as it stands**: Live refuses one whose Info.plist differs from the one its
+  binary's signature names. The install step signs again after writing; the class file stands beside the
+  bundle, never in it.
+- Live on the Mac is asked to quit with `osascript -e 'tell application "Ableton Live 13 Beta" to quit'`.
+  With unsaved changes it asks about saving and stays: never answer that for the owner. A restart of Live
+  may update it (13.0b27 became 13.0b28 that way, 2026-11-28); its logs are per version
+  (`~/Library/Preferences/Ableton/Live <ver>/Log.txt`, `PluginScanner.txt`).
+- The shared realtime loop (`src/rtloop.c`, `src/bridge.c`, `src/ratebridge.c`) is the Push's too: after a
+  change there, `make build` and `make test`.
+- Sound on this Mac at night: mute the output first (`osascript -e 'set volume output muted true'`), put
+  it back after.
+
 ## Ask first
 
 - **Apply** (`POST :7720/api/catalog/apply`) restarts Pung and **Live**: only on the user's word. It keeps
