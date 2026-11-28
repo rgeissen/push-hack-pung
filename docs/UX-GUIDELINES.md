@@ -26,6 +26,12 @@ drawing for one hardware (a Push screen's pixels, a front panel's segment positi
 compartment is or which controls it has. Today both stand in one file, `push_ui.js`; when a second kind
 of hardware gets drawings of its own, they go beside the Push's, under the same compartments.
 
+**Segments are the hardware's** (the owner, 2026-11-28): a segment groups single controls so that a hand
+reaches them easily, eight at a time because a Push has eight encoders, at a place on a panel of 960 by
+160. Another hardware groups otherwise, or not at all (a pointer reaches every control). A segment's name
+comes from the instrument's vocabulary, but it is not part of what the module is: nothing that must hold
+everywhere (a Set, a patch, a parameter's identity) may name a segment.
+
 **The rules that keep them together:**
 
 1. **Same names, same order.** A compartment, page or parameter has one name, used on both surfaces. The
