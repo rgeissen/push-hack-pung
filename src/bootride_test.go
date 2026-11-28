@@ -24,7 +24,8 @@ type fakeDisplay struct {
 	refuse  bool // the surface is an app's: mode and frames answer 409
 	cutAt   int  // from this frame on the surface is an app's (0: never)
 	badSize int
-	leftTo  string // the hack push-manager left the start-up picture to
+	leftTo  string        // the hack push-manager left the start-up picture to
+	slow    time.Duration // each frame takes this long to be taken (a Push that is starting up)
 }
 
 func (f *fakeDisplay) serve(t *testing.T) *httptest.Server {
@@ -48,9 +49,12 @@ func (f *fakeDisplay) serve(t *testing.T) *httptest.Server {
 		w.Write([]byte(`{}`)) //nolint:errcheck
 	})
 	mux.HandleFunc("/api/display/frame", func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		if f.slow > 0 {
+			time.Sleep(f.slow)
+		}
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		raw, _ := io.ReadAll(r.Body)
 		if len(raw) != display.FrameBytes {
 			f.badSize++
 		}
@@ -142,11 +146,12 @@ func TestRidePlaysAndGivesTheDisplayBack(t *testing.T) {
 	m, _ := loadRide()
 	t0 := time.Now()
 	n, err := playRide(s.URL, dir, "0.6.0", "", nil)
-	if err != nil || n != m.Frames {
+	// (a machine that is busy may leave pictures out: the ride keeps its time, not its count)
+	if err != nil || n < m.Frames*8/10 || n > m.Frames {
 		t.Fatalf("%d pictures of %d, %v", n, m.Frames, err)
 	}
-	if f.frames != m.Frames || f.badSize != 0 {
-		t.Errorf("the display got %d frames (%d of a wrong size)", f.frames, f.badSize)
+	if f.frames != n || f.badSize != 0 {
+		t.Errorf("the display got %d frames of %d sent (%d of a wrong size)", f.frames, n, f.badSize)
 	}
 	if len(f.modes) != 2 || f.modes[0] != modeTakeover || f.modes[1] != modeLive || f.mode != modeLive {
 		t.Errorf("modes set: %v, left at %d", f.modes, f.mode)
@@ -308,5 +313,28 @@ func TestRideWordsComeWithTheLanding(t *testing.T) {
 	}
 	if dev := shot(m.Frames-1, "dev", ""); lit(dev, right) != 0 {
 		t.Error("a build without a version writes one")
+	}
+}
+
+// On a Push that is busy starting up a picture takes several times its share
+// to reach the screen. The ride still takes its own time (pictures that come
+// too late are left out), and ends on its last picture.
+func TestRideKeepsItsTimeOnABusyPush(t *testing.T) {
+	f := &fakeDisplay{slow: 80 * time.Millisecond} // 30 a second would need 33 ms
+	m, _ := loadRide()
+	t0 := time.Now()
+	n, err := playRide(f.serve(t).URL, t.TempDir(), "0.6.0", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := time.Duration(m.Frames)*time.Second/time.Duration(m.FPS) + time.Duration(m.HoldMs)*time.Millisecond
+	if d := time.Since(t0); d > want+700*time.Millisecond {
+		t.Errorf("the ride took %v on a busy Push; it is %v", d, want)
+	}
+	if n >= m.Frames*2/3 || n < 10 {
+		t.Errorf("%d of %d pictures were shown: at 80 ms each about %d fit", n, m.Frames, int(want/(80*time.Millisecond)))
+	}
+	if f.mode != modeLive {
+		t.Errorf("the display was left in mode %d", f.mode)
 	}
 }

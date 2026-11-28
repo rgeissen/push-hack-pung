@@ -201,10 +201,27 @@ func playRide(base, dataDir, version, pushHack string, stop <-chan struct{}) (in
 	}()
 	screen := image.NewNRGBA(image.Rect(0, 0, display.VisW, display.VisH))
 	draw.Draw(screen, screen.Bounds(), image.Black, image.Point{}, draw.Src)
+	// The ride keeps its time: the picture shown is the one that is due now.
+	// A Push that is starting up is busy, and a picture can take several
+	// times its share to reach the screen; shown one after another, the ride
+	// then ran at half its speed (a Push's start, 2026-11-28: 106 pictures in
+	// about nine seconds). Pictures that come too late are left out; the
+	// last one is always shown.
 	tick := time.Second / time.Duration(m.FPS)
-	next := time.Now()
+	begun := time.Now()
 	shown := 0
-	for i := 0; i < m.Frames; i++ {
+	for last := -1; last < m.Frames-1; {
+		i := int(time.Since(begun) / tick)
+		if i <= last {
+			if !waitUntil(begun.Add(time.Duration(last+1)*tick), stop) {
+				return shown, nil
+			}
+			continue
+		}
+		if i > m.Frames-1 {
+			i = m.Frames - 1
+		}
+		// (what Pung writes comes with the landing: a picture left out must not take it along)
 		if err := rideFrame(m, i, screen); err != nil {
 			return shown, err
 		}
@@ -213,10 +230,7 @@ func playRide(base, dataDir, version, pushHack string, stop <-chan struct{}) (in
 			return shown, err // (the surface went to an app or to Home: its screen now)
 		}
 		shown++
-		next = next.Add(tick)
-		if !waitUntil(next, stop) {
-			return shown, nil
-		}
+		last = i
 	}
 	waitUntil(time.Now().Add(time.Duration(m.HoldMs)*time.Millisecond), stop)
 	return shown, nil
@@ -350,12 +364,14 @@ func startRide(dataDir, version string, stop <-chan struct{}) {
 	if rideIsPungs(pmBase) {
 		credit = pushHackVersion(pmBase)
 	}
+	age, _ = push3Age()
+	t0 := time.Now()
 	n, err := playRide(pmBase, dataDir, version, credit, stop)
 	if err != nil && n == 0 {
 		log.Printf("ride: not shown (%s): %v", why, err)
 		return
 	}
-	log.Printf("ride: shown (%s), %d pictures", why, n)
+	log.Printf("ride: shown (%s), %d pictures in %.1f s, begun when Push3 was %.1f s old", why, n, time.Since(t0).Seconds(), age.Seconds())
 	if version != "" && version != "dev" {
 		os.WriteFile(filepath.Join(dataDir, rideShown), []byte(version+"\n"), 0o644) //nolint:errcheck
 	}
