@@ -31,10 +31,10 @@ lipo -create -output "$APP/Contents/MacOS/pung-installer" "$OUT/bin/pung-install
 ICON="$OUT/icon.iconset"
 mkdir -p "$ICON"
 for s in 16 32 128 256 512; do
-  sips -z $s $s site/brand/icon-512.png --out "$ICON/icon_${s}x${s}.png" >/dev/null
-  d=$((s * 2)); [ $d -le 512 ] && sips -z $d $d site/brand/icon-512.png --out "$ICON/icon_${s}x${s}@2x.png" >/dev/null
+  sips -z $s $s installer/icon-512.png --out "$ICON/icon_${s}x${s}.png" >/dev/null
+  d=$((s * 2)); [ $d -le 512 ] && sips -z $d $d installer/icon-512.png --out "$ICON/icon_${s}x${s}@2x.png" >/dev/null
 done
-cp site/brand/icon-512.png "$ICON/icon_512x512@2x.png"
+cp installer/icon-512.png "$ICON/icon_512x512@2x.png"
 iconutil -c icns "$ICON" -o "$APP/Contents/Resources/Pung.icns"
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

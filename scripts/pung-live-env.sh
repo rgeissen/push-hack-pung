@@ -1,5 +1,5 @@
-# Sourced by the scripts that publish to pung.live (publish-site.sh,
-# publish-catalog.sh, release.sh): where the site lives and how to reach it.
+# Sourced by the scripts that publish to pung.live (publish-catalog.sh,
+# release.sh, and the site's own publish.sh): where the site lives and how to reach it.
 #
 # pung.live is served by Web Station on the owner's DiskStation, from one
 # folder: the pages at its root, catalog/, releases/v<version>/pung.tar.gz,

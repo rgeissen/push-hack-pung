@@ -4,7 +4,8 @@
 Each rule here was once a step someone had to remember (CLAUDE.md, Release):
 
   - the tree is clean: what ships is what is committed;
-  - VERSION, hack.json and the manual's eyebrow name the same version;
+  - VERSION and hack.json name the same version (the manual's eyebrow is the
+    site's to check: site/publish.sh, in the site's own repository);
   - the catalog was built after the last change to what goes into it, and
     each of Pung's own modules names the commit of its last change
     (0.4.2 was republished for a source archive that lacked what shipped);
@@ -20,7 +21,7 @@ Each rule here was once a step someone had to remember (CLAUDE.md, Release):
   scripts/release-check.py [--publish] [--after-build]
 
 --after-build adds the checks of what make release builds (the binary, the
-pictures, a tree still clean once the site is built).
+pictures, a tree still clean after the build).
 """
 import json
 import os
@@ -69,13 +70,11 @@ if dirty:
     problems.append("the tree is not clean (commit first: what ships is what is committed):\n    "
                     + dirty.replace("\n", "\n    "))
 
-# the version, three places
+# the version, two places
 version = open(os.path.join(ROOT, "VERSION")).read().strip()
 hack = json.load(open(os.path.join(ROOT, "hack.json")))["version"]
-m = re.search(r'class="eyebrow">Pung ([0-9.]+) ', open(os.path.join(ROOT, "site/manual.src.html")).read())
-manual = m.group(1) if m else None
-if not (version == hack == manual):
-    problems.append(f"versions differ: VERSION {version}, hack.json {hack}, the manual's eyebrow {manual}")
+if version != hack:
+    problems.append(f"versions differ: VERSION {version}, hack.json {hack}")
 
 # the catalog
 cat_path = os.path.join(ROOT, "build/catalog/catalog.json")

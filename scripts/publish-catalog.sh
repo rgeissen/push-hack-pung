@@ -55,8 +55,14 @@ c=json.load(open(sys.argv[1]))
 for e in c["modules"]: print(e["asset"]); print(e["source"]["archive"])' "$SRC/catalog.json")
   printf '%s\n' "$keep" | $SSH "$HOST" "cd $DEST && sort > .keep && (ls modules/* source/* 2>/dev/null | sort | comm -23 - .keep | while read -r f; do rm -f -- \"\$f\" && echo \"pruned \$f\"; done); rm -f .keep"
 fi
-# pung.live's Modules page shows the same pack
-python3 site/build.py --modules-data build/site-modules.json "$SRC/catalog.json"
-live_put build/site-modules.json modules/catalog.json
+# pung.live's Modules page shows the same pack. The page is the site's (its
+# own repository, checked out at site/): without it the pack is published and
+# the page keeps the list it has until the site is published from a checkout.
+if [ -f site/build.py ]; then
+  python3 site/build.py --modules-data build/site-modules.json "$SRC/catalog.json"
+  live_put build/site-modules.json modules/catalog.json
+else
+  echo "NOTE: site/ is not checked out: pung.live's Modules page still shows the pack before this one" >&2
+fi
 n=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["modules"]))' "$SRC/catalog.json")
 echo "published $n modules"

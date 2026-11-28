@@ -23,7 +23,7 @@ release, and native instruments built from gearmulator (`native/`).
 | Patches (what one Pung device holds, moved between deployments; built as "Stacks" on 2026-11-27) | `docs/STACKS.md` |
 | pung.live and a deployment over https (so it works in Safari and on an iPad): half built, a plan for the rest | `docs/SECURE-LINK.md` |
 | Architecture and history | `docs/DESIGN-v2.md`, `docs/DESIGN.md` |
-| The public pages (manual, vision, design) | `site/README.md` |
+| pung.live's pages (the manual too): a private repository, checked out at `site/` | `site/CLAUDE.md`, `site/README.md` |
 
 ## Layout
 
@@ -34,11 +34,12 @@ release, and native instruments built from gearmulator (`native/`).
   `xenia` (Microwave II/XT), and `vivace`, a port of an open-source wavetable synth (GPLv3; its licence
   forbids its name on a build: it appears only in `licenses/NOTICE.txt`).
 - `overrides/<id>/push_ui.js` screens Pung ships for Schwung modules.
-- `scripts/` builds, catalog, release, render-check. `site/` the public pages (pung.live).
+- `scripts/` builds, catalog, release, render-check. `site/` is not this repository's: the website
+  application (pung.live) is private, a repository of its own checked out there ("Core and the site").
 - `installer/` the Pung Installer (its own Go module, pure Go, no cgo): a local page in the browser; SSH to the
   Push (key at `push.local/ssh`, Shift+Select+Preferences), Push Hack at the ref in `site/install.json` where
   missing, then Pung as Push Hack Catalog installs it (port 7720 kept or chosen). `scripts/build-installer.sh` ->
-  `build/installer/` (macOS app, Windows, Linux), published as pung.live/download/ by `make publish-site`.
+  `build/installer/` (macOS app, Windows, Linux), published as pung.live/download/ by the site's `publish.sh`.
   Phase 1 of leaving Push Hack (2026-11-27): Pung's dependencies on it are core/livedevice, alsaseq, audiobus, gfx,
   hackcfg, pmclient, push-manager's surface API (:7701) and the PushHack Remote Script (:7704).
   Test it against a fake Push: an ubuntu container with sshd, /data, /etc/init.d/push3 (a stub). Running a new
@@ -148,7 +149,27 @@ is filed under that alias). The Push has no curl: use `wget` on it.
   module's `push_ui.js` loaded: a new one needs a Pung restart.**
 - Never write to `/boot`, `/opt` or kernel parameters; `/etc` only for Pung's init.d and udev items.
 
-## Pung on macOS (branch `macos`, a proof: `docs/PUNG-MACOS.md`)
+## Core and the site (the owner's word, 2026-11-28)
+
+Almost everything is core and open: Pung on the Push, on a Mac and on what follows, the modules, the
+installer, the release scripts, in the public repository (`rgeissen/push-hack-pung`, remote `origin`,
+branch `main`). **The website application is private**: pung.live's pages, their build and their publishing
+are a repository of their own, checked out at `site/` inside this one (ignored here; private repository
+`rgeissen/pung-extended`). The day before, the line was drawn elsewhere (the other platforms private); the
+owner moved it after reading what the GPL asks of a host that loads GPL modules.
+
+- **Nothing under `site/` is ever committed here**, and nothing here may need it: `make build`, `make test`,
+  `make publish` and the installer's build run in a clone without `site/`. A script of core's that can do
+  more with the site beside it says so and goes on without (`scripts/publish-catalog.sh`).
+- This clone guards the public remote (`.git/hooks/pre-push`, not in the repository: a new clone needs it
+  again): only `main` and release tags, and no tree that holds `site/`. Before a push, look at the remote
+  and the branch.
+- The site takes from core what both show: `src/web/fonts`, `app.css`, `modules.js`, `places.js`,
+  `visuals.js`, the catalog, the screens. A change to one of them is a change to pung.live at its next
+  publish: build the site (`python3 site/build.py --pages <dir>`) after touching them.
+- The site's history up to 0.6.0 is in this repository's history, public, and stays there.
+
+## Pung on macOS (a proof: `docs/PUNG-MACOS.md`)
 
 - `macos/build.sh` builds the plugin, Steinberg's validator, a host test and Pung for this Mac into
   `build/macos/`; `macos/build-modules.sh` the chain host and the first modules. Go, CMake and the VST3 SDK
@@ -224,7 +245,8 @@ back as of the previous restart. Then ask the user to save the Set.
    the local `../schwung` main has not). The known-good files are those of 0.4.2's package, byte for byte what
    runs on the owner's Push (chain host md5 8574dd39…). Prove a package on a stand-in Push before publishing:
    an amd64 ubuntu container with sshd and `/lib/ld-linux-x86-64.so.2 -> /lib64/...` starts Pung.
-1. Bump `VERSION`, `hack.json` `version`, and the manual's eyebrow (`site/manual.src.html`).
+1. Bump `VERSION` and `hack.json` `version` here, and the manual's eyebrow in the site's repository
+   (`site/manual.src.html`; `site/publish.sh` refuses a manual that names another version).
 2. **Build changed modules from the committed tree.** A package records the commit of the last change to
    `native/<id>` at BUILD time; built before the commit, the catalog links a source archive that lacks
    what ships (0.4.2 had to be republished for this). Check `source.commit` in `build/catalog/catalog.json`.
@@ -260,25 +282,21 @@ back as of the previous restart. Then ask the user to save the Set.
    revision, then rerun without the override: it must pass.
 5. Commit, push `main` (and any module fork the catalog links: JE-8086's `remote-ui` was not, for
    0.4.5), then **`make publish`** (`make release` packages without publishing). It runs
-   `scripts/release-check.py` (a clean tree; one version in VERSION, hack.json and the manual; the
+   `scripts/release-check.py` (a clean tree; one version in VERSION and hack.json; the
    catalog built after its inputs and naming each own module's last commit; every source commit on
-   GitHub or its archive on `sources`; HEAD on origin/main), then build, screens, test, vet,
-   test-visuals and the site in that order, checks again (the binary and the pictures newer than their
+   GitHub or its archive on `sources`; HEAD on origin/main), then build, screens, test, vet and
+   test-visuals in that order, checks again (the binary and the pictures newer than their
    inputs, the tree still clean), and `scripts/release.sh --publish`.
 6. `release.sh --publish` puts the sources on pung.live first (`sources/`, never replacing one), then
    `releases/v<version>/pung.tar.gz` (checked by its checksum and through https), then `release.json`
    there and on `main` (Push Hack's store reads it from GitHub), and the tag. Verify: download
    `pung.tar.gz` from pung.live, check `hack.json`, the catalog's versions and commits, and that every
    `source.archive` answers. Releases up to 0.5.0 and their sources stay on GitHub's releases.
-7. The pages: `make publish-site` (not on a push any more). It also writes `modules/`: Pung's own Modules page
-   (`src/web/modules.js` with `<body data-public>`) from the release's catalog and `build/screens`. Connected
-   to a visitor's Push (Local Network Access: the browser asks; Chrome/Edge 142+, Firefox 151+) the site reads
-   how it stands (Deployments) and installs what a stack needs (Stacks); the Modules page itself asks
-   nothing. Pung lets only https://pung.live read those few calls (`src/sitecors.go`).
-   Never send `targetAddressSpace: "local"` for a `.local` name or an IP literal: push.local also resolves to
-   a global IPv6 address, which Chrome counts as public, and the request fails (Chrome 158, 2026-11-26).
-   Test it with Chrome over CDP: `Browser.grantPermissions` with localNetwork in ONE call (it rejects the rest). `site/images.json` is one compact JSON line:
-   keep it that way (`separators=(',',':')`).
+7. The pages: `site/publish.sh`, from the site's repository (it needs this one around it: the release's
+   catalog, `build/screens`, `build/installer`). It also writes `modules/`: Pung's own Modules page
+   (`src/web/modules.js` with `<body data-public>`). A release of core needs no site: nothing in `make
+   publish` reads `site/`. Pung lets only https://pung.live read the few calls the site makes of a
+   deployment (`src/sitecors.go`).
 
 **Rehearse a release without publishing** (done 2026-11-27, before 0.6.0; it found five things the checks
 alone did not): a stand-in for the DiskStation (a container with sshd, rsync, `/volume2/web/pung` and
@@ -299,15 +317,10 @@ changes rarely: when it does, pung.live is down until the record is changed). Sc
 from `PUNG_LIVE_HOST` (`scripts/pung-live-env.sh`) and touch nothing outside that folder: the share
 serves other sites.
 
-## The site (pung.live)
+## Pung's own page, and pung.live
 
-Three sections in front, everything else in the footer (the owner's word, 2026-11-27): the hero page
-(`home.src.html`: the value, and a Push screen that plays: `site/hero.js` feeds a made-up sound to Pung's own
-pictures, `src/web/visuals.js`, so the page draws what the Push draws), **Modules** (`site/modules.html` with
-`src/web/modules.js` in its public mode) and **Deployments** (the page; `deployments.src.html`, `site/deployments.js`; `devices.html` goes on to it: install,
-and a panel for every connected deployment: processor with its last minute, memory, storage, battery, what plays,
-Pung against the newest, its modules, Pung's two switches). Vision, Manual, Design and Performance are built as
-before and linked in the footer.
+What here concerns Pung's own page (`src/web/`) and what Pung answers pung.live. The site's own notes (its pages, the
+hero, the foot, publishing) are in its repository: `site/CLAUDE.md`.
 
 - **A Pung that is not the newest says so, and names the Pung Installer** (the owner's word, 2026-11-27; Pung
   does not update itself). The site names the newest release (`release.json`); `pushlink.js` (`behind`) marks
@@ -315,39 +328,12 @@ before and linked in the footer.
   `deployments.html#installer`. Pung reads the same file now and then (`src/newest.go`, `PUNG_RELEASE_URL` for
   a staging copy; never with `own_pack_only`) and answers `"newest"` in `/api/status`; its own page shows it
   beside the version. Preview it: a scratch build of the site with a later version in its `release.json`.
-- **The foot of every page** (`site/footer.css`, `footer()` in `build.py`; the Modules page has it too, with
-  its own stylesheet's colours): the logo and the line, four columns (the sections in front, the pages to
-  read, the projects Pung stands on, legal), the fine print set apart. **Legal notice and Privacy**
-  (`legal.src.html`, `privacy.src.html`) take the owner's details from `site/legal.json`; an empty field
-  shows as "to be added" on the page. The privacy page states what the site does: change it when the site
-  starts to do anything else (a cookie, a counter, a file from another host, an account).
 - **The typefaces are Pung's own** (`src/web/fonts/`: Archivo, IBM Plex Mono, Plus Jakarta Sans as WOFF2, Latin and
   Latin Extended, each under the OFL; about 300 KB). They are built into Pung, which serves them to its own
   page (`/fonts/faces.css`, linked from `index.html`), and `site/build.py` (`faces()`) puts the same rules
   into every page of pung.live and copies the files there: one set, moved from `site/fonts/` on 2026-11-27.
   No page asks another host for anything (a visitor's address sent to a font service is a legal risk for a
   site run from Germany). Keep it so: no script, style, font or picture from another host.
-- **Stacks** (`stacks.src.html`, `site/stacks.js`; a fourth entry in the menu, between Modules and Deployments,
-  once the site is launched): since 2026-11-27 a stack on that page is a Set's (`docs/PUNG-STACK.md`, Phase 1).
-  The visitor's stacks are kept in their browser (IndexedDB `pung`/`stacks`, a file `.pungstack` to carry
-  one). **Take**: the stack of the Set open on a connected deployment (`GET /api/stack`, `src/setstack.go`).
-  **Check a deployment**: `POST /api/stack/check` says how each module the stack names stands there (ready,
-  install, update, restart, firmware, pung, unknown); the page installs what is missing through that
-  deployment's own pack (`POST /api/catalog/{id}/install`) and restarts Live there only after the visitor
-  has confirmed (`/api/catalog/apply`). The Set itself moves as Ableton moves it: Pung never reads a Set
-  file. What ONE device holds is a **patch** (`pung_stack` 1, `src/stacks.go`: `GET /api/stacks`,
-  `GET /api/stacks/playing/{n}`, `POST /api/stacks`, `POST /api/stacks/remove`), on the same page under
-  "Your patches"; a patch a Push takes is a rack in Push's browser, in "Pung Stacks". Try the page without
-  a Push: the scratch `fix/mock.py` (the Push's catalog, a Set of seven devices, a check that moves on as
-  the page installs and restarts). `pung.css` gives every `article` a 64-pixel gap: a card that is an
-  article sets its own.
-- **Several deployments, several kinds** (the owner's word, 2026-11-27: the Push is the first hardware Pung
-  runs on, more kinds will follow, and a visitor may own more than one of a kind). `site/pushlink.js` + `pushlink.css` hold the
-  list for every page (in the visitor's browser: `pung.devices`, the one modules install on in `pung.device`;
-  classes `pl-`, colours from whichever stylesheet the page has). A kind is an entry in its `KINDS` (label,
-  default address, port, hint) and a `"kind"` in what it answers; nothing else on the site names the
-  Push where it means "a deployment". A second one of a kind is added by its IP address (both answer to
-  push.local).
 - **One home for each thing** (the owner's word, 2026-11-27: an easy way between what the Push serves and what
   pung.live serves, and nothing shown twice unless it must be). On the Push's own page: playing and editing
   the devices in the Set, sounds, samples, ROMs, installing, updating and removing a module. On pung.live:
@@ -369,61 +355,6 @@ before and linked in the footer.
 - **`GET /api/system`** (`src/system.go`): the deployment at a glance for that page and Pung's own. The processor's
   numbers are what was used since the last request (nothing runs between requests), in percent of the whole
   machine. On the owner's Push: AbletonOS 4.2, no battery in `/sys/class/power_supply` while on power.
-
-- **The hero's logo** (`{{BIGLOGO}}`, `biglogo()` in `build.py`, `site/ride.js` put into the page right after
-  it; the owner's word, 2026-11-27): the logo as wide as the page, and its dot rides from the G through N
-  and U to its place on the P (a ball on a track: slower the higher it is; one mask over all four letters,
-  so the gap travels with it). Once as the page opens, again on a press, never where motion is turned down
-  or without the script (the logo then stands as drawn). The bar keeps its small logo, still, on that page
-  too: hiding it while the large one was in view read as a logo gone missing (the owner, 2026-11-27). The small logo's offset is 0.8 px at 22 px high (27.4 of the drawing's 740.9 units).
-- **The tagline is "Open · Instrument · Platform"** (the owner's word, 2026-11-27; before that day's end it
-  had been "The open instrument platform"). On the front page it stands under the logo on one line as wide
-  as the logo, in spaced capitals with the dots in the logo's cyan (`.lockup.stacked`, `.tag`; sized in the
-  stylesheet alone), and the lockup is at most 520 px wide: the page's signature, not a banner. The slogan
-  "Open music modules, at home on every device." is a small line under it (`h1.slogan`), by the owner's
-  word. Tried and turned down the same day: the tagline as the headline; the logo across the whole column
-  ("too dominant"); the slogan as the largest thing on the page. The tagline beside the logo in three
-  lines is built (`.tagside`) and not used. It is the footer's line and the link preview's too. Pung is
-  spoken of as the platform (host, interface in two levels, modulation, governor, deployment), never as a
-  collection of modules, and not as a Push add-on: the Push is where it is today (the "Today" line).
-- **The hero uses the page's width on three lines** (the owner, 2026-11-27, of a narrow column down the left:
-  "not satisfied how the screen estate is used and how everything is aligned"): the lockup on the left (5 of
-  12), centred on the height of what stands beside it (as the eye sees it: the room above its letters is
-  the dot's and does not count; measured equal above and below at 820, 1180 and 1440), a light rule in the
-  middle of the gutter, what Pung is on the right (7 of 12), and a bar across both with today's status on
-  the left and the two buttons on the right edge. One column from 760 px down. Every block ends on the left edge, the gutter or
-  the right edge: nothing with an edge of its own.
-- **Replacing a block of `pung.css` by its first and last line took the buttons' styles with it** (2026-11-27,
-  caught in a picture before anything was published). After such an edit, read what the diff removes.
-- **The twist on the P** (the owner's idea, 2026-11-27): once landed the dot goes down the bowl and back up
-  to where it rests, as a hand turns an encoder and lets it come back. Only that: the owner turned down a
-  version that went both ways and dimmed the P's stroke beyond the dot. Built in `ride.js`, played where
-  the logo carries `data-twist` (`biglogo()`); approved from a mockup and on the site since 2026-11-27.
-  Show a change to the logo's motion as a mockup first (an Artifact page with the real script).
-- **The front page is in sections** (the owner's word, 2026-11-27: "it's all over with no clear separation"):
-  each a band across the page with its own ground, the same room above and below and the same head (a word
-  in orange, a heading, one sentence): the hero; the stage (`.stage`: the Push's screen, dark in both themes
-  as the hardware is); the interface; the platform (on the surface colour); the way in (a panel). A new
-  block on that page is a `section.band.sect` with a `.sec-head`, never loose content between two others.
-  `scratch mockup/from-site.py` turns a built `index.html` into one file for an Artifact mockup.
-- **Scrolling the front page settles on a section's start** (the owner, 2026-11-27): `scroll-snap-type: y
-  mandatory` on that page alone (`html:has(main.front)`), each section a start, the foot the page's end (or
-  it could not be reached), the bar's real height as the room above (`ride.js`; two rows on a phone). A
-  section taller than the screen scrolls freely inside. A new section there needs nothing more; a new
-  block that is not a `.sect` would be skipped over. **And one section has the screen to itself** ("no
-  overlap between the sections"): each is at least the screen under the bar tall, its content in the
-  middle; the last leaves the foot its room so the two fill the last screen together (`--bar`, `--foot`
-  from `ride.js`). Measured at 1180x700 (a tablet held wide, Safari's bars taken off): every section fits.
-  A section that grows must still fit there, or it is cut where the page settles.
-- **The light and dark switch** (the owner's word, 2026-11-27; `site/theme.css`, `THEME_HEAD` and
-  `theme_button()` in `build.py`): a round button at the right end of every page's bar. A page follows the
-  visitor's system until it is pressed; then the choice, kept in their browser (`pung.theme`) and put on
-  `<html data-theme>` in the head before anything is painted. Every colour that differs between the themes
-  must therefore be written three ways, as `pung.css` and `modules.html` do: for the system's light setting
-  unless dark was chosen (`@media … :root:not([data-theme="dark"])`), and for a chosen light
-  (`:root[data-theme="light"]`). A `<picture>` or an image that follows `prefers-color-scheme` cannot follow
-  the switch: logos are drawn in the page in its own colours (`themed()`). The privacy page says the choice
-  is stored.
 - **Pung's own page on the Push has the same switch and the same look** (2026-11-27; `src/web/app.css`,
   `index.html`, `app.js`): light and dark with the switch beside the version in the rail, the choice kept in
   that browser (`pung.theme`), and pung.live's orange in place of the amber it began with. The light colours
@@ -475,31 +406,6 @@ before and linked in the footer.
   renders as an iPad or iPhone does, but LuLu lets it reach only this Mac, so build the site into a scratch
   folder and serve it from 127.0.0.1. It does not widen its layout for content that sticks out as iOS
   does: look for elements beyond the screen's edges instead of trusting `scrollWidth`.
-- **The Vision page says the same as the front page** (aligned 2026-11-27): Pung as an open platform for
-  instruments, the slogan as its headline, the two interface levels by their names, the Pung stack and a
-  Set's stack with the Set contract's five promises in one sentence, and where Pung goes (Push today, Live
-  on the desktop next, other music programs and hardware later). In its running text hardware is
-  "hardware" or "wherever Pung runs"; "device" is Live's. Nothing there about what will be sold.
-- **The hero's views** (`site/hero.js`): PUNG CUSTOM, the front panels of Pung's five own instruments as loops
-  (`site/hero/<id>.mp4` + `.png`), and PUNG DEFAULT, the live-drawn page; they take turns until a tab is pressed.
-  `scripts/hero-loops.sh` records the loops from Pung's own renderer (`src/heroframes_test.go`: a chord, the
-  spectrum of a sound fed in, an LFO of the test's own on the cutoff and the keys in `heroMoves`), no Push needed.
-  The emulators play sounds of Pung's own, made up for the picture (`scripts/screens/hero-values/<id>.json`:
-  names like "Pung Aurora", Xenia's wavetable a user table computed there), never a sound of the player's
-  firmware; Vivace one of its own factory sounds (read from a device without Live: its tables come from the
-  engine, and a panel without them says READING THE TABLE). Rerun it when a native panel changes.
-- **`site/install.json` "launched"** gates what is not released: the installer downloads, "Connect your Push",
-  the unreleased manual (until then the manual is the one of the last release, from git). Preview the launched
-  site against a real Push without publishing: build with it true into a scratch folder, serve it over https on
-  127.0.0.1:8443 with any certificate, and run Chrome with
-  `--host-resolver-rules="MAP pung.live:443 127.0.0.1:8443" --ignore-certificate-errors` (the origin must be
-  https://pung.live for Pung to answer: `src/sitecors.go`).
-- **The server sends nothing about caching** (nginx on the DiskStation; its configuration is outside the
-  folder Pung may touch), so a browser keeps a file for a while by its own guess. `site/build.py` (`stamp`)
-  therefore names every page's scripts and stylesheets by their content (`modules.js?v=…`), the pages ask for
-  their data afresh (`cache: "no-cache"`: `catalog.json`, `screens/index.json`) and name each module picture
-  by the index it came with. Before, a visitor had the new page with the old script after a publish (the
-  owner saw no default pictures, 2026-11-27). A page's own HTML can still be an older copy until a reload.
 - pung.live may change `touch_card` and `own_pack_only` only (`siteSettings`): never `catalog_url`, which
   names an unsigned catalog.
 

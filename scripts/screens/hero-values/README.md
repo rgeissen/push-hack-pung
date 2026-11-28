@@ -1,6 +1,6 @@
 # The front page's sounds
 
-Values for the loops on pung.live's front page (`scripts/hero-loops.sh`, `src/heroframes_test.go`).
+Values for the loops on pung.live's front page (the site's `hero-loops.sh`, `src/heroframes_test.go`).
 
 - `nodalred`, `ostirus`, `vavra`, `xenia`: sounds of Pung's own, made up for the picture. No value is read from
   any firmware or factory bank (CLAUDE.md, Ask first); Xenia's wavetable is a user table computed here

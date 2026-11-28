@@ -21,7 +21,7 @@ import (
 //
 //	PUNG_HERO_FRAMES=<dir> [PUNG_HERO_ONLY=a,b] go test -run 'TestHeroFrames$' .
 //
-// writes <dir>/<id>/f-NNN.png (960x160, 20 a second) for scripts/hero-loops.sh
+// writes <dir>/<id>/f-NNN.png (960x160, 20 a second) for the site's hero-loops.sh
 // to make into the loops. The panels are drawn as the card pictures are
 // (cardshots_test.go): an emulator at a neutral setting Pung makes up, never
 // a sound of the player's firmware. What moves is real: the notes on the
